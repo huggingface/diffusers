@@ -17,6 +17,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
@@ -114,7 +115,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, num_frames: int = 2):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -122,8 +123,7 @@ class AnimateDiffVideoToVideoPipelineFastTests(
 
         video_height = 32
         video_width = 32
-        video_num_frames = 2
-        video = [Image.new("RGB", (video_width, video_height))] * video_num_frames
+        video = [Image.new("RGB", (video_width, video_height))] * num_frames
 
         inputs = {
             "video": video,
@@ -428,3 +428,66 @@ class AnimateDiffVideoToVideoPipelineFastTests(
                 1e1,
                 "Enabling of FreeInit should lead to results different from the default pipeline results",
             )
+
+    def test_free_noise_blocks(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertTrue(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must be an instance of `FreeNoiseTransformerBlock` after enabling FreeNoise.",
+                    )
+
+        pipe.disable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertFalse(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after disabling FreeNoise.",
+                    )
+
+    def test_free_noise(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs_normal["num_inference_steps"] = 2
+        inputs_normal["strength"] = 0.5
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        for context_length in [8, 9]:
+            for context_stride in [4, 6]:
+                pipe.enable_free_noise(context_length, context_stride)
+
+                inputs_enable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                inputs_enable_free_noise["num_inference_steps"] = 2
+                inputs_enable_free_noise["strength"] = 0.5
+                frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
+
+                pipe.disable_free_noise()
+                inputs_disable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                inputs_disable_free_noise["num_inference_steps"] = 2
+                inputs_disable_free_noise["strength"] = 0.5
+                frames_disable_free_noise = pipe(**inputs_disable_free_noise).frames[0]
+
+                sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_noise)).sum()
+                max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_noise)).max()
+                self.assertGreater(
+                    sum_enabled,
+                    1e1,
+                    "Enabling of FreeNoise should lead to results different from the default pipeline results",
+                )
+                self.assertLess(
+                    max_diff_disabled,
+                    1e-4,
+                    "Disabling of FreeNoise should lead to results similar to the default pipeline results",
+                )
