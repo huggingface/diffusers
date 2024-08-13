@@ -15,9 +15,7 @@
 
 # CogVideoX
 
-<!-- TODO: update paper with ArXiv link when ready. -->
-
-[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://github.com/THUDM/CogVideo/blob/main/resources/CogVideoX.pdf) from Tsinghua University & ZhipuAI.
+[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://arxiv.org/abs/2408.06072) from Tsinghua University & ZhipuAI, by Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, Da Yin, Xiaotao Gu, Yuxuan Zhang, Weihan Wang, Yean Cheng, Ting Liu, Bin Xu, Yuxiao Dong, Jie Tang.
 
 The abstract from the paper is:
 
@@ -67,6 +65,16 @@ The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd
 Without torch.compile(): Average inference time: 96.89 seconds.
 With torch.compile(): Average inference time: 76.27 seconds.
 ```
+
+### Memory optimization
+
+CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. The following optimizations can be applied (for replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script): 
+
+- `pipe.enable_model_cpu_offload()`:
+  - Without enabling cpu offloading, memory usage is `33 GB`
+  - With enabling cpu offloading, memory usage is `19 GB`
+- `pipe.vae.enable_tiling()`:
+  - With enabling cpu offloading and tiling, memory usage is `11 GB`
 
 ## CogVideoXPipeline
 
