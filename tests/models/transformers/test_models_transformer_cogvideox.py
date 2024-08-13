@@ -52,11 +52,11 @@ class CogVideoXTransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states": encoder_hidden_states,
             "timestep": timestep,
         }
-    
+
     @property
     def input_shape(self):
         return (1, 4, 8, 8)
-    
+
     @property
     def output_shape(self):
         return (1, 4, 8, 8)
