@@ -1668,10 +1668,10 @@ class StableDiffusionXLPAGInpaintPipeline(
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
-                    if self.do_classifier_free_guidance:
-                        init_mask, _ = mask.chunk(2)
+                    if self.do_perturbed_attention_guidance:
+                        init_mask, *_ = mask.chunk(3) if self.do_classifier_free_guidance else mask.chunk(2)
                     else:
-                        init_mask = mask
+                        init_mask, *_ = mask.chunk(2) if self.do_classifier_free_guidance else mask
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
