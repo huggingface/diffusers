@@ -263,6 +263,41 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
+    def enable_dynamic_upcasting(self, upcast_dtype=None):
+        upcast_dtype = upcast_dtype or torch.float32
+        downcast_dtype = self.dtype
+
+        def upcast_hook_fn(module):
+            module = module.to(upcast_dtype)
+
+        def downcast_hook_fn(module):
+            module = module.to(downcast_dtype)
+
+        def fn_recursive_upcast(module):
+            has_children = list(module.children())
+            if not has_children:
+                module.register_forward_pre_hook(upcast_hook_fn)
+                module.register_forward_hook(downcast_hook_fn)
+
+            for child in module.children():
+                fn_recursive_upcast(child)
+
+        for module in self.children():
+            fn_recursive_upcast(module)
+
+    def disable_dynamic_upcasting(self):
+        def fn_recursive_upcast(module):
+            has_children = list(module.children())
+            if not has_children:
+                module._forward_pre_hooks = OrderedDict()
+                module._forward_hooks = OrderedDict()
+
+            for child in module.children():
+                fn_recursive_upcast(child)
+
+        for module in self.children():
+            fn_recursive_upcast(module)
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
