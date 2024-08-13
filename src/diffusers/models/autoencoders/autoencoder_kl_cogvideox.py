@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class CogVideoXSafeConv3d(nn.Conv3d):
-    """
+    r"""
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
     """
 
@@ -68,12 +68,12 @@ class CogVideoXCausalConv3d(nn.Module):
     r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
 
     Args:
-        in_channels (int): Number of channels in the input tensor.
-        out_channels (int): Number of output channels.
-        kernel_size (Union[int, Tuple[int, int, int]]): Size of the convolutional kernel.
-        stride (int, optional): Stride of the convolution. Default is 1.
-        dilation (int, optional): Dilation rate of the convolution. Default is 1.
-        pad_mode (str, optional): Padding mode. Default is "constant".
+        in_channels (`int`): Number of channels in the input tensor.
+        out_channels (`int`): Number of output channels produced by the convolution.
+        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
+        stride (`int`, defaults to `1`): Stride of the convolution.
+        dilation (`int`, defaults to `1`): Dilation rate of the convolution.
+        pad_mode (`str`, defaults to `"constant"`): Padding mode.
     """
 
     def __init__(
@@ -157,6 +157,8 @@ class CogVideoXSpatialNorm3D(nn.Module):
             The number of channels for input to group normalization layer, and output of the spatial norm layer.
         zq_channels (`int`):
             The number of channels for the quantized vector as described in the paper.
+        groups (`int`):
+            Number of groups to separate the channels into for group normalization.
     """
 
     def __init__(
@@ -191,17 +193,26 @@ class CogVideoXResnetBlock3D(nn.Module):
     A 3D ResNet block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (Optional[int], optional):
-            Number of output channels. If None, defaults to `in_channels`. Default is None.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        temb_channels (int, optional): Number of time embedding channels. Default is 512.
-        groups (int, optional): Number of groups for group normalization. Default is 32.
-        eps (float, optional): Epsilon value for normalization layers. Default is 1e-6.
-        non_linearity (str, optional): Activation function to use. Default is "swish".
-        conv_shortcut (bool, optional): If True, use a convolutional shortcut. Default is False.
-        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        non_linearity (`str`, defaults to `"swish"`):
+            Activation function to use.
+        conv_shortcut (bool, defaults to `False`):
+            Whether or not to use a convolution shortcut.
+        spatial_norm_dim (`int`, *optional*):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     def __init__(
@@ -303,18 +314,28 @@ class CogVideoXDownBlock3D(nn.Module):
     A downsampling block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (int): Number of output channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        add_downsample (bool, optional): If True, add a downsampling layer at the end of the block. Default is True.
-        downsample_padding (int, optional): Padding for the downsampling layer. Default is 0.
-        compress_time (bool, optional): If True, apply temporal compression. Default is False.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        add_downsample (`bool`, defaults to `True`):
+            Whether or not to use a downsampling layer. If not used, output dimension would be same as input dimension.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to downsample across temporal dimension.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     _supports_gradient_checkpointing = True
@@ -399,15 +420,24 @@ class CogVideoXMidBlock3D(nn.Module):
     A middle block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        spatial_norm_dim (`int`, *optional*):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     _supports_gradient_checkpointing = True
@@ -474,19 +504,30 @@ class CogVideoXUpBlock3D(nn.Module):
     An upsampling block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (int): Number of output channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        spatial_norm_dim (int, optional): Dimension of the spatial normalization. Default is 16.
-        add_upsample (bool, optional): If True, add an upsampling layer at the end of the block. Default is True.
-        upsample_padding (int, optional): Padding for the upsampling layer. Default is 1.
-        compress_time (bool, optional): If True, apply temporal compression. Default is False.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        spatial_norm_dim (`int`, defaults to `16`):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        add_upsample (`bool`, defaults to `True`):
+            Whether or not to use a upsampling layer. If not used, output dimension would be same as input dimension.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to downsample across temporal dimension.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     def __init__(
@@ -581,14 +622,12 @@ class CogVideoXEncoder3D(nn.Module):
             options.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
+        act_fn (`str`, *optional*, defaults to `"silu"`):
+            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         norm_num_groups (`int`, *optional*, defaults to 32):
             The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        double_z (`bool`, *optional*, defaults to `True`):
-            Whether to double the number of output channels for the last block.
     """
 
     _supports_gradient_checkpointing = True
@@ -717,14 +756,12 @@ class CogVideoXDecoder3D(nn.Module):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
+        act_fn (`str`, *optional*, defaults to `"silu"`):
+            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         norm_num_groups (`int`, *optional*, defaults to 32):
             The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        norm_type (`str`, *optional*, defaults to `"group"`):
-            The normalization type to use. Can be either `"group"` or `"spatial"`.
     """
 
     _supports_gradient_checkpointing = True

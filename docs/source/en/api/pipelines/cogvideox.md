@@ -68,13 +68,14 @@ With torch.compile(): Average inference time: 76.27 seconds.
 
 ### Memory optimization
 
-CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. The following optimizations can be applied (for replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script): 
+CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script.
 
 - `pipe.enable_model_cpu_offload()`:
   - Without enabling cpu offloading, memory usage is `33 GB`
   - With enabling cpu offloading, memory usage is `19 GB`
 - `pipe.vae.enable_tiling()`:
   - With enabling cpu offloading and tiling, memory usage is `11 GB`
+- `pipe.vae.enable_slicing()`
 
 ## CogVideoXPipeline
 
