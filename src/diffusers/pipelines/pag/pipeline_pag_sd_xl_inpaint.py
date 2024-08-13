@@ -887,7 +887,8 @@ class StableDiffusionXLPAGInpaintPipeline(
 
             if self.do_perturbed_attention_guidance:
                 masked_image_latents = (
-                    torch.cat([masked_image_latents] * 3) if do_classifier_free_guidance
+                    torch.cat([masked_image_latents] * 3)
+                    if do_classifier_free_guidance
                     else torch.cat([masked_image_latents] * 2)
                 )
             else:
