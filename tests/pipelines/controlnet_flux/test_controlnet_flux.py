@@ -45,29 +45,34 @@ enable_full_determinism()
 class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = FluxControlNetPipeline
 
+    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
+    batch_params = frozenset(["prompt"])
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
-            in_channels=64,
+            in_channels=16,
             num_layers=1,
-            num_single_layers=2,
-            attention_head_dim=128,
-            num_attention_heads=24,
+            num_single_layers=1,
+            attention_head_dim=16,
+            num_attention_heads=2,
             joint_attention_dim=32,
             pooled_projection_dim=32,
+            axes_dims_rope=[4, 4, 8],
         )
 
         torch.manual_seed(0)
         controlnet = FluxControlNetModel(
             patch_size=1,
-            in_channels=64,
+            in_channels=16,
             num_layers=1,
-            num_single_layers=2,
-            attention_head_dim=128,
-            num_attention_heads=24,
+            num_single_layers=1,
+            attention_head_dim=16,
+            num_attention_heads=2,
             joint_attention_dim=32,
             pooled_projection_dim=32,
+            axes_dims_rope=[4, 4, 8],
         )
 
         clip_text_encoder_config = CLIPTextConfig(
@@ -99,7 +104,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             out_channels=3,
             block_out_channels=(4,),
             layers_per_block=1,
-            latent_channels=16,
+            latent_channels=4,
             norm_num_groups=1,
             use_quant_conv=False,
             use_post_quant_conv=False,
@@ -162,7 +167,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         assert image.shape == (1, 32, 32, 3)
 
         expected_slice = np.array(
-            [0.7207031, 0.44873047, 0.58740234, 0.5498047, 0.5595703, 0.6464844, 0.51904297, 0.6171875, 0.49853516]
+            [0.7348633, 0.41333008, 0.6621094, 0.5444336, 0.47607422, 0.5859375, 0.44677734, 0.4506836, 0.40454102]
         )
 
         assert (
