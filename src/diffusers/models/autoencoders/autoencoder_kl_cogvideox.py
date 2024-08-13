@@ -947,14 +947,16 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # Can be increased to decode more latent frames at once, but comes at a reasonable memory cost and it is not
         # recommended because the temporal parts of the VAE, here, are tricky to understand.
-        # If you decode X latent frames together, the number of output frames is (X + 2 + 4) - 2 frames => X + 4 frames
+        # If you decode X latent frames together, the number of output frames is:
+        #     (X + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale)) => X + 6 frames
+        #
         # Example with num_latent_frames_batch_size = 2:
         #     - 12 latent frames: (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11) are processed together
-        #         => (12 // 2 frame slices) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames))
+        #         => (12 // 2 frame slices) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale frames))
         #         => 6 * 8 = 48 frames
         #     - 13 latent frames: (0, 1, 2) (special case), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12) are processed together
-        #         => (1 frame slice) * ((3 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames)) +
-        #            ((13 - 3) // 2) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale frames) + (4 time upscale frames) - (2 causal conv downscale frames))
+        #         => (1 frame slice) * ((3 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale frames)) +
+        #            ((13 - 3) // 2) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale frames))
         #         => 1 * 9 + 5 * 8 = 49 frames
         # It has been implemented this way so as to not have "magic values" in the code base that would be hard to explain. Note that
         # setting it to anything other than 2 would give poor results because the VAE hasn't been trained to be adaptive with different
@@ -989,11 +991,27 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         tile_sample_min_height: Optional[int] = None,
         tile_sample_min_width: Optional[int] = None,
+        tile_overlap_factor_height: Optional[float] = None,
+        tile_overlap_factor_width: Optional[float] = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
+
+        Args:
+            tile_sample_min_height (`int`, *optional*):
+                The minimum height required for a sample to be separated into tiles across the height dimension.
+            tile_sample_min_width (`int`, *optional*):
+                The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_overlap_factor_height (`int`, *optional*):
+                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
+                no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
+            tile_overlap_factor_width (`int`, *optional*):
+                The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
+                are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
         """
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
@@ -1002,6 +1020,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
         )
         self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
+        self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
 
     def disable_tiling(self) -> None:
         r"""
@@ -1049,13 +1069,15 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
-        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_width or z.shape[-2] > self.tile_latent_min_height):
+        batch_size, num_channels, num_frames, height, width = z.shape
+
+        if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
         frame_batch_size = self.num_latent_frames_batch_size
         dec = []
-        for i in range(z.shape[2] // frame_batch_size):
-            remaining_frames = z.shape[2] % frame_batch_size
+        for i in range(num_frames // frame_batch_size):
+            remaining_frames = num_frames % frame_batch_size
             start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
             end_frame = frame_batch_size * (i + 1) + remaining_frames
             z_intermediate = z[:, :, start_frame:end_frame]
@@ -1137,6 +1159,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         #   - Assume everything as above but now HxW is 240x360 by tiling in half
         # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
 
+        batch_size, num_channels, num_frames, height, width = z.shape
+
         overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor_height))
         overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor_width))
         blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor_height)
@@ -1148,12 +1172,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # Split z into overlapping tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
         rows = []
-        for i in range(0, z.shape[3], overlap_height):
+        for i in range(0, height, overlap_height):
             row = []
-            for j in range(0, z.shape[4], overlap_width):
+            for j in range(0, width, overlap_width):
                 time = []
-                for k in range(z.shape[2] // frame_batch_size):
-                    remaining_frames = z.shape[2] % frame_batch_size
+                for k in range(num_frames // frame_batch_size):
+                    remaining_frames = num_frames % frame_batch_size
                     start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
                     end_frame = frame_batch_size * (k + 1) + remaining_frames
                     tile = z[
