@@ -8,7 +8,9 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > 
 > Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements - 
 > a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
-> For more tips & guidance on training on a resource-constrained device please check out these great guides and trainers for FLUX: [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md) & [`ostris` guide](https://github.com/ostris/ai-toolkit?tab=readme-ov-file#flux1-training) 
+> For more tips & guidance on training on a resource-constrained device please check out these great guides and trainers for FLUX: 
+> 1) [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
+> 2) [`ostris`'s guide](https://github.com/ostris/ai-toolkit?tab=readme-ov-file#flux1-training) 
 
 
 > [!NOTE]
