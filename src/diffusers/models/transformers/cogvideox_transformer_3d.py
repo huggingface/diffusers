@@ -37,13 +37,20 @@ class CogVideoXBlock(nn.Module):
     Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
 
     Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        time_embed_dim (`int`):
+            The number of channels in timestep embedding.
+        dropout (`float`, defaults to `0.0`):
+            The dropout probability to use.
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
+            Activation function to be used in feed-forward.
+        attention_bias (`bool`, defaults to `False`):
+            Whether or not to use bias in attention projection layers.
         qk_norm (`bool`, defaults to `True`):
             Whether or not to use normalization after query and key projections in Attention.
         norm_elementwise_affine (`bool`, defaults to `True`):
@@ -147,36 +154,53 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
     Parameters:
-        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
-        in_channels (`int`, *optional*):
+        num_attention_heads (`int`, defaults to `30`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `64`):
+            The number of channels in each head.
+        in_channels (`int`, defaults to `16`):
             The number of channels in the input.
-        out_channels (`int`, *optional*):
+        out_channels (`int`, *optional*, defaults to `16`):
             The number of channels in the output.
-        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
-        patch_size (`int`, *optional*):
+        flip_sin_to_cos (`bool`, defaults to `True`):
+            Whether to flip the sin to cos in the time embedding.
+        time_embed_dim (`int`, defaults to `512`):
+            Output dimension of timestep embeddings.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        num_layers (`int`, defaults to `30`):
+            The number of layers of Transformer blocks to use.
+        dropout (`float`, defaults to `0.0`):
+            The dropout probability to use.
+        attention_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in the attention projection layers.
+        sample_width (`int`, defaults to `90`):
+            The width of the input latents.
+        sample_height (`int`, defaults to `60`):
+            The height of the input latents.
+        sample_frames (`int`, defaults to `49`):
+            The number of frames in the input latents. Note that this parameter was incorrectly initialized to 49
+            instead of 13 because CogVideoX processed 13 latent frames at once in its default and recommended settings,
+            but cannot be changed to the correct value to ensure backwards compatibility. To create a transformer with
+            K latent frames, the correct value to pass here would be: ((K - 1) * temporal_compression_ratio + 1).
+        patch_size (`int`, defaults to `2`):
             The size of the patches to use in the patch embedding layer.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*):
-            The number of diffusion steps used during training. Pass if at least one of the norm_layers is
-            `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
-            added to the hidden states. During inference, you can denoise for up to but not more steps than
-            `num_embeds_ada_norm`.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The type of normalization to use. Options are `"layer_norm"` or `"ada_layer_norm"`.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+        temporal_compression_ratio (`int`, defaults to `4`):
+            The compression ratio across the temporal dimension. See documentation for `sample_frames`.
+        max_text_seq_length (`int`, defaults to `226`):
+            The maximum sequence length of the input text embeddings.
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
+            Activation function to use in feed-forward.
+        timestep_activation_fn (`str`, defaults to `"silu"`):
+            Activation function to use when generating the timestep embeddings.
+        norm_elementwise_affine (`bool`, defaults to `True`):
             Whether or not to use elementwise affine in normalization layers.
-        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use in normalization layers.
-        caption_channels (`int`, *optional*):
-            The number of channels in the caption embeddings.
-        video_length (`int`, *optional*):
-            The number of frames in the video-like data.
+        norm_eps (`float`, defaults to `1e-5`):
+            The epsilon value to use in normalization layers.
+        spatial_interpolation_scale (`float`, defaults to `1.875`):
+            Scaling factor to apply in 3D positional embeddings across spatial dimensions.
+        temporal_interpolation_scale (`float`, defaults to `1.0`):
+            Scaling factor to apply in 3D positional embeddings across temporal dimensions.
     """
 
     _supports_gradient_checkpointing = True
@@ -186,7 +210,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self,
         num_attention_heads: int = 30,
         attention_head_dim: int = 64,
-        in_channels: Optional[int] = 16,
+        in_channels: int = 16,
         out_channels: Optional[int] = 16,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
@@ -304,7 +328,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
         hidden_states = hidden_states[:, self.config.max_text_seq_length :]
 
-        # 5. Transformer blocks
+        # 4. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -331,11 +355,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         hidden_states = self.norm_final(hidden_states)
 
-        # 6. Final block
+        # 5. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
-        # 7. Unpatchify
+        # 6. Unpatchify
         p = self.config.patch_size
         output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)

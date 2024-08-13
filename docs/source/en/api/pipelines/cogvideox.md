@@ -15,9 +15,7 @@
 
 # CogVideoX
 
-<!-- TODO: update paper with ArXiv link when ready. -->
-
-[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://github.com/THUDM/CogVideo/blob/main/resources/CogVideoX.pdf) from Tsinghua University & ZhipuAI.
+[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://arxiv.org/abs/2408.06072) from Tsinghua University & ZhipuAI, by Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, Da Yin, Xiaotao Gu, Yuxuan Zhang, Weihan Wang, Yean Cheng, Ting Liu, Bin Xu, Yuxiao Dong, Jie Tang.
 
 The abstract from the paper is:
 
@@ -43,42 +41,41 @@ from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
 
 pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b").to("cuda")
-prompt = (
-    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
-    "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
-    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
-    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
-    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
-    "atmosphere of this unique musical performance."
-)
-video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
-export_to_video(video, "output.mp4", fps=8)
 ```
 
-Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:
+Then change the memory layout of the pipelines `transformer` component to `torch.channels_last`:
 
 ```python
-pipeline.transformer.to(memory_format=torch.channels_last)
-pipeline.vae.to(memory_format=torch.channels_last)
+pipe.transformer.to(memory_format=torch.channels_last)
 ```
 
 Finally, compile the components and run inference:
 
 ```python
-pipeline.transformer = torch.compile(pipeline.transformer)
-pipeline.vae.decode = torch.compile(pipeline.vae.decode)
+pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
 
-# CogVideoX works very well with long and well-described prompts
+# CogVideoX works well with long and well-described prompts
 prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
-video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 ```
 
-The [benchmark](TODO: link) results on an 80GB A100 machine are:
+The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f) results on an 80GB A100 machine are:
 
 ```
-Without torch.compile(): Average inference time: TODO seconds.
-With torch.compile(): Average inference time: TODO seconds.
+Without torch.compile(): Average inference time: 96.89 seconds.
+With torch.compile(): Average inference time: 76.27 seconds.
 ```
+
+### Memory optimization
+
+CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script.
+
+- `pipe.enable_model_cpu_offload()`:
+  - Without enabling cpu offloading, memory usage is `33 GB`
+  - With enabling cpu offloading, memory usage is `19 GB`
+- `pipe.vae.enable_tiling()`:
+  - With enabling cpu offloading and tiling, memory usage is `11 GB`
+- `pipe.vae.enable_slicing()`
 
 ## CogVideoXPipeline
 

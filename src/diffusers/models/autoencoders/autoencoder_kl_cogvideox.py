@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class CogVideoXSafeConv3d(nn.Conv3d):
-    """
+    r"""
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM in CogVideoX Model.
     """
 
@@ -68,12 +68,12 @@ class CogVideoXCausalConv3d(nn.Module):
     r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
 
     Args:
-        in_channels (int): Number of channels in the input tensor.
-        out_channels (int): Number of output channels.
-        kernel_size (Union[int, Tuple[int, int, int]]): Size of the convolutional kernel.
-        stride (int, optional): Stride of the convolution. Default is 1.
-        dilation (int, optional): Dilation rate of the convolution. Default is 1.
-        pad_mode (str, optional): Padding mode. Default is "constant".
+        in_channels (`int`): Number of channels in the input tensor.
+        out_channels (`int`): Number of output channels produced by the convolution.
+        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
+        stride (`int`, defaults to `1`): Stride of the convolution.
+        dilation (`int`, defaults to `1`): Dilation rate of the convolution.
+        pad_mode (`str`, defaults to `"constant"`): Padding mode.
     """
 
     def __init__(
@@ -118,19 +118,12 @@ class CogVideoXCausalConv3d(nn.Module):
         self.conv_cache = None
 
     def fake_context_parallel_forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        dim = self.temporal_dim
         kernel_size = self.time_kernel_size
-        if kernel_size == 1:
-            return inputs
-
-        inputs = inputs.transpose(0, dim)
-
-        if self.conv_cache is not None:
-            inputs = torch.cat([self.conv_cache.transpose(0, dim).to(inputs.device), inputs], dim=0)
-        else:
-            inputs = torch.cat([inputs[:1]] * (kernel_size - 1) + [inputs], dim=0)
-
-        inputs = inputs.transpose(0, dim).contiguous()
+        if kernel_size > 1:
+            cached_inputs = (
+                [self.conv_cache] if self.conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
+            )
+            inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
     def _clear_fake_context_parallel_cache(self):
@@ -138,16 +131,17 @@ class CogVideoXCausalConv3d(nn.Module):
         self.conv_cache = None
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        input_parallel = self.fake_context_parallel_forward(inputs)
+        inputs = self.fake_context_parallel_forward(inputs)
 
         self._clear_fake_context_parallel_cache()
-        self.conv_cache = input_parallel[:, :, -self.time_kernel_size + 1 :].contiguous().detach().clone().cpu()
+        # Note: we could move these to the cpu for a lower maximum memory usage but its only a few
+        # hundred megabytes and so let's not do it for now
+        self.conv_cache = inputs[:, :, -self.time_kernel_size + 1 :].clone()
 
         padding_2d = (self.width_pad, self.width_pad, self.height_pad, self.height_pad)
-        input_parallel = F.pad(input_parallel, padding_2d, mode="constant", value=0)
+        inputs = F.pad(inputs, padding_2d, mode="constant", value=0)
 
-        output_parallel = self.conv(input_parallel)
-        output = output_parallel
+        output = self.conv(inputs)
         return output
 
 
@@ -163,6 +157,8 @@ class CogVideoXSpatialNorm3D(nn.Module):
             The number of channels for input to group normalization layer, and output of the spatial norm layer.
         zq_channels (`int`):
             The number of channels for the quantized vector as described in the paper.
+        groups (`int`):
+            Number of groups to separate the channels into for group normalization.
     """
 
     def __init__(
@@ -197,17 +193,26 @@ class CogVideoXResnetBlock3D(nn.Module):
     A 3D ResNet block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (Optional[int], optional):
-            Number of output channels. If None, defaults to `in_channels`. Default is None.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        temb_channels (int, optional): Number of time embedding channels. Default is 512.
-        groups (int, optional): Number of groups for group normalization. Default is 32.
-        eps (float, optional): Epsilon value for normalization layers. Default is 1e-6.
-        non_linearity (str, optional): Activation function to use. Default is "swish".
-        conv_shortcut (bool, optional): If True, use a convolutional shortcut. Default is False.
-        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        non_linearity (`str`, defaults to `"swish"`):
+            Activation function to use.
+        conv_shortcut (bool, defaults to `False`):
+            Whether or not to use a convolution shortcut.
+        spatial_norm_dim (`int`, *optional*):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     def __init__(
@@ -309,18 +314,28 @@ class CogVideoXDownBlock3D(nn.Module):
     A downsampling block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (int): Number of output channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        add_downsample (bool, optional): If True, add a downsampling layer at the end of the block. Default is True.
-        downsample_padding (int, optional): Padding for the downsampling layer. Default is 0.
-        compress_time (bool, optional): If True, apply temporal compression. Default is False.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        add_downsample (`bool`, defaults to `True`):
+            Whether or not to use a downsampling layer. If not used, output dimension would be same as input dimension.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to downsample across temporal dimension.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     _supports_gradient_checkpointing = True
@@ -405,15 +420,24 @@ class CogVideoXMidBlock3D(nn.Module):
     A middle block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        spatial_norm_dim (Optional[int], optional): Dimension of the spatial normalization. Default is None.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        spatial_norm_dim (`int`, *optional*):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     _supports_gradient_checkpointing = True
@@ -480,19 +504,30 @@ class CogVideoXUpBlock3D(nn.Module):
     An upsampling block used in the CogVideoX model.
 
     Args:
-        in_channels (int): Number of input channels.
-        out_channels (int): Number of output channels.
-        temb_channels (int): Number of time embedding channels.
-        dropout (float, optional): Dropout rate. Default is 0.0.
-        num_layers (int, optional): Number of layers in the block. Default is 1.
-        resnet_eps (float, optional): Epsilon value for the ResNet layers. Default is 1e-6.
-        resnet_act_fn (str, optional): Activation function for the ResNet layers. Default is "swish".
-        resnet_groups (int, optional): Number of groups for group normalization in the ResNet layers. Default is 32.
-        spatial_norm_dim (int, optional): Dimension of the spatial normalization. Default is 16.
-        add_upsample (bool, optional): If True, add an upsampling layer at the end of the block. Default is True.
-        upsample_padding (int, optional): Padding for the upsampling layer. Default is 1.
-        compress_time (bool, optional): If True, apply temporal compression. Default is False.
-        pad_mode (str, optional): Padding mode. Default is "first".
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        temb_channels (`int`, defaults to `512`):
+            Number of time embedding channels.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet layers.
+        resnet_eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+        resnet_act_fn (`str`, defaults to `"swish"`):
+            Activation function to use.
+        resnet_groups (`int`, defaults to `32`):
+            Number of groups to separate the channels into for group normalization.
+        spatial_norm_dim (`int`, defaults to `16`):
+            The dimension to use for spatial norm if it is to be used instead of group norm.
+        add_upsample (`bool`, defaults to `True`):
+            Whether or not to use a upsampling layer. If not used, output dimension would be same as input dimension.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to downsample across temporal dimension.
+        pad_mode (str, defaults to `"first"`):
+            Padding mode.
     """
 
     def __init__(
@@ -587,14 +622,12 @@ class CogVideoXEncoder3D(nn.Module):
             options.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
+        act_fn (`str`, *optional*, defaults to `"silu"`):
+            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         norm_num_groups (`int`, *optional*, defaults to 32):
             The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        double_z (`bool`, *optional*, defaults to `True`):
-            Whether to double the number of output channels for the last block.
     """
 
     _supports_gradient_checkpointing = True
@@ -723,14 +756,12 @@ class CogVideoXDecoder3D(nn.Module):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
         block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
+        act_fn (`str`, *optional*, defaults to `"silu"`):
+            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
         norm_num_groups (`int`, *optional*, defaults to 32):
             The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        norm_type (`str`, *optional*, defaults to `"group"`):
-            The normalization type to use. Can be either `"group"` or `"spatial"`.
     """
 
     _supports_gradient_checkpointing = True
@@ -911,7 +942,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_eps: float = 1e-6,
         norm_num_groups: int = 32,
         temporal_compression_ratio: float = 4,
-        sample_size: int = 256,
+        sample_height: int = 480,
+        sample_width: int = 720,
         scaling_factor: float = 1.15258426,
         shift_factor: Optional[float] = None,
         latents_mean: Optional[Tuple[float]] = None,
@@ -950,24 +982,104 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-        self.tile_sample_min_size = self.config.sample_size
-        sample_size = (
-            self.config.sample_size[0]
-            if isinstance(self.config.sample_size, (list, tuple))
-            else self.config.sample_size
+        # Can be increased to decode more latent frames at once, but comes at a reasonable memory cost and it is not
+        # recommended because the temporal parts of the VAE, here, are tricky to understand.
+        # If you decode X latent frames together, the number of output frames is:
+        #     (X + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale)) => X + 6 frames
+        #
+        # Example with num_latent_frames_batch_size = 2:
+        #     - 12 latent frames: (0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (10, 11) are processed together
+        #         => (12 // 2 frame slices) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale))
+        #         => 6 * 8 = 48 frames
+        #     - 13 latent frames: (0, 1, 2) (special case), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12) are processed together
+        #         => (1 frame slice) * ((3 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale)) +
+        #            ((13 - 3) // 2) * ((2 num_latent_frames_batch_size) + (2 conv cache) + (2 time upscale_1) + (4 time upscale_2) - (2 causal conv downscale))
+        #         => 1 * 9 + 5 * 8 = 49 frames
+        # It has been implemented this way so as to not have "magic values" in the code base that would be hard to explain. Note that
+        # setting it to anything other than 2 would give poor results because the VAE hasn't been trained to be adaptive with different
+        # number of temporal frames.
+        self.num_latent_frames_batch_size = 2
+
+        # We make the minimum height and width of sample for tiling half that of the generally supported
+        self.tile_sample_min_height = sample_height // 2
+        self.tile_sample_min_width = sample_width // 2
+        self.tile_latent_min_height = int(
+            self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
         )
-        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor = 0.25
+        self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+
+        # These are experimental overlap factors that were chosen based on experimentation and seem to work best for
+        # 720x480 (WxH) resolution. The above resolution is the strongly recommended generation resolution in CogVideoX
+        # and so the tiling implementation has only been tested on those specific resolutions.
+        self.tile_overlap_factor_height = 1 / 6
+        self.tile_overlap_factor_width = 1 / 5
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
             module.gradient_checkpointing = value
 
-    def clear_fake_context_parallel_cache(self):
+    def _clear_fake_context_parallel_cache(self):
         for name, module in self.named_modules():
             if isinstance(module, CogVideoXCausalConv3d):
                 logger.debug(f"Clearing fake Context Parallel cache for layer: {name}")
                 module._clear_fake_context_parallel_cache()
+
+    def enable_tiling(
+        self,
+        tile_sample_min_height: Optional[int] = None,
+        tile_sample_min_width: Optional[int] = None,
+        tile_overlap_factor_height: Optional[float] = None,
+        tile_overlap_factor_width: Optional[float] = None,
+    ) -> None:
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+
+        Args:
+            tile_sample_min_height (`int`, *optional*):
+                The minimum height required for a sample to be separated into tiles across the height dimension.
+            tile_sample_min_width (`int`, *optional*):
+                The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_overlap_factor_height (`int`, *optional*):
+                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
+                no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
+            tile_overlap_factor_width (`int`, *optional*):
+                The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
+                are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
+        """
+        self.use_tiling = True
+        self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_latent_min_height = int(
+            self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
+        )
+        self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
+        self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
+
+    def disable_tiling(self) -> None:
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_tiling = False
+
+    def enable_slicing(self) -> None:
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.use_slicing = True
+
+    def disable_slicing(self) -> None:
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_slicing = False
 
     @apply_forward_hook
     def encode(
@@ -993,8 +1105,34 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        batch_size, num_channels, num_frames, height, width = z.shape
+
+        if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
+            return self.tiled_decode(z, return_dict=return_dict)
+
+        frame_batch_size = self.num_latent_frames_batch_size
+        dec = []
+        for i in range(num_frames // frame_batch_size):
+            remaining_frames = num_frames % frame_batch_size
+            start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
+            end_frame = frame_batch_size * (i + 1) + remaining_frames
+            z_intermediate = z[:, :, start_frame:end_frame]
+            if self.post_quant_conv is not None:
+                z_intermediate = self.post_quant_conv(z_intermediate)
+            z_intermediate = self.decoder(z_intermediate)
+            dec.append(z_intermediate)
+
+        self._clear_fake_context_parallel_cache()
+        dec = torch.cat(dec, dim=2)
+
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
+
     @apply_forward_hook
-    def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -1007,13 +1145,111 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             [`~models.vae.DecoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
-
         """
-        if self.post_quant_conv is not None:
-            z = self.post_quant_conv(z)
-        dec = self.decoder(z)
+        if self.use_slicing and z.shape[0] > 1:
+            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = self._decode(z).sample
+
+        if not return_dict:
+            return (decoded,)
+        return DecoderOutput(sample=decoded)
+
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[3], b.shape[3], blend_extent)
+        for y in range(blend_extent):
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
+                y / blend_extent
+            )
+        return b
+
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[4], b.shape[4], blend_extent)
+        for x in range(blend_extent):
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
+                x / blend_extent
+            )
+        return b
+
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        r"""
+        Decode a batch of images using a tiled decoder.
+
+        Args:
+            z (`torch.Tensor`): Input batch of latent vectors.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        # Rough memory assessment:
+        #   - In CogVideoX-2B, there are a total of 24 CausalConv3d layers.
+        #   - The biggest intermediate dimensions are: [1, 128, 9, 480, 720].
+        #   - Assume fp16 (2 bytes per value).
+        # Memory required: 1 * 128 * 9 * 480 * 720 * 24 * 2 / 1024**3 = 17.8 GB
+        #
+        # Memory assessment when using tiling:
+        #   - Assume everything as above but now HxW is 240x360 by tiling in half
+        # Memory required: 1 * 128 * 9 * 240 * 360 * 24 * 2 / 1024**3 = 4.5 GB
+
+        batch_size, num_channels, num_frames, height, width = z.shape
+
+        overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor_height))
+        overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor_width))
+        blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor_height)
+        blend_extent_width = int(self.tile_sample_min_width * self.tile_overlap_factor_width)
+        row_limit_height = self.tile_sample_min_height - blend_extent_height
+        row_limit_width = self.tile_sample_min_width - blend_extent_width
+        frame_batch_size = self.num_latent_frames_batch_size
+
+        # Split z into overlapping tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, height, overlap_height):
+            row = []
+            for j in range(0, width, overlap_width):
+                time = []
+                for k in range(num_frames // frame_batch_size):
+                    remaining_frames = num_frames % frame_batch_size
+                    start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
+                    end_frame = frame_batch_size * (k + 1) + remaining_frames
+                    tile = z[
+                        :,
+                        :,
+                        start_frame:end_frame,
+                        i : i + self.tile_latent_min_height,
+                        j : j + self.tile_latent_min_width,
+                    ]
+                    if self.post_quant_conv is not None:
+                        tile = self.post_quant_conv(tile)
+                    tile = self.decoder(tile)
+                    time.append(tile)
+                self._clear_fake_context_parallel_cache()
+                row.append(torch.cat(time, dim=2))
+            rows.append(row)
+
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_extent_width)
+                result_row.append(tile[:, :, :, :row_limit_height, :row_limit_width])
+            result_rows.append(torch.cat(result_row, dim=4))
+
+        dec = torch.cat(result_rows, dim=3)
+
         if not return_dict:
             return (dec,)
+
         return DecoderOutput(sample=dec)
 
     def forward(

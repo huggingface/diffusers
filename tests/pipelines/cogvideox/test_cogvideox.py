@@ -125,11 +125,6 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             # Cannot reduce because convolution kernel becomes bigger than sample
             "height": 16,
             "width": 16,
-            # TODO(aryan): improve this
-            # Cannot make this lower due to assert condition in pipeline at the moment.
-            # The reason why 8 can't be used here is due to how context-parallel cache works where the first
-            # second of video is decoded from latent frames (0, 3) instead of [(0, 2), (2, 3)]. If 8 is used,
-            # the number of output frames that you get are 5.
             "num_frames": 8,
             "max_sequence_length": 16,
             "output_type": "pt",
@@ -148,8 +143,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
+        self.assertEqual(generated_video.shape, (8, 3, 16, 16))
+        expected_video = torch.randn(8, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -249,6 +244,36 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
+
+    def test_vae_tiling(self, expected_diff_max: float = 0.2):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+        pipe.set_progress_bar_config(disable=None)
+
+        # Without tiling
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_without_tiling = pipe(**inputs)[0]
+
+        # With tiling
+        pipe.vae.enable_tiling(
+            tile_sample_min_height=96,
+            tile_sample_min_width=96,
+            tile_overlap_factor_height=1 / 12,
+            tile_overlap_factor_width=1 / 12,
+        )
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_with_tiling = pipe(**inputs)[0]
+
+        self.assertLess(
+            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
+            expected_diff_max,
+            "VAE tiling should not affect the inference results",
+        )
 
 
 @slow
