@@ -1505,6 +1505,9 @@ def main(args):
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
+
+                vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
                     model_input.shape[2],
@@ -1583,15 +1586,10 @@ def main(args):
 
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2]) * 8,
-                    width=int(model_input.shape[3]) * 8,
-                    vae_scale_factor=2
-                    ** (
-                        len(vae.config.block_out_channels)
-                    ),  # should this be 2 ** (len(vae.config.block_out_channels))?
+                    height=int(model_input.shape[2]),
+                    width=int(model_input.shape[3]),
+                    vae_scale_factor=vae_scale_factor,
                 )
-
-                model_pred = model_pred * (-sigmas) + noisy_model_input
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
