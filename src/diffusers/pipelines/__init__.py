@@ -173,6 +173,7 @@ else:
     _import_structure["controlnet_sd3"].extend(
         [
             "StableDiffusion3ControlNetPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -465,9 +466,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
         )
-        from .controlnet_sd3 import (
-            StableDiffusion3ControlNetPipeline,
-        )
+        from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
         from .controlnet_xs import (
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
