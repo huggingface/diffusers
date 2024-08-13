@@ -522,6 +522,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_images_per_prompt,
         device,
         dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
     ):
         if isinstance(image, torch.Tensor):
             pass
@@ -539,6 +541,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         image = image.repeat_interleave(repeat_by, dim=0)
 
         image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
 
         return image
 
