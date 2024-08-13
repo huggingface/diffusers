@@ -8,7 +8,7 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > 
 > Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements - 
 > a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
-> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](documentation/quickstart/FLUX.md) 
+> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md) 
 
 
 > [!NOTE]
@@ -96,7 +96,7 @@ accelerate launch train_dreambooth_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=1024 \
   --train_batch_size=1 \
@@ -140,7 +140,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
   --train_batch_size=1 \
@@ -175,7 +175,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --mixed_precision="fp16" \
+  --mixed_precision="bf16" \
   --train_text_encoder\
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
