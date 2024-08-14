@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_flux"] = ["FluxPipeline"]
     _import_structure["pipeline_flux_img2img"] = ["FluxImg2ImgPipeline"]
     _import_structure["pipeline_flux_inpaint"] = ["FluxInpaintPipeline"]
+    _import_structure["pipeline_flux_controlnet"] = ["FluxControlNetPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_flux import FluxPipeline
+        from .pipeline_flux_controlnet import FluxControlNetPipeline
 else:
     import sys
 
