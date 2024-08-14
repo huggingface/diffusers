@@ -830,7 +830,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
-
         controlnet_down_block_res_samples = ()
 
         for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
