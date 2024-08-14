@@ -320,6 +320,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def disable_layerwise_upcasting(self):
         def fn_recursive_upcast(module):
+            if hasattr(self, "_always_upcast_modules") and module.__class__.__name__ in self._always_upcast_modules:
+                module._forward_pre_hooks = OrderedDict()
+                module._forward_hooks = OrderedDict()
+
+                return
+
             has_children = list(module.children())
             if not has_children:
                 module._forward_pre_hooks = OrderedDict()
