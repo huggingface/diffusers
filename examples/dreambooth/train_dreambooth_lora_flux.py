@@ -25,6 +25,7 @@ import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import torch
@@ -44,7 +45,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast
-from typing import Union
+
 import diffusers
 from diffusers import (
     AutoencoderKL,
