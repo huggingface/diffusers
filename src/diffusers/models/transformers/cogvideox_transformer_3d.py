@@ -22,7 +22,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
-from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
+from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed, \
+    get_3d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -208,7 +209,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_attention_heads: int = 30,
+        num_attention_heads: int = 48,  # CogVideoX-2B is 30
         attention_head_dim: int = 64,
         in_channels: int = 16,
         out_channels: Optional[int] = 16,
@@ -216,7 +217,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         freq_shift: int = 0,
         time_embed_dim: int = 512,
         text_embed_dim: int = 4096,
-        num_layers: int = 30,
+        num_layers: int = 42, # CogVideoX-2B is 30
         dropout: float = 0.0,
         attention_bias: bool = True,
         sample_width: int = 90,
@@ -252,6 +253,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             spatial_interpolation_scale,
             temporal_interpolation_scale,
         )
+
+        # spatial_pos_embedding = get_3d_rotary_pos_embed(
+        #     inner_dim,
+        #     (post_patch_width, post_patch_height),
+        #     post_time_compression_frames,
+        #     attention_head_dim,
+        #     10000,
+        #     spatial_interpolation_scale,
+        #     temporal_interpolation_scale,
+        # )
+
         spatial_pos_embedding = torch.from_numpy(spatial_pos_embedding).flatten(0, 1)
         pos_embedding = torch.zeros(1, max_text_seq_length + self.num_patches, inner_dim, requires_grad=False)
         pos_embedding.data[:, max_text_seq_length:].copy_(spatial_pos_embedding)
