@@ -263,7 +263,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def enable_dynamic_upcasting(self, upcast_dtype=None):
+    def enable_layerwise_upcasting(self, upcast_dtype=None):
         upcast_dtype = upcast_dtype or torch.float32
         downcast_dtype = self.dtype
 
