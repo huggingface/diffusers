@@ -44,7 +44,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast
-
+from typing import Union
 import diffusers
 from diffusers import (
     AutoencoderKL,
