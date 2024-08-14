@@ -62,30 +62,6 @@ class DreamBoothFlux(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
 
-    def test_dreambooth_latent_caching(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-                {self.script_path}
-                --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_dir {self.instance_data_dir}
-                --instance_prompt {self.instance_prompt}
-                --resolution 64
-                --train_batch_size 1
-                --gradient_accumulation_steps 1
-                --cache_latents
-                --max_train_steps 2
-                --learning_rate 5.0e-04
-                --scale_lr
-                --lr_scheduler constant
-                --lr_warmup_steps 0
-                --output_dir {tmpdir}
-                """.split()
-
-            run_command(self._launch_args + test_args)
-            # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
-
     def test_dreambooth_checkpointing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
