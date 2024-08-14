@@ -259,6 +259,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _always_upcast_modules = ["AuraFlowPatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -440,11 +441,15 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         # Apply patch embedding, timestep embedding, and project the caption embeddings.
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
-        temb = self.time_step_embed(timestep).to(dtype=next(self.parameters()).dtype)
+        temb = self.time_step_embed(timestep).to(dtype=hidden_states.dtype)
         temb = self.time_step_proj(temb)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         encoder_hidden_states = torch.cat(
-            [self.register_tokens.repeat(encoder_hidden_states.size(0), 1, 1), encoder_hidden_states], dim=1
+            [
+                self.register_tokens.to(encoder_hidden_states.dtype).repeat(encoder_hidden_states.size(0), 1, 1),
+                encoder_hidden_states,
+            ],
+            dim=1,
         )
 
         # MMDiT blocks.

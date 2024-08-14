@@ -264,20 +264,53 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_memory_efficient_attention_xformers(False)
 
     def enable_layerwise_upcasting(self, upcast_dtype=None):
-        upcast_dtype = upcast_dtype or torch.float32
-        downcast_dtype = self.dtype
+        r"""
+        Enable layerwise dynamic upcasting. This allows models to be loaded into the GPU in a low memory dtype e.g.
+        torch.float8_e4m3fn, but perform inference using a dtype that is supported by the GPU, by upcasting the
+        individual modules in the model to the appropriate dtype right before the foward pass.
 
-        def upcast_hook_fn(module):
+        The module is then moved back to the low memory dtype after the foward pass.
+        """
+
+        upcast_dtype = upcast_dtype or torch.float32
+        original_dtype = self.dtype
+
+        def upcast_dtype_hook_fn(module, *args, **kwargs):
             module = module.to(upcast_dtype)
 
-        def downcast_hook_fn(module):
-            module = module.to(downcast_dtype)
+        def cast_to_original_dtype_hook_fn(module, *args, **kwargs):
+            module = module.to(original_dtype)
 
         def fn_recursive_upcast(module):
+            """In certain cases modules will apply casting internally or reference the dtype of internal blocks.
+
+            e.g.
+
+            ```
+            class MyModel(nn.Module):
+                def forward(self, x):
+                    dtype = next(iter(self.blocks.parameters())).dtype
+                    x = self.blocks(x) + torch.ones(x.size()).to(dtype)
+            ```
+            Layerwise upcasting will not work here, since the internal blocks remain in the low memory dtype until
+            their `forward` method is called. We need to add the upcast hook on the entire module in order for the
+            operation to work.
+
+            The `_always_upcast_modules` class attribute is a list of modules within the model that we must upcast
+            entirely, rather than layerwise.
+
+            """
+            if hasattr(self, "_always_upcast_modules") and module.__class__.__name__ in self._always_upcast_modules:
+                # Upcast entire module and exist recursion
+                module.register_forward_pre_hook(upcast_dtype_hook_fn)
+                module.register_forward_hook(cast_to_original_dtype_hook_fn)
+
+                return
+
             has_children = list(module.children())
             if not has_children:
-                module.register_forward_pre_hook(upcast_hook_fn)
-                module.register_forward_hook(downcast_hook_fn)
+                module.register_forward_pre_hook(upcast_dtype_hook_fn)
+                module.register_forward_hook(cast_to_original_dtype_hook_fn)
 
             for child in module.children():
                 fn_recursive_upcast(child)
@@ -285,7 +318,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         for module in self.children():
             fn_recursive_upcast(module)
 
-    def disable_dynamic_upcasting(self):
+    def disable_layerwise_upcasting(self):
         def fn_recursive_upcast(module):
             has_children = list(module.children())
             if not has_children:

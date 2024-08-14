@@ -64,6 +64,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         video_length (`int`, *optional*):
             The number of frames in the video-like data.
     """
+    _always_upcast_modules = ["PatchEmbed"]
 
     @register_to_config
     def __init__(
@@ -301,7 +302,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                 hidden_states = hidden_states.reshape(-1, hidden_states.shape[-2], hidden_states.shape[-1])
 
         embedded_timestep = embedded_timestep.repeat_interleave(num_frame, dim=0).view(-1, embedded_timestep.shape[-1])
-        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table[None].to(embedded_timestep.dtype) + embedded_timestep[:, None]).chunk(
+            2, dim=1
+        )
         hidden_states = self.norm_out(hidden_states)
         # Modulation
         hidden_states = hidden_states * (1 + scale) + shift

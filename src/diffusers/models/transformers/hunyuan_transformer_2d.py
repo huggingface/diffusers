@@ -244,6 +244,8 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
             Whether or not to use style condition and image meta size. True for version <=1.1, False for version >= 1.2
     """
 
+    _always_upcast_modules = ["HunyuanDiTAttentionPool"]
+
     @register_to_config
     def __init__(
         self,
@@ -484,7 +486,9 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         text_embedding_mask = torch.cat([text_embedding_mask, text_embedding_mask_t5], dim=-1)
         text_embedding_mask = text_embedding_mask.unsqueeze(2).bool()
 
-        encoder_hidden_states = torch.where(text_embedding_mask, encoder_hidden_states, self.text_embedding_padding)
+        encoder_hidden_states = torch.where(
+            text_embedding_mask, encoder_hidden_states, self.text_embedding_padding.to(encoder_hidden_states.dtype)
+        )
 
         skips = []
         for layer, block in enumerate(self.blocks):

@@ -192,6 +192,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _always_upcast_modules = ["TemporalDecoder"]
 
     @register_to_config
     def __init__(

@@ -43,6 +43,8 @@ from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    disable_full_determinism,
+    enable_full_determinism,
     get_python_version,
     is_torch_compile,
     require_torch_2,
@@ -983,6 +985,49 @@ class ModelTesterMixin:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    @require_torch_gpu
+    def test_layerwise_upcasting(self):
+        disable_full_determinism()
+
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_cached()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        torch.manual_seed(0)
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**config).eval()
+        model.to(torch_device)
+
+        model(**inputs_dict)
+        base_max_memory = torch.cuda.max_memory_allocated()
+
+        # Remove model
+        model.to("cpu")
+        del model
+
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_cached()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        low_memory_dtype = torch.float8_e4m3fn
+        upcast_dtype = torch.float32
+
+        config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        torch.manual_seed(0)
+        low_mem_model = self.model_class(**config).eval()
+        low_mem_model.to(low_memory_dtype)
+        low_mem_model.to(torch_device)
+        layerwise_max_memory = torch.cuda.max_memory_allocated()
+        low_mem_model.enable_layerwise_upcasting(upcast_dtype)
+        low_mem_model(**inputs_dict)
+
+        assert layerwise_max_memory < base_max_memory
+
+        enable_full_determinism()
 
 
 @is_staging_test

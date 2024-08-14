@@ -54,6 +54,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     """
 
     _supports_gradient_checkpointing = True
+    _always_upcast_modules = ["PatchEmbed"]
 
     @register_to_config
     def __init__(

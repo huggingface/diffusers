@@ -289,7 +289,7 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might be fp16, so we need to cast here.
-        timesteps_projected = timesteps_projected.to(dtype=self.dtype)
+        timesteps_projected = timesteps_projected.to(dtype=hidden_states.dtype)
         time_embeddings = self.time_embedding(timesteps_projected)
 
         if self.embedding_proj_norm is not None:

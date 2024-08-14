@@ -330,7 +330,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
             Union[DecoderOutput, Tuple[torch.Tensor]]: The decoded output.
 
         """
-        z = (z * self.config.scaling_factor - self.means) / self.stds
+        z = (z * self.config.scaling_factor - self.means.to(z.dtype)) / self.stds.to(z.dtype)
 
         scale_factor = 2 ** (len(self.config.block_out_channels) - 1)
         z = F.interpolate(z, mode="nearest", scale_factor=scale_factor)
