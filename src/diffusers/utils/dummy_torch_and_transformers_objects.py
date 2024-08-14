@@ -287,7 +287,6 @@ class CycleDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-
 class FluxImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -316,7 +315,7 @@ class FluxInpaintPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
-        
+
 
 class FluxControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
