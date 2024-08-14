@@ -628,23 +628,20 @@ class AnimateDiffVideoToVideoPipeline(
 
     def prepare_latents(
         self,
-        video,
-        height,
-        width,
-        num_channels_latents,
-        batch_size,
-        timestep,
-        dtype,
-        device,
-        generator,
-        latents=None,
+        video: Optional[torch.Tensor] = None,
+        height: int = 64,
+        width: int = 64,
+        num_channels_latents: int = 4,
+        batch_size: int = 1,
+        timestep: Optional[int] = None,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
         decode_chunk_size: int = 16,
-    ):
-        if latents is None:
-            num_frames = video.shape[1]
-        else:
-            num_frames = latents.shape[2]
-
+        add_noise: bool = False,
+    ) -> torch.Tensor:
+        num_frames = video.shape[1] if latents is None else latents.shape[2]
         shape = (
             batch_size,
             num_channels_latents,
@@ -708,7 +705,12 @@ class AnimateDiffVideoToVideoPipeline(
             if shape != latents.shape:
                 # [B, C, F, H, W]
                 raise ValueError(f"`latents` expected to have {shape=}, but found {latents.shape=}")
+
             latents = latents.to(device, dtype=dtype)
+
+            if add_noise:
+                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                latents = self.scheduler.add_noise(latents, noise, timestep)
 
         return latents
 
@@ -735,6 +737,10 @@ class AnimateDiffVideoToVideoPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     def __call__(
         self,
@@ -743,6 +749,7 @@ class AnimateDiffVideoToVideoPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        enforce_inference_steps: bool = False,
         timesteps: Optional[List[int]] = None,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.5,
@@ -874,6 +881,7 @@ class AnimateDiffVideoToVideoPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -917,11 +925,20 @@ class AnimateDiffVideoToVideoPipeline(
             )
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+        if not enforce_inference_steps:
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, timesteps, sigmas
+            )
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+        else:
+            denoising_inference_steps = int(num_inference_steps / strength)
+            timesteps, denoising_inference_steps = retrieve_timesteps(
+                self.scheduler, denoising_inference_steps, device, timesteps, sigmas
+            )
+            num_inference_steps += 1
+            timesteps = timesteps[-num_inference_steps:]
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 
         # 5. Prepare latent variables
         if latents is None:
@@ -942,6 +959,7 @@ class AnimateDiffVideoToVideoPipeline(
             generator=generator,
             latents=latents,
             decode_chunk_size=decode_chunk_size,
+            add_noise=enforce_inference_steps,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -970,6 +988,10 @@ class AnimateDiffVideoToVideoPipeline(
             # 8. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
+
+                    print("here:", t, self.scheduler.sigmas[-num_inference_steps:])
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
