@@ -147,11 +147,11 @@ prompt = "cat, hiding in the leaves, ((rain)), zazie rainyday, beautiful eyes, m
 neg_prompt = "(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, mutated hands and fingers:1.4), (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, disconnected limbs, mutation, mutated, ugly, disgusting, amputation"
 generator = torch.Generator(device="cpu").manual_seed(20)
 out_lpw = pipe_lpw(
-    prompt, 
-    negative_prompt=neg_prompt, 
+    prompt,
+    negative_prompt=neg_prompt,
     width=512,
     height=512,
-    max_embeddings_multiples=3, 
+    max_embeddings_multiples=3,
     num_inference_steps=50,
     generator=generator,
     ).images[0]
@@ -289,9 +289,9 @@ scheduler = DPMSolverMultistepScheduler.from_pretrained(pipe_id, subfolder="sche
 3. Load an image processor:
 
 ```python
-from transformers import CLIPFeatureExtractor
+from transformers import CLIPImageProcessor
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(pipe_id, subfolder="feature_extractor")
+feature_extractor = CLIPImageProcessor.from_pretrained(pipe_id, subfolder="feature_extractor")
 ```
 
 <Tip warning={true}>

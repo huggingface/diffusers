@@ -19,13 +19,13 @@ specific language governing permissions and limitations under the License.
 
 다음 명령어로 ONNX Runtime를 지원하는 🤗 Optimum를 설치합니다:
 
-```
+```sh
 pip install optimum["onnxruntime"]
 ```
 
 ## Stable Diffusion 추론
 
-아래 코드는 ONNX 런타임을 사용하는 방법을 보여줍니다. `StableDiffusionPipeline` 대신 `OnnxStableDiffusionPipeline`을 사용해야 합니다. 
+아래 코드는 ONNX 런타임을 사용하는 방법을 보여줍니다. `StableDiffusionPipeline` 대신 `OnnxStableDiffusionPipeline`을 사용해야 합니다.
 PyTorch 모델을 불러오고 즉시 ONNX 형식으로 변환하려는 경우 `export=True`로 설정합니다.
 
 ```python
@@ -38,7 +38,7 @@ images = pipe(prompt).images[0]
 pipe.save_pretrained("./onnx-stable-diffusion-v1-5")
 ```
 
-파이프라인을 ONNX 형식으로 오프라인으로 내보내고 나중에 추론에 사용하려는 경우, 
+파이프라인을 ONNX 형식으로 오프라인으로 내보내고 나중에 추론에 사용하려는 경우,
 [`optimum-cli export`](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) 명령어를 사용할 수 있습니다:
 
 ```bash
@@ -47,7 +47,7 @@ optimum-cli export onnx --model runwayml/stable-diffusion-v1-5 sd_v15_onnx/
 
 그 다음 추론을 수행합니다:
 
-```python 
+```python
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
 model_id = "sd_v15_onnx"

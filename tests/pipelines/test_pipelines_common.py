@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -25,6 +26,7 @@ from diffusers import (
     ConsistencyDecoderVAE,
     DDIMScheduler,
     DiffusionPipeline,
+    KolorsPipeline,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
@@ -40,7 +42,12 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    require_torch,
+    skip_mps,
+    torch_device,
+)
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -65,6 +72,17 @@ def to_np(tensor):
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
+
+
+def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
+    current_attn_processors = model.attn_processors
+    return len(current_attn_processors) == len(original_attn_processors)
+
+
+def check_qkv_fusion_processors_exist(model):
+    current_attn_processors = model.attn_processors
+    proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
+    return all(p.startswith("Fused") for p in proc_names)
 
 
 class SDFunctionTesterMixin:
@@ -196,6 +214,19 @@ class SDFunctionTesterMixin:
         original_image_slice = image[0, -3:, -3:, -1]
 
         pipe.fuse_qkv_projections()
+        for _, component in pipe.components.items():
+            if (
+                isinstance(component, nn.Module)
+                and hasattr(component, "original_attn_processors")
+                and component.original_attn_processors is not None
+            ):
+                assert check_qkv_fusion_processors_exist(
+                    component
+                ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+                assert check_qkv_fusion_matches_attn_procs_length(
+                    component, component.original_attn_processors
+                ), "Something wrong with the attention processors concerning the fused QKV projections."
+
         inputs = self.get_dummy_inputs(device)
         inputs["return_dict"] = False
         image_fused = pipe(**inputs)[0]
@@ -626,6 +657,8 @@ class PipelineFromPipeTesterMixin:
     def original_pipeline_class(self):
         if "xl" in self.pipeline_class.__name__.lower():
             original_pipeline_class = StableDiffusionXLPipeline
+        elif "kolors" in self.pipeline_class.__name__.lower():
+            original_pipeline_class = KolorsPipeline
         else:
             original_pipeline_class = StableDiffusionPipeline
 
@@ -651,6 +684,9 @@ class PipelineFromPipeTesterMixin:
         elif self.original_pipeline_class == StableDiffusionXLPipeline:
             original_repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
             original_kwargs = {"requires_aesthetics_score": True, "force_zeros_for_empty_prompt": False}
+        elif self.original_pipeline_class == KolorsPipeline:
+            original_repo = "hf-internal-testing/tiny-kolors-pipe"
+            original_kwargs = {"force_zeros_for_empty_prompt": False}
         else:
             raise ValueError(
                 "original_pipeline_class must be either StableDiffusionPipeline or StableDiffusionXLPipeline"
@@ -786,7 +822,12 @@ class PipelineFromPipeTesterMixin:
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
         pipe_original.set_progress_bar_config(disable=None)
+
         pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
+        for component in pipe_from_original.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_from_original.enable_model_cpu_offload()
         pipe_from_original.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_pipe(torch_device)
@@ -1346,14 +1387,24 @@ class PipelineTesterMixin:
 
         pipe.enable_attention_slicing(slice_size=1)
         inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing = pipe(**inputs)[0]
+        output_with_slicing1 = pipe(**inputs)[0]
+
+        pipe.enable_attention_slicing(slice_size=2)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing2 = pipe(**inputs)[0]
 
         if test_max_difference:
-            max_diff = np.abs(to_np(output_with_slicing) - to_np(output_without_slicing)).max()
-            self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
+            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
+            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
+            self.assertLess(
+                max(max_diff1, max_diff2),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
+            )
 
         if test_mean_pixel_difference:
-            assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
+            assert_mean_pixel_difference(to_np(output_with_slicing1[0]), to_np(output_without_slicing[0]))
+            assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
