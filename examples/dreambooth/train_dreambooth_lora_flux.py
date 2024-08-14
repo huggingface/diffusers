@@ -1002,6 +1002,7 @@ def encode_prompt(
 
     return prompt_embeds, pooled_prompt_embeds, text_ids
 
+
 # CustomFlowMatchEulerDiscreteScheduler was taken from ostris ai-toolkit trainer:
 # https://github.com/ostris/ai-toolkit/blob/9ee1ef2a0a2a9a02b92d114a95f21312e5906e54/toolkit/samplers/custom_flowmatch_sampler.py#L95
 class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
@@ -1020,14 +1021,14 @@ class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
             # cosmap_weighing = 2 / (math.pi * bot)
 
             # sigma sqrt weighing is significantly higher at the end and lower at the beginning
-            sigma_sqrt_weighing = (self.sigmas ** -2.0).float()
+            sigma_sqrt_weighing = (self.sigmas**-2.0).float()
             # clip at 1e4 (1e6 is too high)
             sigma_sqrt_weighing = torch.clamp(sigma_sqrt_weighing, max=1e4)
             # bring to a mean of 1
             sigma_sqrt_weighing = sigma_sqrt_weighing / sigma_sqrt_weighing.mean()
 
             # Create linear timesteps from 1000 to 0
-            timesteps = torch.linspace(1000, 0, num_timesteps, device='cpu')
+            timesteps = torch.linspace(1000, 0, num_timesteps, device="cpu")
 
             self.linear_timesteps = timesteps
             # self.linear_timesteps_weights = cosmap_weighing
@@ -1058,10 +1059,10 @@ class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         return sigma
 
     def add_noise(
-            self,
-            original_samples: torch.Tensor,
-            noise: torch.Tensor,
-            timesteps: torch.Tensor,
+        self,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
     ) -> torch.Tensor:
         ## ref https://github.com/huggingface/diffusers/blob/fbe29c62984c33c6cf9cf7ad120a992fe6d20854/examples/dreambooth/train_dreambooth_sd3.py#L1578
         ## Add noise according to flow matching.
@@ -1094,7 +1095,7 @@ class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
             t = torch.sigmoid(torch.randn((num_timesteps,), device=device))
 
             # Scale and reverse the values to go from 1000 to 0
-            timesteps = ((1 - t) * 1000)
+            timesteps = (1 - t) * 1000
 
             # Sort the timesteps in descending order
             timesteps, _ = torch.sort(timesteps, descending=True)
@@ -1102,6 +1103,7 @@ class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
             self.timesteps = timesteps.to(device=device)
 
             return timesteps
+
 
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
