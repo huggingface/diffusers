@@ -35,6 +35,7 @@ if is_torch_available():
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnet_flux"] = ["FluxControlNetModel"]
     _import_structure["controlnet_hunyuan"] = ["HunyuanDiT2DControlNetModel", "HunyuanDiT2DMultiControlNetModel"]
     _import_structure["controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnet_sparsectrl"] = ["SparseControlNetModel"]
@@ -87,6 +88,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .controlnet import ControlNetModel
+        from .controlnet_flux import FluxControlNetModel
         from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
         from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
         from .controlnet_sparsectrl import SparseControlNetModel
