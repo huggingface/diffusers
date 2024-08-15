@@ -51,17 +51,21 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import FluxPipeline
+        >>> from diffusers import FluxInpaintPipeline
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxInpaintPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
-        >>> image.save("flux.png")
+        >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+        >>> source = load_image(img_url)
+        >>> mask = load_image(mask_url)
+        >>> image = pipe(prompt=prompt, image=source, mask_image=mask).images[0]
+        >>> image.save("flux_inpainting.png")
         ```
-"""
+        ```
+        """
 
 
 def calculate_shift(
@@ -927,7 +931,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                # for 64 channel transformer only. 
+                # for 64 channel transformer only.
                 init_latents_proper = image_latents
                 init_mask = mask
 
