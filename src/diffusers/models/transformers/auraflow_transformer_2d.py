@@ -69,6 +69,9 @@ class AuraFlowPatchEmbed(nn.Module):
         self.base_size = height // patch_size
 
     def pe_selection_index_based_on_dim(self, h, w):
+        # select subset of positional embedding based on H, W, where H, W is size of latent
+        # PE will be viewed as 2d-grid, and H/p x W/p of the PE will be selected
+        # because original input are in flattened format, we have to flatten this 2d grid as well.
         h_p, w_p = h // self.patch_size, w // self.patch_size
         original_pe_indexes = torch.arange(self.pos_embed.shape[1])
         h_max, w_max = int(self.pos_embed_max_size ** 0.5), int(self.pos_embed_max_size ** 0.5)
