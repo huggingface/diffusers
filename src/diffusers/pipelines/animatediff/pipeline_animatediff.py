@@ -745,7 +745,7 @@ class AnimateDiffPipeline(
                 lora_scale=text_encoder_lora_scale,
                 clip_skip=self.clip_skip,
             )
-        
+
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
