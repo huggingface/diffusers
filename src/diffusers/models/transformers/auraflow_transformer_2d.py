@@ -77,9 +77,7 @@ class AuraFlowPatchEmbed(nn.Module):
         endh = starth + h_p
         startw = w_max // 2 - w_p // 2
         endw = startw + w_p
-        original_pe_indexes = original_pe_indexes[
-            starth:endh, startw:endw
-        ]
+        original_pe_indexes = original_pe_indexes[ starth:endh, startw:endw]
         return original_pe_indexes.flatten()
 
     def forward(self, latent):
