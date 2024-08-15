@@ -74,13 +74,13 @@ class AuraFlowPatchEmbed(nn.Module):
         # because original input are in flattened format, we have to flatten this 2d grid as well.
         h_p, w_p = h // self.patch_size, w // self.patch_size
         original_pe_indexes = torch.arange(self.pos_embed.shape[1])
-        h_max, w_max = int(self.pos_embed_max_size ** 0.5), int(self.pos_embed_max_size ** 0.5)
+        h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
         original_pe_indexes = original_pe_indexes.view(h_max, w_max)
-        starth =  h_max // 2 - h_p // 2
+        starth = h_max // 2 - h_p // 2
         endh = starth + h_p
         startw = w_max // 2 - w_p // 2
         endw = startw + w_p
-        original_pe_indexes = original_pe_indexes[ starth:endh, startw:endw]
+        original_pe_indexes = original_pe_indexes[starth:endh, startw:endw]
         return original_pe_indexes.flatten()
 
     def forward(self, latent):
