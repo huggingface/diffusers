@@ -93,9 +93,10 @@ def load_video(
 
         was_tempfile_created = True
 
-        video_data = response.raw
+        video_data = response.iter_content(chunk_size=8192)
         with open(video_path, "wb") as f:
-            f.write(video_data.read())
+            for chunk in video_data:
+                f.write(chunk)
 
         video = video_path
 
