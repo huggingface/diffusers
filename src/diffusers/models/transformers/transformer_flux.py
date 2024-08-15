@@ -386,19 +386,15 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         </Tip>
         """
-        self.original_attn_processors = None
-
-        for _, attn_processor in self.attn_processors.items():
-            if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
-
         self.original_attn_processors = self.attn_processors
 
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
-
-        self.set_attn_processor(FusedFluxAttnProcessor2_0(), FusedFluxSingleAttnProcessor2_0())
+                if isinstance(module.processor, FluxAttnProcessor2_0):
+                    module.set_processor(FusedFluxAttnProcessor2_0())
+                else:
+                    module.set_processor(FusedFluxSingleAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
