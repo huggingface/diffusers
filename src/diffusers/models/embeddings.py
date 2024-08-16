@@ -78,69 +78,6 @@ def get_timestep_embedding(
         emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
     return emb
 
-def get_3d_rotary_pos_embed(
-    embed_dim: int,
-    spatial_size: Union[int, Tuple[int, int]],
-    temporal_size: int,
-    hidden_size_head: int,
-    theta=10000,
-    spatial_interpolation_scale=1.0,
-    temporal_interpolation_scale=1.0,
-):
-    height, width = spatial_size
-
-    # Compute dimensions for each axis
-    dim_t = hidden_size_head // 4
-    dim_h = hidden_size_head // 8 * 3
-    dim_w = hidden_size_head // 8 * 3
-
-    # Temporal frequencies
-    freqs_t = 1.0 / (theta ** (torch.arange(0, dim_t, 2).float() / dim_t))
-    grid_t = torch.arange(temporal_size, dtype=torch.float32) / temporal_interpolation_scale
-    freqs_t = torch.einsum("n , f -> n f", grid_t, freqs_t)
-    freqs_t = freqs_t.repeat_interleave(2, dim=-1)
-
-    # Spatial frequencies for height and width
-    freqs_h = 1.0 / (theta ** (torch.arange(0, dim_h, 2).float() / dim_h))
-    freqs_w = 1.0 / (theta ** (torch.arange(0, dim_w, 2).float() / dim_w))
-    grid_h = torch.arange(height, dtype=torch.float32) / spatial_interpolation_scale
-    grid_w = torch.arange(width, dtype=torch.float32) / spatial_interpolation_scale
-    freqs_h = torch.einsum("n , f -> n f", grid_h, freqs_h)
-    freqs_w = torch.einsum("n , f -> n f", grid_w, freqs_w)
-    freqs_h = freqs_h.repeat_interleave(2, dim=-1)
-    freqs_w = freqs_w.repeat_interleave(2, dim=-1)
-
-    # Broadcast and concatenate tensors along specified dimension
-    def broadcat(tensors, dim=-1):
-        num_tensors = len(tensors)
-        shape_lens = set(list(map(lambda t: len(t.shape), tensors)))
-        assert len(shape_lens) == 1, "tensors must all have the same number of dimensions"
-        shape_len = list(shape_lens)[0]
-        dim = (dim + shape_len) if dim < 0 else dim
-        dims = list(zip(*map(lambda t: list(t.shape), tensors)))
-        expandable_dims = [(i, val) for i, val in enumerate(dims) if i != dim]
-        assert all(
-            [*map(lambda t: len(set(t[1])) <= 2, expandable_dims)]
-        ), "invalid dimensions for broadcastable concatenation"
-        max_dims = list(map(lambda t: (t[0], max(t[1])), expandable_dims))
-        expanded_dims = list(map(lambda t: (t[0], (t[1],) * num_tensors), max_dims))
-        expanded_dims.insert(dim, (dim, dims[dim]))
-        expandable_shapes = list(zip(*map(lambda t: t[1], expanded_dims)))
-        tensors = list(map(lambda t: t[0].expand(*t[1]), zip(tensors, expandable_shapes)))
-        return torch.cat(tensors, dim=dim)
-
-    freqs = broadcat((freqs_t[:, None, None, :], freqs_h[None, :, None, :], freqs_w[None, None, :, :]), dim=-1)
-
-    # Flatten and reorder dimensions manually without rearrange
-    t, h, w, d = freqs.shape
-    freqs = freqs.view(t * h * w, d)
-
-    # Generate sine and cosine components
-    freqs_sin = freqs.sin()
-    freqs_cos = freqs.cos()
-
-    return freqs_sin, freqs_cos
-
 def get_3d_sincos_pos_embed(
         embed_dim: int,
         spatial_size: Union[int, Tuple[int, int]],
@@ -436,6 +373,88 @@ class CogVideoXPatchEmbed(nn.Module):
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
         return embeds
 
+
+def get_3d_rotary_pos_embed(embed_dim, crops_coords, grid_size, temporal_size=13, theta=10000, use_real=True):
+    """
+    RoPE for video tokens with 3D structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    crops_coords (`Tuple[int]`):
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the spatial positional embedding (height, width).
+    temporal_size (`int`):
+        The size of the temporal dimension.
+    theta (`float`):
+        Scaling factor for frequency computation.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
+    """
+    start, stop = crops_coords
+    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
+    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+
+    # Compute dimensions for each axis
+    dim_t = embed_dim // 4
+    dim_h = embed_dim // 8 * 3
+    dim_w = embed_dim // 8 * 3
+
+    # Temporal frequencies
+    freqs_t = 1.0 / (theta ** (torch.arange(0, dim_t, 2).float() / dim_t))
+    grid_t = torch.from_numpy(grid_t).float()
+    freqs_t = torch.einsum("n , f -> n f", grid_t, freqs_t)
+    freqs_t = freqs_t.repeat_interleave(2, dim=-1)
+
+    # Spatial frequencies for height and width
+    freqs_h = 1.0 / (theta ** (torch.arange(0, dim_h, 2).float() / dim_h))
+    freqs_w = 1.0 / (theta ** (torch.arange(0, dim_w, 2).float() / dim_w))
+    grid_h = torch.from_numpy(grid_h).float()
+    grid_w = torch.from_numpy(grid_w).float()
+    freqs_h = torch.einsum("n , f -> n f", grid_h, freqs_h)
+    freqs_w = torch.einsum("n , f -> n f", grid_w, freqs_w)
+    freqs_h = freqs_h.repeat_interleave(2, dim=-1)
+    freqs_w = freqs_w.repeat_interleave(2, dim=-1)
+
+    # Broadcast and concatenate tensors along specified dimension
+    def broadcat(tensors, dim=-1):
+        num_tensors = len(tensors)
+        shape_lens = set(list(map(lambda t: len(t.shape), tensors)))
+        assert len(shape_lens) == 1, "tensors must all have the same number of dimensions"
+        shape_len = list(shape_lens)[0]
+        dim = (dim + shape_len) if dim < 0 else dim
+        dims = list(zip(*map(lambda t: list(t.shape), tensors)))
+        expandable_dims = [(i, val) for i, val in enumerate(dims) if i != dim]
+        assert all(
+            [*map(lambda t: len(set(t[1])) <= 2, expandable_dims)]
+        ), "invalid dimensions for broadcastable concatenation"
+        max_dims = list(map(lambda t: (t[0], max(t[1])), expandable_dims))
+        expanded_dims = list(map(lambda t: (t[0], (t[1],) * num_tensors), max_dims))
+        expanded_dims.insert(dim, (dim, dims[dim]))
+        expandable_shapes = list(zip(*map(lambda t: t[1], expanded_dims)))
+        tensors = list(map(lambda t: t[0].expand(*t[1]), zip(tensors, expandable_shapes)))
+        return torch.cat(tensors, dim=dim)
+
+    freqs = broadcat((freqs_t[:, None, None, :], freqs_h[None, :, None, :], freqs_w[None, None, :, :]), dim=-1)
+
+    # Flatten and reorder dimensions manually without rearrange
+    t, h, w, d = freqs.shape
+    freqs = freqs.view(t * h * w, d)
+
+    # Generate sine and cosine components
+    sin = freqs.sin()
+    cos = freqs.cos()
+
+    if use_real:
+        return cos, sin
+    else:
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
+        return freqs_cis
 
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """

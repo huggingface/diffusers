@@ -28,9 +28,27 @@ from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-
+from ...models.embeddings import get_3d_rotary_pos_embed
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
+    tw = tgt_width
+    th = tgt_height
+    h, w = src
+    r = h / w
+    if r > (th / tw):
+        resize_height = th
+        resize_width = int(round(th / h * w))
+    else:
+        resize_width = tw
+        resize_height = int(round(tw / w * h))
+
+    crop_top = int(round((th - resize_height) / 2.0))
+    crop_left = int(round((tw - resize_width) / 2.0))
+
+    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
 
 
 EXAMPLE_DOC_STRING = """
@@ -57,12 +75,12 @@ EXAMPLE_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
-    **kwargs,
+        scheduler,
+        num_inference_steps: Optional[int] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        timesteps: Optional[List[int]] = None,
+        sigmas: Optional[List[float]] = None,
+        **kwargs,
 ):
     """
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
@@ -163,12 +181,12 @@ class CogVideoXPipeline(DiffusionPipeline):
     ]
 
     def __init__(
-        self,
-        tokenizer: T5Tokenizer,
-        text_encoder: T5EncoderModel,
-        vae: AutoencoderKLCogVideoX,
-        transformer: CogVideoXTransformer3DModel,
-        scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+            self,
+            tokenizer: T5Tokenizer,
+            text_encoder: T5EncoderModel,
+            vae: AutoencoderKLCogVideoX,
+            transformer: CogVideoXTransformer3DModel,
+            scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
     ):
         super().__init__()
 
@@ -185,12 +203,12 @@ class CogVideoXPipeline(DiffusionPipeline):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_t5_prompt_embeds(
-        self,
-        prompt: Union[str, List[str]] = None,
-        num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+            self,
+            prompt: Union[str, List[str]] = None,
+            num_videos_per_prompt: int = 1,
+            max_sequence_length: int = 226,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -210,7 +228,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
         if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1: -1])
             logger.warning(
                 "The following part of your input was truncated because `max_sequence_length` is set to "
                 f" {max_sequence_length} tokens: {removed_text}"
@@ -227,16 +245,16 @@ class CogVideoXPipeline(DiffusionPipeline):
         return prompt_embeds
 
     def encode_prompt(
-        self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        do_classifier_free_guidance: bool = True,
-        num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+            self,
+            prompt: Union[str, List[str]],
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            do_classifier_free_guidance: bool = True,
+            num_videos_per_prompt: int = 1,
+            prompt_embeds: Optional[torch.Tensor] = None,
+            negative_prompt_embeds: Optional[torch.Tensor] = None,
+            max_sequence_length: int = 226,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -308,7 +326,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         return prompt_embeds, negative_prompt_embeds
 
     def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+            self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
         shape = (
             batch_size,
@@ -359,20 +377,20 @@ class CogVideoXPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        negative_prompt,
-        callback_on_step_end_tensor_inputs,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+            self,
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            callback_on_step_end_tensor_inputs,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -424,29 +442,29 @@ class CogVideoXPipeline(DiffusionPipeline):
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-        self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 480,
-        width: int = 720,
-        num_frames: int = 49,
-        num_inference_steps: int = 50,
-        timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 6,
-        use_dynamic_cfg: bool = False,
-        num_videos_per_prompt: int = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: str = "pil",
-        return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 226,
+            self,
+            prompt: Optional[Union[str, List[str]]] = None,
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            height: int = 480,
+            width: int = 720,
+            num_frames: int = 49,
+            num_inference_steps: int = 50,
+            timesteps: Optional[List[int]] = None,
+            guidance_scale: float = 6,
+            use_dynamic_cfg: bool = False,
+            num_videos_per_prompt: int = 1,
+            eta: float = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            output_type: str = "pil",
+            return_dict: bool = True,
+            callback_on_step_end: Optional[
+                Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            ] = None,
+            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+            max_sequence_length: int = 226,
     ) -> Union[CogVideoXPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -600,6 +618,20 @@ class CogVideoXPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
+
+        grid_height = height // 8 // self.transformer.config.patch_size
+        grid_width = width // 8 // self.transformer.config.patch_size
+        base_size_width = 720 // 8 // self.transformer.config.patch_size
+        base_size_height = 480 // 8 // self.transformer.config.patch_size
+
+        grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size_width,
+                                                            base_size_height)
+        image_rotary_emb = get_3d_rotary_pos_embed(
+            embed_dim=self.transformer.config.attention_head_dim,
+            crops_coords=grid_crops_coords,
+            grid_size=(grid_height, grid_width),
+            use_real=True
+        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -620,6 +652,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
+                    image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.float()
@@ -627,7 +660,8 @@ class CogVideoXPipeline(DiffusionPipeline):
                 # perform guidance
                 if use_dynamic_cfg:
                     self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                            (1 - math.cos(
+                                math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)

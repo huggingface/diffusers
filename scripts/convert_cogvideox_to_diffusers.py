@@ -141,6 +141,18 @@ def convert_transformer(ckpt_path: str):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
+    # Remove keys that are not used in final modelc
+    keys_to_remove = [
+        "mixins.pos_embed.freqs_sin",  # Not use
+        "mixins.pos_embed.freqs_cos",  # Not use
+        "transformer_blocks.position_embeddings.weight"  # Not use
+    ]
+
+    for key in keys_to_remove:
+        if key in original_state_dict:
+            print(f"Removing key: {key}")
+            del original_state_dict[key]
+
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
@@ -172,7 +184,7 @@ def get_args():
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--fp16", action="store_true", default=True, help="Whether to save the model weights in fp16")
+    parser.add_argument("--fp16", action="store_true", default=False, help="Whether to save the model weights in fp16")
     parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
     )
