@@ -889,7 +889,7 @@ def _update_init_kwargs_with_connected_pipeline(
     return init_kwargs
 
 
-def _ensure_all_expected_modules_presence(
+def _check_and_update_init_kwargs_for_missing_modules(
     init_kwargs: dict, passed_class_objs: dict, pipeline_class, expected_modules: list, optional_kwargs: dict
 ) -> dict:
     missing_modules = set(expected_modules) - set(init_kwargs.keys())

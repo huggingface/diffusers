@@ -71,9 +71,9 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
+    _check_and_update_init_kwargs_for_missing_modules,
     _determine_current_device_map,
     _determine_pipeline_class,
-    _ensure_all_expected_modules_presence,
     _fetch_class_library_tuple,
     _filter_null_components,
     _get_custom_pipeline_class,
@@ -878,7 +878,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 9. Potentially add passed objects if expected
-        init_kwargs = _ensure_all_expected_modules_presence(
+        init_kwargs = _check_and_update_init_kwargs_for_missing_modules(
             init_kwargs=init_kwargs,
             passed_class_objs=passed_class_obj,
             pipeline_class=pipeline_class,
