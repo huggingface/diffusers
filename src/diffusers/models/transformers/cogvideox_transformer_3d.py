@@ -130,11 +130,13 @@ class CogVideoXBlock(nn.Module):
         # CogVideoX uses concatenated text + video embeddings with self-attention instead of using
         # them in cross-attention individually
 
+        # Padding the sin/cos embeddings for the text with zeros, sin is zero and cos is one
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         cos_emb, sin_emb = image_rotary_emb
-        pad_tensor = torch.zeros((text_length, cos_emb.shape[1]), device=cos_emb.device, dtype=cos_emb.dtype)
-        cos_emb_padded = torch.cat([pad_tensor, cos_emb], dim=0)
-        sin_emb_padded = torch.cat([pad_tensor, sin_emb], dim=0)
+        pad_tensor_sin = torch.zeros((text_length, sin_emb.shape[1]), device=sin_emb.device, dtype=sin_emb.dtype)
+        pad_tensor_cos = torch.ones((text_length, cos_emb.shape[1]), device=cos_emb.device, dtype=cos_emb.dtype)
+        cos_emb_padded = torch.cat([pad_tensor_cos, cos_emb], dim=0)
+        sin_emb_padded = torch.cat([pad_tensor_sin, sin_emb], dim=0)
 
         image_rotary_emb = (cos_emb_padded, sin_emb_padded)
         attn_output = self.attn1(
