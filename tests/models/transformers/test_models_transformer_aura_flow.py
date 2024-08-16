@@ -26,7 +26,7 @@ from ..test_modeling_common import ModelTesterMixin
 enable_full_determinism()
 
 
-class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
+class AuraFlowTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = AuraFlowTransformer2DModel
     main_input_name = "hidden_states"
 
@@ -71,3 +71,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skip("AuraFlowTransformer2DModel uses its own dedicated attention processor. This test does not apply")
+    def test_set_attn_processor_for_determinism(self):
+        pass

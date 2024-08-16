@@ -64,7 +64,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(4, 8),
+            block_out_channels=(8, 8),
             layers_per_block=1,
             sample_size=32,
             in_channels=4,
