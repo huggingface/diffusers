@@ -30,7 +30,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference, to_np
 
 
 enable_full_determinism()
@@ -274,6 +274,40 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    def test_xformers_attention_forwardGenerator_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-4
+    ):
+        if not self.test_xformers_attention:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs)[0].permute(0, 1, 3, 4, 2)
+        output_without_offload = (
+            output_without_offload.cpu() if torch.is_tensor(output_without_offload) else output_without_offload
+        )
+
+        pipe.enable_xformers_memory_efficient_attention()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs)[0].permute(0, 1, 3, 4, 2)  # [B, F, H, W, C]
+        output_with_offload = (
+            output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
+        )
+
+        if test_max_difference:
+            max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+            self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
+
+        if test_mean_pixel_difference:
+            assert_mean_pixel_difference(to_np(output_with_offload[0][0]), to_np(output_without_offload[0][0]))
 
 
 @slow
