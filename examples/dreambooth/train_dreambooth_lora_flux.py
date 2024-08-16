@@ -1923,7 +1923,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
