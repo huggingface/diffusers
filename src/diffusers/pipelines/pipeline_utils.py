@@ -1055,7 +1055,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         if self.device.type != "cpu":
-            print("Here.")
             self.to("cpu", silence_dtype_warnings=True)
             device_mod = getattr(torch, self.device.type, None)
             if hasattr(device_mod, "empty_cache") and device_mod.is_available():
