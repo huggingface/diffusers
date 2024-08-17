@@ -493,7 +493,7 @@ $ python -m unittest discover -s tests -t . -v
 $ python -m unittest discover -s examples -t examples -v
 ```
 
-### upstream(main)과 forked main 동기화하기 [[syncing-forked-main-with-upstream-huggingface-main]]
+### upstream(HuggingFace) main과 forked main 동기화하기 [[syncing-forked-main-with-upstream-huggingface-main]]
 
 upstream 저장소에 불필요한 참조 노트를 추가하고 관련 개발자에게 알림을 보내는 것을 피하기 위해,
 forked 저장소의 main 브랜치를 동기화할 때 다음 단계를 따르세요:
