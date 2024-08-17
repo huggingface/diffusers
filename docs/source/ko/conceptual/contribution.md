@@ -267,7 +267,7 @@ Diffusers 예제는 [examples](https://github.com/huggingface/diffusers/tree/mai
 연구용 훈련 예제는 [examples/research_projects](https://github.com/huggingface/diffusers/tree/main/examples/research_projects)에 위치하며, 공식 훈련 예제는 `research_projects` 및 `community` 폴더를 제외한 [examples](https://github.com/huggingface/diffusers/tree/main/examples)의 모든 폴더를 포함합니다.
 공식 훈련 예제는 Diffusers의 핵심 메인테이너가 유지 관리하며, 연구용 훈련 예제는 커뮤니티가 유지 관리합니다.
 이는 공식 파이프라인 vs 커뮤니티 파이프라인에 대한 [6. 커뮤니티 파이프라인 기여하기](#6-contribute-a-community-pipeline)에서 제시한 이유와 동일합니다: 핵심 메인테이너가 diffusion 모델의 모든 가능한 훈련 방법을 유지 관리하는 것은 현실적으로 불가능합니다.
-Diffusers 핵심 메인테이너와 커뮤니티가 특정 훈련 패러다임을 너무 실험적이거나 충분히 인기 없는 것으로 간주하는 경우, 해당 훈련 코드는 `research_projects` 폴더에 넣고 작성자가 유지 관리해야 합니다.
+Diffusers 핵심 메인테이너와 커뮤니티가 특정 훈련 패러다임을 너무 실험적이거나 충분히 대중적이지 않다고 판단한다면, 해당 훈련 코드는 `research_projects` 폴더에 넣고 작성자에 의해 관리되어야 합니다.
 
 공식 훈련 및 연구 예제는 하나 이상의 훈련 스크립트, requirements.txt 파일 및 README.md 파일을 포함하는 디렉토리로 구성됩니다. 사용자가 훈련 예제를 사용하려면 리포지토리를 복제해야 합니다:
 
