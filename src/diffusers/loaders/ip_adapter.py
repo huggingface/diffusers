@@ -222,7 +222,11 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                clip_image_size = self.image_encoder.config.image_size
+                # FaceID IP adapters don't need the image encoder so it's not present, in this case we default to 224
+                default_clip_size = 224
+                clip_image_size = (
+                    self.image_encoder.config.image_size if self.image_encoder is not None else default_clip_size
+                )
                 feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
                 self.register_modules(feature_extractor=feature_extractor)
 
