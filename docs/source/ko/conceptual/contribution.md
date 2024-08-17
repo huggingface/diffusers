@@ -324,7 +324,7 @@ PR에서 막힌 경우나 도움이 필요한 경우, 첫 번째 리뷰나 도�
 
 #### Copied from mechanism [[copied-from-mechanism]]
 
-`# Copied from mechanism` 은 파이프라인, 모델 또는 스케줄러 코드를 추가할 때 이해해야 할 독특하고 중요한 기능입니다. Diffusers 코드베이스 전체에서 이를 자주 볼 수 있는데, 이를 사용하는 이유는 코드베이스를 이해하기 쉽고 유지 관리하기 쉽게 유지하기 위함입니다. `# Copied from mechanism` 으로 표시된 코드는 복사한 코드와 정확히 동일하도록 강제됩니다. 이를 통해 `make fix-copies`를 실행할 때 많은 파일에 걸쳐 변경 사항을 쉽게 업데이트하고 전파할 수 있습니다.
+`# Copied from mechanism` 은 파이프라인, 모델 또는 스케줄러 코드를 추가할 때 이해해야 할 독특하고 중요한 기능입니다. 이것은 Diffusers 코드베이스 전반에서 볼 수 있으며, 이를 사용하는 이유는 코드베이스를 이해하고 유지 관리하기 쉽게 만들기 위해서입니다. `# Copied from mechanism` 으로 표시된 코드는 복사한 코드와 정확히 동일하도록 강제됩니다. 이렇게 하면 `make fix-copies`를 실행할 때마다 여러 파일에 걸쳐 변경 사항을 쉽게 업데이트하고 전파할 수 있습니다.
 
 예를 들어, 아래 코드 예제에서 [`~diffusers.pipelines.stable_diffusion.StableDiffusionPipelineOutput`]은 원래 코드이며, `AltDiffusionPipelineOutput`은 `# Copied from mechanism`을 사용하여 복사합니다. 유일한 차이점은 클래스 접두사를 `Stable`에서 `Alt`로 변경한 것입니다.
 
