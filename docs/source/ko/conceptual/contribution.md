@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 어떤 방식으로든 기여하려는 경우, 우리는 개방적이고 환영하며 친근한 커뮤니티의 일부가 되기 위해 노력하고 있습니다. 우리의 [행동 강령](https://github.com/huggingface/diffusers/blob/main/CODE_OF_CONDUCT.md)을 읽고 상호 작용 중에 이를 존중하도록 주의해주시기 바랍니다. 또한 프로젝트를 안내하는 [윤리 지침](https://huggingface.co/docs/diffusers/conceptual/ethical_guidelines)에 익숙해지고 동일한 투명성과 책임성의 원칙을 준수해주시기를 부탁드립니다.
 
-우리는 커뮤니티로부터의 피드백을 매우 중요하게 생각하므로, 라이브러리를 개선하는 데 도움이 될 가치 있는 피드백이 있다고 생각되면 망설이지 말고 의견을 제시해주세요 - 모든 메시지, 댓글, 이슈, 풀 리퀘스트(PR)는 읽히고 고려됩니다.
+우리는 커뮤니티로부터의 피드백을 매우 중요하게 생각하므로, 라이브러리를 개선하는 데 도움이 될 가치 있는 피드백이 있다고 생각되면 망설이지 말고 의견을 제시해주세요 - 모든 메시지, 댓글, 이슈, Pull Request(PR)는 읽히고 고려됩니다.
 
 ## 개요 [[overview]]
 
@@ -38,7 +38,7 @@ specific language governing permissions and limitations under the License.
 
 앞서 말한 대로, **모든 기여는 커뮤니티에게 가치가 있습니다**. 이어지는 부분에서 각 기여에 대해 조금 더 자세히 설명하겠습니다.
 
-4부터 9까지의 모든 기여에는 PR을 열어야 합니다. [PR을 열기](#how-to-open-a-pr)에서 자세히 설명되어 있습니다.
+4부터 9까지의 모든 기여에는 Pull Request을 열어야 합니다. [Pull Request 열기](#how-to-open-a-pr)에서 자세히 설명되어 있습니다.
 
 ### 1. Diffusers 토론 포럼이나 Diffusers Discord에서 질문하고 답변하기 [[1-asking-and-answering-questions-on-the-diffusers-discussion-forum-or-on-the-diffusers-discord]]
 
@@ -150,7 +150,7 @@ GitHub에서 이슈에 대한 답변을 하기 위해서는 Diffusers에 대한 
 
 이슈가 올바른 버그 보고서이고 소스 코드에서 수정이 필요하다고 확인한 경우, 다음 섹션을 살펴보세요.
 
-다음 모든 기여에 대해서는 PR을 열여야 합니다. [PR 열기](#how-to-open-a-pr) 섹션에서 자세히 설명되어 있습니다.
+다음 모든 기여에 대해서는 PR을 열여야 합니다. [Pull Request 열기](#how-to-open-a-pr) 섹션에서 자세히 설명되어 있습니다.
 
 ### 4. "Good first issue" 고치기 [[4-fixing-a-good-first-issue]]
 
@@ -245,7 +245,7 @@ output = pipeline()
 <hfoptions id="pipeline type">
 <hfoption id="GitHub pipeline">
 
-GitHub 파이프라인을 공유하려면 Diffusers [저장소](https://github.com/huggingface/diffusers)에서 PR을 열고 one_step_unet.py 파일을 [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) 하위 폴더에 추가하세요.
+GitHub 파이프라인을 공유하려면 Diffusers [저장소](https://github.com/huggingface/diffusers)에서 Pull Request를 열고 one_step_unet.py 파일을 [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) 하위 폴더에 추가하세요.
 
 </hfoption>
 <hfoption id="Hub pipeline">
@@ -363,8 +363,8 @@ class AltDiffusionPipelineOutput(BaseOutput):
 1. 카멜레온이 되세요. 기존의 디자인 패턴과 구문을 이해하고, 여러분이 추가하는 코드가 기존 코드베이스와 자연스럽게 어우러지도록 해야 합니다. 기존 디자인 패턴이나 사용자 인터페이스와 크게 다른 Pull Request들은 병합되지 않습니다.
 2. 레이저처럼 집중하세요. Pull Request는 하나의 문제, 오직 하나의 문제만 해결해야 합니다. "이왕 추가하는 김에 다른 문제도 고치자"는 함정에 빠지지 않도록 주의하세요. 여러 개의 관련 없는 문제를 해결하는 한 번에 해결하는 Pull Request들은 검토하기가 훨씬 더 어렵습니다.
 3. 도움이 되는 경우, 추가한 내용이 어떻게 사용되는지 예제 코드 조각을 추가해보세요.
-4. PR의 제목은 기여 내용을 요약해야 합니다.
-5. PR이 이슈를 해결하는 경우, PR 설명에 이슈 번호를 언급하여 연결되도록 해주세요 (이슈를 참조하는 사람들이 작업 중임을 알 수 있도록).
+4. Pull Request의 제목은 기여 내용을 요약해야 합니다.
+5. Pull Request가 이슈를 해결하는 경우, Pull Request의 설명에 이슈 번호를 언급하여 연결되도록 해주세요 (이슈를 참조하는 사람들이 작업 중임을 알 수 있도록).
 6. 진행 중인 작업을 나타내려면 제목에 `[WIP]`를 접두사로 붙여주세요. 이는 중복 작업을 피하고, 병합 준비가 된 PR과 구분할 수 있도록 도움이 됩니다.
 7. [좋은 이슈를 작성하는 방법](#how-to-write-a-good-issue)에 설명된 대로 텍스트를 구성하고 형식을 지정해보세요.
 8. 기존 테스트가 통과하는지 확인하세요
