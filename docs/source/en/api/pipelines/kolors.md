@@ -74,7 +74,7 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 
 pipe = KolorsPipeline.from_pretrained(
     "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 pipe.load_ip_adapter(
