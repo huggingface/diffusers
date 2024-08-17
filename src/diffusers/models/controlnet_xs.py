@@ -29,6 +29,7 @@ from .attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    FusedAttnProcessor2_0,
 )
 from .controlnet import ControlNetConditioningEmbedding
 from .embeddings import TimestepEmbedding, Timesteps
@@ -284,7 +285,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         upcast_attention (`bool`, defaults to `True`):
             Whether the attention computation should always be upcasted.
         max_norm_num_groups (`int`, defaults to 32):
-            Maximum number of groups in group normal. The actual number will the the largest divisor of the respective
+            Maximum number of groups in group normal. The actual number will be the largest divisor of the respective
             channels, that is <= max_norm_num_groups.
     """
 
@@ -1000,6 +1001,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         for module in self.modules():
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
