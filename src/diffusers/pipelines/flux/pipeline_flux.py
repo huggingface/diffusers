@@ -701,7 +701,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
-                    timestep=timestep,
+                    timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,

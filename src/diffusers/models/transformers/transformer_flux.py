@@ -328,7 +328,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
         hidden_states = self.x_embedder(hidden_states)
 
-        timestep = timestep.to(hidden_states.dtype)
+        timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
         else:
