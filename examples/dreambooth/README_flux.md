@@ -3,17 +3,17 @@
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_flux.py` script shows how to implement the training procedure and adapt it for [FLUX.1 [dev]](https://blackforestlabs.ai/announcing-black-forest-labs/). We also provide a LoRA implementation in the `train_dreambooth_lora_flux.py` script.
-> [!NOTE] 
+> [!NOTE]
 > **Memory consumption**
-> 
-> Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements - 
+>
+> Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements -
 > a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
-> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md) 
+> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
 
 
 > [!NOTE]
 > **Gated model**
-> 
+>
 > As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
@@ -163,7 +163,7 @@ To do so, just specify `--train_text_encoder` while launching training. Please k
 
 > [!NOTE]
 > FLUX.1 has 2 text encoders (CLIP L/14 and T5-v1.1-XXL).
-By enabling `--train_text_encoder`, fine-tuning of the **CLIP encoder** is performed. 
+By enabling `--train_text_encoder`, fine-tuning of the **CLIP encoder** is performed.
 > At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled.
 
 To perform DreamBooth LoRA with text-encoder training, run:
