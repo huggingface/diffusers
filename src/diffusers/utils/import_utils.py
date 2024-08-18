@@ -82,6 +82,30 @@ if _torch_npu_available:
     except ImportError:
         _torch_npu_available = False
 
+# check whether l3m is available
+def fp8_supported():
+    from pynvml import (
+        nvmlInit,
+        nvmlShutdown,
+        nvmlDeviceGetHandleByIndex,
+        nvmlDeviceGetName,
+    )
+
+    nvmlInit()
+    device_name = nvmlDeviceGetName(nvmlDeviceGetHandleByIndex(0)).lower()
+    supported = "h100" in device_name or "4090" in device_name
+    nvmlShutdown()
+    return supported
+
+_l3m_fp8_attn_available = importlib.util.find_spec("l3m") is not None and fp8_supported()
+if _l3m_fp8_attn_available:
+    try:
+        _l3m_version = importlib_metadata.version("l3m")
+        logger.info(f"l3m version {_l3m_version} fp8 attn available.")
+    except ImportError:
+        _l3m_fp8_attn_available = False
+        logger.info(f"l3m fp8 attn not available.")
+
 _jax_version = "N/A"
 _flax_version = "N/A"
 if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
@@ -350,6 +374,11 @@ def is_torch_xla_available():
 
 def is_torch_npu_available():
     return _torch_npu_available
+
+
+
+def is_l3m_fp8_attn_available():
+    return _l3m_fp8_attn_available
 
 
 def is_flax_available():
