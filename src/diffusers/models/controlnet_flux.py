@@ -24,9 +24,9 @@ from ..models.attention_processor import AttentionProcessor
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from .controlnet import BaseOutput, zero_module
-from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
+from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from .modeling_outputs import Transformer2DModelOutput
-from .transformers.transformer_flux import EmbedND, FluxSingleTransformerBlock, FluxTransformerBlock
+from .transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -59,7 +59,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.out_channels = in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=axes_dims_rope)
+        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
