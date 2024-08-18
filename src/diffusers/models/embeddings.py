@@ -78,6 +78,53 @@ def get_timestep_embedding(
     return emb
 
 
+def get_3d_sincos_pos_embed(
+    embed_dim: int,
+    spatial_size: Union[int, Tuple[int, int]],
+    temporal_size: int,
+    spatial_interpolation_scale: float = 1.0,
+    temporal_interpolation_scale: float = 1.0,
+) -> np.ndarray:
+    r"""
+    Args:
+        embed_dim (`int`):
+        spatial_size (`int` or `Tuple[int, int]`):
+        temporal_size (`int`):
+        spatial_interpolation_scale (`float`, defaults to 1.0):
+        temporal_interpolation_scale (`float`, defaults to 1.0):
+    """
+    if embed_dim % 4 != 0:
+        raise ValueError("`embed_dim` must be divisible by 4")
+    if isinstance(spatial_size, int):
+        spatial_size = (spatial_size, spatial_size)
+
+    embed_dim_spatial = 3 * embed_dim // 4
+    embed_dim_temporal = embed_dim // 4
+
+    # 1. Spatial
+    grid_h = np.arange(spatial_size[1], dtype=np.float32) / spatial_interpolation_scale
+    grid_w = np.arange(spatial_size[0], dtype=np.float32) / spatial_interpolation_scale
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)
+
+    grid = grid.reshape([2, 1, spatial_size[1], spatial_size[0]])
+    pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(embed_dim_spatial, grid)
+
+    # 2. Temporal
+    grid_t = np.arange(temporal_size, dtype=np.float32) / temporal_interpolation_scale
+    pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(embed_dim_temporal, grid_t)
+
+    # 3. Concat
+    pos_embed_spatial = pos_embed_spatial[np.newaxis, :, :]
+    pos_embed_spatial = np.repeat(pos_embed_spatial, temporal_size, axis=0)  # [T, H*W, D // 4 * 3]
+
+    pos_embed_temporal = pos_embed_temporal[:, np.newaxis, :]
+    pos_embed_temporal = np.repeat(pos_embed_temporal, spatial_size[0] * spatial_size[1], axis=1)  # [T, H*W, D // 4]
+
+    pos_embed = np.concatenate([pos_embed_temporal, pos_embed_spatial], axis=-1)  # [T, H*W, D]
+    return pos_embed
+
+
 def get_2d_sincos_pos_embed(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
@@ -285,6 +332,46 @@ class LuminaPatchEmbed(nn.Module):
             [(height, width)] * batch_size,
             freqs_cis[:height_tokens, :width_tokens].flatten(0, 1).unsqueeze(0),
         )
+
+
+class CogVideoXPatchEmbed(nn.Module):
+    def __init__(
+        self,
+        patch_size: int = 2,
+        in_channels: int = 16,
+        embed_dim: int = 1920,
+        text_embed_dim: int = 4096,
+        bias: bool = True,
+    ) -> None:
+        super().__init__()
+        self.patch_size = patch_size
+
+        self.proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+        self.text_proj = nn.Linear(text_embed_dim, embed_dim)
+
+    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
+        r"""
+        Args:
+            text_embeds (`torch.Tensor`):
+                Input text embeddings. Expected shape: (batch_size, seq_length, embedding_dim).
+            image_embeds (`torch.Tensor`):
+                Input image embeddings. Expected shape: (batch_size, num_frames, channels, height, width).
+        """
+        text_embeds = self.text_proj(text_embeds)
+
+        batch, num_frames, channels, height, width = image_embeds.shape
+        image_embeds = image_embeds.reshape(-1, channels, height, width)
+        image_embeds = self.proj(image_embeds)
+        image_embeds = image_embeds.view(batch, num_frames, *image_embeds.shape[1:])
+        image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
+        image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
+
+        embeds = torch.cat(
+            [text_embeds, image_embeds], dim=1
+        ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
+        return embeds
 
 
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
