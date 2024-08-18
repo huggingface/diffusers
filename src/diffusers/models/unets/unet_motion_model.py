@@ -49,6 +49,18 @@ from .unet_2d_condition import UNet2DConditionModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def _chunked_resnet_forward(
+    resnet: ResnetBlock2D, hidden_states: torch.Tensor, temb: torch.Tensor, chunk_size: int, chunk_dim: int
+) -> torch.Tensor:
+    return torch.cat(
+        [
+            resnet(hs_split, t_split)
+            for hs_split, t_split in zip(hidden_states.split(chunk_size, chunk_dim), temb.split(chunk_size, chunk_dim))
+        ],
+        dim=chunk_dim,
+    )
+
+
 @dataclass
 class UNetMotionOutput(BaseOutput):
     """
@@ -116,7 +128,7 @@ class AnimateDiffTransformer3D(nn.Module):
 
         self.in_channels = in_channels
 
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -306,6 +318,12 @@ class DownBlockMotion(nn.Module):
             self.downsamplers = None
 
         self.gradient_checkpointing = False
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_resnet(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
 
     def forward(
         self,
@@ -344,7 +362,12 @@ class DownBlockMotion(nn.Module):
                     )
 
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if self._chunk_size is not None:
+                    hidden_states = _chunked_resnet_forward(
+                        resnet, hidden_states, temb, self._chunk_size, self._chunk_dim
+                    )
+                else:
+                    hidden_states = resnet(hidden_states, temb)
 
             hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
@@ -493,6 +516,12 @@ class CrossAttnDownBlockMotion(nn.Module):
             self.downsamplers = None
 
         self.gradient_checkpointing = False
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_resnet(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
 
     def forward(
         self,
@@ -540,7 +569,12 @@ class CrossAttnDownBlockMotion(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if self._chunk_size is not None:
+                    hidden_states = _chunked_resnet_forward(
+                        resnet, hidden_states, temb, self._chunk_size, self._chunk_dim
+                    )
+                else:
+                    hidden_states = resnet(hidden_states, temb)
 
                 hidden_states = attn(
                     hidden_states,
@@ -695,6 +729,12 @@ class CrossAttnUpBlockMotion(nn.Module):
 
         self.gradient_checkpointing = False
         self.resolution_idx = resolution_idx
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_resnet(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
 
     def forward(
         self,
@@ -766,7 +806,12 @@ class CrossAttnUpBlockMotion(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if self._chunk_size is not None:
+                    hidden_states = _chunked_resnet_forward(
+                        resnet, hidden_states, temb, self._chunk_size, self._chunk_dim
+                    )
+                else:
+                    hidden_states = resnet(hidden_states, temb)
 
                 hidden_states = attn(
                     hidden_states,
@@ -866,6 +911,12 @@ class UpBlockMotion(nn.Module):
 
         self.gradient_checkpointing = False
         self.resolution_idx = resolution_idx
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_resnet(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
 
     def forward(
         self,
@@ -929,7 +980,12 @@ class UpBlockMotion(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if self._chunk_size is not None:
+                    hidden_states = _chunked_resnet_forward(
+                        resnet, hidden_states, temb, self._chunk_size, self._chunk_dim
+                    )
+                else:
+                    hidden_states = resnet(hidden_states, temb)
 
             hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
@@ -1065,6 +1121,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         self.motion_modules = nn.ModuleList(motion_modules)
 
         self.gradient_checkpointing = False
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_resnet(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
 
     def forward(
         self,
@@ -1080,7 +1142,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
-        hidden_states = self.resnets[0](hidden_states, temb)
+        if self._chunk_size is not None:
+            hidden_states = _chunked_resnet_forward(
+                self.resnets[0], hidden_states, temb, self._chunk_size, self._chunk_dim
+            )
+        else:
+            hidden_states = self.resnets[0](hidden_states, temb)
 
         blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)
         for attn, resnet, motion_module in blocks:
@@ -1125,11 +1192,18 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
+
                 hidden_states = motion_module(
                     hidden_states,
                     num_frames=num_frames,
                 )
-                hidden_states = resnet(hidden_states, temb)
+
+                if self._chunk_size is not None:
+                    hidden_states = _chunked_resnet_forward(
+                        resnet, hidden_states, temb, self._chunk_size, self._chunk_dim
+                    )
+                else:
+                    hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
 
@@ -1969,6 +2043,20 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
 
         for module in self.children():
             fn_recursive_feed_forward(module, None, 0)
+
+    def enable_resnet_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+        chunk_size = chunk_size or 1
+
+        for name, module in self.named_modules():
+            if hasattr(module, "set_chunk_resnet"):
+                logger.debug(f"Enabling chunked resnet inference in: {name}")
+                module.set_chunk_resnet(chunk_size, dim)
+
+    def disable_resnet_chunking(self) -> None:
+        for name, module in self.named_modules():
+            if hasattr(module, "set_chunk_resnet"):
+                logger.debug(f"Disabling chunked resnet inference in: {name}")
+                module.set_chunk_resnet(None)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self) -> None:

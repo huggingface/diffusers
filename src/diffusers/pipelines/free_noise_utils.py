@@ -332,6 +332,8 @@ class AnimateDiffFreeNoiseMixin:
         prompt_interpolation_callback: Optional[
             Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
         ] = None,
+        _chunk_size_resnet: Optional[int] = None,
+        _chunk_size_feed_forward: Optional[int] = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -378,6 +380,11 @@ class AnimateDiffFreeNoiseMixin:
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
         for block in blocks:
             self._enable_free_noise_in_block(block)
+
+        if _chunk_size_resnet is not None:
+            self.unet.enable_resnet_chunking(_chunk_size_resnet, dim=0)
+        if _chunk_size_feed_forward is not None:
+            self.unet.enable_forward_chunking(_chunk_size_feed_forward, dim=0)
 
     def disable_free_noise(self) -> None:
         self._free_noise_context_length = None
