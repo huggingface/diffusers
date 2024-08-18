@@ -22,6 +22,7 @@ import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
 from safetensors.torch import load_file
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -80,6 +81,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
 
     def setUp(self):
         super().setUp()
