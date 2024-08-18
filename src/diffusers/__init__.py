@@ -1,4 +1,4 @@
-__version__ = "0.30.0.dev0"
+__version__ = "0.31.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -88,6 +88,7 @@ else:
             "ControlNetModel",
             "ControlNetXSAdapter",
             "DiTTransformer2DModel",
+            "FluxControlNetModel",
             "FluxTransformer2DModel",
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
@@ -254,6 +255,7 @@ else:
             "CLIPImageProjection",
             "CogVideoXPipeline",
             "CycleDiffusionPipeline",
+            "FluxControlNetPipeline",
             "FluxPipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
@@ -308,6 +310,7 @@ else:
             "StableCascadeCombinedPipeline",
             "StableCascadeDecoderPipeline",
             "StableCascadePriorPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
             "StableDiffusion3ControlNetPipeline",
             "StableDiffusion3Img2ImgPipeline",
             "StableDiffusion3InpaintPipeline",
@@ -549,6 +552,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetModel,
             ControlNetXSAdapter,
             DiTTransformer2DModel,
+            FluxControlNetModel,
             FluxTransformer2DModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
@@ -693,6 +697,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CLIPImageProjection,
             CogVideoXPipeline,
             CycleDiffusionPipeline,
+            FluxControlNetPipeline,
             FluxPipeline,
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
