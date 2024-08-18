@@ -70,6 +70,9 @@ class AnimateDiffFreeNoiseMixin:
                     motion_module.transformer_blocks[i].load_state_dict(
                         basic_transfomer_block.state_dict(), strict=True
                     )
+                    motion_module.transformer_blocks[i].set_chunk_feed_forward(
+                        basic_transfomer_block._chunk_size, basic_transfomer_block._chunk_dim
+                    )
 
     def _disable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
         r"""Helper function to disable FreeNoise in transformer blocks."""
@@ -97,6 +100,9 @@ class AnimateDiffFreeNoiseMixin:
 
                     motion_module.transformer_blocks[i].load_state_dict(
                         free_noise_transfomer_block.state_dict(), strict=True
+                    )
+                    motion_module.transformer_blocks[i].set_chunk_feed_forward(
+                        free_noise_transfomer_block._chunk_size, free_noise_transfomer_block._chunk_dim
                     )
 
     def _check_inputs_free_noise(
@@ -332,6 +338,7 @@ class AnimateDiffFreeNoiseMixin:
         prompt_interpolation_callback: Optional[
             Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
         ] = None,
+        _chunk_size_attn: Optional[int] = None,
         _chunk_size_resnet: Optional[int] = None,
         _chunk_size_feed_forward: Optional[int] = None,
     ) -> None:
@@ -381,6 +388,8 @@ class AnimateDiffFreeNoiseMixin:
         for block in blocks:
             self._enable_free_noise_in_block(block)
 
+        if _chunk_size_attn is not None:
+            self.unet.enable_attn_chunking(_chunk_size_attn, dim=0)
         if _chunk_size_resnet is not None:
             self.unet.enable_resnet_chunking(_chunk_size_resnet, dim=0)
         if _chunk_size_feed_forward is not None:

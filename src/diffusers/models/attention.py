@@ -1096,19 +1096,38 @@ class FreeNoiseTransformerBlock(nn.Module):
                 accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
                 num_times_accumulated[:, frame_start:frame_end] += weights
 
-        hidden_states = torch.where(
-            num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        hidden_states = torch.cat(
+            [
+                torch.where(num_times_split > 0, accumulated_split / num_times_split, accumulated_split)
+                for accumulated_split, num_times_split in zip(
+                    accumulated_values.split(self.context_length, dim=1),
+                    num_times_accumulated.split(self.context_length, dim=1),
+                )
+            ],
+            dim=1,
         ).to(dtype)
+
+        # hidden_states = torch.where(
+        #     num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        # ).to(dtype)
 
         # 3. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)
 
         if self._chunk_size is not None:
+            # norm_hidden_states = torch.cat([
+            #     self.norm3(hs_split) for hs_split in hidden_states.split(self._chunk_size, self._chunk_dim)
+            # ], dim=self._chunk_dim)
+            # ff_output = torch.cat([
+            #     self.ff(self.norm3(hs_split)) for hs_split in hidden_states.split(self._chunk_size, self._chunk_dim)
+            # ], dim=self._chunk_dim)
+
             # ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
             ff_output = _experimental_split_feed_forward(
                 self.ff, norm_hidden_states, self._chunk_size, self._chunk_dim
             )
         else:
+            norm_hidden_states = self.norm3(hidden_states)
             ff_output = self.ff(norm_hidden_states)
 
         hidden_states = ff_output + hidden_states
