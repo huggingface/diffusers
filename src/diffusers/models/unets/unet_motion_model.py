@@ -232,36 +232,47 @@ class AnimateDiffTransformer3D(nn.Module):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            if encoder_hidden_states is None:
-                hidden_states = torch.cat(
-                    [
-                        block(
-                            hs_split,
-                            encoder_hidden_states=None,
-                            timestep=timestep,
-                            cross_attention_kwargs=cross_attention_kwargs,
-                            class_labels=class_labels,
-                        )
-                        for hs_split in hidden_states.split(self._chunk_size_motion_module)
-                    ],
-                    dim=self._chunk_dim_motion_module,
-                )
+            if self._chunk_size_motion_module is not None:
+                if encoder_hidden_states is None:
+                    hidden_states = torch.cat(
+                        [
+                            block(
+                                hs_split,
+                                encoder_hidden_states=None,
+                                timestep=timestep,
+                                cross_attention_kwargs=cross_attention_kwargs,
+                                class_labels=class_labels,
+                            )
+                            for hs_split in hidden_states.split(self._chunk_size_motion_module)
+                        ],
+                        dim=self._chunk_dim_motion_module,
+                    )
+                else:
+                    hidden_states = torch.cat(
+                        [
+                            block(
+                                hs_split,
+                                encoder_hidden_states=ehs_split,
+                                timestep=timestep,
+                                cross_attention_kwargs=cross_attention_kwargs,
+                                class_labels=class_labels,
+                            )
+                            for hs_split, ehs_split in zip(
+                                hidden_states.split(self._chunk_size_motion_module, self._chunk_dim_motion_module),
+                                encoder_hidden_states.split(
+                                    self._chunk_size_motion_module, self._chunk_dim_motion_module
+                                ),
+                            )
+                        ],
+                        dim=self._chunk_dim_motion_module,
+                    )
             else:
-                hidden_states = torch.cat(
-                    [
-                        block(
-                            hs_split,
-                            encoder_hidden_states=ehs_split,
-                            timestep=timestep,
-                            cross_attention_kwargs=cross_attention_kwargs,
-                            class_labels=class_labels,
-                        )
-                        for hs_split, ehs_split in zip(
-                            hidden_states.split(self._chunk_size_motion_module, self._chunk_dim_motion_module),
-                            encoder_hidden_states.split(self._chunk_size_motion_module, self._chunk_dim_motion_module),
-                        )
-                    ],
-                    dim=self._chunk_dim_motion_module,
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    timestep=timestep,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=class_labels,
                 )
 
         # 3. Output

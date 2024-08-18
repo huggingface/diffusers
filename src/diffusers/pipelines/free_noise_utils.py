@@ -364,7 +364,7 @@ class AnimateDiffFreeNoiseMixin:
                 TODO
         """
 
-        allowed_weighting_scheme = ["pyramid"]
+        allowed_weighting_scheme = ["flat", "pyramid", "delayed_reverse_sawtooth"]
         allowed_noise_type = ["shuffle_context", "repeat_context", "random"]
 
         if context_length > self.motion_adapter.config.motion_max_seq_length:
