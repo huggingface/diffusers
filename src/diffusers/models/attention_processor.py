@@ -1530,13 +1530,13 @@ class XFormersJointAttnProcessor:
         self.attention_op = attention_op
 
     def __call__(
-            self,
-            attn: Attention,
-            hidden_states: torch.FloatTensor,
-            encoder_hidden_states: torch.FloatTensor = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            *args,
-            **kwargs,
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
         residual = hidden_states
 
@@ -1579,7 +1579,7 @@ class XFormersJointAttnProcessor:
         # Split the attention outputs.
         hidden_states, encoder_hidden_states = (
             hidden_states[:, : residual.shape[1]],
-            hidden_states[:, residual.shape[1]:],
+            hidden_states[:, residual.shape[1] :],
         )
 
         # linear proj

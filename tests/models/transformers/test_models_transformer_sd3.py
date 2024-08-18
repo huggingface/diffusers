@@ -89,6 +89,5 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
         model.enable_xformers_memory_efficient_attention()
 
         assert (
-                model.transformer_blocks[0].attn.processor.__class__.__name__
-                == "XFormersJointAttnProcessor"
+            model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor"
         ), "xformers is not enabled"
