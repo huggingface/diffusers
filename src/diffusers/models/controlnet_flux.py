@@ -272,8 +272,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        txt_ids = txt_ids.expand(img_ids.size(0), -1, -1)
-        ids = torch.cat((txt_ids, img_ids), dim=1)
+        ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
 
         block_samples = ()
