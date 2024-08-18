@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...models.attention import FeedForward
-from ...models.attention_processor import Attention, FluxAttnProcessor2_0, FluxSingleAttnProcessor2_0
+from ...models.attention_processor import Attention, FluxAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -58,7 +58,7 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        processor = FluxSingleAttnProcessor2_0()
+        processor = FluxAttnProcessor2_0()
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
