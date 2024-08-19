@@ -86,6 +86,9 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "key_layernorm_list": reassign_query_key_layernorm_inplace,
     "adaln_layer.adaLN_modulations": reassign_adaln_norm_inplace,
     "embed_tokens": remove_keys_inplace,
+    "freqs_sin": remove_keys_inplace,
+    "freqs_cos": remove_keys_inplace,
+    "position_embedding": remove_keys_inplace,
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -123,11 +126,11 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def convert_transformer(ckpt_path: str):
+def convert_transformer(ckpt_path: str, num_layers: int, num_attention_heads: int, use_rotary_positional_embeddings: bool):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    transformer = CogVideoXTransformer3DModel()
+    transformer = CogVideoXTransformer3DModel(num_layers=num_layers, num_attention_heads=num_attention_heads, use_rotary_positional_embeddings=use_rotary_positional_embeddings)
 
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY) :]
@@ -172,13 +175,20 @@ def get_args():
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--fp16", action="store_true", default=True, help="Whether to save the model weights in fp16")
+    parser.add_argument("--fp16", action="store_true", default=False, help="Whether to save the model weights in fp16")
+    parser.add_argument("--bf16", action="store_true", default=False, help="Whether to save the model weights in bf16")
     parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
     )
     parser.add_argument(
         "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
     )
+    # For CogVideoX-2B, num_layers is 30. For 5B, it is 42
+    parser.add_argument("--num_layers", type=int, default=30, help="Number of transformer blocks")
+    # For CogVideoX-2B, num_attention_heads is 30. For 5B, it is 48
+    parser.add_argument("--num_attention_heads", type=int, default=30, help="Number of attention heads")
+    # For CogVideoX-2B, use_rotary_positional_embeddings is False. For 5B, it is True
+    parser.add_argument("--use_rotary_positional_embeddings", action="store_true", default=False, help="Whether to use RoPE or not")
     return parser.parse_args()
 
 
@@ -188,14 +198,20 @@ if __name__ == "__main__":
     transformer = None
     vae = None
 
+    if args.fp16 and args.bf16:
+        raise ValueError("You cannot pass both --fp16 and --bf16 at the same time.")
     if args.transformer_ckpt_path is not None:
-        transformer = convert_transformer(args.transformer_ckpt_path)
+        transformer = convert_transformer(args.transformer_ckpt_path, args.num_layers, args.num_attention_heads, args.use_rotary_positional_embeddings)
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
+
+    # Apparently, the conversion does not work any more without this :shrug:
+    for param in text_encoder.parameters():
+        param.data = param.data.contiguous()
 
     scheduler = CogVideoXDDIMScheduler.from_config(
         {
@@ -208,7 +224,7 @@ if __name__ == "__main__":
             "prediction_type": "v_prediction",
             "rescale_betas_zero_snr": True,
             "set_alpha_to_one": True,
-            "timestep_spacing": "linspace",
+            "timestep_spacing": "trailing",
         }
     )
 
@@ -218,5 +234,10 @@ if __name__ == "__main__":
 
     if args.fp16:
         pipe = pipe.to(dtype=torch.float16)
+    if args.bf16:
+        pipe = pipe.to(dtype=torch.bfloat16)
 
+    # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
+    # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
+    # is either fp16/bf16 here).
     pipe.save_pretrained(args.output_path, safe_serialization=True, push_to_hub=args.push_to_hub)
