@@ -173,10 +173,50 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         self.assertEqual(image.shape, (1, 256, 256, 3))
         expected_slice = np.array(
-            [0.47222412, 0.41921633, 0.44717434, 0.46874192, 0.42588258, 0.46150726, 0.4677534, 0.45583832, 0.48579055]
+            [0.3970313, 0.3768756, 0.41147298, 0.4716793, 0.5115408, 0.44601366, 0.43763855, 0.46781355, 0.46358708]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
+    def test_stable_diffusion_latent_upscaler_negative_prompt(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        negative_prompt = "french fries"
+        output = sd_pipe(**inputs, negative_prompt=negative_prompt)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array(
+            [0.43274227, 0.41613904, 0.4375248, 0.47175583, 0.5245497, 0.45716476, 0.4680033, 0.496507, 0.4680438]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_stable_diffusion_latent_upscaler_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionLatentUpscalePipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * 2
+        inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
+        image = sd_pipe(**inputs).images
+        image_slice = image[-1, -3:, -3:, -1]
+
+        assert image.shape == (2, 256, 256, 3)
+        expected_slice = np.array(
+            [0.4970066, 0.49446037, 0.48226902, 0.5332183, 0.5664995, 0.48217174, 0.4713461, 0.47866008, 0.47104248]
+        )
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
