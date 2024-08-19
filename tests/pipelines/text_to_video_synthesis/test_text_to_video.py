@@ -20,16 +20,21 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import (AutoencoderKL, DDIMScheduler, TextToVideoSDPipeline,
-                       UNet3DConditionModel)
+from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoSDPipeline, UNet3DConditionModel
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import (enable_full_determinism, load_numpy,
-                                           numpy_cosine_similarity_distance,
-                                           require_torch_gpu, skip_mps, slow,
-                                           torch_device)
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_numpy,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, SDFunctionTesterMixin
+
 
 enable_full_determinism()
 
