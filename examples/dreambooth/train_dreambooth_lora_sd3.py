@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1454,7 +1454,7 @@ def main(args):
             )
 
     # Clear the memory here
-    if not args.train_text_encoder and train_dataset.custom_instance_prompts:
+    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
         del text_encoder_one, text_encoder_two, text_encoder_three
