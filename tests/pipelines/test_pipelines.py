@@ -551,37 +551,94 @@ class DownloadTests(unittest.TestCase):
                 assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
                 assert not any(f.endswith(other_format) for f in files)
 
-    def test_download_broken_variant(self):
-        for use_safetensors in [False, True]:
-            # text encoder is missing no variant and "no_ema" variant weights, so the following can't work
-            for variant in [None, "no_ema"]:
-                with self.assertRaises(OSError) as error_context:
-                    with tempfile.TemporaryDirectory() as tmpdirname:
-                        tmpdirname = StableDiffusionPipeline.from_pretrained(
-                            "hf-internal-testing/stable-diffusion-broken-variants",
-                            cache_dir=tmpdirname,
-                            variant=variant,
-                            use_safetensors=use_safetensors,
-                        )
+    def test_download_safetensors_only_variant_exists_for_model(self):
+        variant = None
+        use_safetensors = True
 
-                assert "Error no file name" in str(error_context.exception)
-
-            # text encoder has fp16 variants so we can load it
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.download(
+        # text encoder is missing no variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
-                    use_safetensors=use_safetensors,
                     cache_dir=tmpdirname,
-                    variant="fp16",
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
+
+        # text encoder has fp16 variants so we can load it
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = StableDiffusionPipeline.download(
+                "hf-internal-testing/stable-diffusion-broken-variants",
+                use_safetensors=use_safetensors,
+                cache_dir=tmpdirname,
+                variant="fp16",
+            )
+            all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+            files = [item for sublist in all_root_files for item in sublist]
+            # None of the downloaded files should be a non-variant file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+            assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+
+    def test_download_bin_only_variant_exists_for_model(self):
+        variant = None
+        use_safetensors = False
+
+        # text encoder is missing Non-variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
+
+        # text encoder has fp16 variants so we can load it
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = StableDiffusionPipeline.download(
+                "hf-internal-testing/stable-diffusion-broken-variants",
+                use_safetensors=use_safetensors,
+                cache_dir=tmpdirname,
+                variant="fp16",
+            )
+            all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+            files = [item for sublist in all_root_files for item in sublist]
+            # None of the downloaded files should be a non-variant file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+            assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+
+    def test_download_safetensors_variant_does_not_exist_for_model(self):
+        variant = "no_ema"
+        use_safetensors = True
+
+        # text encoder is missing no_ema variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
                 )
 
-                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
-                files = [item for sublist in all_root_files for item in sublist]
+            assert "Error no file name" in str(error_context.exception)
 
-                # None of the downloaded files should be a non-variant file even if we have some here:
-                # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
-                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
-                # only unet has "no_ema" variant
+    def test_download_bin_variant_does_not_exist_for_model(self):
+        variant = "no_ema"
+        use_safetensors = False
+
+        # text encoder is missing no_ema variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
 
     def test_local_save_load_index(self):
         prompt = "hello"
