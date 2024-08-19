@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = LuminaText2ImgPipeline.from_pretrained(
         ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
-        ... ).cuda()
+        ... )
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
