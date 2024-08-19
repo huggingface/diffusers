@@ -29,6 +29,8 @@ enable_full_determinism()
 class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = FluxTransformer2DModel
     main_input_name = "hidden_states"
+    # We override the items here because the transformer under consideration is small.
+    model_split_percents = [0.7, 0.6, 0.6]
 
     @property
     def dummy_input(self):
