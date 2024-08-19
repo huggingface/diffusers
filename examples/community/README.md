@@ -70,6 +70,8 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 | Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
+| AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
+| HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffsuion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -1434,9 +1436,9 @@ import requests
 import torch
 from diffusers import DiffusionPipeline
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
@@ -1486,17 +1488,16 @@ NOTE: The ONNX conversions and TensorRT engine build may take up to 30 minutes.
 ```python
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline
+from diffusers.pipelines import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
-scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                            subfolder="scheduler")
+scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1", subfolder="scheduler")
 
-pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                                custom_pipeline="stable_diffusion_tensorrt_txt2img",
-                                                variant='fp16',
-                                                torch_dtype=torch.float16,
-                                                scheduler=scheduler,)
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
+    custom_pipeline="stable_diffusion_tensorrt_txt2img",
+    variant='fp16',
+    torch_dtype=torch.float16,
+    scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
 pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
@@ -1640,18 +1641,17 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import DDIMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionImg2ImgPipeline
+from diffusers import DiffusionPipeline
 
 # Use the DDIMScheduler scheduler here instead
 scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-2-1",
                                             subfolder="scheduler")
 
-
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
-                                                custom_pipeline="stable_diffusion_tensorrt_img2img",
-                                                variant='fp16',
-                                                torch_dtype=torch.float16,
-                                                scheduler=scheduler,)
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1",
+                                            custom_pipeline="stable_diffusion_tensorrt_img2img",
+                                            variant='fp16',
+                                            torch_dtype=torch.float16,
+                                            scheduler=scheduler,)
 
 # re-use cached folder to save ONNX models and TensorRT Engines
 pipe.set_cached_folder("stabilityai/stable-diffusion-2-1", variant='fp16',)
@@ -1661,7 +1661,6 @@ pipe = pipe.to("cuda")
 url = "https://pajoca.com/wp-content/uploads/2022/09/tekito-yamakawa-1.png"
 response = requests.get(url)
 input_image = Image.open(BytesIO(response.content)).convert("RGB")
-
 prompt = "photorealistic new zealand hills"
 image = pipe(prompt, image=input_image, strength=0.75,).images[0]
 image.save('tensorrt_img2img_new_zealand_hills.png')
@@ -2122,7 +2121,7 @@ import torch
 import open_clip
 from open_clip import SimpleTokenizer
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 
 def download_image(url):
@@ -2130,7 +2129,7 @@ def download_image(url):
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
 # Loading additional models
-feature_extractor = CLIPFeatureExtractor.from_pretrained(
+feature_extractor = CLIPImageProcessor.from_pretrained(
     "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 )
 clip_model = CLIPModel.from_pretrained(
@@ -2230,12 +2229,12 @@ from io import BytesIO
 from PIL import Image
 import torch
 from diffusers import PNDMScheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
+from diffusers.pipelines import DiffusionPipeline
 
 # Use the PNDMScheduler scheduler here instead
 scheduler = PNDMScheduler.from_pretrained("stabilityai/stable-diffusion-2-inpainting", subfolder="scheduler")
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting",
     custom_pipeline="stable_diffusion_tensorrt_inpaint",
     variant='fp16',
     torch_dtype=torch.float16,
@@ -4098,6 +4097,163 @@ output_frames = pipe(
 output_frames[0].save(output_video_path, save_all=True,
                  append_images=output_frames[1:], duration=100, loop=0)
 ```
+
+### AnimateDiff on IPEX
+
+This diffusion pipeline aims to accelerate the inference of AnimateDiff on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.3 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.3.\*](https://github.com/pytorch/pytorch/tree/v2.3.0 "v2.3.0")|[v2.3.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.3.0+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+```python
+pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+# For Float32
+pipe.prepare_for_ipex(torch.float32, prompt="A girl smiling")
+# For BFloat16
+pipe.prepare_for_ipex(torch.bfloat16, prompt="A girl smiling")
+```
+
+Then you can use the ipex pipeline in a similar way to the default animatediff pipeline.
+```python
+# For Float32
+output = pipe(prompt="A girl smiling", guidance_scale=1.0, num_inference_steps=step)
+# For BFloat16
+with torch.cpu.amp.autocast(enabled = True, dtype = torch.bfloat16):
+    output = pipe(prompt="A girl smiling", guidance_scale=1.0, num_inference_steps=step)
+```
+
+The following code compares the performance of the original animatediff pipeline with the ipex-optimized pipeline.
+By using this optimized pipeline, we can get about 1.5-2.2 times performance boost with BFloat16 on the fifth generation of Intel Xeon CPUs, code-named Emerald Rapids.
+
+```python
+import torch
+from diffusers import MotionAdapter, AnimateDiffPipeline, EulerDiscreteScheduler
+from safetensors.torch import load_file
+from pipeline_animatediff_ipex import AnimateDiffPipelineIpex
+import time
+
+device = "cpu"
+dtype = torch.float32
+
+prompt = "A girl smiling"
+step = 8  # Options: [1,2,4,8]
+repo = "ByteDance/AnimateDiff-Lightning"
+ckpt = f"animatediff_lightning_{step}step_diffusers.safetensors"
+base = "emilianJR/epiCRealism"  # Choose to your favorite base model.
+
+adapter = MotionAdapter().to(device, dtype)
+adapter.load_state_dict(load_file(hf_hub_download(repo, ckpt), device=device))
+
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
+    # warmup
+    for _ in range(2):
+        output = pipeline(prompt = prompt, guidance_scale=1.0, num_inference_steps = num_inference_steps)
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt = prompt, guidance_scale=1.0, num_inference_steps = num_inference_steps)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
+pipe.prepare_for_ipex(torch.bfloat16, prompt = prompt)
+
+# 2. Original Pipeline initialization
+pipe2 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe2.scheduler = EulerDiscreteScheduler.from_config(pipe2.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe, num_inference_steps=step)
+    print("Latency of AnimateDiffPipelineIpex--bf16", latency, "s for total", step, "steps")
+    latency = elapsed_time(pipe2, num_inference_steps=step)
+    print("Latency of AnimateDiffPipeline--bf16", latency, "s for total", step, "steps")
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = AnimateDiffPipelineIpex.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe3.scheduler = EulerDiscreteScheduler.from_config(pipe3.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
+pipe3.prepare_for_ipex(torch.float32, prompt = prompt)
+
+# 2. Original Pipeline initialization
+pipe4 = AnimateDiffPipeline.from_pretrained(base, motion_adapter=adapter, torch_dtype=dtype).to(device)
+pipe4.scheduler = EulerDiscreteScheduler.from_config(pipe4.scheduler.config, timestep_spacing="trailing", beta_schedule="linear")
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3, num_inference_steps=step)
+print("Latency of AnimateDiffPipelineIpex--fp32", latency, "s for total", step, "steps")
+latency = elapsed_time(pipe4, num_inference_steps=step)
+print("Latency of AnimateDiffPipeline--fp32",latency, "s for total", step, "steps")
+```
+### HunyuanDiT with Differential Diffusion
+
+#### Usage
+
+```python
+import torch
+from diffusers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import load_image
+from PIL import Image
+from torchvision import transforms
+
+from pipeline_hunyuandit_differential_img2img import (
+    HunyuanDiTDifferentialImg2ImgPipeline,
+)
+
+
+pipe = HunyuanDiTDifferentialImg2ImgPipeline.from_pretrained(
+    "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+).to("cuda")
+
+
+source_image = load_image(
+    "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png"
+)
+map = load_image(
+    "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask_2.png"
+)
+prompt = "a green pear"
+negative_prompt = "blurry"
+
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    image=source_image,
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    strength=1.0,
+    map=map,
+).images[0]
+```
+
+| ![Gradient](https://github.com/user-attachments/assets/e38ce4d5-1ae6-4df0-ab43-adc1b45716b5) | ![Input](https://github.com/user-attachments/assets/9c95679c-e9d7-4f5a-90d6-560203acd6b3) | ![Output](https://github.com/user-attachments/assets/5313ff64-a0c4-418b-8b55-a38f1a5e7532) |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Gradient                                                                                   | Input                                                                                   | Output                                                                                   |
+
+A colab notebook demonstrating all results can be found [here](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing). Depth Maps have also been added in the same colab.
 
 # Perturbed-Attention Guidance
 

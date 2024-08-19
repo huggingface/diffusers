@@ -60,7 +60,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -79,7 +79,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -572,6 +572,13 @@ def parse_args(input_args=None):
         type=float,
         default=1e-4,
         help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
+        "--clip_skip",
+        type=int,
+        default=None,
+        help="Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that "
+        "the output of the pre-final layer will be used for computing the prompt embeddings.",
     )
 
     parser.add_argument(
@@ -1236,7 +1243,7 @@ def tokenize_prompt(tokenizer, prompt, add_special_tokens=False):
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
+def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None, clip_skip=None):
     prompt_embeds_list = []
 
     for i, text_encoder in enumerate(text_encoders):
@@ -1253,7 +1260,11 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
 
         # We are only ALWAYS interested in the pooled output of the final text encoder
         pooled_prompt_embeds = prompt_embeds[0]
-        prompt_embeds = prompt_embeds[-1][-2]
+        if clip_skip is None:
+            prompt_embeds = prompt_embeds[-1][-2]
+        else:
+            # "2" because SDXL always indexes from the penultimate layer.
+            prompt_embeds = prompt_embeds[-1][-(clip_skip + 2)]
         bs_embed, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
         prompt_embeds_list.append(prompt_embeds)
@@ -1594,13 +1605,15 @@ def main(args):
                 if isinstance(model, type(unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1614,7 +1627,7 @@ def main(args):
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
+            embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -1633,7 +1646,7 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
         unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
@@ -1830,9 +1843,9 @@ def main(args):
         tokenizers = [tokenizer_one, tokenizer_two]
         text_encoders = [text_encoder_one, text_encoder_two]
 
-        def compute_text_embeddings(prompt, text_encoders, tokenizers):
+        def compute_text_embeddings(prompt, text_encoders, tokenizers, clip_skip):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt, clip_skip)
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
@@ -1842,7 +1855,7 @@ def main(args):
     # the redundant encoding.
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
-            args.instance_prompt, text_encoders, tokenizers
+            args.instance_prompt, text_encoders, tokenizers, args.clip_skip
         )
 
     # Handle class prompt for prior-preservation.
@@ -2052,7 +2065,7 @@ def main(args):
                 if train_dataset.custom_instance_prompts:
                     if freeze_text_encoder:
                         prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers
+                            prompts, text_encoders, tokenizers, args.clip_skip
                         )
 
                     else:
@@ -2147,6 +2160,7 @@ def main(args):
                         tokenizers=None,
                         prompt=None,
                         text_input_ids_list=[tokens_one, tokens_two],
+                        clip_skip=args.clip_skip,
                     )
                     unet_added_conditions.update(
                         {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
@@ -2413,7 +2427,7 @@ def main(args):
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
-        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
+        save_file(kohya_state_dict, f"{args.output_dir}/{Path(args.output_dir).name}.safetensors")
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,

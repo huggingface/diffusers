@@ -538,7 +538,6 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = batch_size
         for name, value in inputs.items():
             if name in self.batch_params:
                 # prompt is string

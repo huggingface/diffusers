@@ -57,7 +57,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import (
@@ -71,7 +71,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1290,6 +1290,7 @@ def main(args):
                         text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                             get_peft_model_state_dict(model)
                         )
+                else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
@@ -1301,7 +1302,7 @@ def main(args):
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
+            embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -1317,11 +1318,11 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
+        StableDiffusionLoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
         text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
-        LoraLoaderMixin.load_lora_into_text_encoder(
+        StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder(
             text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
 
@@ -1856,10 +1857,10 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-            if torch.backends.mps.is_available():
-                autocast_ctx = nullcontext()
-            else:
-                autocast_ctx = torch.autocast(accelerator.device.type)
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
                 with autocast_ctx:
                     images = [
@@ -1880,7 +1881,6 @@ def main(args):
                                 ]
                             }
                         )
-
                 del pipeline
                 torch.cuda.empty_cache()
 
@@ -1982,7 +1982,7 @@ def main(args):
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
-        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
+        save_file(kohya_state_dict, f"{args.output_dir}/{Path(args.output_dir).name}.safetensors")
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,

@@ -89,49 +89,44 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-def is_safetensors_compatible(filenames, variant=None, passed_components=None) -> bool:
+def is_safetensors_compatible(filenames, passed_components=None) -> bool:
     """
     Checking for safetensors compatibility:
-    - By default, all models are saved with the default pytorch serialization, so we use the list of default pytorch
-      files to know which safetensors files are needed.
-    - The model is safetensors compatible only if there is a matching safetensors file for every default pytorch file.
+    - The model is safetensors compatible only if there is a safetensors file for each model component present in
+      filenames.
 
     Converting default pytorch serialized filenames to safetensors serialized filenames:
     - For models from the diffusers library, just replace the ".bin" extension with ".safetensors"
     - For models from the transformers library, the filename changes from "pytorch_model" to "model", and the ".bin"
       extension is replaced with ".safetensors"
     """
-    pt_filenames = []
-
-    sf_filenames = set()
-
     passed_components = passed_components or []
 
+    # extract all components of the pipeline and their associated files
+    components = {}
     for filename in filenames:
-        _, extension = os.path.splitext(filename)
-
-        if len(filename.split("/")) == 2 and filename.split("/")[0] in passed_components:
+        if not len(filename.split("/")) == 2:
             continue
 
-        if extension == ".bin":
-            pt_filenames.append(os.path.normpath(filename))
-        elif extension == ".safetensors":
-            sf_filenames.add(os.path.normpath(filename))
+        component, component_filename = filename.split("/")
+        if component in passed_components:
+            continue
 
-    for filename in pt_filenames:
-        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extension = '.bam'
-        path, filename = os.path.split(filename)
-        filename, extension = os.path.splitext(filename)
+        components.setdefault(component, [])
+        components[component].append(component_filename)
 
-        if filename.startswith("pytorch_model"):
-            filename = filename.replace("pytorch_model", "model")
-        else:
-            filename = filename
+    # iterate over all files of a component
+    # check if safetensor files exist for that component
+    # if variant is provided check if the variant of the safetensors exists
+    for component, component_filenames in components.items():
+        matches = []
+        for component_filename in component_filenames:
+            filename, extension = os.path.splitext(component_filename)
 
-        expected_sf_filename = os.path.normpath(os.path.join(path, filename))
-        expected_sf_filename = f"{expected_sf_filename}.safetensors"
-        if expected_sf_filename not in sf_filenames:
-            logger.warning(f"{expected_sf_filename} not found")
+            match_exists = extension == ".safetensors"
+            matches.append(match_exists)
+
+        if not any(matches):
             return False
 
     return True
@@ -435,7 +430,6 @@ def _load_empty_model(
             return_unused_kwargs=True,
             return_commit_hash=True,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -454,7 +448,6 @@ def _load_empty_model(
             cached_folder,
             subfolder=name,
             force_download=kwargs.pop("force_download", False),
-            resume_download=kwargs.pop("resume_download", None),
             proxies=kwargs.pop("proxies", None),
             local_files_only=kwargs.pop("local_files_only", False),
             token=kwargs.pop("token", None),
@@ -544,7 +537,6 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 torch_dtype=torch_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
-                resume_download=kwargs.get("resume_download", None),
                 proxies=kwargs.get("proxies", None),
                 local_files_only=kwargs.get("local_files_only", None),
                 token=kwargs.get("token", None),
