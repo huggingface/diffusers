@@ -109,6 +109,9 @@ import torch
 model_id = "path-to-your-trained-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
 
+repo_id_embeds = "path-to-your-learned-embeds"
+pipe.load_textual_inversion(repo_id_embeds)
+
 prompt = "A <cat-toy> backpack"
 
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
