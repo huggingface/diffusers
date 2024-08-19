@@ -76,3 +76,7 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
+    def test_set_attn_processor_for_determinism(self):
+        pass
