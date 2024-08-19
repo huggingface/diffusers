@@ -544,6 +544,7 @@ def apply_rotary_emb(
 
 
 class FluxPosEmbed(nn.Module):
+    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
     def __init__(self, theta: int, axes_dim: List[int]):
         super().__init__()
         self.theta = theta

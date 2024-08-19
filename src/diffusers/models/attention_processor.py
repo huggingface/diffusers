@@ -4027,7 +4027,7 @@ class FluxSingleAttnProcessor2_0(FluxAttnProcessor2_0):
 
     def __init__(self):
         deprecation_message = "`FluxSingleAttnProcessor2_0` is deprecated and will be removed in a future version. Please use `FluxAttnProcessor2_0` instead."
-        deprecate("FluxSingleAttnProcessor2_0", "1.0.0", deprecation_message)
+        deprecate("FluxSingleAttnProcessor2_0", "0.32.0", deprecation_message)
         super().__init__()
 
 
