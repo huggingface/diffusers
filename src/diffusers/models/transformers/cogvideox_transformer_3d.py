@@ -18,13 +18,11 @@ from typing import Any, Dict, Optional, Union
 import torch
 from torch import nn
 
-from ..attention_processor import CogVideoXAttnProcessor2_0
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
-from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps,\
-    get_3d_rotary_pos_embed
+from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -90,15 +88,15 @@ class CogVideoXBlock(nn.Module):
 
         # 1. Self Attention
         self.norm1 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
+
         self.attn1 = Attention(
             query_dim=dim,
-            dim_head=dim // num_attention_heads,
+            dim_head=attention_head_dim,
             heads=num_attention_heads,
             qk_norm="layer_norm" if qk_norm else None,
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
-            processor=CogVideoXAttnProcessor2_0(),
         )
 
         # 2. Feed Forward
@@ -116,9 +114,8 @@ class CogVideoXBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb=None,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
     ) -> torch.Tensor:
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
@@ -129,21 +126,12 @@ class CogVideoXBlock(nn.Module):
 
         # CogVideoX uses concatenated text + video embeddings with self-attention instead of using
         # them in cross-attention individually
-
-        # Padding the sin/cos embeddings for the text with zeros, sin is zero and cos is one
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        cos_emb, sin_emb = image_rotary_emb
-        pad_tensor_sin = torch.zeros((text_length, sin_emb.shape[1]), device=sin_emb.device, dtype=sin_emb.dtype)
-        pad_tensor_cos = torch.ones((text_length, cos_emb.shape[1]), device=cos_emb.device, dtype=cos_emb.dtype)
-        cos_emb_padded = torch.cat([pad_tensor_cos, cos_emb], dim=0)
-        sin_emb_padded = torch.cat([pad_tensor_sin, sin_emb], dim=0)
-
-        image_rotary_emb = (cos_emb_padded, sin_emb_padded)
         attn_output = self.attn1(
             hidden_states=norm_hidden_states,
-            image_rotary_emb=image_rotary_emb,
             encoder_hidden_states=None,
         )
+
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
 
@@ -158,7 +146,6 @@ class CogVideoXBlock(nn.Module):
 
         hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
         encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
-
         return hidden_states, encoder_hidden_states
 
 
@@ -221,7 +208,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_attention_heads: int = 48,  # CogVideoX-2B is 30
+        num_attention_heads: int = 30,
         attention_head_dim: int = 64,
         in_channels: int = 16,
         out_channels: Optional[int] = 16,
@@ -229,7 +216,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         freq_shift: int = 0,
         time_embed_dim: int = 512,
         text_embed_dim: int = 4096,
-        num_layers: int = 42, # CogVideoX-2B is 30
+        num_layers: int = 30,
         dropout: float = 0.0,
         attention_bias: bool = True,
         sample_width: int = 90,
@@ -258,17 +245,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self.embedding_dropout = nn.Dropout(dropout)
 
         # 2. 3D positional embeddings
-        # spatial_pos_embedding = get_3d_sincos_pos_embed(
-        #     inner_dim,
-        #     (post_patch_width, post_patch_height),
-        #     post_time_compression_frames,
-        #     spatial_interpolation_scale,
-        #     temporal_interpolation_scale,
-        # )
-
-        # spatial_pos_embedding = torch.from_numpy(spatial_pos_embedding).flatten(0, 1)
+        spatial_pos_embedding = get_3d_sincos_pos_embed(
+            inner_dim,
+            (post_patch_width, post_patch_height),
+            post_time_compression_frames,
+            spatial_interpolation_scale,
+            temporal_interpolation_scale,
+        )
+        spatial_pos_embedding = torch.from_numpy(spatial_pos_embedding).flatten(0, 1)
         pos_embedding = torch.zeros(1, max_text_seq_length + self.num_patches, inner_dim, requires_grad=False)
-        # pos_embedding.data[:, max_text_seq_length:].copy_(spatial_pos_embedding)
+        pos_embedding.data[:, max_text_seq_length:].copy_(spatial_pos_embedding)
         self.register_buffer("pos_embedding", pos_embedding, persistent=False)
 
         # 3. Time embeddings
@@ -315,7 +301,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
-        image_rotary_emb=None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -365,7 +350,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                 hidden_states, encoder_hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    image_rotary_emb=image_rotary_emb,
                     temb=emb,
                 )
 
