@@ -429,6 +429,31 @@ class CogVideoXPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    def _prepare_rotary_embeddings(
+        self, height: int, width: int, max_sequence_length: int
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_width = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_height = 480 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+
+        grid_crops_coords = get_resize_crop_region_for_grid(
+            (grid_height, grid_width), base_size_width, base_size_height
+        )
+        freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+            embed_dim=self.transformer.config.attention_head_dim,
+            crops_coords=grid_crops_coords,
+            grid_size=(grid_height, grid_width),
+            use_real=True,
+        )
+
+        pad_tensor_cos = freqs_cos.new_zeros((max_sequence_length, freqs_cos.size(1)))
+        pad_tensor_sin = freqs_sin.new_zeros((max_sequence_length, freqs_sin.size(1)))
+        freqs_cos = torch.cat([pad_tensor_cos, freqs_cos])
+        freqs_sin = torch.cat([pad_tensor_sin, freqs_sin])
+
+        return freqs_cos, freqs_sin
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -619,22 +644,14 @@ class CogVideoXPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Create rotary embeds
-        grid_height = height // 8 // self.transformer.config.patch_size
-        grid_width = width // 8 // self.transformer.config.patch_size
-        base_size_width = 720 // 8 // self.transformer.config.patch_size
-        base_size_height = 480 // 8 // self.transformer.config.patch_size
-
-        grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size_width,
-                                                            base_size_height)
-        image_rotary_emb = get_3d_rotary_pos_embed(
-            embed_dim=self.transformer.config.attention_head_dim,
-            crops_coords=grid_crops_coords,
-            grid_size=(grid_height, grid_width),
-            use_real=True
+        # 7. Create rotary embeds if required
+        image_rotary_emb = (
+            self._prepare_rotary_embeddings(height, width, max_sequence_length)
+            if self.transformer.config.use_rotary_positional_embeddings
+            else None
         )
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:

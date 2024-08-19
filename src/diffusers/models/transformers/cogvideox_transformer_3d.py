@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
+from ..attention_processor import HunyuanAttnProcessor2_0, CogVideoXAttnProcessor2_0
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -97,6 +98,7 @@ class CogVideoXBlock(nn.Module):
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
+            processor=CogVideoXAttnProcessor2_0(),
         )
 
         # 2. Feed Forward
@@ -116,7 +118,9 @@ class CogVideoXBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
+        breakpoint()
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
@@ -130,6 +134,7 @@ class CogVideoXBlock(nn.Module):
         attn_output = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=None,
+            image_rotary_emb=image_rotary_emb,
         )
 
         hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
@@ -231,6 +236,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
+        use_rotary_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -301,6 +307,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -319,11 +326,12 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
 
         # 3. Position embedding
-        seq_length = height * width * num_frames // (self.config.patch_size**2)
+        if not self.config.use_rotary_positional_embeddings:
+            seq_length = height * width * num_frames // (self.config.patch_size**2)
 
-        pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
-        hidden_states = hidden_states + pos_embeds
-        hidden_states = self.embedding_dropout(hidden_states)
+            pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
+            hidden_states = hidden_states + pos_embeds
+            hidden_states = self.embedding_dropout(hidden_states)
 
         encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
         hidden_states = hidden_states[:, self.config.max_text_seq_length :]
@@ -344,6 +352,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states,
                     encoder_hidden_states,
                     emb,
+                    image_rotary_emb,
                     **ckpt_kwargs,
                 )
             else:
@@ -351,6 +360,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
         hidden_states = self.norm_final(hidden_states)

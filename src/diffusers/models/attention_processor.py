@@ -1769,10 +1769,11 @@ class FluxSingleAttnProcessor2_0:
 
         return hidden_states
 
+
 class CogVideoXAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding
-    on query and key vectors, but does not include spatial normalization.
+    Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
+    query and key vectors, but does not include spatial normalization.
     """
 
     def __init__(self):
@@ -1858,6 +1859,7 @@ class CogVideoXAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+
 
 class FluxAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
