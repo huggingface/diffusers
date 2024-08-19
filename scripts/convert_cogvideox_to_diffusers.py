@@ -126,11 +126,17 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def convert_transformer(ckpt_path: str, num_layers: int, num_attention_heads: int, use_rotary_positional_embeddings: bool):
+def convert_transformer(
+    ckpt_path: str, num_layers: int, num_attention_heads: int, use_rotary_positional_embeddings: bool
+):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    transformer = CogVideoXTransformer3DModel(num_layers=num_layers, num_attention_heads=num_attention_heads, use_rotary_positional_embeddings=use_rotary_positional_embeddings)
+    transformer = CogVideoXTransformer3DModel(
+        num_layers=num_layers,
+        num_attention_heads=num_attention_heads,
+        use_rotary_positional_embeddings=use_rotary_positional_embeddings,
+    )
 
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY) :]
@@ -148,9 +154,9 @@ def convert_transformer(ckpt_path: str, num_layers: int, num_attention_heads: in
     return transformer
 
 
-def convert_vae(ckpt_path: str):
+def convert_vae(ckpt_path: str, scaling_factor: float):
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    vae = AutoencoderKLCogVideoX()
+    vae = AutoencoderKLCogVideoX(scaling_factor=scaling_factor)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -188,7 +194,11 @@ def get_args():
     # For CogVideoX-2B, num_attention_heads is 30. For 5B, it is 48
     parser.add_argument("--num_attention_heads", type=int, default=30, help="Number of attention heads")
     # For CogVideoX-2B, use_rotary_positional_embeddings is False. For 5B, it is True
-    parser.add_argument("--use_rotary_positional_embeddings", action="store_true", default=False, help="Whether to use RoPE or not")
+    parser.add_argument(
+        "--use_rotary_positional_embeddings", action="store_true", default=False, help="Whether to use RoPE or not"
+    )
+    # For CogVideoX-2B, scaling_factor is 1.15258426. For 5B, it is 0.7
+    parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     return parser.parse_args()
 
 
@@ -201,9 +211,14 @@ if __name__ == "__main__":
     if args.fp16 and args.bf16:
         raise ValueError("You cannot pass both --fp16 and --bf16 at the same time.")
     if args.transformer_ckpt_path is not None:
-        transformer = convert_transformer(args.transformer_ckpt_path, args.num_layers, args.num_attention_heads, args.use_rotary_positional_embeddings)
+        transformer = convert_transformer(
+            args.transformer_ckpt_path,
+            args.num_layers,
+            args.num_attention_heads,
+            args.use_rotary_positional_embeddings,
+        )
     if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path)
+        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)

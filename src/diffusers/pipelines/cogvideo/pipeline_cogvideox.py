@@ -429,8 +429,14 @@ class CogVideoXPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def _prepare_rotary_embeddings(
-        self, height: int, width: int, max_sequence_length: int
+    def _prepare_rotary_positional_embeddings(
+        self,
+        height: int,
+        width: int,
+        num_frames: int,
+        max_sequence_length: int,
+        device: torch.device,
+        dtype: torch.dtype,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
@@ -444,13 +450,14 @@ class CogVideoXPipeline(DiffusionPipeline):
             embed_dim=self.transformer.config.attention_head_dim,
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
+            temporal_size=num_frames,
             use_real=True,
         )
 
         pad_tensor_cos = freqs_cos.new_zeros((max_sequence_length, freqs_cos.size(1)))
         pad_tensor_sin = freqs_sin.new_zeros((max_sequence_length, freqs_sin.size(1)))
-        freqs_cos = torch.cat([pad_tensor_cos, freqs_cos])
-        freqs_sin = torch.cat([pad_tensor_sin, freqs_sin])
+        freqs_cos = torch.cat([pad_tensor_cos, freqs_cos]).to(device=device, dtype=dtype)
+        freqs_sin = torch.cat([pad_tensor_sin, freqs_sin]).to(device=device, dtype=dtype)
 
         return freqs_cos, freqs_sin
 
@@ -646,7 +653,9 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         # 7. Create rotary embeds if required
         image_rotary_emb = (
-            self._prepare_rotary_embeddings(height, width, max_sequence_length)
+            self._prepare_rotary_positional_embeddings(
+                height, width, latents.size(1), max_sequence_length, device, prompt_embeds.dtype
+            )
             if self.transformer.config.use_rotary_positional_embeddings
             else None
         )

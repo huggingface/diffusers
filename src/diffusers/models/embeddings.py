@@ -374,7 +374,9 @@ class CogVideoXPatchEmbed(nn.Module):
         return embeds
 
 
-def get_3d_rotary_pos_embed(embed_dim, crops_coords, grid_size, temporal_size=13, theta=10000, use_real=True):
+def get_3d_rotary_pos_embed(
+    embed_dim, crops_coords, grid_size, temporal_size, theta: int = 10000, use_real: bool = True
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
 
@@ -395,6 +397,23 @@ def get_3d_rotary_pos_embed(embed_dim, crops_coords, grid_size, temporal_size=13
     Returns:
         `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
     """
+    # start, stop = crops_coords
+    # grid_t = torch.arange(temporal_size, dtype=torch.float32)
+    # grid_h = torch.arange(stop[0] - start[0], dtype=torch.float32)
+    # grid_w = torch.arange(stop[1] - start[1], dtype=torch.float32)
+
+    # dim_t = embed_dim // 4
+    # dim_h = embed_dim // 8 * 3
+    # dim_w = embed_dim // 8 * 3
+
+    # freqs_t = 1.0 / (theta ** (torch.arange(0, dim_t, 2, dtype=torch.float32)[: dim_t // 2] / dim_t))
+    # freqs_h = 1.0 / (theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: dim_h // 2] / dim_h))
+    # freqs_w = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: dim_w // 2] / dim_w))
+
+    # freqs_t = torch.einsum("..., f -> ... f", grid_t, freqs_t).repeat_interleave(2, dim=-1)
+    # freqs_h = torch.einsum("..., f -> ... f", grid_h, freqs_h).repeat_interleave(2, dim=-1)
+    # freqs_w = torch.einsum("..., f -> ... f", grid_w, freqs_w).repeat_interleave(2, dim=-1)
+
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
@@ -422,7 +441,7 @@ def get_3d_rotary_pos_embed(embed_dim, crops_coords, grid_size, temporal_size=13
     freqs_w = freqs_w.repeat_interleave(2, dim=-1)
 
     # Broadcast and concatenate tensors along specified dimension
-    def broadcat(tensors, dim=-1):
+    def broadcast(tensors, dim=-1):
         num_tensors = len(tensors)
         shape_lens = {len(t.shape) for t in tensors}
         assert len(shape_lens) == 1, "tensors must all have the same number of dimensions"
@@ -440,9 +459,8 @@ def get_3d_rotary_pos_embed(embed_dim, crops_coords, grid_size, temporal_size=13
         tensors = [t[0].expand(*t[1]) for t in zip(tensors, expandable_shapes)]
         return torch.cat(tensors, dim=dim)
 
-    freqs = broadcat((freqs_t[:, None, None, :], freqs_h[None, :, None, :], freqs_w[None, None, :, :]), dim=-1)
+    freqs = broadcast((freqs_t[:, None, None, :], freqs_h[None, :, None, :], freqs_w[None, None, :, :]), dim=-1)
 
-    # Flatten and reorder dimensions manually without rearrange
     t, h, w, d = freqs.shape
     freqs = freqs.view(t * h * w, d)
 
