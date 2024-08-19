@@ -225,18 +225,18 @@ class StableDiffusionXLPAGPipelineFastTests(
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0"]
+        pag_layers = ["mid_block"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_0"]
+        pag_layers = ["mid_block.attentions.0"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
 
         # pag_applied_layers = ["mid.block_0.attentions_1"] does not exist in the model
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid.block_0.attentions_1"]
+        pag_layers = ["mid_block.attentions.1"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
@@ -251,17 +251,17 @@ class StableDiffusionXLPAGPipelineFastTests(
         assert len(pipe.pag_attn_processors) == 4
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_0"]
+        pag_layers = ["down_blocks.0"]
         with self.assertRaises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1"]
+        pag_layers = ["down_blocks.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 4
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down.block_1.attentions_1"]
+        pag_layers = ["down_blocks.1.attentions.1"]
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 2
 
@@ -283,9 +283,7 @@ class StableDiffusionXLPAGPipelineFastTests(
             64,
             3,
         ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-        expected_slice = np.array(
-            [0.55341685, 0.55503535, 0.47299808, 0.43274558, 0.4965323, 0.46310428, 0.51455414, 0.5015592, 0.46913484]
-        )
+        expected_slice = np.array([0.5382, 0.5439, 0.4704, 0.4569, 0.5234, 0.4834, 0.5289, 0.5039, 0.4764])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
