@@ -31,6 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "quantizers": [],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -122,7 +123,6 @@ else:
             "VQModel",
         ]
     )
-
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -154,6 +154,7 @@ else:
             "StableDiffusionMixin",
         ]
     )
+    _import_structure["quantizers"] = ["HfQuantizer"]
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
@@ -616,6 +617,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
+        from .quantizers import HfQuantizer
         from .schedulers import (
             AmusedScheduler,
             CMStochasticIterativeScheduler,
