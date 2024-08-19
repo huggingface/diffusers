@@ -116,6 +116,7 @@ jobs:
       run:
         shell: bash
     strategy:
+      fail-fast: false
       max-parallel: 2
       matrix:
         module: [models, schedulers, lora, others, single_file, examples]
