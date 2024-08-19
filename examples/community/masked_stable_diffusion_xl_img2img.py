@@ -84,8 +84,8 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
         ] = None,
         blur=24,
         blur_compose=4,
-        sample_mode='sample',
-        **kwargs
+        sample_mode="sample",
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -174,7 +174,6 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
-
         # 0. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -249,7 +248,6 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             clip_skip=self.clip_skip,
         )
 
-
         # 3. Preprocess image
         input_image = image if image is not None else original_image
         image = self.image_processor.preprocess(input_image)
@@ -282,25 +280,26 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             device,
             generator,
             add_noise,
-            sample_mode=sample_mode
+            sample_mode=sample_mode,
         )
 
         # mean of the latent distribution
         # it is multiplied by self.vae.config.scaling_factor
         non_paint_latents = self.prepare_latents(
-                        original_image,
-                        latent_timestep,
-                        batch_size,
-                        num_images_per_prompt,
-                        prompt_embeds.dtype,
-                        device,
-                        generator,
-                        add_noise=False,
-                        sample_mode="argmax")
+            original_image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            add_noise=False,
+            sample_mode="argmax",
+        )
 
         if self.debug_save:
             init_img_from_latents = self.latents_to_img(non_paint_latents)
-            init_img_from_latents[0].save('non_paint_latents.png')
+            init_img_from_latents[0].save("non_paint_latents.png")
         # 6. create latent mask
         latent_mask = self._make_latent_mask(latents, mask)
 
@@ -359,7 +358,6 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                 self.do_classifier_free_guidance,
             )
 
-
         # 10. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -406,15 +404,14 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                 orig_latents_t = self.scheduler.add_noise(non_paint_latents, noise, t.unsqueeze(0))
 
                 # orig_latents_t (1 - latent_mask) + latents * latent_mask
-                latents = torch.lerp(orig_latents_t , latents, latent_mask)
+                latents = torch.lerp(orig_latents_t, latents, latent_mask)
 
                 if self.debug_save:
                     img1 = self.latents_to_img(latents)
                     t_str = str(t.int().item())
                     for i in range(3 - len(t_str)):
-                        t_str = '0' + t_str
-                    img1[0].save(f'step{t_str}.png')
-
+                        t_str = "0" + t_str
+                    img1[0].save(f"step{t_str}.png")
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -443,7 +440,6 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
-
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -501,7 +497,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
             latents = self.denormalize(latents)
             image = self.vae.decode(latents, return_dict=False)[0]
-            m = mask_compose.permute(2,0,1).unsqueeze(0).to(image)
+            m = mask_compose.permute(2, 0, 1).unsqueeze(0).to(image)
             img_compose = m * image + (1 - m) * original_image.to(image)
             image = img_compose
             # cast back to fp16 if needed
@@ -518,7 +514,6 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
-
 
         if not return_dict:
             return (image,)
@@ -551,12 +546,17 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
         return latent_mask
 
     def prepare_latents(
-        self, image, timestep, batch_size, num_images_per_prompt, dtype, device,
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
         generator=None,
         add_noise=True,
-        sample_mode: str = "sample"
+        sample_mode: str = "sample",
     ):
-
         if not isinstance(image, (torch.Tensor, Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -573,7 +573,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
         if image.shape[1] == 4:
             init_latents = image
-        elif sample_mode == 'random':
+        elif sample_mode == "random":
             height, width = image.shape[-2:]
             num_channels_latents = self.unet.config.in_channels
             latents = self.random_latents(
@@ -600,7 +600,9 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
 
             elif isinstance(generator, list):
                 init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
+                    retrieve_latents(
+                        self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode
+                    )
                     for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
@@ -661,9 +663,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
             )
-            latents_std = (
-                torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
-            )
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
             latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
         else:
             latents = latents / self.vae.config.scaling_factor
@@ -673,10 +673,10 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
     def latents_to_img(self, latents):
         l1 = self.denormalize(latents)
         img1 = self.vae.decode(l1, return_dict=False)[0]
-        img1 = self.image_processor.postprocess(img1, output_type='pil', do_denormalize=[True])
+        img1 = self.image_processor.postprocess(img1, output_type="pil", do_denormalize=[True])
         return img1
 
     def blur_mask(self, pil_mask, blur):
         mask_blur = pil_mask.filter(ImageFilter.GaussianBlur(radius=blur))
         mask_blur = np.array(mask_blur)
-        return torch.from_numpy(np.tile(mask_blur / mask_blur.max(), (3, 1, 1)).transpose(1,2,0))
+        return torch.from_numpy(np.tile(mask_blur / mask_blur.max(), (3, 1, 1)).transpose(1, 2, 0))
