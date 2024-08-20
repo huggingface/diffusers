@@ -1471,6 +1471,14 @@ class StableDiffusionXLPAGInpaintPipeline(
             generator,
             self.do_classifier_free_guidance,
         )
+        if self.do_perturbed_attention_guidance:
+            if self.do_classifier_free_guidance:
+                mask, _ = mask.chunk(2)
+                masked_image_latents, _ = masked_image_latents.chunk(2)
+            mask = self._prepare_perturbed_attention_guidance(mask, mask, self.do_classifier_free_guidance)
+            masked_image_latents = self._prepare_perturbed_attention_guidance(
+                masked_image_latents, masked_image_latents, self.do_classifier_free_guidance
+            )
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
@@ -1659,10 +1667,10 @@ class StableDiffusionXLPAGInpaintPipeline(
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
-                    if self.do_classifier_free_guidance:
-                        init_mask, _ = mask.chunk(2)
+                    if self.do_perturbed_attention_guidance:
+                        init_mask, *_ = mask.chunk(3) if self.do_classifier_free_guidance else mask.chunk(2)
                     else:
-                        init_mask = mask
+                        init_mask, *_ = mask.chunk(2) if self.do_classifier_free_guidance else mask
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
