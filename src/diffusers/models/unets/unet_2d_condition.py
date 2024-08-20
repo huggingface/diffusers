@@ -679,7 +679,9 @@ class UNet2DConditionModel(
             # Kandinsky 2.2 ControlNet
             self.add_embedding = ImageHintTimeEmbedding(image_embed_dim=encoder_hid_dim, time_embed_dim=time_embed_dim)
         elif addition_embed_type is not None:
-            raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
+            raise ValueError(
+                f"`addition_embed_type`: {addition_embed_type} must be None, 'text', 'text_image', 'text_time', 'image', or 'image_hint'."
+            )
 
     def _set_pos_net_if_use_gligen(self, attention_type: str, cross_attention_dim: int):
         if attention_type in ["gated", "gated-text-image"]:
