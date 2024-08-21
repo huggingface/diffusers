@@ -19,7 +19,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from huggingface_hub import ModelCard, model_info
@@ -819,15 +819,6 @@ def _filter_null_components(init_dict: dict, passed_class_objs: dict) -> dict:
 
     init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
     return init_dict
-
-
-def _determine_current_device_map(device_map: dict, component_name: str) -> Tuple[None, dict]:
-    current_device_map = None
-    if device_map is not None and len(device_map) > 0:
-        component_device = device_map.get(component_name, None)
-        if component_device is not None:
-            current_device_map = {"": component_device}
-    return current_device_map
 
 
 def _update_init_kwargs_with_connected_pipeline(

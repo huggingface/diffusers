@@ -71,7 +71,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    _determine_current_device_map,
     _determine_pipeline_class,
     _fetch_class_library_tuple,
     _filter_null_components,
@@ -818,7 +817,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         current_device_map = None
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 7.1 device_map shenanigans
-            current_device_map = _determine_current_device_map(device_map=final_device_map, component_name=name)
+            current_device_map = None
+            if device_map is not None and len(device_map) > 0:
+                component_device = device_map.get(name, None)
+                if component_device is not None:
+                    current_device_map = {"": component_device}
 
             # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
