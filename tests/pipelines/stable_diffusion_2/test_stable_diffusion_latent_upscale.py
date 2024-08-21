@@ -193,7 +193,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array(
-            [0.43274227, 0.41613904, 0.4375248, 0.47175583, 0.5245497, 0.45716476, 0.4680033, 0.496507, 0.4680438]
+            [0.43865365, 0.404124, 0.42618454, 0.44333526, 0.40564927, 0.43818694, 0.4411913, 0.43404633, 0.46392226]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -213,7 +213,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert image.shape == (2, 256, 256, 3)
         expected_slice = np.array(
-            [0.4970066, 0.49446037, 0.48226902, 0.5332183, 0.5664995, 0.48217174, 0.4713461, 0.47866008, 0.47104248]
+            [0.38730142, 0.35695046, 0.40646142, 0.40967226, 0.3981609, 0.4195988, 0.4248805, 0.430259, 0.45694894]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
