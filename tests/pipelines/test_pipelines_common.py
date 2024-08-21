@@ -1687,15 +1687,7 @@ class PipelineTesterMixin:
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         if test_mean_pixel_difference:
-            if torch.is_tensor(output_without_offload):
-                if output_without_offload.ndim == 5:
-                    # Educated guess that the original format here is [B, F, C, H, W] and we
-                    # permute to [B, F, H, W, C] to make input compatible with mean pixel difference
-                    output_without_offload = output_without_offload.permute(0, 1, 3, 4, 2)[0]
-                    output_with_offload = output_with_offload.permute(0, 1, 3, 4, 2)[0]
-                output_without_offload = to_np(output_without_offload)
-                output_with_offload = to_np(output_with_offload)
-            assert_mean_pixel_difference(to_np(output_with_offload[0]), to_np(output_without_offload[0]))
+            assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
 
     def test_progress_bar(self):
         components = self.get_dummy_components()
