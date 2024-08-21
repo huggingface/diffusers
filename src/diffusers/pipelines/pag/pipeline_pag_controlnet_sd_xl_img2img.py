@@ -613,6 +613,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl_img2img.StableDiffusionXLControlNetImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -690,7 +691,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
-                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when pass directly, but"
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
@@ -705,7 +706,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-        # `promtp` needs more sophisticated handling when there are multiple
+        # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
         if isinstance(self.controlnet, MultiControlNetModel):
             if isinstance(prompt, list):
@@ -883,40 +884,15 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
-        if denoising_start is None:
-            init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-            t_start = max(num_inference_steps - init_timestep, 0)
-        else:
-            t_start = 0
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
+        t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        # Strength is irrelevant if we directly request a timestep to start at;
-        # that is, strength is determined by the denoising_start instead.
-        if denoising_start is not None:
-            discrete_timestep_cutoff = int(
-                round(
-                    self.scheduler.config.num_train_timesteps
-                    - (denoising_start * self.scheduler.config.num_train_timesteps)
-                )
-            )
-
-            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
-            if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
-                # if the scheduler is a 2nd order scheduler we might have to do +1
-                # because `num_inference_steps` might be even given that every timestep
-                # (except the highest one) is duplicated. If `num_inference_steps` is even it would
-                # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
-                # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
-                num_inference_steps = num_inference_steps + 1
-
-            # because t_n+1 >= t_n, we slice the timesteps starting from the end
-            timesteps = timesteps[-num_inference_steps:]
-            return timesteps, num_inference_steps
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
@@ -1514,8 +1490,8 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
         add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
-        images = image if isinstance(image, list) else [image]
-        for i, single_image in enumerate(images):
+        control_images = control_image if isinstance(control_image, list) else [control_image]
+        for i, single_image in enumerate(control_images):
             if self.do_classifier_free_guidance:
                 single_image = single_image.chunk(2)[0]
 
@@ -1526,9 +1502,9 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
             elif self.do_classifier_free_guidance:
                 single_image = torch.cat([single_image] * 2)
             single_image = single_image.to(device)
-            images[i] = single_image
+            control_images[i] = single_image
 
-        image = images if isinstance(image, list) else images[0]
+        control_image = control_images if isinstance(control_image, list) else control_images[0]
 
         if ip_adapter_image_embeds is not None:
             for i, image_embeds in enumerate(ip_adapter_image_embeds):
@@ -1605,7 +1581,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                     return_dict=False,
                 )
 
-                if ip_adapter_image_embeds is not None:
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
                 # predict the noise residual
@@ -1680,11 +1656,11 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                 )
                 latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
             else:
-                latents = self.vae.decode(latents, return_dict=False)[0]
+                latents = latents / self.vae.config.scaling_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
 
-            # cast back to fp16 of needed
+            # cast back to fp16 if needed
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
         else:
