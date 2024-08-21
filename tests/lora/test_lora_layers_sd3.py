@@ -32,7 +32,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusion3Pipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
     uses_flow_matching = True
     transformer_kwargs = {
@@ -80,8 +80,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         Related PR: https://github.com/huggingface/diffusers/pull/8584
         """
         components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
+        pipe = self.pipeline_class(**components[0])
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

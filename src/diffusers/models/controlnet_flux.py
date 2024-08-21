@@ -24,9 +24,9 @@ from ..models.attention_processor import AttentionProcessor
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from .controlnet import BaseOutput, zero_module
-from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
+from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from .modeling_outputs import Transformer2DModelOutput
-from .transformers.transformer_flux import EmbedND, FluxSingleTransformerBlock, FluxTransformerBlock
+from .transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -59,7 +59,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.out_channels = in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.pos_embed = EmbedND(dim=self.inner_dim, theta=10000, axes_dim=axes_dims_rope)
+        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
         text_time_guidance_cls = (
             CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
         )
@@ -272,8 +272,20 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        txt_ids = txt_ids.expand(img_ids.size(0), -1, -1)
-        ids = torch.cat((txt_ids, img_ids), dim=1)
+        if txt_ids.ndim == 3:
+            logger.warning(
+                "Passing `txt_ids` 3d torch.Tensor is deprecated."
+                "Please remove the batch dimension and pass it as a 2d torch Tensor"
+            )
+            txt_ids = txt_ids[0]
+        if img_ids.ndim == 3:
+            logger.warning(
+                "Passing `img_ids` 3d torch.Tensor is deprecated."
+                "Please remove the batch dimension and pass it as a 2d torch Tensor"
+            )
+            img_ids = img_ids[0]
+
+        ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
 
         block_samples = ()

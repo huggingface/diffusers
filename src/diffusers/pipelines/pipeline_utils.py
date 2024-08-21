@@ -1417,7 +1417,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 use_safetensors
                 and not allow_pickle
                 and not is_safetensors_compatible(
-                    model_filenames, variant=variant, passed_components=passed_components
+                    model_filenames, passed_components=passed_components, folder_names=model_folder_names
                 )
             ):
                 raise EnvironmentError(
@@ -1426,7 +1426,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
             elif use_safetensors and is_safetensors_compatible(
-                model_filenames, variant=variant, passed_components=passed_components
+                model_filenames, passed_components=passed_components, folder_names=model_folder_names
             ):
                 ignore_patterns = ["*.bin", "*.msgpack"]
 
