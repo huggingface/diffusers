@@ -151,8 +151,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
             **kwargs,
         )
 
-        prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
-        pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, negative_pooled_prompt_embeds])
+        prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds])
 
         return prompt_embeds, pooled_prompt_embeds
 
