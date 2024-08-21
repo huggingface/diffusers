@@ -809,18 +809,6 @@ def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or
         deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 
 
-def _filter_null_components(init_dict: dict, passed_class_objs: dict) -> dict:
-    def load_module(name, value):
-        if value[0] is None:
-            return False
-        if name in passed_class_objs and passed_class_objs[name] is None:
-            return False
-        return True
-
-    init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
-    return init_dict
-
-
 def _update_init_kwargs_with_connected_pipeline(
     init_kwargs: dict, passed_pipe_kwargs: dict, passed_class_objs: dict, folder: str, **pipeline_loading_kwargs
 ) -> dict:

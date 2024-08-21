@@ -73,7 +73,6 @@ from .pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _determine_pipeline_class,
     _fetch_class_library_tuple,
-    _filter_null_components,
     _get_custom_pipeline_class,
     _get_final_device_map,
     _get_pipeline_class,
@@ -775,7 +774,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components
-        init_dict = _filter_null_components(init_dict=init_dict, passed_class_objs=passed_class_obj)
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
