@@ -752,6 +752,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise NotImplementedError("`device_map` is not yet supported for connected pipelines.")
 
         # DEPRECATED: To be removed in 1.0.0
+        # we are deprecating the `StableDiffusionInpaintPipelineLegacy` pipeline which gets loaded
+        # when a user requests for a `StableDiffusionInpaintPipeline` with `diffusers` version being <= 0.5.1.
         _maybe_raise_warning_for_inpainting(
             pipeline_class=pipeline_class,
             pretrained_model_name_or_path=pretrained_model_name_or_path,
