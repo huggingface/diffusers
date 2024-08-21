@@ -20,12 +20,14 @@ import unittest
 import numpy as np
 import safetensors.torch
 import torch
-from peft.utils import get_peft_model_state_dict
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, torch_device
+from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend, torch_device
 
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 sys.path.append(".")
 
