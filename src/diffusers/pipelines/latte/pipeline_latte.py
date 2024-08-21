@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_gif
 
         >>> # You can replace the checkpoint id with "maxin-cn/Latte-1" too.
-        >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16).to("cuda")
+        >>> pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 

@@ -119,6 +119,10 @@ class LuminaText2ImgPipelinePipelineFastTests(unittest.TestCase, PipelineTesterM
         max_diff = np.abs(output_with_prompt - output_with_embeds).max()
         assert max_diff < 1e-4
 
+    @unittest.skip("xformers attention processor does not exist for Lumina")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass
+
 
 @slow
 @require_torch_gpu

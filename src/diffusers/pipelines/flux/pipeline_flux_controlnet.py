@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,17 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPTextModel,
+    CLIPTokenizer,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
+from ...models.controlnet_flux import FluxControlNetModel
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -51,19 +57,31 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import FluxPipeline
+        >>> from diffusers.utils import load_image
+        >>> from diffusers import FluxControlNetPipeline
+        >>> from diffusers import FluxControlNetModel
 
-        >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+        >>> controlnet_model = "InstantX/FLUX.1-dev-controlnet-canny-alpha"
+        >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
+        >>> pipe = FluxControlNetPipeline.from_pretrained(
+        ...     base_model, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+        >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
+        >>> prompt = "A girl in city, 25 years old, cool, futuristic"
+        >>> image = pipe(
+        ...     prompt,
+        ...     control_image=control_image,
+        ...     controlnet_conditioning_scale=0.6,
+        ...     num_inference_steps=28,
+        ...     guidance_scale=3.5,
+        ... ).images[0]
         >>> image.save("flux.png")
         ```
 """
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -137,7 +155,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -177,6 +195,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        controlnet: FluxControlNetModel,
     ):
         super().__init__()
 
@@ -188,6 +207,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
+            controlnet=controlnet,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels)) if hasattr(self, "vae") and self.vae is not None else 16
@@ -314,6 +334,9 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
@@ -418,6 +441,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height // 2, width // 2, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
@@ -433,6 +457,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -441,6 +466,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
@@ -454,35 +480,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return latents
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
-
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -516,6 +514,41 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return latents, latent_image_ids
 
+    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -543,6 +576,8 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
         guidance_scale: float = 7.0,
+        control_image: PipelineImageInput = None,
+        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -653,6 +688,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        dtype = self.transformer.dtype
 
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
@@ -671,6 +707,34 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
+
+        # 3. Prepare control image
+        num_channels_latents = self.transformer.config.in_channels // 4
+        if isinstance(self.controlnet, FluxControlNetModel):
+            control_image = self.prepare_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=dtype,
+            )
+            height, width = control_image.shape[-2:]
+
+            # vae encode
+            control_image = self.vae.encode(control_image).latent_dist.sample()
+            control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+            # pack
+            height_control_image, width_control_image = control_image.shape[2:]
+            control_image = self._pack_latents(
+                control_image,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height_control_image,
+                width_control_image,
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -703,15 +767,9 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             sigmas,
             mu=mu,
         )
+
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-
-        # handle guidance
-        if self.transformer.config.guidance_embeds:
-            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(latents.shape[0])
-        else:
-            guidance = None
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -722,6 +780,28 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
+                # handle guidance
+                if self.transformer.config.guidance_embeds:
+                    guidance = torch.tensor([guidance_scale], device=device)
+                    guidance = guidance.expand(latents.shape[0])
+                else:
+                    guidance = None
+
+                # controlnet
+                controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
+                    hidden_states=latents,
+                    controlnet_cond=control_image,
+                    conditioning_scale=controlnet_conditioning_scale,
+                    timestep=timestep / 1000,
+                    guidance=guidance,
+                    pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    return_dict=False,
+                )
+
                 noise_pred = self.transformer(
                     hidden_states=latents,
                     # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
@@ -729,6 +809,8 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
+                    controlnet_block_samples=controlnet_block_samples,
+                    controlnet_single_block_samples=controlnet_single_block_samples,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
@@ -766,6 +848,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
