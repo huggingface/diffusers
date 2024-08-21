@@ -737,7 +737,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         custom_pipeline, custom_class_name = _resolve_custom_pipeline_and_cls(
-            folder=cached_folder, config=config_dict, custom_pipeline=custom_revision
+            folder=cached_folder, config=config_dict, custom_pipeline=custom_pipeline
         )
         pipeline_class = _get_pipeline_class(
             cls,
