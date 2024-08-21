@@ -414,7 +414,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
                 prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
-                # we are only ALWAYS interested in the pooled output of the final text encoder
+                # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
                 if clip_skip is None:
                     prompt_embeds = prompt_embeds.hidden_states[-2]
@@ -849,7 +849,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
         if image_batch_size != 1 and image_batch_size != prompt_batch_size:
             raise ValueError(
-                f"If image batch size is not 1, image batch size must be same prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
+                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
@@ -910,8 +910,8 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd derivatives) which leads to incorrect results. By adding 1
-                # we ensure that the denoising process always ends after the 2nd derivative step of the scheduler
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
+                # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
             # because t_n+1 >= t_n, we slice the timesteps starting from the end
@@ -955,11 +955,18 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
-                    f"You have passed a list of generator of length {len(generator)}, but requested an effective batch"
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                     f" size of {batch_size}. Make sure the batch size matches the length of the generators."
                 )
 
             elif isinstance(generator, list):
+                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
+                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
+                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
+                    raise ValueError(
+                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
+                    )
+
                 init_latents = [
                     retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                     for i in range(batch_size)
