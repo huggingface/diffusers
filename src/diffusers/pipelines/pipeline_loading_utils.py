@@ -837,26 +837,6 @@ def _update_init_kwargs_with_connected_pipeline(
 
     modelcard = ModelCard.load(os.path.join(folder, "README.md"))
     connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
-    load_kwargs = {
-        "cache_dir": pipeline_loading_kwargs.get("cache_dir"),
-        "force_download": pipeline_loading_kwargs.get("force_download"),
-        "proxies": pipeline_loading_kwargs.get("proxies"),
-        "local_files_only": pipeline_loading_kwargs.get("local_files_only"),
-        "token": pipeline_loading_kwargs.get("token"),
-        "revision": pipeline_loading_kwargs.get("revision"),
-        "torch_dtype": pipeline_loading_kwargs.get("torch_dtype"),
-        "custom_pipeline": pipeline_loading_kwargs.get("custom_pipeline"),
-        "custom_revision": pipeline_loading_kwargs.get("custom_revision"),
-        "provider": pipeline_loading_kwargs.get("provider"),
-        "sess_options": pipeline_loading_kwargs.get("sess_options"),
-        "device_map": pipeline_loading_kwargs.get("device_map"),
-        "max_memory": pipeline_loading_kwargs.get("max_memory"),
-        "offload_folder": pipeline_loading_kwargs.get("offload_folder"),
-        "offload_state_dict": pipeline_loading_kwargs.get("offload_state_dict"),
-        "low_cpu_mem_usage": pipeline_loading_kwargs.get("low_cpu_mem_usage"),
-        "variant": pipeline_loading_kwargs.get("variant"),
-        "use_safetensors": pipeline_loading_kwargs.get("use_safetensors"),
-    }
 
     def get_connected_passed_kwargs(prefix):
         connected_passed_class_obj = {
@@ -870,7 +850,9 @@ def _update_init_kwargs_with_connected_pipeline(
         return connected_passed_kwargs
 
     connected_pipes = {
-        prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix))
+        prefix: DiffusionPipeline.from_pretrained(
+            repo_id, **pipeline_loading_kwargs, **get_connected_passed_kwargs(prefix)
+        )
         for prefix, repo_id in connected_pipes.items()
         if repo_id is not None
     }
