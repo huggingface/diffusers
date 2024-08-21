@@ -817,6 +817,14 @@ def _update_init_kwargs_with_connected_pipeline(
     modelcard = ModelCard.load(os.path.join(folder, "README.md"))
     connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
 
+    # We don't scheduler argument to match the existing logic:
+    # https://github.com/huggingface/diffusers/blob/867e0c919e1aa7ef8b03c8eb1460f4f875a683ae/src/diffusers/pipelines/pipeline_utils.py#L906C13-L925C14
+    pipeline_loading_kwargs_cp = pipeline_loading_kwargs.copy()
+    if pipeline_loading_kwargs_cp is not None and len(pipeline_loading_kwargs_cp) >= 1:
+        for k in pipeline_loading_kwargs:
+            if "scheduler" in k:
+                _ = pipeline_loading_kwargs_cp.pop(k)
+
     def get_connected_passed_kwargs(prefix):
         connected_passed_class_obj = {
             k.replace(f"{prefix}_", ""): w for k, w in passed_class_objs.items() if k.split("_")[0] == prefix
@@ -830,7 +838,7 @@ def _update_init_kwargs_with_connected_pipeline(
 
     connected_pipes = {
         prefix: DiffusionPipeline.from_pretrained(
-            repo_id, **pipeline_loading_kwargs, **get_connected_passed_kwargs(prefix)
+            repo_id, **pipeline_loading_kwargs_cp, **get_connected_passed_kwargs(prefix)
         )
         for prefix, repo_id in connected_pipes.items()
         if repo_id is not None
