@@ -71,7 +71,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    _check_and_update_init_kwargs_for_missing_modules,
     _determine_current_device_map,
     _determine_pipeline_class,
     _fetch_class_library_tuple,
@@ -878,13 +877,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 9. Potentially add passed objects if expected
-        init_kwargs = _check_and_update_init_kwargs_for_missing_modules(
-            init_kwargs=init_kwargs,
-            passed_class_objs=passed_class_obj,
-            pipeline_class=pipeline_class,
-            expected_modules=expected_modules,
-            optional_kwargs=optional_kwargs,
-        )
+        missing_modules = set(expected_modules) - set(init_kwargs.keys())
+        passed_modules = list(passed_class_obj.keys())
+        optional_modules = pipeline_class._optional_components
+        if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
+            for module in missing_modules:
+                init_kwargs[module] = passed_class_obj.get(module, None)
+        elif len(missing_modules) > 0:
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            )
 
         # 10. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
