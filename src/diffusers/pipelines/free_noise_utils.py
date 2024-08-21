@@ -68,12 +68,6 @@ class ChunkedInferenceModule(nn.Module):
             inputs = dict(zip(chunked_inputs.keys(), chunked_input))
             inputs.update(kwargs)
 
-            for key, input in inputs.items():
-                if torch.is_tensor(input):
-                    print(key, input.shape)
-                else:
-                    print(key)
-
             intermediate_tensor_or_tensor_tuple = self.module(*args, **inputs)
             results.append(intermediate_tensor_or_tensor_tuple)
 
