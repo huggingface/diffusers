@@ -269,6 +269,7 @@ LDM_CLIP_PREFIX_TO_REMOVE = [
 ]
 OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
+SCHEDULER_LEGACY_KWARGS = ["prediction_type", "scheduler_type"]
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
@@ -316,6 +317,10 @@ def _is_model_weights_in_cached_folder(cached_folder, name):
             weights_exist = True
 
     return weights_exist
+
+
+def _is_legacy_scheduler_kwargs(kwargs):
+    return any(k in SCHEDULER_LEGACY_KWARGS for k in kwargs.keys())
 
 
 def load_single_file_checkpoint(
@@ -1479,14 +1484,22 @@ def _legacy_load_scheduler(
 
     if scheduler_type is not None:
         deprecation_message = (
-            "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`."
+            "Please pass an instance of a Scheduler object directly to the `scheduler` argument in `from_single_file`\n\n"
+            "Example:\n\n"
+            "from diffusers import StableDiffusionPipeline, DDIMScheduler\n\n"
+            "scheduler = DDIMScheduler()\n"
+            "pipe = StableDiffusionPipeline.from_single_file(<checkpoint path>, scheduler=scheduler)\n"
         )
         deprecate("scheduler_type", "1.0.0", deprecation_message)
 
     if prediction_type is not None:
         deprecation_message = (
-            "Please configure an instance of a Scheduler with the appropriate `prediction_type` "
-            "and pass the object directly to the `scheduler` argument in `from_single_file`."
+            "Please configure an instance of a Scheduler with the appropriate `prediction_type` and "
+            "pass the object directly to the `scheduler` argument in `from_single_file`.\n\n"
+            "Example:\n\n"
+            "from diffusers import StableDiffusionPipeline, DDIMScheduler\n\n"
+            'scheduler = DDIMScheduler(prediction_type="v_prediction")\n'
+            "pipe = StableDiffusionPipeline.from_single_file(<checkpoint path>, scheduler=scheduler)\n"
         )
         deprecate("prediction_type", "1.0.0", deprecation_message)
 
