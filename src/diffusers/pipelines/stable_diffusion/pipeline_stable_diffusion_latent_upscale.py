@@ -534,8 +534,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
         )
 
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
-            pooled_prompt_embeds = torch.cat([pooled_prompt_embeds, negative_pooled_prompt_embeds])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds])
 
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)
