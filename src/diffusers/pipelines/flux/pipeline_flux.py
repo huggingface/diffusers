@@ -454,6 +454,35 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return latents
 
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
     def prepare_latents(
         self,
         batch_size,
@@ -677,6 +706,13 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        # handle guidance
+        if self.transformer.config.guidance_embeds:
+            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+            guidance = guidance.expand(latents.shape[0])
+        else:
+            guidance = None
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -685,13 +721,6 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-
-                # handle guidance
-                if self.transformer.config.guidance_embeds:
-                    guidance = torch.tensor([guidance_scale], device=device)
-                    guidance = guidance.expand(latents.shape[0])
-                else:
-                    guidance = None
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
