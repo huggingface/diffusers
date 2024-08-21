@@ -1583,7 +1583,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         network_alphas = {}
         for k in keys:
             if "alpha" in k:
-                network_alphas[k] = state_dict.pop(k)
+                alpha_value = state_dict.get(k)
+                if (torch.is_tensor(alpha_value) and torch.is_floating_point(alpha_value)) or isinstance(
+                    alpha_value, float
+                ):
+                    [k] = state_dict.pop(k)
+                else:
+                    raise ValueError(
+                        f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
+                    )
 
         if return_alphas:
             return state_dict, network_alphas
