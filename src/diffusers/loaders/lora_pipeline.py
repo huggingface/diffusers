@@ -1492,6 +1492,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        return_alphas: bool = False,
         **kwargs,
     ):
         r"""
@@ -1584,7 +1585,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             if "alpha" in k:
                 network_alphas[k] = state_dict.pop(k)
 
-        return state_dict, network_alphas
+        if return_alphas:
+            return state_dict, network_alphas
+        else:
+            return state_dict
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
@@ -1618,7 +1622,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, network_alphas = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
+        )
 
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
