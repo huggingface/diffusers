@@ -71,13 +71,13 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    _determine_pipeline_class,
     _fetch_class_library_tuple,
     _get_custom_pipeline_class,
     _get_final_device_map,
     _get_pipeline_class,
     _identify_model_variants,
     _maybe_raise_warning_for_inpainting,
+    _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
     is_safetensors_compatible,
@@ -735,15 +735,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        custom_pipeline, pipeline_class = _determine_pipeline_class(
-            cls,
-            folder=cached_folder,
-            cache_dir=cache_dir,
-            config=config_dict,
-            custom_revision=custom_revision,
-            custom_pipeline=custom_pipeline,
-            load_connected_pipeline=load_connected_pipeline,
+        custom_pipeline, custom_class_name = _resolve_custom_pipeline_and_cls(
+            folder=cached_folder, config=config_dict, custom_pipeline=custom_revision
         )
+        pipeline_class = _get_pipeline_class(
+            cls,
+            config=config_dict,
+            load_connected_pipeline=load_connected_pipeline,
+            custom_pipeline=custom_pipeline,
+            class_name=custom_class_name,
+            cache_dir=cache_dir,
+            revision=custom_revision,
+        )
+
         if device_map is not None and pipeline_class._load_connected_pipes:
             raise NotImplementedError("`device_map` is not yet supported for connected pipelines.")
 

@@ -759,15 +759,7 @@ def _identify_model_variants(folder: str, variant: str, config: dict) -> dict:
     return model_variants
 
 
-def _determine_pipeline_class(
-    cls,
-    folder: str,
-    cache_dir: str,
-    config: dict,
-    custom_revision: str,
-    custom_pipeline: str,
-    load_connected_pipeline: bool,
-) -> tuple:
+def _resolve_custom_pipeline_and_cls(folder, config, custom_pipeline):
     custom_class_name = None
     if os.path.isfile(os.path.join(folder, f"{custom_pipeline}.py")):
         custom_pipeline = os.path.join(folder, f"{custom_pipeline}.py")
@@ -777,16 +769,7 @@ def _determine_pipeline_class(
         custom_pipeline = os.path.join(folder, f"{config['_class_name'][0]}.py")
         custom_class_name = config["_class_name"][1]
 
-    pipeline_class = _get_pipeline_class(
-        cls,
-        config,
-        load_connected_pipeline=load_connected_pipeline,
-        custom_pipeline=custom_pipeline,
-        class_name=custom_class_name,
-        cache_dir=cache_dir,
-        revision=custom_revision,
-    )
-    return custom_pipeline, pipeline_class
+    return custom_pipeline, custom_class_name
 
 
 def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or_path: str, config: dict):
