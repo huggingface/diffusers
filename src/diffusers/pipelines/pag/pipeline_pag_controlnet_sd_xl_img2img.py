@@ -1379,7 +1379,7 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
 
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
@@ -1581,8 +1581,8 @@ class StableDiffusionXLControlNetPAGImg2ImgPipeline(
                     return_dict=False,
                 )
 
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
 
                 # predict the noise residual
                 noise_pred = self.unet(
