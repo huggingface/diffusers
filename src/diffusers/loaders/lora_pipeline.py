@@ -1587,7 +1587,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 if (torch.is_tensor(alpha_value) and torch.is_floating_point(alpha_value)) or isinstance(
                     alpha_value, float
                 ):
-                    [k] = state_dict.pop(k)
+                    network_alphas[k] = state_dict.pop(k)
                 else:
                     raise ValueError(
                         f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
