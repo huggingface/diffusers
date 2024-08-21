@@ -1495,7 +1495,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             text_encoder_projection_dim=text_encoder_projection_dim,
         )
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
-        
+
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
