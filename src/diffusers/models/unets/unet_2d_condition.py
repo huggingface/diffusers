@@ -463,7 +463,6 @@ class UNet2DConditionModel(
                 dropout=dropout,
             )
             self.up_blocks.append(up_block)
-            prev_output_channel = output_channel
 
         # out
         if norm_num_groups is not None:
