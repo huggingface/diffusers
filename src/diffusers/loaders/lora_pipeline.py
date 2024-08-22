@@ -1495,10 +1495,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        return_alphas: bool = False,
         **kwargs,
     ):
         r"""
@@ -1583,7 +1583,26 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
-        return state_dict
+        # For state dicts like
+        # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
+        keys = list(state_dict.keys())
+        network_alphas = {}
+        for k in keys:
+            if "alpha" in k:
+                alpha_value = state_dict.get(k)
+                if (torch.is_tensor(alpha_value) and torch.is_floating_point(alpha_value)) or isinstance(
+                    alpha_value, float
+                ):
+                    network_alphas[k] = state_dict.pop(k)
+                else:
+                    raise ValueError(
+                        f"The alpha key ({k}) seems to be incorrect. If you think this error is unexpected, please open as issue."
+                    )
+
+        if return_alphas:
+            return state_dict, network_alphas
+        else:
+            return state_dict
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
@@ -1617,7 +1636,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, network_alphas = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
+        )
 
         is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1625,6 +1646,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         self.load_lora_into_transformer(
             state_dict,
+            network_alphas=network_alphas,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
@@ -1634,7 +1656,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_state_dict,
-                network_alphas=None,
+                network_alphas=network_alphas,
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
@@ -1643,8 +1665,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
-    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -1653,6 +1674,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             transformer (`SD3Transformer2DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
@@ -1684,7 +1709,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if network_alphas is not None and len(network_alphas) >= 1:
+                prefix = cls.transformer_name
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
                     raise ValueError(
