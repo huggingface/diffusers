@@ -280,7 +280,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
@@ -753,7 +755,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
@@ -1249,7 +1253,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
@@ -1735,7 +1741,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
@@ -1968,7 +1976,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
@@ -2061,7 +2071,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
