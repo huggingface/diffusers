@@ -976,7 +976,6 @@ class ModelTesterMixin:
             self.assertTrue(actual_num_shards == expected_num_shards)
 
             new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto")
-            new_model = new_model.to(torch_device)
 
             torch.manual_seed(0)
             if "generator" in inputs_dict:

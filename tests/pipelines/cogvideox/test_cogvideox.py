@@ -275,6 +275,10 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "VAE tiling should not affect the inference results",
         )
 
+    @unittest.skip("xformers attention processor does not exist for CogVideoX")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass
+
 
 @slow
 @require_torch_gpu
