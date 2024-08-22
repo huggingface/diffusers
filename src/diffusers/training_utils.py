@@ -1,5 +1,6 @@
 import contextlib
 import copy
+import gc
 import math
 import random
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
@@ -257,6 +258,22 @@ def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
     else:
         weighting = torch.ones_like(sigmas)
     return weighting
+
+
+def clear_objs_and_retain_memory(objs: List[Any]):
+    """Deletes `objs` and runs garbage collection. Then clears the cache of the available accelerator."""
+    if len(objs) >= 1:
+        for obj in objs:
+            del obj
+
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    elif is_torch_npu_available():
+        torch_npu.empty_cache()
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
