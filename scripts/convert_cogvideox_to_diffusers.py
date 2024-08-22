@@ -127,7 +127,11 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 
 
 def convert_transformer(
-    ckpt_path: str, num_layers: int, num_attention_heads: int, use_rotary_positional_embeddings: bool
+    ckpt_path: str,
+    num_layers: int,
+    num_attention_heads: int,
+    use_rotary_positional_embeddings: bool,
+    dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -136,7 +140,7 @@ def convert_transformer(
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
-    )
+    ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY) :]
@@ -154,9 +158,9 @@ def convert_transformer(
     return transformer
 
 
-def convert_vae(ckpt_path: str, scaling_factor: float):
+def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    vae = AutoencoderKLCogVideoX(scaling_factor=scaling_factor)
+    vae = AutoencoderKLCogVideoX(scaling_factor=scaling_factor).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -210,15 +214,19 @@ if __name__ == "__main__":
 
     if args.fp16 and args.bf16:
         raise ValueError("You cannot pass both --fp16 and --bf16 at the same time.")
+
+    dtype = torch.float16 if args.fp16 else torch.bfloat16 if args.bf16 else torch.float32
+
     if args.transformer_ckpt_path is not None:
         transformer = convert_transformer(
             args.transformer_ckpt_path,
             args.num_layers,
             args.num_attention_heads,
             args.use_rotary_positional_embeddings,
+            dtype,
         )
     if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor)
+        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)

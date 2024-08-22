@@ -1787,6 +1787,7 @@ class CogVideoXAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        text_seq_length: int = 226,
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -1809,13 +1810,12 @@ class CogVideoXAttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
-
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
+        query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -1833,16 +1833,19 @@ class CogVideoXAttnProcessor2_0:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb)
+            query[:, :, text_seq_length:] = apply_rotary_emb(
+                query[:, :, text_seq_length:], image_rotary_emb, upcast=False
+            )
             if not attn.is_cross_attention:
-                key = apply_rotary_emb(key, image_rotary_emb)
+                key[:, :, text_seq_length:] = apply_rotary_emb(
+                    key[:, :, text_seq_length:], image_rotary_emb, upcast=False
+                )
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

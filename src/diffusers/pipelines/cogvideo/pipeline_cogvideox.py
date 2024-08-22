@@ -434,7 +434,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         height: int,
         width: int,
         num_frames: int,
-        max_sequence_length: int,
         device: torch.device,
         dtype: torch.dtype,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -454,11 +453,8 @@ class CogVideoXPipeline(DiffusionPipeline):
             use_real=True,
         )
 
-        pad_tensor_cos = freqs_cos.new_zeros((max_sequence_length, freqs_cos.size(1)))
-        pad_tensor_sin = freqs_sin.new_zeros((max_sequence_length, freqs_sin.size(1)))
-        freqs_cos = torch.cat([pad_tensor_cos, freqs_cos]).to(device=device, dtype=dtype)
-        freqs_sin = torch.cat([pad_tensor_sin, freqs_sin]).to(device=device, dtype=dtype)
-
+        freqs_cos = freqs_cos.to(device=device, dtype=dtype)
+        freqs_sin = freqs_sin.to(device=device, dtype=dtype)
         return freqs_cos, freqs_sin
 
     @property
@@ -653,9 +649,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         # 7. Create rotary embeds if required
         image_rotary_emb = (
-            self._prepare_rotary_positional_embeddings(
-                height, width, latents.size(1), max_sequence_length, device, prompt_embeds.dtype
-            )
+            self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device, prompt_embeds.dtype)
             if self.transformer.config.use_rotary_positional_embeddings
             else None
         )

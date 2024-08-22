@@ -125,7 +125,7 @@ class CogVideoXBlock(nn.Module):
         )
 
         # attention
-        text_length = norm_encoder_hidden_states.size(1)
+        text_seq_length = norm_encoder_hidden_states.size(1)
 
         # CogVideoX uses concatenated text + video embeddings with self-attention instead of using
         # them in cross-attention individually
@@ -134,10 +134,11 @@ class CogVideoXBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=None,
             image_rotary_emb=image_rotary_emb,
+            text_seq_length=text_seq_length,
         )
 
-        hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
-        encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
+        hidden_states = hidden_states + gate_msa * attn_output[:, text_seq_length:]
+        encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_seq_length]
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
@@ -148,8 +149,8 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
-        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
+        hidden_states = hidden_states + gate_ff * ff_output[:, text_seq_length:]
+        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_seq_length]
         return hidden_states, encoder_hidden_states
 
 
@@ -325,15 +326,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
 
         # 3. Position embedding
+        text_seq_length = encoder_hidden_states.shape[1]
         if not self.config.use_rotary_positional_embeddings:
             seq_length = height * width * num_frames // (self.config.patch_size**2)
 
-            pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
+            pos_embeds = self.pos_embedding[:, : text_seq_length + seq_length]
             hidden_states = hidden_states + pos_embeds
             hidden_states = self.embedding_dropout(hidden_states)
 
-        encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
-        hidden_states = hidden_states[:, self.config.max_text_seq_length :]
+        encoder_hidden_states = hidden_states[:, :text_seq_length]
+        hidden_states = hidden_states[:, text_seq_length:]
 
         # 4. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
@@ -362,7 +364,14 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states = self.norm_final(hidden_states)
+        if not self.config.use_rotary_positional_embeddings:
+            # CogVideoX-2B
+            hidden_states = self.norm_final(hidden_states)
+        else:
+            # CogVideoX-5B
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+            hidden_states = self.norm_final(hidden_states)
+            hidden_states = hidden_states[:, text_seq_length:]
 
         # 5. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
