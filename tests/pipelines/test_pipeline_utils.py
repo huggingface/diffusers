@@ -116,6 +116,30 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
         ]
         self.assertFalse(is_safetensors_compatible(filenames))
 
+    def test_transformer_model_is_compatible_variant_extra_folder(self):
+        filenames = [
+            "safety_checker/pytorch_model.fp16.bin",
+            "safety_checker/model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.fp16.bin",
+            "vae/diffusion_pytorch_model.fp16.safetensors",
+            "text_encoder/pytorch_model.fp16.bin",
+            "unet/diffusion_pytorch_model.fp16.bin",
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
+
+    def test_transformer_model_is_not_compatible_variant_extra_folder(self):
+        filenames = [
+            "safety_checker/pytorch_model.fp16.bin",
+            "safety_checker/model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.fp16.bin",
+            "vae/diffusion_pytorch_model.fp16.safetensors",
+            "text_encoder/pytorch_model.fp16.bin",
+            "unet/diffusion_pytorch_model.fp16.bin",
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames, folder_names={"text_encoder"}))
+
     def test_transformers_is_compatible_sharded(self):
         filenames = [
             "text_encoder/pytorch_model.bin",
