@@ -19,6 +19,7 @@ from diffusers import (
     UNetMotionModel,
 )
 from diffusers.utils import logging
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -392,6 +393,13 @@ class AnimateDiffSparseControlNetPipelineFastTests(
         inputs.pop("prompt")
         inputs["prompt_embeds"] = torch.randn((1, 4, pipe.text_encoder.config.hidden_size), device=torch_device)
         pipe(**inputs)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
     def test_free_init(self):
         components = self.get_dummy_components()
