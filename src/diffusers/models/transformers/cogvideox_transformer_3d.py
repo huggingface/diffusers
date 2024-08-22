@@ -332,9 +332,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         Parameters:
             processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
                 The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers. If `processor` is a dict, the key needs to define the path to the
-                corresponding cross attention processor. This is strongly recommended when setting trainable attention
-                processors.
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
         """
         count = len(self.attn_processors.keys())
 
@@ -357,7 +359,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedFluxAttnProcessor2_0
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedCogVideoXAttnProcessor2_0
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -392,6 +394,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         This API is 🧪 experimental.
 
         </Tip>
+
         """
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
