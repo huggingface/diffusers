@@ -941,12 +941,29 @@ def _is_torch_fp64_available(device):
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
 if is_torch_available():
     # Behaviour flags
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
     # Function definitions
-    BACKEND_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
-    BACKEND_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
-    BACKEND_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
+    BACKEND_EMPTY_CACHE = {
+        "cuda": torch.cuda.empty_cache,
+        "xpu": torch.xpu.empty_cache,
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_DEVICE_COUNT = {
+        "cuda": torch.cuda.device_count,
+        "xpu": torch.xpu.device_count,
+        "cpu": lambda: 0,
+        "mps": lambda: 0,
+        "default": 0,
+    }
+    BACKEND_MANUAL_SEED = {
+        "cuda": torch.cuda.manual_seed,
+        "xpu": torch.xpu.manual_seed,
+        "cpu": torch.manual_seed,
+        "default": torch.manual_seed,
+    }
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
