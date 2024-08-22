@@ -429,6 +429,19 @@ class CogVideoXPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    def fuse_qkv_projections(self) -> None:
+        r"""Enables fused QKV projections."""
+        self.fusing_transformer = True
+        self.transformer.fuse_qkv_projections()
+
+    def unfuse_qkv_projections(self) -> None:
+        r"""Disable QKV projection fusion if enabled."""
+        if not self.fusing_transformer:
+            logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
+        else:
+            self.transformer.unfuse_qkv_projections()
+            self.fusing_transformer = False
+
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
