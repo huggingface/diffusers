@@ -397,23 +397,6 @@ def get_3d_rotary_pos_embed(
     Returns:
         `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
     """
-    # start, stop = crops_coords
-    # grid_t = torch.arange(temporal_size, dtype=torch.float32)
-    # grid_h = torch.arange(stop[0] - start[0], dtype=torch.float32)
-    # grid_w = torch.arange(stop[1] - start[1], dtype=torch.float32)
-
-    # dim_t = embed_dim // 4
-    # dim_h = embed_dim // 8 * 3
-    # dim_w = embed_dim // 8 * 3
-
-    # freqs_t = 1.0 / (theta ** (torch.arange(0, dim_t, 2, dtype=torch.float32)[: dim_t // 2] / dim_t))
-    # freqs_h = 1.0 / (theta ** (torch.arange(0, dim_h, 2, dtype=torch.float32)[: dim_h // 2] / dim_h))
-    # freqs_w = 1.0 / (theta ** (torch.arange(0, dim_w, 2, dtype=torch.float32)[: dim_w // 2] / dim_w))
-
-    # freqs_t = torch.einsum("..., f -> ... f", grid_t, freqs_t).repeat_interleave(2, dim=-1)
-    # freqs_h = torch.einsum("..., f -> ... f", grid_h, freqs_h).repeat_interleave(2, dim=-1)
-    # freqs_w = torch.einsum("..., f -> ... f", grid_w, freqs_w).repeat_interleave(2, dim=-1)
-
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
