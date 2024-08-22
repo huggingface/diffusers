@@ -991,7 +991,7 @@ class UNet2DConditionModel(
             image_embs = added_cond_kwargs.get("image_embeds")
             aug_emb = self.add_embedding(image_embs)
         elif self.config.addition_embed_type == "image_hint":
-            # Kandinsky 2.2 - style
+            # Kandinsky 2.2 ControlNet - style
             if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
@@ -1010,7 +1010,7 @@ class UNet2DConditionModel(
             # Kandinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
 
             image_embeds = added_cond_kwargs.get("image_embeds")
@@ -1019,14 +1019,14 @@ class UNet2DConditionModel(
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
         elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
 
             if hasattr(self, "text_encoder_hid_proj") and self.text_encoder_hid_proj is not None:
