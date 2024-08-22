@@ -20,7 +20,6 @@ from ..test_pipelines_common import (
 )
 
 
-@unittest.skipIf(torch_device == "mps", "Flux has a float64 operation which is not supported in MPS.")
 class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = FluxPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
