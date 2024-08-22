@@ -203,6 +203,8 @@ def get_args():
     )
     # For CogVideoX-2B, scaling_factor is 1.15258426. For 5B, it is 0.7
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
+    # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
+    parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
     return parser.parse_args()
 
 
@@ -238,7 +240,7 @@ if __name__ == "__main__":
 
     scheduler = CogVideoXDDIMScheduler.from_config(
         {
-            "snr_shift_scale": 3.0,
+            "snr_shift_scale": args.snr_shift_scale,
             "beta_end": 0.012,
             "beta_schedule": "scaled_linear",
             "beta_start": 0.00085,
