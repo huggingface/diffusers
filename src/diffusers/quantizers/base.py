@@ -114,7 +114,8 @@ class HfQuantizer(ABC):
         """
         returns dtypes for modules that are not quantized - used for the computation of the device_map in case one
         passes a str as a device_map. The method will use the `modules_to_not_convert` that is modified in
-        `_process_model_before_weight_loading`.
+        `_process_model_before_weight_loading`. `diffusers` models don't have any `modules_to_not_convert` attributes
+        yet but this can change soon in the future.
 
         Args:
             model (`~diffusers.models.modeling_utils.ModelMixin`):
