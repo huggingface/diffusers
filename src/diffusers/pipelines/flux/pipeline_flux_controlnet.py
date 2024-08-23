@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.controlnet_flux import FluxControlNetModel
 from ...models.transformers import FluxTransformer2DModel
@@ -155,7 +155,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
