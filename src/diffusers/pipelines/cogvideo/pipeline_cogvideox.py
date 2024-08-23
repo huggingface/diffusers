@@ -41,6 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
 
+        >>> # Models: "THUDM/CogVideoX-2b" or "THUDM/CogVideoX-5b"
         >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -467,7 +468,6 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         freqs_cos = freqs_cos.to(device=device)
         freqs_sin = freqs_sin.to(device=device)
-
         return freqs_cos, freqs_sin
 
     @property
