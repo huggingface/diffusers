@@ -1586,8 +1586,8 @@ def main(args):
 
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2]),
-                    width=int(model_input.shape[3]),
+                    height=int(model_input.shape[2] * vae_scale_factor / 2),
+                    width=int(model_input.shape[3] * vae_scale_factor / 2),
                     vae_scale_factor=vae_scale_factor,
                 )
 
