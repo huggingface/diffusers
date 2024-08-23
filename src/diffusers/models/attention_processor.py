@@ -1833,13 +1833,9 @@ class CogVideoXAttnProcessor2_0:
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
 
-            query[:, :, text_seq_length:] = apply_rotary_emb(
-                query[:, :, text_seq_length:], image_rotary_emb, upcast=False
-            )
+            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(
-                    key[:, :, text_seq_length:], image_rotary_emb, upcast=False
-                )
+                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
