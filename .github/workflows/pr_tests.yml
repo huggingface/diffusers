@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - ci-*
+      - v*-patch
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
