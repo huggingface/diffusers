@@ -56,6 +56,7 @@ from .pag import (
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
+    StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
@@ -123,6 +124,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
     ]
 )
@@ -163,12 +165,12 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
 )
 
 if is_sentencepiece_available():
-    from .kolors import KolorsPipeline
+    from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
     from .pag import KolorsPAGPipeline
 
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors-pag"] = KolorsPAGPipeline
-    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
+    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsImg2ImgPipeline
 
 SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
@@ -955,7 +957,8 @@ class AutoPipelineForInpainting(ConfigMixin):
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
+                to_replace = "InpaintPipeline" if "Inpaint" in config["_class_name"] else "Pipeline"
+                orig_class_name = config["_class_name"].replace(to_replace, "PAG" + to_replace)
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
