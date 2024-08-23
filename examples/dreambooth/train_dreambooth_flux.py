@@ -1587,16 +1587,16 @@ def main(args):
 
                 # Predict the noise residual
                 model_pred = transformer(
-                        hidden_states=packed_noisy_model_input,
-                        # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
-                        timestep=timesteps / 1000,
-                        guidance=guidance,
-                        pooled_projections=pooled_prompt_embeds,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
-                        return_dict=False,
-                    )[0]
+                    hidden_states=packed_noisy_model_input,
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    timestep=timesteps / 1000,
+                    guidance=guidance,
+                    pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    return_dict=False,
+                )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
                     height=int(model_input.shape[2] * vae_scale_factor / 2),
