@@ -442,7 +442,7 @@ class LoraBaseMixin:
 
         for fuse_component in components:
             if fuse_component not in self._lora_loadable_modules:
-                raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules=}.")
+                raise ValueError(f"{fuse_component} is not found in {self._lora_loadable_modules}.")
 
             model = getattr(self, fuse_component, None)
             if model is not None:
