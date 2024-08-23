@@ -50,7 +50,6 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -722,6 +721,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
         else:
             cached_folder = pretrained_model_name_or_path
+            filenames = []
+            for _, _, files in os.walk(cached_folder):
+                for file in files:
+                    filenames.append(os.path.basename(file))
+
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            if len(variant_filenames) == 0 and variant is not None:
+                error_message = (
+                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                    f"Available ones are: {model_filenames}."
+                )
+                raise ValueError(error_message)
 
         config_dict = cls.load_config(cached_folder)
 
@@ -1239,6 +1250,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            filenames = {sibling.rfilename for sibling in info.siblings}
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            if len(variant_filenames) == 0 and variant is not None:
+                error_message = (
+                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                    f"Available ones are: {model_filenames}."
+                )
+                raise ValueError(error_message)
+
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1254,9 +1274,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
-
-            filenames = {sibling.rfilename for sibling in info.siblings}
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipelines = getattr(diffusers_module, "pipelines")
@@ -1278,15 +1295,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     raise ValueError(
                         f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
                     )
-
-            if len(variant_filenames) == 0 and variant is not None:
-                deprecation_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
-                    "modeling files is deprecated."
-                )
-                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
 
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
