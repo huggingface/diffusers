@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*.*.*"
+      - "v*.*.*-release"
+      - "v*.*.*-patch"
     paths:
       - "src/diffusers/**.py"
       - "examples/**.py"
