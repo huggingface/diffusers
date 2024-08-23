@@ -1,9 +1,11 @@
-name: Slow Tests on main
+name: Fast GPU Tests on main
 
 on:
   push:
     branches:
       - main
+      - "v*.*.*-release"
+      - "v*.*.*-patch"
     paths:
       - "src/diffusers/**.py"
       - "examples/**.py"
