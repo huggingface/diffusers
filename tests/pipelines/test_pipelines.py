@@ -655,7 +655,7 @@ class DownloadTests(unittest.TestCase):
                 out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
                 with tempfile.TemporaryDirectory() as tmpdirname:
-                    pipe.save_pretrained(tmpdirname)
+                    pipe.save_pretrained(tmpdirname, variant=variant, safe_serialization=use_safe)
                     pipe_2 = StableDiffusionPipeline.from_pretrained(
                         tmpdirname, safe_serialization=use_safe, variant=variant
                     )

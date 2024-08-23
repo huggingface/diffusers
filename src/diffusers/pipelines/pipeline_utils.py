@@ -730,7 +730,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if len(variant_filenames) == 0 and variant is not None:
                 error_message = (
                     f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"Available ones are: {model_filenames}."
+                    f" Available ones are: {model_filenames}."
                 )
                 raise ValueError(error_message)
 
@@ -1255,7 +1255,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if len(variant_filenames) == 0 and variant is not None:
                 error_message = (
                     f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"Available ones are: {model_filenames}."
+                    f" Available ones are: {model_filenames}."
                 )
                 raise ValueError(error_message)
 

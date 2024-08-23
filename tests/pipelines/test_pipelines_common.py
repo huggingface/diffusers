@@ -1868,7 +1868,7 @@ class PipelineTesterMixin:
         variant = "fp16"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, variant=variant)
+            pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
 
             with open(f"{tmpdir}/model_index.json", "r") as f:
                 config = json.load(f)
@@ -1884,8 +1884,15 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         variant = "fp16"
 
+        def is_nan(tensor):
+            if tensor.ndimension() == 0:
+                has_nan = torch.isnan(tensor).item()
+            else:
+                has_nan = torch.isnan(tensor).any()
+            return has_nan
+
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, variant=variant)
+            pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
 
             model_components_pipe = {
@@ -1902,7 +1909,9 @@ class PipelineTesterMixin:
                 pipe_component = model_components_pipe[component_name]
                 pipe_loaded_component = model_components_pipe_loaded[component_name]
                 for p1, p2 in zip(pipe_component.parameters(), pipe_loaded_component.parameters()):
-                    self.assertTrue(torch.equal(p1, p2))
+                    # nan check for luminanext (mps).
+                    if not (is_nan(p1) and is_nan(p2)):
+                        self.assertTrue(torch.equal(p1, p2))
 
     def test_loading_with_incorrect_variants_raises_error(self):
         components = self.get_dummy_components()
@@ -1911,7 +1920,7 @@ class PipelineTesterMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Don't save with variants.
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with self.assertRaises(ValueError) as error:
                 _ = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
