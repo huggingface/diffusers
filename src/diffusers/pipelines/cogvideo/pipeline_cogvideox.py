@@ -466,8 +466,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1).unsqueeze(0)
 
         text_embedding_pad = torch.zeros((1, text_seq_length, inner_dim), requires_grad=False)
-        print(grid_height, grid_width, num_frames)
-        print(pos_embedding.shape, text_embedding_pad.shape)
         pos_embedding = torch.cat([text_embedding_pad, pos_embedding], dim=1)
 
         pos_embedding = pos_embedding.to(device=device, dtype=dtype)
