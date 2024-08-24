@@ -43,12 +43,6 @@ def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim:
     return ff_output
 
 
-def _experimental_split_feed_forward(
-    ff: nn.Module, hidden_states: torch.Tensor, split_size: int, split_dim: int
-) -> torch.Tensor:
-    return torch.cat([ff(hs_split) for hs_split in hidden_states.split(split_size, dim=split_dim)], dim=split_dim)
-
-
 @maybe_allow_in_graph
 class GatedSelfAttentionDense(nn.Module):
     r"""
@@ -531,10 +525,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
-            # ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
-            ff_output = _experimental_split_feed_forward(
-                self.ff, norm_hidden_states, self._chunk_size, self._chunk_dim
-            )
+            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)
 
@@ -1124,25 +1115,11 @@ class FreeNoiseTransformerBlock(nn.Module):
             dim=1,
         ).to(dtype)
 
-        # hidden_states = torch.where(
-        #     num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
-        # ).to(dtype)
-
         # 3. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)
 
         if self._chunk_size is not None:
-            # norm_hidden_states = torch.cat([
-            #     self.norm3(hs_split) for hs_split in hidden_states.split(self._chunk_size, self._chunk_dim)
-            # ], dim=self._chunk_dim)
-            # ff_output = torch.cat([
-            #     self.ff(self.norm3(hs_split)) for hs_split in hidden_states.split(self._chunk_size, self._chunk_dim)
-            # ], dim=self._chunk_dim)
-
-            # ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
-            ff_output = _experimental_split_feed_forward(
-                self.ff, norm_hidden_states, self._chunk_size, self._chunk_dim
-            )
+            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             norm_hidden_states = self.norm3(hidden_states)
             ff_output = self.ff(norm_hidden_states)
