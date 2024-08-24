@@ -355,10 +355,24 @@ class AnimateDiffFreeNoiseMixin:
             weighting_scheme (`str`, defaults to `pyramid`):
                 Weighting scheme for averaging latents after accumulation in FreeNoise blocks. The following weighting
                 schemes are supported currently:
+                    - "flat"
+                       Performs weighting averaging with a flat weight pattern: [1, 1, 1, 1, 1].
                     - "pyramid"
-                        Peforms weighted averaging with a pyramid like weight pattern: [1, 2, 3, 2, 1].
+                        Performs weighted averaging with a pyramid like weight pattern: [1, 2, 3, 2, 1].
+                    - "delayed_reverse_sawtooth"
+                        Performs weighted averaging with low weights for earlier frames and high-to-low weights for
+                        later frames: [0.01, 0.01, 3, 2, 1].
             noise_type (`str`, defaults to "shuffle_context"):
-                TODO
+                Must be one of ["shuffle_context", "repeat_context", "random"].
+                    - "shuffle_context"
+                        Shuffles a fixed batch of `context_length` latents to create a final latent of size
+                        `num_frames`. This is usually the best setting for most generation scenarious. However, there
+                        might be visible repetition noticeable in the kinds of motion/animation generated.
+                    - "repeated_context"
+                        Repeats a fixed batch of `context_length` latents to create a final latent of size
+                        `num_frames`.
+                    - "random"
+                        The final latents are random without any repetition.
         """
 
         allowed_weighting_scheme = ["flat", "pyramid", "delayed_reverse_sawtooth"]
@@ -386,6 +400,7 @@ class AnimateDiffFreeNoiseMixin:
             self._enable_free_noise_in_block(block)
 
     def disable_free_noise(self) -> None:
+        r"""Disable the FreeNoise sampling mechanism."""
         self._free_noise_context_length = None
 
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
