@@ -54,6 +54,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
         axes_dims_rope: List[int] = [16, 56, 56],
+        num_mode: int = None,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -100,6 +101,10 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.controlnet_single_blocks = nn.ModuleList([])
         for _ in range(len(self.single_transformer_blocks)):
             self.controlnet_single_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
+
+        self.union = num_mode is not None
+        if self.union:
+            self.controlnet_mode_embedder = nn.Embedding(num_mode, self.inner_dim)
 
         self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
 
@@ -173,8 +178,8 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     def from_transformer(
         cls,
         transformer,
-        num_layers=4,
-        num_single_layers=10,
+        num_layers: int = 4,
+        num_single_layers: int = 10,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         load_weights_from_transformer=True,
@@ -205,6 +210,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self,
         hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
+        controlnet_mode: torch.Tensor = None,
         conditioning_scale: float = 1.0,
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
@@ -221,6 +227,12 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
+            controlnet_cond (`torch.Tensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            controlnet_mode (`torch.Tensor`):
+                The mode tensor of shape `(batch_size, 1)`.
+            conditioning_scale (`float`, defaults to `1.0`):
+                The scale factor for ControlNet outputs.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
@@ -271,6 +283,15 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        if self.union:
+            # union mode
+            if controlnet_mode is None:
+                raise ValueError("`controlnet_mode` cannot be `None` when applying ControlNet-Union")
+            # union mode emb
+            controlnet_mode_emb = self.controlnet_mode_embedder(controlnet_mode)
+            encoder_hidden_states = torch.cat([controlnet_mode_emb, encoder_hidden_states], dim=1)
+            txt_ids = torch.cat([txt_ids[:1], txt_ids], dim=0)
 
         if txt_ids.ndim == 3:
             logger.warning(
@@ -367,7 +388,6 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         controlnet_block_samples = [sample * conditioning_scale for sample in controlnet_block_samples]
         controlnet_single_block_samples = [sample * conditioning_scale for sample in controlnet_single_block_samples]
 
-        #
         controlnet_block_samples = None if len(controlnet_block_samples) == 0 else controlnet_block_samples
         controlnet_single_block_samples = (
             None if len(controlnet_single_block_samples) == 0 else controlnet_single_block_samples
@@ -384,3 +404,114 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             controlnet_block_samples=controlnet_block_samples,
             controlnet_single_block_samples=controlnet_single_block_samples,
         )
+
+
+class FluxMultiControlNetModel(ModelMixin):
+    r"""
+    `FluxMultiControlNetModel` wrapper class for Multi-FluxControlNetModel
+
+    This module is a wrapper for multiple instances of the `FluxControlNetModel`. The `forward()` API is designed to be
+    compatible with `FluxControlNetModel`.
+
+    Args:
+        controlnets (`List[FluxControlNetModel]`):
+            Provides additional conditioning to the unet during the denoising process. You must set multiple
+            `FluxControlNetModel` as a list.
+    """
+
+    def __init__(self, controlnets):
+        super().__init__()
+        self.nets = nn.ModuleList(controlnets)
+
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        controlnet_cond: List[torch.tensor],
+        controlnet_mode: List[torch.tensor],
+        conditioning_scale: List[float],
+        encoder_hidden_states: torch.Tensor = None,
+        pooled_projections: torch.Tensor = None,
+        timestep: torch.LongTensor = None,
+        img_ids: torch.Tensor = None,
+        txt_ids: torch.Tensor = None,
+        guidance: torch.Tensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[FluxControlNetOutput, Tuple]:
+        # ControlNet-Union with multiple conditions
+        # only load one ControlNet for saving memories
+        if len(self.nets) == 1 and self.nets[0].union:
+            controlnet = self.nets[0]
+
+            for i, (image, mode, scale) in enumerate(zip(controlnet_cond, controlnet_mode, conditioning_scale)):
+                block_samples, single_block_samples = controlnet(
+                    hidden_states=hidden_states,
+                    controlnet_cond=image,
+                    controlnet_mode=mode[:, None],
+                    conditioning_scale=scale,
+                    timestep=timestep,
+                    guidance=guidance,
+                    pooled_projections=pooled_projections,
+                    encoder_hidden_states=encoder_hidden_states,
+                    txt_ids=txt_ids,
+                    img_ids=img_ids,
+                    joint_attention_kwargs=joint_attention_kwargs,
+                    return_dict=return_dict,
+                )
+
+                # merge samples
+                if i == 0:
+                    control_block_samples = block_samples
+                    control_single_block_samples = single_block_samples
+                else:
+                    control_block_samples = [
+                        control_block_sample + block_sample
+                        for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                    ]
+
+                    control_single_block_samples = [
+                        control_single_block_sample + block_sample
+                        for control_single_block_sample, block_sample in zip(
+                            control_single_block_samples, single_block_samples
+                        )
+                    ]
+
+        # Regular Multi-ControlNets
+        # load all ControlNets into memories
+        else:
+            for i, (image, mode, scale, controlnet) in enumerate(
+                zip(controlnet_cond, controlnet_mode, conditioning_scale, self.nets)
+            ):
+                block_samples, single_block_samples = controlnet(
+                    hidden_states=hidden_states,
+                    controlnet_cond=image,
+                    controlnet_mode=mode[:, None],
+                    conditioning_scale=scale,
+                    timestep=timestep,
+                    guidance=guidance,
+                    pooled_projections=pooled_projections,
+                    encoder_hidden_states=encoder_hidden_states,
+                    txt_ids=txt_ids,
+                    img_ids=img_ids,
+                    joint_attention_kwargs=joint_attention_kwargs,
+                    return_dict=return_dict,
+                )
+
+                # merge samples
+                if i == 0:
+                    control_block_samples = block_samples
+                    control_single_block_samples = single_block_samples
+                else:
+                    control_block_samples = [
+                        control_block_sample + block_sample
+                        for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                    ]
+
+                    control_single_block_samples = [
+                        control_single_block_sample + block_sample
+                        for control_single_block_sample, block_sample in zip(
+                            control_single_block_samples, single_block_samples
+                        )
+                    ]
+
+        return control_block_samples, control_single_block_samples
