@@ -904,7 +904,6 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         image_latent = original_image_latents
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # i increases, t decreases
                 if self.interrupt:
                     continue
 
