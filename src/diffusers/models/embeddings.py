@@ -416,17 +416,27 @@ def get_3d_rotary_pos_embed(
 
     # BroadCast and concatenate temporal and spaial frequencie (height and width) into a 3d tensor
     def combine_time_height_width(freqs_t, freqs_h, freqs_w):
-        freqs_t = freqs_t[:, None, None, :].repeat(1, grid_size_h, grid_size_w, 1)
-        freqs_h = freqs_h[None, :, None, :].repeat(temporal_size, 1, grid_size_w, 1)
-        freqs_w = freqs_w[None, None, :, :].repeat(temporal_size, grid_size_h, 1, 1)
+        freqs_t = freqs_t[:, None, None, :].expand(
+            -1, grid_size_h, grid_size_w, -1
+        )  # temporal_size, grid_size_h, grid_size_w, dim_t
+        freqs_h = freqs_h[None, :, None, :].expand(
+            temporal_size, -1, grid_size_w, -1
+        )  # temporal_size, grid_size_h, grid_size_2, dim_h
+        freqs_w = freqs_w[None, None, :, :].expand(
+            temporal_size, grid_size_h, -1, -1
+        )  # temporal_size, grid_size_h, grid_size_2, dim_w
 
-        freqs = torch.cat([freqs_t, freqs_h, freqs_w], dim=-1)
-        freqs = freqs.view(temporal_size * grid_size_h * grid_size_w, -1)
+        freqs = torch.cat(
+            [freqs_t, freqs_h, freqs_w], dim=-1
+        )  # temporal_size, grid_size_h, grid_size_w, (dim_t + dim_h + dim_w)
+        freqs = freqs.view(
+            temporal_size * grid_size_h * grid_size_w, -1
+        )  # (temporal_size * grid_size_h * grid_size_w), (dim_t + dim_h + dim_w)
         return freqs
 
-    t_cos, t_sin = freqs_t
-    h_cos, h_sin = freqs_h
-    w_cos, w_sin = freqs_w
+    t_cos, t_sin = freqs_t  # both t_cos and t_sin has shape: temporal_size, dim_t
+    h_cos, h_sin = freqs_h  # both h_cos and h_sin has shape: grid_size_h, dim_h
+    w_cos, w_sin = freqs_w  # both w_cos and w_sin has shape: grid_size_w, dim_w
     cos = combine_time_height_width(t_cos, h_cos, w_cos)
     sin = combine_time_height_width(t_sin, h_sin, w_sin)
     return cos, sin
