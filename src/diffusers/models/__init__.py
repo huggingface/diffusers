@@ -88,7 +88,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .controlnet import ControlNetModel
-        from .controlnet_flux import FluxControlNetModel
+        from .controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
         from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
         from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
         from .controlnet_sparsectrl import SparseControlNetModel
