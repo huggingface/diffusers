@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
+from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
 from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -37,13 +38,20 @@ class CogVideoXBlock(nn.Module):
     Transformer block used in [CogVideoX](https://github.com/THUDM/CogVideo) model.
 
     Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        time_embed_dim (`int`):
+            The number of channels in timestep embedding.
+        dropout (`float`, defaults to `0.0`):
+            The dropout probability to use.
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
+            Activation function to be used in feed-forward.
+        attention_bias (`bool`, defaults to `False`):
+            Whether or not to use bias in attention projection layers.
         qk_norm (`bool`, defaults to `True`):
             Whether or not to use normalization after query and key projections in Attention.
         norm_elementwise_affine (`bool`, defaults to `True`):
@@ -90,6 +98,7 @@ class CogVideoXBlock(nn.Module):
             eps=1e-6,
             bias=attention_bias,
             out_bias=attention_out_bias,
+            processor=CogVideoXAttnProcessor2_0(),
         )
 
         # 2. Feed Forward
@@ -109,24 +118,24 @@ class CogVideoXBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
+        text_seq_length = encoder_hidden_states.size(1)
+
+        # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
 
         # attention
-        text_length = norm_encoder_hidden_states.size(1)
-
-        # CogVideoX uses concatenated text + video embeddings with self-attention instead of using
-        # them in cross-attention individually
-        norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
-        attn_output = self.attn1(
+        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
-            encoder_hidden_states=None,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            image_rotary_emb=image_rotary_emb,
         )
 
-        hidden_states = hidden_states + gate_msa * attn_output[:, text_length:]
-        encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_output[:, :text_length]
+        hidden_states = hidden_states + gate_msa * attn_hidden_states
+        encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
@@ -137,8 +146,9 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        hidden_states = hidden_states + gate_ff * ff_output[:, text_length:]
-        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_length]
+        hidden_states = hidden_states + gate_ff * ff_output[:, text_seq_length:]
+        encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_seq_length]
+
         return hidden_states, encoder_hidden_states
 
 
@@ -147,36 +157,53 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
     Parameters:
-        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
-        in_channels (`int`, *optional*):
+        num_attention_heads (`int`, defaults to `30`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `64`):
+            The number of channels in each head.
+        in_channels (`int`, defaults to `16`):
             The number of channels in the input.
-        out_channels (`int`, *optional*):
+        out_channels (`int`, *optional*, defaults to `16`):
             The number of channels in the output.
-        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
-        patch_size (`int`, *optional*):
+        flip_sin_to_cos (`bool`, defaults to `True`):
+            Whether to flip the sin to cos in the time embedding.
+        time_embed_dim (`int`, defaults to `512`):
+            Output dimension of timestep embeddings.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        num_layers (`int`, defaults to `30`):
+            The number of layers of Transformer blocks to use.
+        dropout (`float`, defaults to `0.0`):
+            The dropout probability to use.
+        attention_bias (`bool`, defaults to `True`):
+            Whether or not to use bias in the attention projection layers.
+        sample_width (`int`, defaults to `90`):
+            The width of the input latents.
+        sample_height (`int`, defaults to `60`):
+            The height of the input latents.
+        sample_frames (`int`, defaults to `49`):
+            The number of frames in the input latents. Note that this parameter was incorrectly initialized to 49
+            instead of 13 because CogVideoX processed 13 latent frames at once in its default and recommended settings,
+            but cannot be changed to the correct value to ensure backwards compatibility. To create a transformer with
+            K latent frames, the correct value to pass here would be: ((K - 1) * temporal_compression_ratio + 1).
+        patch_size (`int`, defaults to `2`):
             The size of the patches to use in the patch embedding layer.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*):
-            The number of diffusion steps used during training. Pass if at least one of the norm_layers is
-            `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
-            added to the hidden states. During inference, you can denoise for up to but not more steps than
-            `num_embeds_ada_norm`.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The type of normalization to use. Options are `"layer_norm"` or `"ada_layer_norm"`.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+        temporal_compression_ratio (`int`, defaults to `4`):
+            The compression ratio across the temporal dimension. See documentation for `sample_frames`.
+        max_text_seq_length (`int`, defaults to `226`):
+            The maximum sequence length of the input text embeddings.
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
+            Activation function to use in feed-forward.
+        timestep_activation_fn (`str`, defaults to `"silu"`):
+            Activation function to use when generating the timestep embeddings.
+        norm_elementwise_affine (`bool`, defaults to `True`):
             Whether or not to use elementwise affine in normalization layers.
-        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use in normalization layers.
-        caption_channels (`int`, *optional*):
-            The number of channels in the caption embeddings.
-        video_length (`int`, *optional*):
-            The number of frames in the video-like data.
+        norm_eps (`float`, defaults to `1e-5`):
+            The epsilon value to use in normalization layers.
+        spatial_interpolation_scale (`float`, defaults to `1.875`):
+            Scaling factor to apply in 3D positional embeddings across spatial dimensions.
+        temporal_interpolation_scale (`float`, defaults to `1.0`):
+            Scaling factor to apply in 3D positional embeddings across temporal dimensions.
     """
 
     _supports_gradient_checkpointing = True
@@ -186,7 +213,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self,
         num_attention_heads: int = 30,
         attention_head_dim: int = 64,
-        in_channels: Optional[int] = 16,
+        in_channels: int = 16,
         out_channels: Optional[int] = 16,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
@@ -207,6 +234,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
+        use_rotary_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -271,12 +299,113 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
 
+    @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedCogVideoXAttnProcessor2_0
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+        self.set_attn_processor(FusedCogVideoXAttnProcessor2_0())
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -295,16 +424,18 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
 
         # 3. Position embedding
-        seq_length = height * width * num_frames // (self.config.patch_size**2)
+        text_seq_length = encoder_hidden_states.shape[1]
+        if not self.config.use_rotary_positional_embeddings:
+            seq_length = height * width * num_frames // (self.config.patch_size**2)
 
-        pos_embeds = self.pos_embedding[:, : self.config.max_text_seq_length + seq_length]
-        hidden_states = hidden_states + pos_embeds
-        hidden_states = self.embedding_dropout(hidden_states)
+            pos_embeds = self.pos_embedding[:, : text_seq_length + seq_length]
+            hidden_states = hidden_states + pos_embeds
+            hidden_states = self.embedding_dropout(hidden_states)
 
-        encoder_hidden_states = hidden_states[:, : self.config.max_text_seq_length]
-        hidden_states = hidden_states[:, self.config.max_text_seq_length :]
+        encoder_hidden_states = hidden_states[:, :text_seq_length]
+        hidden_states = hidden_states[:, text_seq_length:]
 
-        # 5. Transformer blocks
+        # 4. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -320,6 +451,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states,
                     encoder_hidden_states,
                     emb,
+                    image_rotary_emb,
                     **ckpt_kwargs,
                 )
             else:
@@ -327,15 +459,23 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
-        hidden_states = self.norm_final(hidden_states)
+        if not self.config.use_rotary_positional_embeddings:
+            # CogVideoX-2B
+            hidden_states = self.norm_final(hidden_states)
+        else:
+            # CogVideoX-5B
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+            hidden_states = self.norm_final(hidden_states)
+            hidden_states = hidden_states[:, text_seq_length:]
 
-        # 6. Final block
+        # 5. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
-        # 7. Unpatchify
+        # 6. Unpatchify
         p = self.config.patch_size
         output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
