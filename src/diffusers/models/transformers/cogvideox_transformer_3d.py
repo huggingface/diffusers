@@ -408,7 +408,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 3. Position embedding
         text_seq_length = encoder_hidden_states.shape[1]
-        if not self.config.use_rotary_positional_embeddings:
+        if not self.config.use_rotary_positional_embeddings and positional_emb is not None:
             video_seq_length = height * width * num_frames // (self.config.patch_size**2)
             pos_embeds = positional_emb[:, : text_seq_length + video_seq_length]
             hidden_states = hidden_states + pos_embeds
