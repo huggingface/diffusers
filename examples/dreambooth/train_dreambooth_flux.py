@@ -936,12 +936,13 @@ def encode_prompt(
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
     dtype = text_encoders[0].dtype
+    device = if device is not None else text_encoders[1].device
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
         tokenizer=tokenizers[0],
         prompt=prompt,
-        device=device if device is not None else text_encoders[0].device,
+        device=device,
         num_images_per_prompt=num_images_per_prompt,
     )
 
@@ -951,7 +952,7 @@ def encode_prompt(
         max_sequence_length=max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        device=device if device is not None else text_encoders[1].device,
+        device=device,
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
