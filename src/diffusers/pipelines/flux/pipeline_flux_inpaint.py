@@ -16,6 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
@@ -408,8 +409,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         return image_latents
 
-    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self, timesteps, num_inference_steps, strength, device):
+    def get_timesteps(self, timesteps, num_inference_steps, strength):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
@@ -424,12 +424,16 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self,
         prompt,
         prompt_2,
+        image,
+        mask_image,
         strength,
         height,
         width,
+        output_type,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
         max_sequence_length=None,
     ):
         if strength < 0 or strength > 1:
@@ -468,6 +472,19 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
             )
+
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
@@ -758,12 +775,16 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self.check_inputs(
             prompt,
             prompt_2,
+            image,
+            mask_image,
             strength,
             height,
             width,
+            output_type=output_type,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            padding_mask_crop=padding_mask_crop,
             max_sequence_length=max_sequence_length,
         )
 
@@ -832,7 +853,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             sigmas,
             mu=mu,
         )
-        timesteps, num_inference_steps = self.get_timesteps(timesteps, num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(timesteps, num_inference_steps, strength)
 
         if num_inference_steps < 1:
             raise ValueError(
@@ -894,6 +915,12 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             2 * (int(width) // self.vae_scale_factor),
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        # handle guidance
+        if self.transformer.config.guidance_embeds:
+            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+            guidance = guidance.expand(latents.shape[0])
+        else:
+            guidance = None
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -903,17 +930,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-
-                if num_channels_transformer == 132:
-                    latents = torch.cat([latents, mask, masked_image_latents], dim=1)
-
-                # handle guidance
-                if self.transformer.config.guidance_embeds:
-                    guidance = torch.tensor([guidance_scale], device=device)
-                    guidance = guidance.expand(latents.shape[0])
-                else:
-                    guidance = None
-
                 noise_pred = self.transformer(
                     hidden_states=latents,
                     # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transformer model (we should not keep it but I want to keep the inputs same for the model for testing)
