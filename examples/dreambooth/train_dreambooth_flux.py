@@ -936,7 +936,7 @@ def encode_prompt(
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
     dtype = text_encoders[0].dtype
-    device = if device is not None else text_encoders[1].device
+    device = device if device is not None else text_encoders[1].device
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
         text_encoder=text_encoders[0],
