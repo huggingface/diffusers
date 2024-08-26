@@ -1,13 +1,10 @@
-name: Fast GPU Tests on main
+name: (Release) Fast GPU Tests on main
 
 on:
   push:
     branches:
-      - main
-    paths:
-      - "src/diffusers/**.py"
-      - "examples/**.py"
-      - "tests/**.py"
+      - "v*.*.*-release"
+      - "v*.*.*-patch"
 
 env:
   DIFFUSERS_IS_CI: yes
