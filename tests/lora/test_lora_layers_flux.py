@@ -12,19 +12,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import sys
+import tempfile
 import unittest
 
+import numpy as np
+import safetensors.torch
 import torch
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend, torch_device
 
+
+if is_peft_available():
+    from peft.utils import get_peft_model_state_dict
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend
@@ -90,3 +97,51 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipeline_inputs.update({"generator": generator})
 
         return noise, input_ids, pipeline_inputs
+
+    def test_with_alpha_in_state_dict(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == self.output_shape)
+
+        pipe.transformer.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            pipe.unload_lora_weights()
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            # modify the state dict to have alpha values following
+            # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA/blob/main/jon_snow.safetensors
+            state_dict_with_alpha = safetensors.torch.load_file(
+                os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")
+            )
+            alpha_dict = {}
+            for k, v in state_dict_with_alpha.items():
+                # only do for `transformer` and for the k projections -- should be enough to test.
+                if "transformer" in k and "to_k" in k and "lora_A" in k:
+                    alpha_dict[f"{k}.alpha"] = float(torch.randint(10, 100, size=()))
+            state_dict_with_alpha.update(alpha_dict)
+
+        images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
+
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(state_dict_with_alpha)
+        images_lora_with_alpha = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
+        self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
