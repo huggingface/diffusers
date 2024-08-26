@@ -30,7 +30,12 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    to_np,
+)
 
 
 enable_full_determinism()
@@ -125,11 +130,6 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             # Cannot reduce because convolution kernel becomes bigger than sample
             "height": 16,
             "width": 16,
-            # TODO(aryan): improve this
-            # Cannot make this lower due to assert condition in pipeline at the moment.
-            # The reason why 8 can't be used here is due to how context-parallel cache works where the first
-            # second of video is decoded from latent frames (0, 3) instead of [(0, 2), (2, 3)]. If 8 is used,
-            # the number of output frames that you get are 5.
             "num_frames": 8,
             "max_sequence_length": 16,
             "output_type": "pt",
@@ -148,8 +148,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
+        self.assertEqual(generated_video.shape, (8, 3, 16, 16))
+        expected_video = torch.randn(8, 3, 16, 16)
         max_diff = np.abs(generated_video - expected_video).max()
         self.assertLessEqual(max_diff, 1e10)
 
@@ -249,6 +249,78 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
+
+    def test_vae_tiling(self, expected_diff_max: float = 0.2):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe.to("cpu")
+        pipe.set_progress_bar_config(disable=None)
+
+        # Without tiling
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_without_tiling = pipe(**inputs)[0]
+
+        # With tiling
+        pipe.vae.enable_tiling(
+            tile_sample_min_height=96,
+            tile_sample_min_width=96,
+            tile_overlap_factor_height=1 / 12,
+            tile_overlap_factor_width=1 / 12,
+        )
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["height"] = inputs["width"] = 128
+        output_with_tiling = pipe(**inputs)[0]
+
+        self.assertLess(
+            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
+            expected_diff_max,
+            "VAE tiling should not affect the inference results",
+        )
+
+    @unittest.skip("xformers attention processor does not exist for CogVideoX")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass
+
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames  # [B, F, C, H, W]
+        original_image_slice = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
 
 
 @slow
