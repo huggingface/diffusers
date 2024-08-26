@@ -1597,6 +1597,7 @@ def main(args):
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
+                # upscaling height & width as discussed in https://github.com/huggingface/diffusers/pull/9257#discussion_r1731108042
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
                     height=int(model_input.shape[2] * vae_scale_factor / 2),
