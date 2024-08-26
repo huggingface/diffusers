@@ -463,7 +463,6 @@ class CogVideoXPipeline(DiffusionPipeline):
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
             temporal_size=num_frames,
-            use_real=True,
         )
 
         freqs_cos = freqs_cos.to(device=device)
