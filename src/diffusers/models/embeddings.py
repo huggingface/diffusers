@@ -416,6 +416,14 @@ class CogVideoXPatchEmbed(nn.Module):
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
 
         if self.use_positional_embeddings:
+            if embeds.size(1) > self.pos_embedding.size(1):
+                raise ValueError(
+                    "You are trying to generate at a resolution, or higher number of frames, or longer maximum prompt "
+                    "sequence length than what is supported in the `CogVideoXTransformer3D` model. In order to generate "
+                    "at the resolution/num_frames you desire, configure the transformer initialization attributes "
+                    "`sample_height`, `sample_width`, `sample_frames` and `max_text_seq_length` appropriately when "
+                    "initializing your model either with `.from_pretrained(...)` or `.from_config(...)`"
+                )
             embeds = embeds + self.pos_embedding[:, : embeds.size(1)]
 
         return embeds
