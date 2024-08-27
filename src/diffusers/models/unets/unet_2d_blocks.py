@@ -49,6 +49,7 @@ def get_down_block(
     add_downsample: bool,
     resnet_eps: float,
     resnet_act_fn: str,
+    ff_act_fn: str = "geglu",
     transformer_layers_per_block: int = 1,
     num_attention_heads: Optional[int] = None,
     resnet_groups: Optional[int] = None,
@@ -136,6 +137,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            ff_act_fn=ff_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
@@ -1158,6 +1160,7 @@ class CrossAttnDownBlock2D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
+        ff_act_fn: str = "geglu",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
@@ -1209,6 +1212,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        activation_fn=ff_act_fn,
                     )
                 )
             else:
