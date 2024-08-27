@@ -1104,15 +1104,8 @@ class FreeNoiseTransformerBlock(nn.Module):
                 accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
                 num_times_accumulated[:, frame_start:frame_end] += weights
 
-        hidden_states = torch.cat(
-            [
-                torch.where(num_times_split > 0, accumulated_split / num_times_split, accumulated_split)
-                for accumulated_split, num_times_split in zip(
-                    accumulated_values.split(self.context_length, dim=1),
-                    num_times_accumulated.split(self.context_length, dim=1),
-                )
-            ],
-            dim=1,
+        hidden_states = torch.where(
+            num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
         ).to(dtype)
 
         # 3. Feed-forward
