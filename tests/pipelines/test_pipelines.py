@@ -551,6 +551,29 @@ class DownloadTests(unittest.TestCase):
                 assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
                 assert not any(f.endswith(other_format) for f in files)
 
+    def test_download_variants_with_sharded_checkpoints(self):
+        # Here we test for downloading of "variant" files belonging to the `unet` and
+        # the `text_encoder`. Their checkpoints can be sharded.
+        for use_safetensors in [True, False]:
+            for variant in ["fp16", None]:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    tmpdirname = DiffusionPipeline.download(
+                        "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds",
+                        safety_checker=None,
+                        cache_dir=tmpdirname,
+                        variant=variant,
+                        use_safetensors=use_safetensors,
+                    )
+
+                    all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                    files = [item for sublist in all_root_files for item in sublist]
+
+                    # Check for `model_ext` and `variant`.
+                    model_ext = ".safetensors" if use_safetensors else ".bin"
+                    unexpected_ext = ".bin" if use_safetensors else ".safetensors"
+                    assert not any(f.endswith(unexpected_ext) for f in files)
+                    assert all(variant in f for f in files if f.endswith(model_ext) and variant is not None)
+
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = True
