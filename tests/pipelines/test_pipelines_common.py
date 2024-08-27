@@ -340,12 +340,16 @@ class IPAdapterTesterMixin:
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([0.0, 0.0])
         output_without_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with multi ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([42.0, 42.0])
         output_with_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
         max_diff_without_multi_adapter_scale = np.abs(
             output_without_multi_adapter_scale - output_without_adapter
