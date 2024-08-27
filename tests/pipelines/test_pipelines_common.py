@@ -1,10 +1,7 @@
-import contextlib
 import gc
 import inspect
-import io
 import json
 import os
-import re
 import tempfile
 import unittest
 import uuid
@@ -276,7 +273,15 @@ class IPAdapterTesterMixin:
         inputs["return_dict"] = False
         return inputs
 
-    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+    def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+        r"""Tests for IP-Adapter.
+
+        The following scenarios are test:
+          - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Single IP-Adapter with scale!=0 should produce different output as no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output as no IP-Adapter.
+        """
         # Raising the tolerance for this test when it's run on a CPU because we
         # compare against static slices and that can be shaky (with a VVVV low probability).
         expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
@@ -293,6 +298,7 @@ class IPAdapterTesterMixin:
         else:
             output_without_adapter = expected_pipe_slice
 
+        # 1. Single IP-Adapter test cases
         adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
 
@@ -324,16 +330,7 @@ class IPAdapterTesterMixin:
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
         )
 
-    def test_ip_adapter_multi(self, expected_max_diff: float = 1e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
-
-        # forward pass without ip adapter
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
-        output_without_adapter = pipe(**inputs)[0]
-
+        # 2. Multi IP-Adapter test cases
         adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
         adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
