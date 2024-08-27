@@ -1444,7 +1444,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # download all allow_patterns - ignore_patterns
         try:
-            # print(f"{sorted(allow_patterns)=}")
             cached_folder = snapshot_download(
                 pretrained_model_name,
                 cache_dir=cache_dir,
