@@ -554,6 +554,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetXSAdapter,
             DiTTransformer2DModel,
             FluxControlNetModel,
+            FluxMultiControlNetModel,
             FluxTransformer2DModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
