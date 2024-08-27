@@ -37,7 +37,7 @@ Both checkpoints have slightly difference usage which we detail below.
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
@@ -61,7 +61,7 @@ out.save("image.png")
 
 ```python
 import torch
-from diffusers import  FluxPipeline
+from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
@@ -75,6 +75,87 @@ out = pipe(
     num_inference_steps=50,
 ).images[0]
 out.save("image.png")
+```
+
+## Running FP16 inference
+Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
+
+FP16 inference code:
+```python
+import torch
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16) # can replace schnell with dev
+# to run on low vram GPUs (i.e. between 4 and 32 GB VRAM)
+pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+
+pipe.to(torch.float16) # casting here instead of in the pipeline constructor because doing so in the constructor loads all models into CPU memory at once
+
+prompt = "A cat holding a sign that says hello world"
+out = pipe(
+    prompt=prompt,
+    guidance_scale=0.,
+    height=768,
+    width=1360,
+    num_inference_steps=4,
+    max_sequence_length=256,
+).images[0]
+out.save("image.png")
+```
+
+## Single File Loading for the `FluxTransformer2DModel`
+
+The `FluxTransformer2DModel` supports loading checkpoints in the original format shipped by Black Forest Labs. This is also useful when trying to load finetunes or quantized versions of the models that have been published by the community.
+
+<Tip>
+`FP8` inference can be brittle depending on the GPU type, CUDA version, and `torch` version that you are using. It is recommended that you use the `optimum-quanto` library in order to run FP8 inference on your machine.
+</Tip>
+
+The following example demonstrates how to run Flux with less than 16GB of VRAM.
+
+First install `optimum-quanto`
+
+```shell
+pip install optimum-quanto
+```
+
+Then run the following example
+
+```python
+import torch
+from diffusers import FluxTransformer2DModel, FluxPipeline
+from transformers import T5EncoderModel, CLIPTextModel
+from optimum.quanto import freeze, qfloat8, quantize
+
+bfl_repo = "black-forest-labs/FLUX.1-dev"
+dtype = torch.bfloat16
+
+transformer = FluxTransformer2DModel.from_single_file("https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=dtype)
+quantize(transformer, weights=qfloat8)
+freeze(transformer)
+
+text_encoder_2 = T5EncoderModel.from_pretrained(bfl_repo, subfolder="text_encoder_2", torch_dtype=dtype)
+quantize(text_encoder_2, weights=qfloat8)
+freeze(text_encoder_2)
+
+pipe = FluxPipeline.from_pretrained(bfl_repo, transformer=None, text_encoder_2=None, torch_dtype=dtype)
+pipe.transformer = transformer
+pipe.text_encoder_2 = text_encoder_2
+
+pipe.enable_model_cpu_offload()
+
+prompt = "A cat holding a sign that says hello world"
+image = pipe(
+    prompt,
+    guidance_scale=3.5,
+    output_type="pil",
+    num_inference_steps=20,
+    generator=torch.Generator("cpu").manual_seed(0)
+).images[0]
+
+image.save("flux-fp8-dev.png")
 ```
 
 ## FluxPipeline

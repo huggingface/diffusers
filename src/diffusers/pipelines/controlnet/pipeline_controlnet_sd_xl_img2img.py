@@ -76,13 +76,13 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> from PIL import Image
 
-        >>> from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+        >>> from transformers import DPTImageProcessor, DPTForDepthEstimation
         >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
         >>> from diffusers.utils import load_image
 
 
         >>> depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
-        >>> feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+        >>> feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "diffusers/controlnet-depth-sdxl-1.0-small",
         ...     variant="fp16",
@@ -1538,7 +1538,6 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
