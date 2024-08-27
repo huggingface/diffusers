@@ -9,10 +9,9 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements -
 > a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
 
-> For more tips & guidance on training on a resource-constrained device please check out these great guides and trainers for FLUX: 
+> For more tips & guidance on training on a resource-constrained device and general good practices please check out these great guides and trainers for FLUX: 
 > 1) [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
-> 2) [`ostris`'s guide](https://github.com/ostris/ai-toolkit?tab=readme-ov-file#flux1-training) 
-
+> 2) [`ostris`'s guide](https://github.com/ostris/ai-toolkit?tab=readme-ov-file#flux1-training)
 
 > [!NOTE]
 > **Gated model**
@@ -210,9 +209,15 @@ accelerate launch train_dreambooth_lora_flux.py \
 ```
 
 ## Memory Optimizations
+As mentioned, Flux Dreambooth LoRA training is very memory intensive Here are some options(some still experimental) for a more memory efficient training.  
 ### 8-bit-Adam Optimizer
+When training with `AdamW`(doesnt apply to `prodigy`) You can pass `--use_8bit_adam` to reduce the memory requirements of training. 
+Make sure to install `bitsandbytes` if you want to do so.
 ### latent caching
+When training w/o validation runs, we can pre-encode the training images with the vae, and then delete it to free up some memory. 
+to enable `latent_caching`, first, use the version in [this PR](https://github.com/huggingface/diffusers/blob/1b195933d04e4c8281a2634128c0d2d380893f73/examples/dreambooth/train_dreambooth_lora_flux.py), and then pass `--cache_latents`
 ### FP8 training 
-
+This is still highly experimental as it may not work for all hardware, but you can try FP8 precision training by following the steps 
+[here](https://gist.github.com/sayakpaul/f0358dd4f4bcedf14211eba5704df25a).
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️
