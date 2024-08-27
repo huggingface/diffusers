@@ -147,46 +147,29 @@ class SDFunctionTesterMixin:
                 zeros = torch.zeros(shape).to(torch_device)
                 pipe.vae.decode(zeros)
 
-    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    # MPS currently doesn't support ComplexFloats, which are required for FreeU - see https://github.com/huggingface/diffusers/issues/7569.
     @skip_mps
-    def test_freeu_enabled(self):
+    def test_freeu(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        # Normal inference
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output = pipe(**inputs)[0]
 
+        # FreeU-enabled inference
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output_freeu = pipe(**inputs)[0]
 
-        assert not np.allclose(
-            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
-        ), "Enabling of FreeU should lead to different results."
-
-    def test_freeu_disabled(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["return_dict"] = False
-        inputs["output_type"] = "np"
-
-        output = pipe(**inputs)[0]
-
-        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        # FreeU-disabled inference
         pipe.disable_freeu()
-
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for upsample_block in pipe.unet.up_blocks:
             for key in freeu_keys:
@@ -195,8 +178,11 @@ class SDFunctionTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output_no_freeu = pipe(**inputs)[0]
+
+        assert not np.allclose(
+            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
+        ), "Enabling of FreeU should lead to different results."
         assert np.allclose(
             output, output_no_freeu, atol=1e-2
         ), f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
