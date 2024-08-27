@@ -279,8 +279,8 @@ class IPAdapterTesterMixin:
         The following scenarios are tested:
           - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
           - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
-          - Single IP-Adapter with scale!=0 should produce different output as no IP-Adapter.
-          - Multi IP-Adapter with scale!=0 should produce different output as no IP-Adapter.
+          - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
         """
         # Raising the tolerance for this test when it's run on a CPU because we
         # compare against static slices and that can be shaky (with a VVVV low probability).
