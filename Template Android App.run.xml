@@ -1,0 +1,65 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="true" type="AndroidRunConfigurationType" factoryName="Android App">
+    <option name="DEPLOY" value="true" />
+    <option name="DEPLOY_APK_FROM_BUNDLE" value="false" />
+    <option name="DEPLOY_AS_INSTANT" value="false" />
+    <option name="ARTIFACT_NAME" value="" />
+    <option name="PM_INSTALL_OPTIONS" value="" />
+    <option name="ALL_USERS" value="true" />
+    <option name="ALWAYS_INSTALL_WITH_PM" value="true" />
+    <option name="CLEAR_APP_STORAGE" value="true" />
+    <option name="DYNAMIC_FEATURES_DISABLED_LIST" value="" />
+    <option name="ACTIVITY_EXTRA_FLAGS" value="" />
+    <option name="MODE" value="default_activity" />
+    <option name="CLEAR_LOGCAT" value="false" />
+    <option name="SHOW_LOGCAT_AUTOMATICALLY" value="false" />
+    <option name="TARGET_SELECTION_MODE" value="SHOW_DIALOG" />
+    <option name="SELECTED_CLOUD_MATRIX_CONFIGURATION_ID" value="-1" />
+    <option name="SELECTED_CLOUD_MATRIX_PROJECT_ID" value="" />
+    <option name="DEBUGGER_TYPE" value="Auto" />
+    <Auto>
+      <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+      <option name="SHOW_STATIC_VARS" value="true" />
+      <option name="WORKING_DIR" value="" />
+      <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+      <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+      <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      <option name="DEBUG_SANDBOX_SDK" value="false" />
+    </Auto>
+    <Hybrid>
+      <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+      <option name="SHOW_STATIC_VARS" value="true" />
+      <option name="WORKING_DIR" value="" />
+      <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+      <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+      <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      <option name="DEBUG_SANDBOX_SDK" value="false" />
+    </Hybrid>
+    <Java>
+      <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      <option name="DEBUG_SANDBOX_SDK" value="false" />
+    </Java>
+    <Native>
+      <option name="USE_JAVA_AWARE_DEBUGGER" value="false" />
+      <option name="SHOW_STATIC_VARS" value="true" />
+      <option name="WORKING_DIR" value="" />
+      <option name="TARGET_LOGGING_CHANNELS" value="lldb process:gdb-remote packets" />
+      <option name="SHOW_OPTIMIZED_WARNING" value="true" />
+      <option name="ATTACH_ON_WAIT_FOR_DEBUGGER" value="false" />
+      <option name="DEBUG_SANDBOX_SDK" value="false" />
+    </Native>
+    <Profilers>
+      <option name="ADVANCED_PROFILING_ENABLED" value="false" />
+      <option name="STARTUP_PROFILING_ENABLED" value="false" />
+      <option name="STARTUP_CPU_PROFILING_ENABLED" value="false" />
+      <option name="STARTUP_CPU_PROFILING_CONFIGURATION_NAME" value="Java/Kotlin Method Sample (legacy)" />
+      <option name="STARTUP_NATIVE_MEMORY_PROFILING_ENABLED" value="false" />
+      <option name="NATIVE_MEMORY_SAMPLE_RATE_BYTES" value="2048" />
+    </Profilers>
+    <option name="DEEP_LINK" value="" />
+    <option name="ACTIVITY_CLASS" value="" />
+    <option name="SEARCH_ACTIVITY_IN_GLOBAL_SCOPE" value="false" />
+    <option name="SKIP_ACTIVITY_VALIDATION" value="false" />
+    <method v="2" />
+  </configuration>
+</component>
