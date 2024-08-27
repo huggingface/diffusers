@@ -276,7 +276,7 @@ class IPAdapterTesterMixin:
     def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
         r"""Tests for IP-Adapter.
 
-        The following scenarios are test:
+        The following scenarios are tested:
           - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
           - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
           - Single IP-Adapter with scale!=0 should produce different output as no IP-Adapter.
