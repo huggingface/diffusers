@@ -31,6 +31,7 @@ from ..utils import (
     scale_lora_layers,
 )
 from .lora_base import LoraBaseMixin
+from ..utils.torch_utils import is_compiled_module
 from .lora_conversion_utils import _convert_non_diffusers_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
 
 
@@ -1733,6 +1734,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
             inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
+            if is_compiled_module(transformer):
+                state_dict = {"_orig_mod." + k: v for k, v in state_dict.items()}
             incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
 
             if incompatible_keys is not None:
