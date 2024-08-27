@@ -8,7 +8,10 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 >
 > Flux can be quite expensive to run on consumer hardware devices and as a result finetuning it comes with high memory requirements -
 > a LoRA with a rank of 16 (w/ all components trained) can exceed 40GB of VRAM for training.
-> For more tips & guidance on training on a resource-constrained device please visit [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
+
+> For more tips & guidance on training on a resource-constrained device please check out these great guides and trainers for FLUX: 
+> 1) [`@bghira`'s guide](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
+> 2) [`ostris`'s guide](https://github.com/ostris/ai-toolkit?tab=readme-ov-file#flux1-training) 
 
 
 > [!NOTE]
@@ -100,6 +103,7 @@ accelerate launch train_dreambooth_flux.py \
   --instance_prompt="a photo of sks dog" \
   --resolution=1024 \
   --train_batch_size=1 \
+  --guidance_scale=1 \
   --gradient_accumulation_steps=4 \
   --learning_rate=1e-4 \
   --report_to="wandb" \
@@ -120,14 +124,22 @@ To better track our training experiments, we're using the following flags in the
 > [!NOTE]
 > If you want to train using long prompts with the T5 text encoder, you can use `--max_sequence_length` to set the token limit. The default is 77, but it can be increased to as high as 512. Note that this will use more resources and may slow down the training in some cases.
 
-> [!TIP]
-> You can pass `--use_8bit_adam` to reduce the memory requirements of training. Make sure to install `bitsandbytes` if you want to do so.
-
 ## LoRA + DreamBooth
 
 [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a popular parameter-efficient fine-tuning technique that allows you to achieve full-finetuning like performance but with a fraction of learnable parameters.
 
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+
+### Prodigy Optimizer
+Prodigy is an adaptive optimizer that dynamically adjusts the learning rate learned parameters based on past gradients, allowing for more efficient convergence. 
+By using prodigy we can "eliminate" the need for manual learning rate tuning. read more [here](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers).
+
+to use prodigy, specify
+```bash
+--optimizer="prodigy"
+```
+> [!TIP]
+> When using prodigy it's generally good practice to set- `--learning_rate=1.0`
 
 To perform DreamBooth with LoRA, run:
 
@@ -144,6 +156,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
   --train_batch_size=1 \
+  --guidance_scale=1 \
   --gradient_accumulation_steps=4 \
   --learning_rate=1e-5 \
   --report_to="wandb" \
@@ -162,6 +175,7 @@ Alongside the transformer, fine-tuning of the CLIP text encoder is also supporte
 To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
 
 > [!NOTE]
+> This is still an experimental feature. 
 > FLUX.1 has 2 text encoders (CLIP L/14 and T5-v1.1-XXL).
 By enabling `--train_text_encoder`, fine-tuning of the **CLIP encoder** is performed.
 > At the moment, T5 fine-tuning is not supported and weights remain frozen when text encoder training is enabled.
@@ -180,6 +194,7 @@ accelerate launch train_dreambooth_lora_flux.py \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
   --train_batch_size=1 \
+  --guidance_scale=1 \
   --gradient_accumulation_steps=4 \
   --learning_rate=1e-5 \
   --report_to="wandb" \
@@ -191,5 +206,10 @@ accelerate launch train_dreambooth_lora_flux.py \
   --push_to_hub
 ```
 
+## Memory Optimizations
+### 8-bit-Adam Optimizer
+### latent caching
+### FP8 training 
+
 ## Other notes
-Thanks to `bghira` for their help with reviewing & insight sharing ♥️
+Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️
