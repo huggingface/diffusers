@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
-from ...models.embeddings import get_3d_rotary_pos_embed, get_3d_sincos_pos_embed
+from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
@@ -443,34 +443,6 @@ class CogVideoXPipeline(DiffusionPipeline):
             self.transformer.unfuse_qkv_projections()
             self.fusing_transformer = False
 
-    def _prepare_normal_positional_embeddings(
-        self,
-        height,
-        width: int,
-        num_frames: int,
-        text_seq_length: int,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        inner_dim = self.transformer.config.num_attention_heads * self.transformer.config.attention_head_dim
-        grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-
-        pos_embedding = get_3d_sincos_pos_embed(
-            inner_dim,
-            (grid_width, grid_height),
-            num_frames,
-            self.transformer.config.spatial_interpolation_scale,
-            self.transformer.config.temporal_interpolation_scale,
-        )
-        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1).unsqueeze(0)
-
-        text_embedding_pad = torch.zeros((1, text_seq_length, inner_dim), requires_grad=False)
-        pos_embedding = torch.cat([text_embedding_pad, pos_embedding], dim=1)
-
-        pos_embedding = pos_embedding.to(device=device, dtype=dtype)
-        return pos_embedding
-
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
@@ -682,15 +654,8 @@ class CogVideoXPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Create positional and rotary embeds as required
-        positional_embeds = (
-            self._prepare_normal_positional_embeddings(
-                height, width, latents.size(1), max_sequence_length, device, prompt_embeds.dtype
-            )
-            if not self.transformer.config.use_rotary_positional_embeddings
-            else None
-        )
-        rotary_embeds = (
+        # 7. Create rotary embeds if required
+        image_rotary_emb = (
             self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
             if self.transformer.config.use_rotary_positional_embeddings
             else None
@@ -717,8 +682,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
-                    positional_emb=positional_embeds,
-                    image_rotary_emb=rotary_embeds,
+                    image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.float()
