@@ -220,25 +220,26 @@ class AnimateDiffFreeNoiseMixin:
         self._free_noise_weighting_scheme = weighting_scheme
         self._free_noise_noise_type = noise_type
 
-        if hasattr(self.unet.mid_block, "motion_modules"):
-            blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
-        else:
-            blocks = [*self.unet.down_blocks, *self.unet.up_blocks]
+        blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
+        if hasattr(self, "controlnet"):
+            blocks.extend([*self.controlnet.down_blocks, self.controlnet.mid_block])
 
         for block in blocks:
-            self._enable_free_noise_in_block(block)
+            if hasattr(block, "motion_modules"):
+                print(block.__class__.__name__)
+                self._enable_free_noise_in_block(block)
 
     def disable_free_noise(self) -> None:
         self._free_noise_context_length = None
 
-        if hasattr(self.unet.mid_block, "motion_modules"):
-            blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
-        else:
-            blocks = [*self.unet.down_blocks, *self.unet.up_blocks]
-
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
+        if hasattr(self, "controlnet"):
+            blocks.extend([*self.controlnet.down_blocks, self.controlnet.mid_block])
+
         for block in blocks:
-            self._disable_free_noise_in_block(block)
+            if hasattr(block, "motion_modules"):
+                print(block.__class__.__name__)
+                self._disable_free_noise_in_block(block)
 
     @property
     def free_noise_enabled(self):
