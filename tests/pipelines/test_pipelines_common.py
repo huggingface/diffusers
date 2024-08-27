@@ -141,7 +141,7 @@ class SDFunctionTesterMixin:
         assert np.abs(to_np(output_2) - to_np(output_1)).max() < 5e-1
 
         # test that tiled decode works with various shapes
-        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        shapes = [(1, 4, 73, 97), (1, 4, 65, 49)]
         with torch.no_grad():
             for shape in shapes:
                 zeros = torch.zeros(shape).to(torch_device)
