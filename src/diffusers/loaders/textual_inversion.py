@@ -561,6 +561,7 @@ class TextualInversionLoaderMixin:
                 tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
                 key_id += 1
         tokenizer._update_trie()
+        tokenizer._update_total_vocab_size()
 
         # Delete from text encoder
         text_embedding_dim = text_encoder.get_input_embeddings().embedding_dim
