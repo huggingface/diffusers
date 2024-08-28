@@ -83,54 +83,9 @@ CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds o
 
 ### Quantized inference
 
-[PytorchAO](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the Text Encoder, Transformer and VAE modules to lower the memory requirement of CogVideoX. This makes it possible to run the model on free-tier T4 Colab or smaller VRAM GPUs as well! It is also worth noting that TorchAO quantization is fully compatible with torch.compile, which allows for much faster inference speed.
+[PytorchAO](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the Text Encoder, Transformer and VAE modules to lower the memory requirement of CogVideoX. This makes it possible to run the model on a free-tier T4 Colab or smaller VRAM GPUs as well!
 
-```python
-# To get started, PytorchAO needs to be installed from the GitHub source and PyTorch Nightly.
-# Source and nightly installation is only required until next release.
-
-import torch
-from diffusers import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel, CogVideoXPipeline
-from diffusers.utils import export_to_video
-from transformers import T5EncoderModel
-from torchao.quantization import quantize_, int8_weight_only, int8_dynamic_activation_int8_weight
-
-
-text_encoder = T5EncoderModel.from_pretrained("THUDM/CogVideoX-5b", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-5b", subfolder="transformer", torch_dtype=torch.bfloat16)
-vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-5b", subfolder="vae", torch_dtype=torch.bfloat16)
-
-for module in [text_encoder, transformer, vae]:
-  quantize_(module, int8_weight_only()) # or, int8_dynamic_activation_int8_weight()
-
-# Create pipeline and run inference
-pipe = CogVideoXPipeline.from_pretrained(
-    "THUDM/CogVideoX-5b",
-    text_encoder=text_encoder,
-    transformer=transformer,
-    vae=vae,
-    torch_dtype=torch.bfloat16,
-)
-
-# Enable additional memory optimization after quantization
-pipe.enable_model_cpu_offload()
-pipe.vae.enable_tiling()
-
-prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
-
-video = pipe(
-    prompt=prompt,
-    num_videos_per_prompt=1,
-    num_inference_steps=50,
-    num_frames=49,
-    guidance_scale=6,
-    generator=torch.Generator(device="cuda").manual_seed(42),
-).frames[0]
-
-export_to_video(video, "output.mp4", fps=8)
-```
-
-Additionally, the models can be serialized and stored in a quantized datatype to save disk space when using PytorchAO. Find examples and benchmarks at these links:
+It is also worth noting that TorchAO quantization is fully compatible with `torch.compile`, which allows for much faster inference speed. Additionally, the models can be serialized and stored in a quantized datatype to save disk space when using PytorchAO. Find examples and benchmarks at these links:
 - [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
 - [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
 
