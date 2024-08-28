@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Any, Tuple
 from urllib.parse import unquote, urlparse
 
 import PIL.Image
@@ -135,3 +135,15 @@ def load_video(
         pil_images = convert_method(pil_images)
 
     return pil_images
+
+
+def get_module_from_name(module, tensor_name: str) -> Tuple[Any, str]:
+    if "." in tensor_name:
+        splits = tensor_name.split(".")
+        for split in splits[:-1]:
+            new_module = getattr(module, split)
+            if new_module is None:
+                raise ValueError(f"{module} has no attribute {split}.")
+            module = new_module
+        tensor_name = splits[-1]
+    return module, tensor_name
