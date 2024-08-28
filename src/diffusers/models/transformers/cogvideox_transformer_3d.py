@@ -19,6 +19,7 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import PeftAdapterMixin
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
@@ -152,7 +153,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
