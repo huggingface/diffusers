@@ -85,7 +85,7 @@ CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds o
 
 [torchao](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the text encoder, Transformer and VAE modules to lower the memory requirements. This makes it possible to run the model on a free-tier T4 Colab or lower VRAM GPUs!
 
-It is also worth noting that TorchAO quantization is fully compatible with `torch.compile`, which allows for much faster inference speed. Additionally, the models can be serialized and stored in a quantized datatype to save disk space when using PytorchAO. Find examples and benchmarks at these links:
+It is also worth noting that torch quantization is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), which allows for much faster inference speed. Additionally, models can be serialized and stored in a quantized datatype to save disk space with torchao. Find examples and benchmarks in the gists below.
 - [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
 - [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
 
