@@ -31,7 +31,7 @@ if is_torch_available():
     import torch
 
 
-class HfQuantizer(ABC):
+class DiffusersQuantizer(ABC):
     """
     Abstract class of the HuggingFace quantizer. Supports for now quantizing HF diffusers models for inference and/or
     quantization. This class is used only for diffusers.models.modeling_utils.ModelMixin.from_pretrained and cannot be
