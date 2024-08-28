@@ -31,7 +31,11 @@ from ..utils import (
     scale_lora_layers,
 )
 from .lora_base import LoraBaseMixin
-from .lora_conversion_utils import _convert_non_diffusers_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
+from .lora_conversion_utils import (
+    _convert_kohya_flux_lora_to_diffusers,
+    _convert_non_diffusers_lora_to_diffusers,
+    _maybe_map_sgm_blocks_to_diffusers,
+)
 
 
 if is_transformers_available():
@@ -1582,6 +1586,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+
+        is_kohya = any(".lora_down.weight" in k for k in state_dict)
+        if is_kohya:
+            state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
+            # Kohya already takes care of scaling the LoRA parameters with alpha.
+            return state_dict, None
 
         # For state dicts like
         # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
