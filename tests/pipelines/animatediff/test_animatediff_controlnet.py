@@ -486,7 +486,7 @@ class AnimateDiffControlNetPipelineFastTests(
         context_stride = 4
         pipe.enable_free_noise(context_length, context_stride)
 
-        # Make sure that
+        # Make sure that pipeline works when prompt indices are within num_frames bounds
         inputs = self.get_dummy_inputs(torch_device, num_frames=16)
         inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf"}
         pipe(**inputs).frames[0]
