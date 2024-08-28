@@ -491,3 +491,28 @@ class AnimateDiffVideoToVideoPipelineFastTests(
                     1e-4,
                     "Disabling of FreeNoise should lead to results similar to the default pipeline results",
                 )
+
+    def test_free_noise_multi_prompt(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffVideoToVideoPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        context_length = 8
+        context_stride = 4
+        pipe.enable_free_noise(context_length, context_stride)
+
+        # Make sure that pipeline works when prompt indices are within num_frames bounds
+        inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf"}
+        inputs["num_inference_steps"] = 2
+        inputs["strength"] = 0.5
+        pipe(**inputs).frames[0]
+
+        with self.assertRaises(ValueError):
+            # Ensure that prompt indices are within bounds
+            inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+            inputs["num_inference_steps"] = 2
+            inputs["strength"] = 0.5
+            inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf", 42: "Error on a leaf"}
+            pipe(**inputs).frames[0]
