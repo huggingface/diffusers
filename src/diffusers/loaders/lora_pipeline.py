@@ -1591,7 +1591,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if is_kohya:
             state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
             # Kohya already takes care of scaling the LoRA parameters with alpha.
-            return state_dict, None
+            return (state_dict, None) if return_alphas else state_dict
 
         # For state dicts like
         # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA
