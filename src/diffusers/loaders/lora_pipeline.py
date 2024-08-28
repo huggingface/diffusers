@@ -34,6 +34,7 @@ from .lora_base import LoraBaseMixin
 from .lora_conversion_utils import (
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
+    _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
 
@@ -1587,10 +1588,18 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
+        # TODO (sayakpaul): to a follow-up to clean and try to unify the conditions.
+
         is_kohya = any(".lora_down.weight" in k for k in state_dict)
         if is_kohya:
             state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
             # Kohya already takes care of scaling the LoRA parameters with alpha.
+            return (state_dict, None) if return_alphas else state_dict
+
+        is_xlabs = any("processor" in k for k in state_dict)
+        if is_xlabs:
+            state_dict = _convert_xlabs_flux_lora_to_diffusers(state_dict)
+            # xlabs doesn't use `alpha`.
             return (state_dict, None) if return_alphas else state_dict
 
         # For state dicts like
