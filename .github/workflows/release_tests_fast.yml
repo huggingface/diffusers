@@ -1,13 +1,13 @@
-name: Fast GPU Tests on main
+# Duplicate workflow to push_tests.yml that is meant to run on release/patch branches as a final check
+# Creating a duplicate workflow here is simpler than adding complex path/branch parsing logic to push_tests.yml
+# Needs to be updated if push_tests.yml updated
+name: (Release) Fast GPU Tests on main
 
 on:
   push:
     branches:
-      - main
-    paths:
-      - "src/diffusers/**.py"
-      - "examples/**.py"
-      - "tests/**.py"
+      - "v*.*.*-release"
+      - "v*.*.*-patch"
 
 env:
   DIFFUSERS_IS_CI: yes
