@@ -314,7 +314,6 @@ def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_di
     for x, y in zip(modifier_token_id, args.modifier_token):
         learned_embeds_dict = {}
         learned_embeds_dict[y] = learned_embeds[x]
-        
 
         if safe_serialization:
             filename = f"{output_dir}/{y}.safetensors"
