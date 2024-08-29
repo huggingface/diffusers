@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from packaging import version
 
-from ..base import DiffusersQuantizer
 from ...utils import get_module_from_name
+from ..base import DiffusersQuantizer
 
 
 if TYPE_CHECKING:
@@ -42,8 +42,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
     """
     4-bit quantization from bitsandbytes.py quantization method:
         before loading: converts transformer layers into Linear4bit during loading: load 16bit weight and pass to the
-        layer object after: quantizes individual weights in Linear4bit into 4bit at the first .cuda() call
-        saving:
+        layer object after: quantizes individual weights in Linear4bit into 4bit at the first .cuda() call saving:
             from state dict, as usual; saves weights and `quant_state` components
         loading:
             need to locate `quant_state` components and pass to Param4bit constructor
@@ -66,7 +65,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() and is_accelerate_version("<", "0.26.0"):
             raise ImportError(
-                f"Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
+                "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
         if not is_bitsandbytes_available():
             raise ImportError(
@@ -150,7 +149,8 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         unexpected_keys: Optional[List[str]] = None,
     ):
         """
-        combines logic from _load_state_dict_into_meta_model and .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device()
+        combines logic from _load_state_dict_into_meta_model and
+        .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device()
         """
         import bitsandbytes as bnb
 
@@ -220,13 +220,11 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
         module._parameters[tensor_name] = new_value
 
-    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer.adjust_max_memory
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
-    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer.update_torch_dtype
     def update_torch_dtype(self, torch_dtype: "torch.dtype") -> "torch.dtype":
         if torch_dtype is None:
             # We force the `dtype` to be float16, this is a requirement from `bitsandbytes`
@@ -240,7 +238,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer.update_device_map
     def update_device_map(self, device_map):
         if device_map is None:
             device_map = {"": torch.cuda.current_device()}
@@ -251,7 +248,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             )
         return device_map
 
-    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer._process_model_before_weight_loading
     def _process_model_before_weight_loading(
         self,
         model: "ModelMixin",
@@ -286,11 +282,8 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         model = replace_with_bnb_linear(
             model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
         )
-        # TODO: consider bringing replace_with_bnb_linear() code from ..integrations/bitsandbyter.py to here
-
         model.config.quantization_config = self.quantization_config
 
-    # Copied from transformers.quantizers.quantizer_bnb_8bit.Bnb8BitHfQuantizer._process_model_after_weight_loading with 8bit->4bit
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         model.is_loaded_in_4bit = True
         model.is_4bit_serializable = self.is_serializable
@@ -345,17 +338,17 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if self.quantization_config.llm_int8_skip_modules is not None:
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.validate_environment with 4bit->8bit
     def validate_environment(self, *args, **kwargs):
         if not torch.cuda.is_available():
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
-
-        if not is_accelerate_available():
+        if not is_accelerate_available() and is_accelerate_version("<", "0.26.0"):
             raise ImportError(
-                f"Using `bitsandbytes` 8-bit quantization requires Accelerate: `pip install 'accelerate>={ACCELERATE_MIN_VERSION}'`"
+                "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
         if not is_bitsandbytes_available():
             raise ImportError(
-                "Using `bitsandbytes` 8-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
+                "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
 
         if kwargs.get("from_flax", False):
@@ -383,17 +376,19 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                     "for more details. "
                 )
 
-        if version.parse(importlib.metadata.version("bitsandbytes")) < version.parse("0.37.2"):
+        if version.parse(importlib.metadata.version("bitsandbytes")) < version.parse("0.39.0"):
             raise ValueError(
                 "You have a version of `bitsandbytes` that is not compatible with 8bit inference and training"
                 " make sure you have the latest version of `bitsandbytes` installed"
             )
 
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_torch_dtype
     def update_torch_dtype(self, torch_dtype: "torch.dtype") -> "torch.dtype":
         if torch_dtype is None:
             # We force the `dtype` to be float16, this is a requirement from `bitsandbytes`
@@ -407,6 +402,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
+    # Copied from transformers.quantizers.bnb_quantizer.Bnb8BitHfQuantizer.update_device_map
     def update_device_map(self, device_map):
         if device_map is None:
             device_map = {"": torch.cuda.current_device()}
@@ -424,7 +420,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
 
     def check_quantized_param(
         self,
-        model: "PreTrainedModel",
+        model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
         state_dict: Dict[str, Any],
@@ -446,7 +442,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
 
     def create_quantized_param(
         self,
-        model: "PreTrainedModel",
+        model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
@@ -454,8 +450,9 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         unexpected_keys: Optional[List[str]] = None,
     ):
         """
-        combines logic from _load_state_dict_into_meta_model and .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device()
-        needs aux items from state dicts, if found - removes them from unexpected_keys
+        combines logic from _load_state_dict_into_meta_model and
+        .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device() needs aux items from state dicts, if
+        found - removes them from unexpected_keys
         """
         import bitsandbytes as bnb
 
@@ -487,12 +484,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                 "Make sure to download the latest `bitsandbytes` version. `pip install --upgrade bitsandbytes`."
             )
 
-        # Support models using `Conv1D` in place of `nn.Linear` (e.g. openai-community/gpt2) by transposing the weight matrix prior to quantization.
-        # Since weights are saved in the correct "orientation", we skip transposing when loading.
-        if issubclass(module.source_cls, Conv1D):
-            if fp16_statistics is None:
-                new_value = new_value.T
-
         kwargs = old_value.__dict__
         new_value = bnb.nn.Int8Params(new_value, requires_grad=False, **kwargs).to(target_device)
 
@@ -507,27 +498,26 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if fp16_weights_format is not None and unexpected_keys is not None:
             unexpected_keys.remove(fp16_weights_format_key)
 
-    def _process_model_after_weight_loading(self, model: "PreTrainedModel", **kwargs):
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_after_weight_loading with 4bit->8bit
+    def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         model.is_loaded_in_8bit = True
         model.is_8bit_serializable = self.is_serializable
         return model
 
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer._process_model_before_weight_loading
     def _process_model_before_weight_loading(
         self,
-        model: "PreTrainedModel",
+        model: "ModelMixin",
         device_map,
         keep_in_fp32_modules: List[str] = [],
         **kwargs,
     ):
-        from ..integrations import get_keys_to_not_convert, replace_with_bnb_linear
+        from .utils import replace_with_bnb_linear
 
         load_in_8bit_fp32_cpu_offload = self.quantization_config.llm_int8_enable_fp32_cpu_offload
 
         # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
-        if self.quantization_config.llm_int8_skip_modules is None:
-            self.modules_to_not_convert = get_keys_to_not_convert(model)
-        else:
-            self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
+        self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
@@ -549,8 +539,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         model = replace_with_bnb_linear(
             model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
         )
-        # TODO: consider bringing replace_with_bnb_linear() code from ..integrations/bitsandbyter.py to here
-
         model.config.quantization_config = self.quantization_config
 
     @property

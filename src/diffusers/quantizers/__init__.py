@@ -14,14 +14,20 @@
 
 from typing import TYPE_CHECKING
 
-from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_bitsandbytes_available, is_torch_available
+from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
+    _LazyModule,
+    is_accelerate_available,
+    is_bitsandbytes_available,
+    is_torch_available,
+)
 
 
 _import_structure = {}
 
 if is_torch_available():
     _import_structure["base"] = ["DiffusersQuantizer"]
-    if is_bitsandbytes_available():
+    if is_bitsandbytes_available() and is_accelerate_available():
         _import_structure["bitsandbytes"] = [
             "set_module_quantized_tensor_to_device",
             "replace_with_bnb_linear",
@@ -33,7 +39,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .base import DiffusersQuantizer
 
-        if is_bitsandbytes_available():
+        if is_bitsandbytes_available() and is_accelerate_available():
             from .bitsandbytes import (
                 dequantize_and_replace,
                 dequantize_bnb_weight,

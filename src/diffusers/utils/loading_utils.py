@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Callable, List, Optional, Union, Any, Tuple
+from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import unquote, urlparse
 
 import PIL.Image
