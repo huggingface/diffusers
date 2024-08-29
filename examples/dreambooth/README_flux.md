@@ -209,15 +209,20 @@ accelerate launch train_dreambooth_lora_flux.py \
 ```
 
 ## Memory Optimizations
-As mentioned, Flux Dreambooth LoRA training is very memory intensive Here are some options(some still experimental) for a more memory efficient training.  
+As mentioned, Flux Dreambooth LoRA training is very memory intensive Here are some options (some still experimental) for a more memory efficient training.
+### Image Resolution
+An easy way to mitigate some of the memory requirements is through `--resolution`. `--resolution` refers to the resolution for input images, all the images in the train/validation dataset are resized to this.
+Note that by default, images are resized to resolution of 512, but it's good to keep in mind in case you're accustomed to training on higher resolutions. 
+### Gradient Checkpointing and Accumulation
+* `--gradient accumulation` refers to the number of updates steps to accumulate before performing a backward/update pass.
+by passing a value > 1 you can reduce the amount of backward/update passes and hence also memory reqs.
+* with `--gradient checkpointing` we can save memory by not storing all intermediate activations during the forward pass.
+Instead, only a subset of these activations (the checkpoints) are stored and the rest is recomputed as needed during the backward pass. Note that this comes at the expanse of a slower backward pass.
 ### 8-bit-Adam Optimizer
-When training with `AdamW`(doesnt apply to `prodigy`) You can pass `--use_8bit_adam` to reduce the memory requirements of training. 
+When training with `AdamW`(doesn't apply to `prodigy`) You can pass `--use_8bit_adam` to reduce the memory requirements of training. 
 Make sure to install `bitsandbytes` if you want to do so.
 ### latent caching
 When training w/o validation runs, we can pre-encode the training images with the vae, and then delete it to free up some memory. 
 to enable `latent_caching`, first, use the version in [this PR](https://github.com/huggingface/diffusers/blob/1b195933d04e4c8281a2634128c0d2d380893f73/examples/dreambooth/train_dreambooth_lora_flux.py), and then pass `--cache_latents`
-### FP8 training 
-This is still highly experimental as it may not work for all hardware, but you can try FP8 precision training by following the steps 
-[here](https://gist.github.com/sayakpaul/f0358dd4f4bcedf14211eba5704df25a).
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️
