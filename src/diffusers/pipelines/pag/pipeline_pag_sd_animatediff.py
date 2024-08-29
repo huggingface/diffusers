@@ -734,6 +734,8 @@ class AnimateDiffPAGPipeline(
         elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
+        prompt_embeds = prompt_embeds.repeat_interleave(repeats=num_frames, dim=0)
+
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
@@ -805,7 +807,9 @@ class AnimateDiffPAGPipeline(
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                    latent_model_input = torch.cat(
+                        [latents] * (prompt_embeds.shape[0] // num_frames // latents.shape[0])
+                    )
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     # predict the noise residual
