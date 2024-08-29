@@ -53,10 +53,37 @@ if is_accelerate_available():
 
 
 # Adapted from `transformers` (see modeling_utils.py)
-def _determine_device_map(model: torch.nn.Module, device_map, max_memory, torch_dtype):
+def _determine_device_map(
+    model: torch.nn.Module, device_map, max_memory, torch_dtype, keep_in_fp32_modules=[], hf_quantizer=None
+):
     if isinstance(device_map, str):
+        special_dtypes = {}
+
+        if hf_quantizer is not None:
+            special_dtypes.update(hf_quantizer.get_special_dtypes_update(model, torch_dtype))
+
+        special_dtypes.update(
+            {
+                name: torch.float32
+                for name, _ in model.named_parameters()
+                if any(m in name for m in keep_in_fp32_modules)
+            }
+        )
+
+        target_dtype = torch_dtype
+        if hf_quantizer is not None:
+            target_dtype = hf_quantizer.adjust_target_dtype(target_dtype)
+
         no_split_modules = model._get_no_split_modules(device_map)
         device_map_kwargs = {"no_split_module_classes": no_split_modules}
+
+        if "special_dtypes" in inspect.signature(infer_auto_device_map).parameters:
+            device_map_kwargs["special_dtypes"] = special_dtypes
+        elif len(special_dtypes) > 0:
+            logger.warning(
+                "This model has some weights that should be kept in higher precision, you need to upgrade "
+                "`accelerate` to properly deal with them (`pip install --upgrade accelerate`)."
+            )
 
         if device_map != "sequential":
             max_memory = get_balanced_memory(
@@ -69,8 +96,14 @@ def _determine_device_map(model: torch.nn.Module, device_map, max_memory, torch_
         else:
             max_memory = get_max_memory(max_memory)
 
+        if hf_quantizer is not None:
+            max_memory = hf_quantizer.adjust_max_memory(max_memory)
+
         device_map_kwargs["max_memory"] = max_memory
-        device_map = infer_auto_device_map(model, dtype=torch_dtype, **device_map_kwargs)
+        device_map = infer_auto_device_map(model, dtype=target_dtype, **device_map_kwargs)
+
+        if hf_quantizer is not None:
+            hf_quantizer.validate_environment(device_map=device_map)
 
     return device_map
 
@@ -136,18 +169,38 @@ def load_model_dict_into_meta(
     device: Optional[Union[str, torch.device]] = None,
     dtype: Optional[Union[str, torch.dtype]] = None,
     model_name_or_path: Optional[str] = None,
+    hf_quantizer=None,
+    keep_in_fp32_modules=None,
 ) -> List[str]:
     device = device or torch.device("cpu")
     dtype = dtype or torch.float32
+    is_quantized = hf_quantizer is not None
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
 
     unexpected_keys = []
     empty_state_dict = model.state_dict()
+    is_torch_e4m3fn_available = hasattr(torch, "float8_e4m3fn")
+
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
             unexpected_keys.append(param_name)
             continue
+
+        # We convert floating dtypes to the `dtype` passed except for float8_e4m3fn type. We also want to keep the buffers/params
+        # in int/uint/bool and not cast them.
+        is_param_float8_e4m3fn = is_torch_e4m3fn_available and param.dtype == torch.float8_e4m3fn
+        if dtype is not None and torch.is_floating_point(param) and not is_param_float8_e4m3fn:
+            if (
+                keep_in_fp32_modules is not None
+                and any(
+                    module_to_keep_in_fp32 in param_name.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
+                )
+                and dtype == torch.float16
+            ):
+                param = param.to(torch.float32)
+            else:
+                param = param.to(dtype)
 
         if empty_state_dict[param_name].shape != param.shape:
             model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
@@ -155,10 +208,18 @@ def load_model_dict_into_meta(
                 f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
             )
 
-        if accepts_dtype:
-            set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
+        if (
+            not is_quantized
+            or (not hf_quantizer.requires_parameters_quantization)
+            or (not hf_quantizer.check_quantized_param(model, param, param_name, state_dict, param_device=device))
+        ):
+            if accepts_dtype:
+                set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
+            else:
+                set_module_tensor_to_device(model, param_name, device, value=param)
         else:
-            set_module_tensor_to_device(model, param_name, device, value=param)
+            hf_quantizer.create_quantized_param(model, param, param_name, device, state_dict, unexpected_keys)
+
     return unexpected_keys
 
 

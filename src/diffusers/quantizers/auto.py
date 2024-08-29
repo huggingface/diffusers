@@ -1,4 +1,3 @@
-
 # Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,8 +31,8 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
 
 class DiffusersAutoQuantizationConfig:
     """
-    The Auto-HF quantization config class that takes care of automatically dispatching to the correct
-    quantization config given a quantization config stored in a dictionary.
+    The Auto-HF quantization config class that takes care of automatically dispatching to the correct quantization
+    config given a quantization config stored in a dictionary.
     """
 
     @classmethod
@@ -114,7 +113,8 @@ class DiffusersAutoQuantizer:
         quantization_config_from_args: Optional[QuantizationConfigMixin],
     ):
         """
-        handles situations where both quantization_config from args and quantization_config from model config are present.
+        handles situations where both quantization_config from args and quantization_config from model config are
+        present.
         """
         if quantization_config_from_args is not None:
             warning_msg = (

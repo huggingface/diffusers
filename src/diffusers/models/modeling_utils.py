@@ -20,7 +20,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -31,6 +31,8 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
+from ..quantizers import DiffusersAutoQuantizer
+from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
@@ -128,6 +130,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
+    _keep_in_fp32_modules = []
 
     def __init__(self):
         super().__init__()
@@ -407,6 +410,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 create_pr=create_pr,
             )
 
+    def dequantize(self):
+        """
+        Potentially dequantize the model in case it has been quantized by a quantization method that support
+        dequantization.
+        """
+        hf_quantizer = getattr(self, "hf_quantizer", None)
+
+        if hf_quantizer is None:
+            raise ValueError("You need to first quantize your model in order to dequantize it")
+
+        return hf_quantizer.dequantize(self)
+
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -625,8 +640,42 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             **kwargs,
         )
 
-        # determine quantization config.
-        ##############################
+        # determine initial quantization config.
+        ###############################
+        pre_quantized = getattr(config, "quantization_config", None) is not None
+        if pre_quantized or quantization_config is not None:
+            if pre_quantized:
+                config.quantization_config = DiffusersAutoQuantizer.merge_quantization_configs(
+                    config.quantization_config, quantization_config
+                )
+            else:
+                config.quantization_config = quantization_config
+            hf_quantizer = DiffusersAutoQuantizer.from_config(config.quantization_config, pre_quantized=pre_quantized)
+        else:
+            hf_quantizer = None
+
+        if hf_quantizer is not None:
+            hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
+            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+            device_map = hf_quantizer.update_device_map(device_map)
+
+            # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
+            user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
+
+            # Force-set to `True` for more mem efficiency
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+                logger.warning("`low_cpu_mem_usage` was None, now set to True since model is quantized.")
+
+        # Check if `_keep_in_fp32_modules` is not None
+        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        )
+        if use_keep_in_fp32_modules:
+            keep_in_fp32_modules = cls._keep_in_fp32_modules
+        else:
+            keep_in_fp32_modules = []
+        ###############################
 
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
@@ -733,6 +782,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 with accelerate.init_empty_weights():
                     model = cls.from_config(config, **unused_kwargs)
 
+                if hf_quantizer is not None:
+                    hf_quantizer.preprocess_model(
+                        model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
+                    )
+
+                    # We store the original dtype for quantized models as we cannot easily retrieve it
+                    # once the weights have been quantized
+                    # Note that once you have loaded a quantized model, you can't change its dtype so this will
+                    # remain a single source of truth
+                    config._pre_quantization_dtype = torch_dtype
+
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None and not is_sharded:
                     param_device = "cpu"
@@ -754,6 +814,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         device=param_device,
                         dtype=torch_dtype,
                         model_name_or_path=pretrained_model_name_or_path,
+                        hf_quantizer=hf_quantizer,
+                        keep_in_fp32_modules=keep_in_fp32_modules,
                     )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
@@ -769,7 +831,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
                     force_hook = True
-                    device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
+                    device_map = _determine_device_map(
+                        model, device_map, max_memory, torch_dtype, keep_in_fp32_modules, hf_quantizer
+                    )
                     if device_map is None and is_sharded:
                         # we load the parameters on the cpu
                         device_map = {"": "cpu"}
@@ -862,6 +926,47 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return model, loading_info
 
         return model
+
+    @wraps(torch.nn.Module.cuda)
+    def cuda(self, *args, **kwargs):
+        # Checks if the model has been loaded in 8-bit
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            raise ValueError(
+                "Calling `cuda()` is not supported for `4-bit` or `8-bit` quantized models. Please use the model as it is, since the"
+                " model has already been set to the correct devices and casted to the correct `dtype`."
+            )
+        else:
+            return super().cuda(*args, **kwargs)
+
+    @wraps(torch.nn.Module.to)
+    def to(self, *args, **kwargs):
+        # Checks if the model has been loaded in 8-bit
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            raise ValueError(
+                "`.to` is not supported for `4-bit` or `8-bit` bitsandbytes models. Please use the model as it is, since the"
+                " model has already been set to the correct devices and casted to the correct `dtype`."
+            )
+        return super().to(*args, **kwargs)
+
+    def half(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.half()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been casted to the correct `dtype`."
+            )
+        else:
+            return super().half(*args)
+
+    def float(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.float()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been casted to the correct `dtype`."
+            )
+        else:
+            return super().float(*args)
 
     @classmethod
     def _load_pretrained_model(

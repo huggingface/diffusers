@@ -225,7 +225,7 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
     Parameters:
         model (`torch.nn.Module`):
             Input model or `torch.nn.Module` as the function is run recursively.
-        modules_to_not_convert (`List[`str`]`, *optional*, defaults to `["proj_out"]`):
+        modules_to_not_convert (`List[`str`]`, *optional*, defaults to `[]`):
             Names of the modules to not convert in `Linear8bitLt`. In practice we keep the `modules_to_not_convert` in
             full precision for numerical stability reasons.
         current_key_name (`List[`str`]`, *optional*):
@@ -237,7 +237,6 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
             models by reducing the precision of the weights and activations, thus making models more efficient in terms
             of both storage and computation.
     """
-    modules_to_not_convert = ["proj_out"] if modules_to_not_convert is None else modules_to_not_convert
     model, has_been_replaced = _replace_with_bnb_linear(
         model, modules_to_not_convert, current_key_name, quantization_config
     )

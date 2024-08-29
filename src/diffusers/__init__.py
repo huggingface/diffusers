@@ -31,7 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers": [],
+    "quantizers": ["BitsAndBytesConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -155,7 +155,7 @@ else:
             "StableDiffusionMixin",
         ]
     )
-    _import_structure["quantizers"] = ["HfQuantizer"]
+    _import_structure["quantizers"] = ["DiffusersQuantizer"]
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
@@ -527,6 +527,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers import BitsAndBytesConfig
 
     try:
         if not is_onnx_available():

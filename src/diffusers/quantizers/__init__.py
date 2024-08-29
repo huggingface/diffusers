@@ -12,45 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING
-
-from ..utils import (
-    DIFFUSERS_SLOW_IMPORT,
-    _LazyModule,
-    is_accelerate_available,
-    is_bitsandbytes_available,
-    is_torch_available,
+from .auto import DiffusersAutoQuantizer
+from .base import DiffusersQuantizer
+from .bitsandbytes import (
+    dequantize_and_replace,
+    dequantize_bnb_weight,
+    replace_with_bnb_linear,
+    set_module_quantized_tensor_to_device,
 )
-
-
-_import_structure = {}
-
-if is_torch_available():
-    _import_structure["base"] = ["DiffusersQuantizer"]
-
-    if is_bitsandbytes_available() and is_accelerate_available():
-        _import_structure["bitsandbytes"] = [
-            "set_module_quantized_tensor_to_device",
-            "replace_with_bnb_linear",
-            "dequantize_bnb_weight",
-            "dequantize_and_replace",
-            "BitsAndBytesConfig"
-        ]
-
-if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
-    if is_torch_available():
-        from .base import DiffusersQuantizer
-
-        if is_bitsandbytes_available() and is_accelerate_available():
-            from .bitsandbytes import (
-                dequantize_and_replace,
-                dequantize_bnb_weight,
-                replace_with_bnb_linear,
-                set_module_quantized_tensor_to_device,
-            )
-            from .quantization_config import BitsAndBytesConfig
-
-else:
-    import sys
-
-    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+from .quantization_config import BitsAndBytesConfig

@@ -148,10 +148,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
     ):
-        """
-        combines logic from _load_state_dict_into_meta_model and
-        .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device()
-        """
         import bitsandbytes as bnb
 
         module, tensor_name = get_module_from_name(model, param_name)
@@ -449,11 +445,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
     ):
-        """
-        combines logic from _load_state_dict_into_meta_model and
-        .integrations.bitsandbytes.py::set_module_quantized_tensor_to_device() needs aux items from state dicts, if
-        found - removes them from unexpected_keys
-        """
         import bitsandbytes as bnb
 
         fp16_statistics_key = param_name.replace("weight", "SCB")
@@ -562,7 +553,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         return version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse("0.37.0")
 
     def _dequantize(self, model):
-        from ..integrations import dequantize_and_replace
+        from .utils import dequantize_and_replace
 
         model = dequantize_and_replace(
             model, self.modules_to_not_convert, quantization_config=self.quantization_config
