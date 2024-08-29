@@ -97,8 +97,8 @@ class SDCFGCutoffCallback(PipelineCallback):
 
 class SDXLCFGCutoffCallback(PipelineCallback):
     """
-    Callback function for the base Stable Diffusion XL Pipelines. After certain number of steps (set by `cutoff_step_ratio`
-    or `cutoff_step_index`), this callback will disable the CFG.
+    Callback function for the base Stable Diffusion XL Pipelines. After certain number of steps (set by
+    `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
 
     Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
     """
@@ -139,8 +139,8 @@ class SDXLCFGCutoffCallback(PipelineCallback):
 
 class SDXLControlnetCFGCutoffCallback(PipelineCallback):
     """
-    Callback function for the Controlnet Stable Diffusion XL Pipelines. After certain number of steps (set by `cutoff_step_ratio`
-    or `cutoff_step_index`), this callback will disable the CFG.
+    Callback function for the Controlnet Stable Diffusion XL Pipelines. After certain number of steps (set by
+    `cutoff_step_ratio` or `cutoff_step_index`), this callback will disable the CFG.
 
     Note: This callback mutates the pipeline by changing the `_guidance_scale` attribute to 0.0 after the cutoff step.
     """
