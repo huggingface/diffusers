@@ -27,12 +27,14 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["base"] = ["DiffusersQuantizer"]
+
     if is_bitsandbytes_available() and is_accelerate_available():
         _import_structure["bitsandbytes"] = [
             "set_module_quantized_tensor_to_device",
             "replace_with_bnb_linear",
             "dequantize_bnb_weight",
             "dequantize_and_replace",
+            "BitsAndBytesConfig"
         ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -46,6 +48,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 replace_with_bnb_linear,
                 set_module_quantized_tensor_to_device,
             )
+            from .quantization_config import BitsAndBytesConfig
 
 else:
     import sys

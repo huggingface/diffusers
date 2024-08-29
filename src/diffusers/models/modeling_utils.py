@@ -529,6 +529,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        quantization_config = kwargs.pop("quantization_config", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -623,6 +624,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent=user_agent,
             **kwargs,
         )
+
+        # determine quantization config.
+        ##############################
 
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
