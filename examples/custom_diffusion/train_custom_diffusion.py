@@ -314,11 +314,13 @@ def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_di
     for x, y in zip(modifier_token_id, args.modifier_token):
         learned_embeds_dict = {}
         learned_embeds_dict[y] = learned_embeds[x]
-        filename = f"{output_dir}/{y}.bin"
+        
 
         if safe_serialization:
+            filename = f"{output_dir}/{y}.safetensors"
             safetensors.torch.save_file(learned_embeds_dict, filename, metadata={"format": "pt"})
         else:
+            filename = f"{output_dir}/{y}.bin"
             torch.save(learned_embeds_dict, filename)
 
 
