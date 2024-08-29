@@ -402,7 +402,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # Copied from transformers.quantizers.bnb_quantizer.Bnb8BitHfQuantizer.update_device_map
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
     def update_device_map(self, device_map):
         if device_map is None:
             device_map = {"": torch.cuda.current_device()}

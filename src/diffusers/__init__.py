@@ -620,7 +620,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
-        from .quantizers import HfQuantizer
+        from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
             CMStochasticIterativeScheduler,

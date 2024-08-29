@@ -1005,7 +1005,7 @@ class StableDiffusionMixin(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HfQuantizer(metaclass=DummyObject):
+class DiffusersQuantizer(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
