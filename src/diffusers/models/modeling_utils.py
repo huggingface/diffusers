@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import itertools
 import json
@@ -31,7 +32,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..quantizers import DiffusersAutoQuantizer
+from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
@@ -313,6 +314,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
+
+        _hf_peft_config_loaded = getattr(self, "_hf_peft_config_loaded", False)
+        hf_quantizer = getattr(self, "hf_quantizer", None)
+        quantization_serializable = (
+            hf_quantizer is not None and isinstance(hf_quantizer, DiffusersQuantizer) and hf_quantizer.is_serializable
+        )
+
+        if hf_quantizer is not None and not _hf_peft_config_loaded and not quantization_serializable:
+            raise ValueError(
+                f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
+                " the logger on the traceback to understand the reason why the quantized model is not serializable."
+            )
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
         weights_name = _add_variant(weights_name, variant)
@@ -639,9 +652,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent=user_agent,
             **kwargs,
         )
+        # no in-place modification of the original config.
+        config = copy.deepcopy(config)
 
         # determine initial quantization config.
-        ###############################
+        #######################################
         pre_quantized = getattr(config, "quantization_config", None) is not None
         if pre_quantized or quantization_config is not None:
             if pre_quantized:
@@ -675,7 +690,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules = cls._keep_in_fp32_modules
         else:
             keep_in_fp32_modules = []
-        ###############################
+        #######################################
 
         # Determine if we're loading from a directory of sharded checkpoints.
         is_sharded = False
@@ -910,6 +925,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "mismatched_keys": mismatched_keys,
                     "error_msgs": error_msgs,
                 }
+
+        if hf_quantizer is not None:
+            hf_quantizer.postprocess_model(model)
+            model.hf_quantizer = hf_quantizer
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
