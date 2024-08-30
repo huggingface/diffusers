@@ -370,13 +370,13 @@ class CogVideoXPatchEmbed(nn.Module):
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
 
         if use_positional_embeddings:
-            pos_embedding = self._create_positional_embeddings()
+            pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
             self.register_buffer("pos_embedding", pos_embedding, persistent=False)
 
-    def _create_positional_embeddings(self) -> torch.Tensor:
-        post_patch_height = self.sample_height // self.patch_size
-        post_patch_width = self.sample_width // self.patch_size
-        post_time_compression_frames = (self.sample_frames - 1) // self.temporal_compression_ratio + 1
+    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+        post_patch_height = sample_height // self.patch_size
+        post_patch_width = sample_width // self.patch_size
+        post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
         num_patches = post_patch_height * post_patch_width * post_time_compression_frames
 
         pos_embedding = get_3d_sincos_pos_embed(
@@ -416,15 +416,18 @@ class CogVideoXPatchEmbed(nn.Module):
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
 
         if self.use_positional_embeddings:
-            if embeds.size(1) > self.pos_embedding.size(1):
-                raise ValueError(
-                    "You are trying to generate at a resolution, or higher number of frames, or longer maximum prompt "
-                    "sequence length than what is supported in the `CogVideoXTransformer3D` model. In order to generate "
-                    "at the resolution/num_frames you desire, configure the transformer initialization attributes "
-                    "`sample_height`, `sample_width`, `sample_frames` and `max_text_seq_length` appropriately when "
-                    "initializing your model either with `.from_pretrained(...)` or `.from_config(...)`"
-                )
-            embeds = embeds + self.pos_embedding[:, : embeds.size(1)]
+            pre_time_compression_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
+            if (
+                self.sample_height != height
+                or self.sample_width != width
+                or self.sample_frames != pre_time_compression_frames
+            ):
+                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
+                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+            else:
+                pos_embedding = self.pos_embedding
+
+            embeds = embeds + pos_embedding
 
         return embeds
 
