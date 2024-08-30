@@ -84,10 +84,10 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             and isinstance(device_map, dict)
             and not self.quantization_config.llm_int8_enable_fp32_cpu_offload
         ):
-            device_map_without_lm_head = {
+            device_map_without_no_convert = {
                 key: device_map[key] for key in device_map.keys() if key not in self.modules_to_not_convert
             }
-            if "cpu" in device_map_without_lm_head.values() or "disk" in device_map_without_lm_head.values():
+            if "cpu" in device_map_without_no_convert.values() or "disk" in device_map_without_no_convert.values():
                 raise ValueError(
                     "Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the "
                     "quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules "
@@ -255,7 +255,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
         load_in_8bit_fp32_cpu_offload = self.quantization_config.llm_int8_enable_fp32_cpu_offload
 
-        # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
+        # We may keep some modules such as the `proj_out` in their original dtype for numerical stability reasons
         self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
         if not isinstance(self.modules_to_not_convert, list):
@@ -359,10 +359,10 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             and isinstance(device_map, dict)
             and not self.quantization_config.llm_int8_enable_fp32_cpu_offload
         ):
-            device_map_without_lm_head = {
+            device_map_without_no_convert = {
                 key: device_map[key] for key in device_map.keys() if key not in self.modules_to_not_convert
             }
-            if "cpu" in device_map_without_lm_head.values() or "disk" in device_map_without_lm_head.values():
+            if "cpu" in device_map_without_no_convert.values() or "disk" in device_map_without_no_convert.values():
                 raise ValueError(
                     "Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the "
                     "quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules "
@@ -507,7 +507,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
 
         load_in_8bit_fp32_cpu_offload = self.quantization_config.llm_int8_enable_fp32_cpu_offload
 
-        # We keep some modules such as the lm_head in their original dtype for numerical stability reasons
+        # We may keep some modules such as the `proj_out` in their original dtype for numerical stability reasons
         self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
         if not isinstance(self.modules_to_not_convert, list):

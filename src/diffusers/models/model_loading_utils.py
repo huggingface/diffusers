@@ -58,10 +58,8 @@ def _determine_device_map(
 ):
     if isinstance(device_map, str):
         special_dtypes = {}
-
         if hf_quantizer is not None:
             special_dtypes.update(hf_quantizer.get_special_dtypes_update(model, torch_dtype))
-
         special_dtypes.update(
             {
                 name: torch.float32

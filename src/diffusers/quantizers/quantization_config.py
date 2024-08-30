@@ -186,7 +186,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         llm_int8_skip_modules (`List[str]`, *optional*):
             An explicit list of the modules that we do not want to convert in 8-bit. This is useful for models such as
             Jukebox that has several heads in different places and not necessarily at the last position. For example
-            for `CausalLM` models, the last `lm_head` is kept in its original `dtype`.
+            for `CausalLM` models, the last `lm_head` is typically kept in its original `dtype`.
         llm_int8_enable_fp32_cpu_offload (`bool`, *optional*, defaults to `False`):
             This flag is used for advanced use cases and users that are aware of this feature. If you want to split
             your model in different parts and run some parts in int8 on GPU and some parts in fp32 on CPU, you can use
