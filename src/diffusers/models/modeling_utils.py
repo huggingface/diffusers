@@ -818,6 +818,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     model._convert_deprecated_attention_blocks(state_dict)
                     # move the params from meta device to cpu
                     missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
+                    if hf_quantizer is not None:
+                        hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
                     if len(missing_keys) > 0:
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
