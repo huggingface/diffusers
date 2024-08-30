@@ -100,7 +100,7 @@ accelerate launch train_controlnet_flux.py \
 
 To better track our training experiments, we're using the following flags in the command above:
 
-* `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
+* `report_to="tensorboard` will ensure the training runs are tracked on Weights and Biases.
 * `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 40GB A100 GPU.
