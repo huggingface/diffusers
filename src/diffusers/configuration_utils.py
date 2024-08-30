@@ -587,20 +587,19 @@ class ConfigMixin:
                 value = value.as_posix()
             return value
 
-        if hasattr(self, "quantization_config"):
+        if "quantization_config" in self.config:
             config_dict["quantization_config"] = (
-                self.quantization_config.to_dict()
-                if not isinstance(self.quantization_config, dict)
-                else self.quantization_config
+                self.config.quantization_config.to_dict()
+                if not isinstance(self.config.quantization_config, dict)
+                else self.config.quantization_config
             )
-
-            # pop the `_pre_quantization_dtype` as torch.dtypes are not serializable.
-            _ = config_dict.pop("_pre_quantization_dtype", None)
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
         # Don't save "_ignore_files" or "_use_default_values"
         config_dict.pop("_ignore_files", None)
         config_dict.pop("_use_default_values", None)
+        # pop the `_pre_quantization_dtype` as torch.dtypes are not serializable.
+        _ = config_dict.pop("_pre_quantization_dtype", None)
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
