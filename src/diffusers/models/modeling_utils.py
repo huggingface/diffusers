@@ -657,11 +657,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # determine initial quantization config.
         #######################################
-        pre_quantized = getattr(config, "quantization_config", None) is not None
+        pre_quantized = "quantization_config" in config
         if pre_quantized or quantization_config is not None:
             if pre_quantized:
-                config.quantization_config = DiffusersAutoQuantizer.merge_quantization_configs(
-                    config.quantization_config, quantization_config
+                config["quantization_config"] = DiffusersAutoQuantizer.merge_quantization_configs(
+                    config["quantization_config"], quantization_config
                 )
             else:
                 if "quantization_config" not in config:
@@ -812,7 +812,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     config["_pre_quantization_dtype"] = torch_dtype
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None and not is_sharded:
+                if device_map is None and not is_sharded or (hf_quantizer is not None):
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
