@@ -77,9 +77,20 @@ CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds o
 - `pipe.enable_model_cpu_offload()`:
   - Without enabling cpu offloading, memory usage is `33 GB`
   - With enabling cpu offloading, memory usage is `19 GB`
+- `pipe.enable_sequential_cpu_offload()`:
+  - Similar to `enable_model_cpu_offload` but can significantly reduce memory usage at the cost of slow inference
+  - When enabled, memory usage is under `4 GB`
 - `pipe.vae.enable_tiling()`:
   - With enabling cpu offloading and tiling, memory usage is `11 GB`
 - `pipe.vae.enable_slicing()`
+
+### Quantized inference
+
+[torchao](https://github.com/pytorch/ao) and [optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the text encoder, transformer and VAE modules to lower the memory requirements. This makes it possible to run the model on a free-tier T4 Colab or lower VRAM GPUs!
+
+It is also worth noting that torchao quantization is fully compatible with [torch.compile](/optimization/torch2.0#torchcompile), which allows for much faster inference speed. Additionally, models can be serialized and stored in a quantized datatype to save disk space with torchao. Find examples and benchmarks in the gists below.
+- [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
+- [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
 
 ## CogVideoXPipeline
 
