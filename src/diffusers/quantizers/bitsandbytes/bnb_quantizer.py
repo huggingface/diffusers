@@ -533,6 +533,12 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                 )
             self.modules_to_not_convert.extend(keys_on_cpu)
 
+        # Purge `None`.
+        # Unlike `transformers`, we don't know if we should always keep certain modules in FP32
+        # in case of diffusion transformer models. For language models and others alike, `lm_head`
+        # and tied modules are usually kept in FP32.
+        self.modules_to_not_convert = list(filter(None.__ne__, self.modules_to_not_convert))
+
         model = replace_with_bnb_linear(
             model, modules_to_not_convert=self.modules_to_not_convert, quantization_config=self.quantization_config
         )
