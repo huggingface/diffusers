@@ -664,8 +664,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     config.quantization_config, quantization_config
                 )
             else:
-                config.quantization_config = quantization_config
-            hf_quantizer = DiffusersAutoQuantizer.from_config(config.quantization_config, pre_quantized=pre_quantized)
+                if "quantization_config" not in config:
+                    config["quantization_config"] = quantization_config
+            hf_quantizer = DiffusersAutoQuantizer.from_config(
+                config["quantization_config"], pre_quantized=pre_quantized
+            )
         else:
             hf_quantizer = None
 
@@ -806,7 +809,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # once the weights have been quantized
                     # Note that once you have loaded a quantized model, you can't change its dtype so this will
                     # remain a single source of truth
-                    config._pre_quantization_dtype = torch_dtype
+                    config["_pre_quantization_dtype"] = torch_dtype
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None and not is_sharded:
@@ -934,7 +937,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             raise ValueError(
                 f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
             )
-        elif torch_dtype is not None:
+        elif torch_dtype is not None and hf_quantizer is None:
             model = model.to(torch_dtype)
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)

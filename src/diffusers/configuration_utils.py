@@ -526,7 +526,8 @@ class ConfigMixin:
                 init_dict[key] = config_dict.pop(key)
 
         # 4. Give nice warning if unexpected values have been passed
-        if len(config_dict) > 0:
+        only_quant_config_remaining = len(config_dict) == 1 and "quantization_config" in config_dict
+        if len(config_dict) > 0 and not only_quant_config_remaining:
             logger.warning(
                 f"The config attributes {config_dict} were passed to {cls.__name__}, "
                 "but are not expected and will be ignored. Please verify your "
@@ -585,6 +586,16 @@ class ConfigMixin:
             elif isinstance(value, Path):
                 value = value.as_posix()
             return value
+
+        if hasattr(self, "quantization_config"):
+            config_dict["quantization_config"] = (
+                self.quantization_config.to_dict()
+                if not isinstance(self.quantization_config, dict)
+                else self.quantization_config
+            )
+
+            # pop the `_pre_quantization_dtype` as torch.dtypes are not serializable.
+            _ = config_dict.pop("_pre_quantization_dtype", None)
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
         # Don't save "_ignore_files" or "_use_default_values"

@@ -12,12 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .auto import DiffusersAutoQuantizer
+from .auto import DiffusersAutoQuantizationConfig, DiffusersAutoQuantizer
 from .base import DiffusersQuantizer
-from .bitsandbytes import (
-    dequantize_and_replace,
-    dequantize_bnb_weight,
-    replace_with_bnb_linear,
-    set_module_quantized_tensor_to_device,
-)
-from .quantization_config import BitsAndBytesConfig

@@ -31,7 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers": ["BitsAndBytesConfig"],
+    "quantizers.quantization_config": ["BitsAndBytesConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -527,7 +527,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .quantizers import BitsAndBytesConfig
+    from .quantizers.quantization_config import BitsAndBytesConfig
 
     try:
         if not is_onnx_available():
