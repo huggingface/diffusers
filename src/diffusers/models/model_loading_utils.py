@@ -176,13 +176,12 @@ def load_model_dict_into_meta(
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
 
-    unexpected_keys = []
     empty_state_dict = model.state_dict()
+    unexpected_keys = [param_name for param_name in state_dict if param_name not in empty_state_dict]
     is_torch_e4m3fn_available = hasattr(torch, "float8_e4m3fn")
 
     for param_name, param in state_dict.items():
         if param_name not in empty_state_dict:
-            unexpected_keys.append(param_name)
             continue
 
         # We convert floating dtypes to the `dtype` passed except for float8_e4m3fn type. We also want to keep the buffers/params
