@@ -11,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+Adapted from
+https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/auto.py
+"""
 import warnings
 from typing import Dict, Optional, Union
 
@@ -31,8 +35,8 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
 
 class DiffusersAutoQuantizationConfig:
     """
-    The Auto-HF quantization config class that takes care of automatically dispatching to the correct quantization
-    config given a quantization config stored in a dictionary.
+    The auto diffusers quantization config class that takes care of automatically dispatching to the correct
+    quantization config given a quantization config stored in a dictionary.
     """
 
     @classmethod
@@ -72,8 +76,8 @@ class DiffusersAutoQuantizationConfig:
 
 class DiffusersAutoQuantizer:
     """
-     The Auto-HF quantizer class that takes care of automatically instantiating to the correct
-    `HfQuantizer` given the `QuantizationConfig`.
+     The auto diffusers quantizer class that takes care of automatically instantiating to the correct
+    `DiffusersQuantizer` given the `QuantizationConfig`.
     """
 
     @classmethod
