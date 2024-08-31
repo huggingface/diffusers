@@ -1081,6 +1081,14 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         """
         self.use_slicing = False
 
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO: Implement context parallel cache
+        # TODO: Implement tiled encoding
+        h = self.encoder(x)
+        if self.quant_conv is not None:
+            h = self.quant_conv(h)
+        return h
+
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
@@ -1097,9 +1105,12 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        h = self.encoder(x)
-        if self.quant_conv is not None:
-            h = self.quant_conv(h)
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
+            h = torch.cat(encoded_slices)
+        else:
+            h = self._encode(x)
+
         posterior = DiagonalGaussianDistribution(h)
         if not return_dict:
             return (posterior,)
