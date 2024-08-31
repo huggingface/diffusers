@@ -718,7 +718,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                with record_function("transformer"):
+                with record_function(f"transformer iter_{i}"):
 
                     noise_pred = self.transformer(
                         hidden_states=latents,
@@ -734,7 +734,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                with record_function("scheduler step"):
+                with record_function(f"scheduler.step (iter_{i})"):
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
@@ -762,7 +762,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
             image = latents
 
         else:
-            with record_function("decode latent"):
+            with record_function(f"decode latent"):
                 latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
                 latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
                 image = self.vae.decode(latents, return_dict=False)[0]
