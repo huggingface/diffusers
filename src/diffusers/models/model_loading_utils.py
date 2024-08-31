@@ -130,6 +130,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
+    if isinstance(checkpoint_file, dict):
+        return checkpoint_file
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
@@ -170,7 +172,7 @@ def load_model_dict_into_meta(
     hf_quantizer=None,
     keep_in_fp32_modules=None,
 ) -> List[str]:
-    device = device or torch.device("cpu")
+    device = device or torch.device("cpu") if hf_quantizer is None else device
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
 
@@ -286,3 +288,32 @@ def _fetch_index_file(
             index_file = None
 
     return index_file
+
+
+# Adapted from
+# https://github.com/bghira/SimpleTuner/blob/cea2457ab063f6dedb9e697830ae68a96be90641/helpers/training/save_hooks.py#L64
+def _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata):
+    weight_map = sharded_metadata.get("weight_map", None)
+    if weight_map is None:
+        raise KeyError("'weight_map' key not found in the shard index file.")
+
+    # Collect all unique safetensors files from weight_map
+    files_to_load = set(weight_map.values())
+    is_safetensors = all(f.endswith(".safetensors") for f in files_to_load)
+    merged_state_dict = {}
+
+    # Load tensors from each unique file
+    for file_name in files_to_load:
+        part_file_path = os.path.join(sharded_ckpt_cached_folder, file_name)
+        if not os.path.exists(part_file_path):
+            raise FileNotFoundError(f"Part file {file_name} not found.")
+
+        if is_safetensors:
+            with safetensors.safe_open(part_file_path, framework="pt", device="cpu") as f:
+                for tensor_key in f.keys():
+                    if tensor_key in weight_map:
+                        merged_state_dict[tensor_key] = f.get_tensor(tensor_key)
+        else:
+            merged_state_dict.update(torch.load(part_file_path, weights_only=True, map_location="cpu"))
+
+    return merged_state_dict

@@ -587,7 +587,8 @@ class ConfigMixin:
                 value = value.as_posix()
             return value
 
-        if "quantization_config" in self.config:
+        # IFWatermarker, for example, doesn't have a `config`.
+        if hasattr(self, "config") and "quantization_config" in self.config:
             config_dict["quantization_config"] = (
                 self.config.quantization_config.to_dict()
                 if not isinstance(self.config.quantization_config, dict)

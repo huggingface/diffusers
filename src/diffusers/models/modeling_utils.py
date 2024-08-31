@@ -58,6 +58,7 @@ from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
     _load_state_dict_into_model,
+    _merge_sharded_checkpoints,
     load_model_dict_into_meta,
     load_state_dict,
 )
@@ -675,7 +676,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if hf_quantizer is not None:
             if device_map is not None:
                 raise NotImplementedError(
-                    "Currently, `device_map` is automatically inferred when working with quantized models. Support for providing `device_map` as an input will be added in the future."
+                    "Currently, `device_map` is automatically inferred for quantized models. Support for providing `device_map` as an input will be added in the future."
                 )
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
@@ -759,8 +760,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder or "",
                 )
                 if hf_quantizer is not None:
-                    from .model_loading_utils import _merge_sharded_checkpoints
-
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
                     is_sharded = False
