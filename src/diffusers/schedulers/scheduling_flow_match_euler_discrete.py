@@ -22,7 +22,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .scheduling_utils import SchedulerMixin
-
+from torch.profiler import record_function
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -284,20 +284,22 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
-
-        if self.step_index is None:
-            self._init_step_index(timestep)
+        with record_function(" _init_step_index"):
+            if self.step_index is None:
+                self._init_step_index(timestep)
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
+        
+        with record_function(" get sigma and sigma_next"):
+            sigma = self.sigmas[self.step_index]
+            sigma_next = self.sigmas[self.step_index + 1]
 
-        sigma = self.sigmas[self.step_index]
-        sigma_next = self.sigmas[self.step_index + 1]
-
-        prev_sample = sample + (sigma_next - sigma) * model_output
+        with record_function(" get prev_sample"):
+            prev_sample = sample + (sigma_next - sigma) * model_output
 
         # Cast sample back to model compatible dtype
-        prev_sample = prev_sample.to(model_output.dtype)
+            prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         self._step_index += 1
