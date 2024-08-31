@@ -21,7 +21,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial, wraps
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -33,7 +33,6 @@ from torch import Tensor, nn
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
-from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
@@ -812,7 +811,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     config["_pre_quantization_dtype"] = torch_dtype
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None and not is_sharded or (hf_quantizer is not None):
+                if device_map is None and not is_sharded:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
@@ -950,47 +949,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return model, loading_info
 
         return model
-
-    @wraps(torch.nn.Module.cuda)
-    def cuda(self, *args, **kwargs):
-        # Checks if the model has been loaded in 8-bit
-        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            raise ValueError(
-                "Calling `cuda()` is not supported for `4-bit` or `8-bit` quantized models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and casted to the correct `dtype`."
-            )
-        else:
-            return super().cuda(*args, **kwargs)
-
-    @wraps(torch.nn.Module.to)
-    def to(self, *args, **kwargs):
-        # Checks if the model has been loaded in 8-bit
-        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            raise ValueError(
-                "`.to` is not supported for `4-bit` or `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and casted to the correct `dtype`."
-            )
-        return super().to(*args, **kwargs)
-
-    def half(self, *args):
-        # Checks if the model is quantized
-        if getattr(self, "is_quantized", False):
-            raise ValueError(
-                "`.half()` is not supported for quantized model. Please use the model as it is, since the"
-                " model has already been casted to the correct `dtype`."
-            )
-        else:
-            return super().half(*args)
-
-    def float(self, *args):
-        # Checks if the model is quantized
-        if getattr(self, "is_quantized", False):
-            raise ValueError(
-                "`.float()` is not supported for quantized model. Please use the model as it is, since the"
-                " model has already been casted to the correct `dtype`."
-            )
-        else:
-            return super().float(*args)
 
     @classmethod
     def _load_pretrained_model(

@@ -240,15 +240,17 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    def update_device_map(self, device_map):
-        if device_map is None:
-            device_map = {"": torch.cuda.current_device()}
-            logger.info(
-                "The device_map was not initialized. "
-                "Setting device_map to {'':torch.cuda.current_device()}. "
-                "If you want to use the model for inference, please set device_map ='auto' "
-            )
-        return device_map
+    # (sayakpaul): I don't see any reason to use a `device_map` for a quantized
+    # model here. Commenting here for discussions.
+    # def update_device_map(self, device_map):
+    #     if device_map is None:
+    #         device_map = {"": torch.cuda.current_device()}
+    #         logger.info(
+    #             "The device_map was not initialized. "
+    #             "Setting device_map to {'':torch.cuda.current_device()}. "
+    #             "If you want to use the model for inference, please set device_map ='auto' "
+    #         )
+    #     return device_map
 
     def _process_model_before_weight_loading(
         self,
