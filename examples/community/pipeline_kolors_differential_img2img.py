@@ -28,8 +28,9 @@ from diffusers.utils import is_torch_xla_available, logging, replace_example_doc
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.kolors.pipeline_output import KolorsPipelineOutput
-from diffusers.pipelines.kolors.text_encoder import ChatGLMModel
-from diffusers.pipelines.kolors.tokenizer import ChatGLMTokenizer
+from diffusers.text_encoder import ChatGLMModel
+from diffusers.tokenizer import ChatGLMTokenizer
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -139,7 +140,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin):
+class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin):
     r"""
     Pipeline for text-to-image generation using Kolors.
 
@@ -596,7 +597,7 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.prepare_latents
     def prepare_latents(
-        self, num_channel_latents, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -1033,8 +1034,11 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
         )
 
         # 4. Preprocess image
-        image = self.image_processor.preprocess(image)
-
+        init_image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        map = self.mask_processor.preprocess(
+            map, height=height // self.vae_scale_factor, width=width // self.vae_scale_factor
+        ).to(device)
+        
         # 5. Prepare timesteps
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
@@ -1059,15 +1063,15 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
         num_channels_latents = self.transformer.config.in_channels
         if latents is None:
             latents = self.prepare_latents(
-                image,
+                batch_size * num_images_per_prompt,
                 num_channels_latents,
+                height,
+                width,
+                init_image,
                 latent_timestep,
-                batch_size,
-                num_images_per_prompt,
                 prompt_embeds.dtype,
                 device,
                 generator,
-                add_noise,
             )
 
         # 7. Prepare extra step kwargs.
@@ -1154,13 +1158,12 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
-
         original_with_noise = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
             height,
             width,
-            image,
+            init_image,
             timesteps,
             prompt_embeds.dtype,
             device,
@@ -1174,6 +1177,7 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
                 if i == 0:
                     latents = original_with_noise[:1]
                 else:
