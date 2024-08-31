@@ -28,8 +28,8 @@ from diffusers.utils import is_torch_xla_available, logging, replace_example_doc
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.kolors.pipeline_output import KolorsPipelineOutput
-from diffusers.text_encoder import ChatGLMModel
-from diffusers.tokenizer import ChatGLMTokenizer
+from diffusers.pipelines.kolors.text_encoder import ChatGLMModel
+from diffusers.pipelines.kolors.tokenizer import ChatGLMTokenizer
 
 
 if is_torch_xla_available():
