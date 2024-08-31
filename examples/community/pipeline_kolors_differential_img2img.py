@@ -18,18 +18,18 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, StableDiffusionXLLoraLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
-from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from .pipeline_output import KolorsPipelineOutput
-from .text_encoder import ChatGLMModel
-from .tokenizer import ChatGLMTokenizer
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.loaders import IPAdapterMixin, StableDiffusionXLLoraLoaderMixin
+from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from diffusers.pipeline_output import KolorsPipelineOutput
+from diffusers.text_encoder import ChatGLMModel
+from diffusers.tokenizer import ChatGLMTokenizer
 
 
 if is_torch_xla_available():
