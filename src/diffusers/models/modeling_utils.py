@@ -21,7 +21,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -33,6 +33,7 @@ from torch import Tensor, nn
 
 from .. import __version__
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
+from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
@@ -656,7 +657,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # determine initial quantization config.
         #######################################
-        pre_quantized = "quantization_config" in config
+        pre_quantized = "quantization_config" in config and config["quantization_config"] is not None
         if pre_quantized or quantization_config is not None:
             if pre_quantized:
                 config["quantization_config"] = DiffusersAutoQuantizer.merge_quantization_configs(
@@ -672,9 +673,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
+            if device_map is not None:
+                raise NotImplementedError(
+                    "Currently, `device_map` is automatically inferred when working with quantized models. Support for providing `device_map` as an input will be added in the future."
+                )
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
-            device_map = hf_quantizer.update_device_map(device_map)
 
             # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
@@ -754,6 +758,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     revision=revision,
                     subfolder=subfolder or "",
                 )
+                if hf_quantizer is not None:
+                    from .model_loading_utils import _merge_sharded_checkpoints
+
+                    logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
+                    model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
+                    is_sharded = False
 
             elif use_safetensors and not is_sharded:
                 try:
@@ -812,13 +822,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None and not is_sharded:
-                    param_device = "cpu"
+                    # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
+                    # It would error out during the `validate_environment()` call above in the absence of cuda.
+                    param_device = "cpu" if hf_quantizer is None else torch.cuda.current_device()
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
+
                     # move the params from meta device to cpu
                     missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
                     if hf_quantizer is not None:
-                        hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
+                        missing_keys = hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
                     if len(missing_keys) > 0:
                         raise ValueError(
                             f"Cannot load {cls} from {pretrained_model_name_or_path} because the following keys are"
@@ -949,6 +962,47 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return model, loading_info
 
         return model
+
+    @wraps(torch.nn.Module.cuda)
+    def cuda(self, *args, **kwargs):
+        # Checks if the model has been loaded in 8-bit
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            raise ValueError(
+                "Calling `cuda()` is not supported for `4-bit` or `8-bit` quantized models. Please use the model as it is, since the"
+                " model has already been set to the correct devices and casted to the correct `dtype`."
+            )
+        else:
+            return super().cuda(*args, **kwargs)
+
+    @wraps(torch.nn.Module.to)
+    def to(self, *args, **kwargs):
+        # Checks if the model has been loaded in 8-bit
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+            raise ValueError(
+                "`.to` is not supported for `4-bit` or `8-bit` bitsandbytes models. Please use the model as it is, since the"
+                " model has already been set to the correct devices and casted to the correct `dtype`."
+            )
+        return super().to(*args, **kwargs)
+
+    def half(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.half()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been casted to the correct `dtype`."
+            )
+        else:
+            return super().half(*args)
+
+    def float(self, *args):
+        # Checks if the model is quantized
+        if getattr(self, "is_quantized", False):
+            raise ValueError(
+                "`.float()` is not supported for quantized model. Please use the model as it is, since the"
+                " model has already been casted to the correct `dtype`."
+            )
+        else:
+            return super().float(*args)
 
     @classmethod
     def _load_pretrained_model(

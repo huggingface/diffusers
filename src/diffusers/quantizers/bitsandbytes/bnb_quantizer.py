@@ -11,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Adapted from
-https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/quantizer_bnb_4bit.py
-"""
-
 import importlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -240,8 +234,9 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # (sayakpaul): I don't see any reason to use a `device_map` for a quantized
-    # model here. Commenting here for discussions.
+    # (sayakpaul): I think it could be better to disable custom `device_map`s
+    # for the first phase of the integration in the interest of simplicity.
+    # Commenting this for discussions on the PR.
     # def update_device_map(self, device_map):
     #     if device_map is None:
     #         device_map = {"": torch.cuda.current_device()}
@@ -412,16 +407,16 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float16
         return torch_dtype
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
-    def update_device_map(self, device_map):
-        if device_map is None:
-            device_map = {"": torch.cuda.current_device()}
-            logger.info(
-                "The device_map was not initialized. "
-                "Setting device_map to {'':torch.cuda.current_device()}. "
-                "If you want to use the model for inference, please set device_map ='auto' "
-            )
-        return device_map
+    # # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.update_device_map
+    # def update_device_map(self, device_map):
+    #     if device_map is None:
+    #         device_map = {"": torch.cuda.current_device()}
+    #         logger.info(
+    #             "The device_map was not initialized. "
+    #             "Setting device_map to {'':torch.cuda.current_device()}. "
+    #             "If you want to use the model for inference, please set device_map ='auto' "
+    #         )
+    #     return device_map
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         if target_dtype != torch.int8:

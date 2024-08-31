@@ -44,6 +44,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers.quantization_config import QuantizationMethod
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -420,16 +421,28 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+            is_loaded_in_4bit_bnb = (
+                hasattr(module, "is_loaded_in_4bit")
+                and module.is_loaded_in_4bit
+                and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+            )
+            is_loaded_in_8bit_bnb = (
+                hasattr(module, "is_loaded_in_8bit")
+                and module.is_loaded_in_8bit
+                and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+            )
+            bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
 
-            if is_loaded_in_8bit and dtype is not None:
+            if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
+                precision = bit_map[True]
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and conversion to {dtype} is not supported. Module is still in {precision} precision. In most cases, it is recommended to not change the precision."
                 )
 
-            if is_loaded_in_8bit and device is not None:
+            if (is_loaded_in_4bit_bnb or is_loaded_in_4bit_bnb) and device is not None:
+                precision = bit_map[True]
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and moving it to {device} via `.to()` is not supported. Module is still on {module.device}. In most cases, it is recommended to not change the device."
                 )
             else:
                 module.to(device, dtype)
@@ -1009,7 +1022,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
+            is_loaded_in_4bit_bnb = (
+                hasattr(model, "is_loaded_in_4bit")
+                and model.is_loaded_in_4bit
+                and getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+            )
+            is_loaded_in_8bit_bnb = (
+                hasattr(model, "is_loaded_in_8bit")
+                and model.is_loaded_in_8bit
+                and getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+            )
+            bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
+
             if not isinstance(model, torch.nn.Module):
+                continue
+
+            # This is because the model would already be placed on a CUDA device.
+            if is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb:
+                precision = bit_map[True]
+                logger.info(
+                    f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` {precision}."
+                )
                 continue
 
             _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)

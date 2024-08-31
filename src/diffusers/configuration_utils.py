@@ -587,8 +587,7 @@ class ConfigMixin:
                 value = value.as_posix()
             return value
 
-        # If we don't access `quantization_config` from self.config, it warns about it and litters the console.
-        if hasattr(self, "config") and "quantization_config" in self.config:
+        if "quantization_config" in self.config:
             config_dict["quantization_config"] = (
                 self.config.quantization_config.to_dict()
                 if not isinstance(self.config.quantization_config, dict)
