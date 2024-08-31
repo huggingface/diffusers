@@ -26,8 +26,8 @@ from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProc
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipeline_output import KolorsPipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from diffusers.pipelines.pipeline_output import KolorsPipelineOutput
 from diffusers.text_encoder import ChatGLMModel
 from diffusers.tokenizer import ChatGLMTokenizer
 
