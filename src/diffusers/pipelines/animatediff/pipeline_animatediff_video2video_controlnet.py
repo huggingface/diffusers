@@ -248,6 +248,9 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         if isinstance(unet, UNet2DConditionModel):
             unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = MultiControlNetModel(controlnet)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -661,7 +664,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
                     f"For single controlnet, `image` must be of type `list` but got {type(conditioning_frames)}"
                 )
             if len(conditioning_frames) != num_frames:
-                raise ValueError(f"Excepted image to have length {num_frames} but got {len(video)=}")
+                raise ValueError(f"Excepted image to have length {num_frames} but got {len(conditioning_frames)=}")
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
@@ -672,7 +675,9 @@ class AnimateDiffVideoToVideoControlNetPipeline(
                     f"For multiple controlnets: `image` must be type list of lists but got {type(conditioning_frames)=}"
                 )
             if len(conditioning_frames[0]) != num_frames:
-                raise ValueError(f"Expected length of image sublist as {num_frames} but got {len(video[0])=}")
+                raise ValueError(
+                    f"Expected length of image sublist as {num_frames} but got {len(conditioning_frames)=}"
+                )
             if any(len(img) != len(conditioning_frames[0]) for img in conditioning_frames):
                 raise ValueError("All conditioning frame batches for multicontrolnet must be same size")
         else:
