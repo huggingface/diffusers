@@ -140,7 +140,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin):
+class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin):
     r"""
     Pipeline for text-to-image generation using Kolors.
 
