@@ -341,7 +341,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         video: Optional[torch.Tensor] = None,
         batch_size: int = 1,
         num_channels_latents: int = 16,
-        num_frames: int = 13,
         height: int = 60,
         width: int = 90,
         dtype: Optional[torch.dtype] = None,
@@ -350,13 +349,16 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         timestep: Optional[torch.Tensor] = None,
     ):
+        num_frames = (video.size(2) - 1) // self.vae_scale_factor_temporal + 1 if latents is None else latents.size(1)
+
         shape = (
             batch_size,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+            num_frames,
             num_channels_latents,
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
         )
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -432,6 +434,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         strength,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
+        video=None,
+        latents=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
@@ -478,6 +482,9 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if video is not None and latents is not None:
+            raise ValueError("Only one of `video` or `latents` should be provided")
 
     def fuse_qkv_projections(self) -> None:
         r"""Enables fused QKV projections."""
@@ -539,7 +546,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
         width: int = 720,
-        num_frames: int = 49,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         strength: float = 0.8,
@@ -576,11 +582,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_frames (`int`, defaults to `48`):
-                Number of frames to generate. Must be divisible by self.vae_scale_factor_temporal. Generated video will
-                contain 1 extra frame because CogVideoX is conditioned with (num_seconds * fps + 1) frames where
-                num_seconds is 6 and fps is 4. However, since videos can be saved at any fps, the only condition that
-                needs to be satisfied is that of divisibility mentioned above.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -639,11 +640,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        if num_frames > 49:
-            raise ValueError(
-                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
-            )
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -700,16 +696,16 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         self._num_timesteps = len(timesteps)
 
-        # 5. Prepare latents.
+        # 5. Prepare latents
         if latents is None:
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=prompt_embeds.dtype)
+
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             video,
             batch_size * num_videos_per_prompt,
             latent_channels,
-            num_frames,
             height,
             width,
             prompt_embeds.dtype,
