@@ -21,7 +21,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from ...models import AsymmetricAutoencoderKL, AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -1126,13 +1126,39 @@ class StableDiffusionPAGInpaintPipeline(
             generator,
             self.do_classifier_free_guidance,
         )
+        if self.do_perturbed_attention_guidance:
+            if self.do_classifier_free_guidance:
+                mask, _ = mask.chunk(2)
+                masked_image_latents, _ = masked_image_latents.chunk(2)
+            mask = self._prepare_perturbed_attention_guidance(mask, mask, self.do_classifier_free_guidance)
+            masked_image_latents = self._prepare_perturbed_attention_guidance(
+                masked_image_latents, masked_image_latents, self.do_classifier_free_guidance
+            )
+
+        # 8. Check that sizes of mask, masked image and latents match
+        if num_channels_unet == 9:
+            # default case for runwayml/stable-diffusion-inpainting
+            num_channels_mask = mask.shape[1]
+            num_channels_masked_image = masked_image_latents.shape[1]
+            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+                raise ValueError(
+                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
+                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                    " `pipeline.unet` or your `mask_image` or `image` input."
+                )
+        elif num_channels_unet != 4:
+            raise ValueError(
+                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
+            )
+        # 8.1 Prepare extra step kwargs.
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
 
-
-        
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
                 prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
@@ -1163,27 +1189,8 @@ class StableDiffusionPAGInpaintPipeline(
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
 
-        # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
-
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
+        
         # 6.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
             {"image_embeds": ip_adapter_image_embeds}
@@ -1201,6 +1208,8 @@ class StableDiffusionPAGInpaintPipeline(
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        
+        
         if self.do_perturbed_attention_guidance:
             original_attn_proc = self.unet.attn_processors
             self._set_pag_attn_processor(
@@ -1216,6 +1225,9 @@ class StableDiffusionPAGInpaintPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                if num_channels_unet == 9:
+                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1245,6 +1257,22 @@ class StableDiffusionPAGInpaintPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
+                if num_channels_unet == 4:
+                    init_latents_proper = image_latents
+                    if self.do_perturbed_attention_guidance:
+                        init_mask, *_ = mask.chunk(3) if self.do_classifier_free_guidance else mask.chunk(2)
+                    else:
+                        init_mask, *_ = mask.chunk(2) if self.do_classifier_free_guidance else mask
+
+                    if i < len(timesteps) - 1:
+                        noise_timestep = timesteps[i + 1]
+                        init_latents_proper = self.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        )
+
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+
+
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -1254,15 +1282,24 @@ class StableDiffusionPAGInpaintPipeline(
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    mask = callback_outputs.pop("mask", mask)
+                    masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-
+                    
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            condition_kwargs = {}
+            if isinstance(self.vae, AsymmetricAutoencoderKL):
+                init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
+                init_image_condition = init_image.clone()
+                init_image = self._encode_vae_image(init_image, generator=generator)
+                mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
+                condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
+            image = self.vae.decode(
+                latents / self.vae.config.scaling_factor, return_dict=False, generator=generator, **condition_kwargs
+            )[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
@@ -1275,11 +1312,15 @@ class StableDiffusionPAGInpaintPipeline(
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
+
         # Offload all models
         self.maybe_free_model_hooks()
 
         if self.do_perturbed_attention_guidance:
             self.unet.set_attn_processor(original_attn_proc)
+
 
         if not return_dict:
             return (image, has_nsfw_concept)
