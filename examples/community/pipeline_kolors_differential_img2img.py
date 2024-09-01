@@ -212,6 +212,10 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True
+        )
+
         self.default_sample_size = self.unet.config.sample_size
 
     # Copied from diffusers.pipelines.kolors.pipeline_kolors.KolorsPipeline.encode_prompt
@@ -1035,10 +1039,11 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
 
         # 4. Preprocess image
         init_image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+
         map = self.mask_processor.preprocess(
             map, height=height // self.vae_scale_factor, width=width // self.vae_scale_factor
         ).to(device)
-        
+
         # 5. Prepare timesteps
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
@@ -1047,7 +1052,9 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
 
+        # begin diff diff change
         total_time_steps = num_inference_steps
+        # end diff diff change
 
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,
@@ -1127,6 +1134,23 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
         # 9. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
+        # preparations for diff diff
+        original_with_noise = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
+            timesteps,
+            prompt_embeds.dtype,
+            device,
+            generator,
+        )
+        thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
+        thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
+        masks = map.squeeze() > thresholds
+        # end diff diff preparations
+
         # 9.1 Apply denoising_end
         if (
             self.denoising_end is not None
@@ -1158,32 +1182,19 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
-        original_with_noise = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            init_image,
-            timesteps,
-            prompt_embeds.dtype,
-            device,
-            generator,
-        )
-        thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
-        thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
-        masks = map.squeeze() > thresholds
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-
+                
+                # diff diff
                 if i == 0:
                     latents = original_with_noise[:1]
                 else:
                     mask = masks[i].unsqueeze(0).to(latents.dtype)
                     mask = mask.unsqueeze(1)  # fit shape
                     latents = original_with_noise[i] * mask + latents * (1 - mask)
+                # end diff diff
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
