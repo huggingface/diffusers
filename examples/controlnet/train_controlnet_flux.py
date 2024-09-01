@@ -862,7 +862,7 @@ def main(args):
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = FluxControlNetModel.from_pretrained(input_dir, subfolder="controlnet")
+                load_model = FluxControlNetModel.from_pretrained(input_dir, subfolder="flux_controlnet")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
