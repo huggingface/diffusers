@@ -268,6 +268,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
         self,
         prompt,
@@ -521,6 +522,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
 
         return ip_adapter_image_embeds
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.encode_video
     def encode_video(self, video, generator, decode_chunk_size: int = 16) -> torch.Tensor:
         latents = []
         for i in range(0, len(video), decode_chunk_size):
@@ -736,6 +738,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, timesteps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -745,6 +748,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.prepare_latents
     def prepare_latents(
         self,
         video: Optional[torch.Tensor] = None,
@@ -1244,7 +1248,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-            # 9. Denoising loop
+            # 10. Denoising loop
             with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
