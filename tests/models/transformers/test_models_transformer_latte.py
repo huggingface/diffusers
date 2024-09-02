@@ -32,6 +32,7 @@ enable_full_determinism()
 class LatteTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = LatteTransformer3DModel
     main_input_name = "hidden_states"
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):

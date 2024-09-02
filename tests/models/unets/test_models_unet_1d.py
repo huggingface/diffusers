@@ -31,6 +31,7 @@ from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
     main_input_name = "sample"
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
@@ -153,6 +154,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
     main_input_name = "sample"
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):

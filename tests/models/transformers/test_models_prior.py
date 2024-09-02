@@ -39,6 +39,7 @@ enable_full_determinism()
 class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = PriorTransformer
     main_input_name = "hidden_states"
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):

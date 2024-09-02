@@ -146,6 +146,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
@@ -304,6 +305,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
     model_class = AsymmetricAutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
@@ -340,6 +342,7 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderTiny
     main_input_name = "sample"
     base_precision = 1e-2
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
@@ -373,6 +376,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     main_input_name = "sample"
     base_precision = 1e-2
     forward_requires_fresh_args = True
+    uses_custom_attn_processor = False
 
     def inputs_dict(self, seed=None):
         if seed is None:
@@ -411,6 +415,7 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
@@ -527,6 +532,10 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
 
     def test_forward_with_norm_groups(self):
         pass
+
+    @unittest.skip("No attention module used in this model")
+    def test_set_attn_processor_for_determinism(self):
+        return
 
 
 @slow

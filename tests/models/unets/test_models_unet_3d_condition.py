@@ -35,6 +35,7 @@ logger = logging.get_logger(__name__)
 class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
+    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
