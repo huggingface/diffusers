@@ -56,6 +56,7 @@ from .pag import (
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
+    StableDiffusionPAGInpaintPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
@@ -138,6 +139,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
     ]
 )
 
