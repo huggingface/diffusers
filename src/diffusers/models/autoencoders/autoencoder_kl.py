@@ -245,6 +245,18 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         self.set_attn_processor(processor)
 
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, height, width = x.shape
+
+        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+            return self.tiled_encode(x)
+
+        enc = self.encoder(x)
+        if self.quant_conv is not None:
+            enc = self.quant_conv(x)
+
+        return enc
+
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
@@ -261,21 +273,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
-            return self.tiled_encode(x, return_dict=return_dict)
-
         if self.use_slicing and x.shape[0] > 1:
-            encoded_slices = [self.encoder(x_slice) for x_slice in x.split(1)]
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
             h = torch.cat(encoded_slices)
         else:
-            h = self.encoder(x)
+            h = self._encode(x)
 
-        if self.quant_conv is not None:
-            moments = self.quant_conv(h)
-        else:
-            moments = h
-
-        posterior = DiagonalGaussianDistribution(moments)
+        posterior = DiagonalGaussianDistribution(h)
 
         if not return_dict:
             return (posterior,)
@@ -337,7 +341,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -348,13 +352,10 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         Args:
             x (`torch.Tensor`): Input batch of images.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.autoencoder_kl.AutoencoderKLOutput`] or `tuple`:
-                If return_dict is True, a [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain
-                `tuple` is returned.
+            `torch.Tensor`:
+                The latent representation of the encoded videos.
         """
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
@@ -384,13 +385,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 result_row.append(tile[:, :, :row_limit, :row_limit])
             result_rows.append(torch.cat(result_row, dim=3))
 
-        moments = torch.cat(result_rows, dim=2)
-        posterior = DiagonalGaussianDistribution(moments)
-
-        if not return_dict:
-            return (posterior,)
-
-        return AutoencoderKLOutput(latent_dist=posterior)
+        enc = torch.cat(result_rows, dim=2)
+        return enc
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
