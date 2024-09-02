@@ -157,6 +157,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
                 self.assertTrue(m.weight.device != torch.device("cpu"))
 
+    @slow
     @require_torch_gpu
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
