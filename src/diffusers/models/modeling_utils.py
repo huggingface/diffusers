@@ -1203,6 +1203,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         859520964
         ```
         """
+        is_loaded_in_4bit = getattr(self, "is_loaded_in_4bit", False)
+
+        if is_loaded_in_4bit:
+            if is_bitsandbytes_available():
+                import bitsandbytes as bnb
+            else:
+                raise ValueError(
+                    "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
+                    " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
+                )
 
         if exclude_embeddings:
             embedding_param_names = [
@@ -1215,16 +1225,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             total_parameters = list(self.parameters())
 
         total_numel = []
-        is_loaded_in_4bit = getattr(self, "is_loaded_in_4bit", False)
-
-        if is_loaded_in_4bit:
-            if is_bitsandbytes_available():
-                import bitsandbytes as bnb
-            else:
-                raise ValueError(
-                    "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
-                    " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
-                )
 
         for param in total_parameters:
             if param.requires_grad or not only_trainable:
