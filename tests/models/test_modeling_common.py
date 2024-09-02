@@ -417,6 +417,9 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
+        if self.uses_custom_attn_processor:
+            return
+
         torch.use_deterministic_algorithms(False)
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)

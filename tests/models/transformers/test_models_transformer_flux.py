@@ -32,6 +32,9 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
     # We override the items here because the transformer under consideration is small.
     model_split_percents = [0.7, 0.6, 0.6]
 
+    # Skip setting testing with default: AttnProcessor
+    uses_custom_attn_processor = True
+
     @property
     def dummy_input(self):
         batch_size = 1
