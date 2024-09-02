@@ -35,7 +35,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CogVideoXVideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"video"})

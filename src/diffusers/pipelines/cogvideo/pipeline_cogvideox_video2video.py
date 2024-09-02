@@ -215,6 +215,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -257,6 +258,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -393,6 +395,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.decode_latents
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -488,11 +491,13 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         if video is not None and latents is not None:
             raise ValueError("Only one of `video` or `latents` should be provided")
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.fuse_qkv_projections
     def fuse_qkv_projections(self) -> None:
         r"""Enables fused QKV projections."""
         self.fusing_transformer = True
         self.transformer.fuse_qkv_projections()
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.unfuse_qkv_projections
     def unfuse_qkv_projections(self) -> None:
         r"""Disable QKV projection fusion if enabled."""
         if not self.fusing_transformer:
@@ -501,6 +506,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
             self.transformer.unfuse_qkv_projections()
             self.fusing_transformer = False
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._prepare_rotary_positional_embeddings
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
