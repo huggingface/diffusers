@@ -248,7 +248,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, height, width = x.shape
 
-        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+        if self.use_tiling and (width > self.tile_sample_min_size or height > self.tile_sample_min_size):
             return self.tiled_encode(x)
 
         enc = self.encoder(x)
