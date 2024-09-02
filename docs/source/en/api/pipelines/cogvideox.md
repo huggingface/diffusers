@@ -87,6 +87,12 @@ CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds o
   - all
   - __call__
 
+## CogVideoXVideoToVideoPipeline
+
+[[autodoc]] CogVideoXVideoToVideoPipeline
+  - all
+  - __call__
+
 ## CogVideoXPipelineOutput
 
-[[autodoc]] pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput
+[[autodoc]] pipelines.cogvideo.pipeline_output.CogVideoXPipelineOutput
