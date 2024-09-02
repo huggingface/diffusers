@@ -6,10 +6,12 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 import importlib.metadata
 import inspect
 from inspect import signature
+from typing import Union
 
 from packaging import version
 
 from ...utils import is_accelerate_available, is_bitsandbytes_available, is_torch_available, logging
+from ..quantization_config import QuantizationMethod
 
 
 if is_torch_available():
@@ -392,3 +394,17 @@ def dequantize_and_replace(
         )
 
     return model
+
+
+def _check_bnb_status(module) -> Union[bool, bool]:
+    is_loaded_in_4bit_bnb = (
+        hasattr(module, "is_loaded_in_4bit")
+        and module.is_loaded_in_4bit
+        and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+    )
+    is_loaded_in_8bit_bnb = (
+        hasattr(module, "is_loaded_in_8bit")
+        and module.is_loaded_in_8bit
+        and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
+    )
+    return is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb

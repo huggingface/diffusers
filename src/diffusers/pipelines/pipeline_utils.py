@@ -44,7 +44,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
-from ..quantizers.quantization_config import QuantizationMethod
+from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -397,7 +397,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
+        pipeline_has_bnb_quant = any(_check_bnb_status(module)[0] for _, module in self.components.items())
+        if (
+            not pipeline_has_bnb_quant
+            and pipeline_is_sequentially_offloaded
+            and device
+            and torch.device(device).type == "cuda"
+        ):
             raise ValueError(
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
@@ -421,16 +427,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            is_loaded_in_4bit_bnb = (
-                hasattr(module, "is_loaded_in_4bit")
-                and module.is_loaded_in_4bit
-                and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-            )
-            is_loaded_in_8bit_bnb = (
-                hasattr(module, "is_loaded_in_8bit")
-                and module.is_loaded_in_8bit
-                and getattr(module, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-            )
+            _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(module)
             bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
 
             if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
@@ -1022,16 +1019,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
-            is_loaded_in_4bit_bnb = (
-                hasattr(model, "is_loaded_in_4bit")
-                and model.is_loaded_in_4bit
-                and getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-            )
-            is_loaded_in_8bit_bnb = (
-                hasattr(model, "is_loaded_in_8bit")
-                and model.is_loaded_in_8bit
-                and getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-            )
+            is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = False, False
+            if model is not None and isinstance(model, torch.nn.Module):
+                _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(model)
+
             bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
 
             if not isinstance(model, torch.nn.Module):
