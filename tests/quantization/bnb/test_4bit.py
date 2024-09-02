@@ -16,14 +16,18 @@ import gc
 import tempfile
 import unittest
 
+import numpy as np
+
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, SD3Transformer2DModel
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     is_bitsandbytes_available,
     is_torch_available,
     load_pt,
-    print_tensor_test,
     require_accelerate,
     require_bitsandbytes,
+    require_torch,
     require_torch_gpu,
     slow,
     torch_device,
@@ -47,32 +51,40 @@ if is_bitsandbytes_available():
 
 @require_bitsandbytes
 @require_accelerate
+@require_torch
 @require_torch_gpu
+@slow
 class Base4bitTests(unittest.TestCase):
     # We need to test on relatively large models (aka >1b parameters otherwise the quantiztion may not work as expected)
-    # Therefore here we use only bloom-1b3 to test our module
+    # Therefore here we use only SD3 to test our module
     model_name = "stabilityai/stable-diffusion-3-medium-diffusers"
+
+    # This was obtained on audace so the number might slightly change
+    expected_rel_difference = 3.69
 
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
     seed = 0
 
-    prompt_embeds = load_pt(
-        "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt"
-    ).to(torch_device)
-    pooled_prompt_embeds = load_pt(
-        "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/pooled_prompt_embeds.pt"
-    ).to(torch_device)
-    latent_model_input = load_pt(
-        "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/latent_model_input.pt"
-    ).to(torch_device)
-    input_dict_for_transformer = {
-        "prompt_embeds": prompt_embeds,
-        "pooled_prompt_embeds": pooled_prompt_embeds,
-        "latent_model_input": latent_model_input,
-        "timestep": torch.Tensor([1.0]),
-        "return_dict": False,
-    }
+    def get_dummy_inputs(self):
+        prompt_embeds = load_pt(
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/prompt_embeds.pt"
+        )
+        pooled_prompt_embeds = load_pt(
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/pooled_prompt_embeds.pt"
+        )
+        latent_model_input = load_pt(
+            "https://huggingface.co/datasets/hf-internal-testing/bnb-diffusers-testing-artifacts/resolve/main/latent_model_input.pt"
+        )
+
+        input_dict_for_transformer = {
+            "hidden_states": latent_model_input,
+            "encoder_hidden_states": prompt_embeds,
+            "pooled_projections": pooled_prompt_embeds,
+            "timestep": torch.Tensor([1.0]),
+            "return_dict": False,
+        }
+        return input_dict_for_transformer
 
 
 class BnB4BitBasicTests(Base4bitTests):
@@ -112,12 +124,12 @@ class BnB4BitBasicTests(Base4bitTests):
         """
         config = self.model_4bit.config
 
-        self.assertTrue(hasattr(config, "quantization_config"))
+        self.assertTrue("quantization_config" in config)
 
-        _ = config.to_dict()
-        _ = config.to_diff_dict()
+        _ = config["quantization_config"].to_dict()
+        _ = config["quantization_config"].to_diff_dict()
 
-        _ = config.to_json_string()
+        _ = config["quantization_config"].to_json_string()
 
     def test_memory_footprint(self):
         r"""
@@ -129,7 +141,7 @@ class BnB4BitBasicTests(Base4bitTests):
         mem_fp16 = self.model_fp16.get_memory_footprint()
         mem_4bit = self.model_4bit.get_memory_footprint()
 
-        self.assertAlmostEqual(mem_fp16 / mem_4bit, self.EXPECTED_RELATIVE_DIFFERENCE)
+        self.assertAlmostEqual(mem_fp16 / mem_4bit, self.expected_rel_difference, delta=1e-2)
         linear = get_some_linear_layer(self.model_4bit)
         self.assertTrue(linear.weight.__class__ == Params4bit)
 
@@ -137,9 +149,9 @@ class BnB4BitBasicTests(Base4bitTests):
         r"""
         A simple test to check if the model succesfully stores the original dtype
         """
-        self.assertTrue(hasattr(self.model_4bit.config, "_pre_quantization_dtype"))
-        self.assertFalse(hasattr(self.model_fp16.config, "_pre_quantization_dtype"))
-        self.assertTrue(self.model_4bit.config._pre_quantization_dtype == torch.float16)
+        self.assertTrue("_pre_quantization_dtype" in self.model_4bit.config)
+        self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
+        self.assertTrue(self.model_4bit.config["_pre_quantization_dtype"] == torch.float16)
 
     def test_linear_are_4bit(self):
         r"""
@@ -182,8 +194,14 @@ class BnB4BitBasicTests(Base4bitTests):
 
         # Test if we did not break anything
 
-        self.model_fp16 = self.model_fp16.to(torch.float32)
-        model_inputs = {k: v.to(torch.float32) for k, v in self.input_dict_for_transformer.items()}
+        self.model_fp16 = self.model_fp16.to(dtype=torch.float32, device=torch_device)
+        input_dict_for_transformer = self.get_dummy_inputs()
+        model_inputs = {
+            k: v.to(dtype=torch.float32, device=torch_device)
+            for k, v in input_dict_for_transformer.items()
+            if not isinstance(v, bool)
+        }
+        model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
         with torch.no_grad():
             _ = self.model_fp16(**model_inputs)
 
@@ -203,8 +221,18 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
 
+    def test_model_cpu_offload_raises_warning(self):
+        pipeline_4bit = DiffusionPipeline.from_pretrained(
+            self.model_name, transformer=self.model_4bit, torch_dtype=torch.float16
+        )
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            pipeline_4bit.enable_model_cpu_offload()
 
-@slow
+        self.assertTrue("The module 'SD3Transformer2DModel' has been loaded in `bitsandbytes` 4bit" in cap_logger.out)
+
+
 class SlowBnb4BitTests(Base4bitTests):
     def setUp(self) -> None:
         nf4_config = BitsAndBytesConfig(
@@ -233,24 +261,28 @@ class SlowBnb4BitTests(Base4bitTests):
             generator=torch.manual_seed(self.seed),
             output_type="np",
         ).images
-        print_tensor_test(output, limit_to_slices=True)
 
-        assert output is None
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.1123, 0.1296, 0.1609, 0.1042, 0.1230, 0.1274, 0.0928, 0.1165, 0.1216])
+
+        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
 
     def test_generate_quality_dequantize(self):
         r"""
-        Test that loading the model and unquantize it produce correct results
+        Test that loading the model and unquantize it produce correct results.
         """
-        self.pipeline_4bit.dequantize()
+        self.pipeline_4bit.transformer.dequantize()
         output = self.pipeline_4bit(
             prompt=self.prompt,
             num_inference_steps=self.num_inference_steps,
             generator=torch.manual_seed(self.seed),
             output_type="np",
         ).images
-        print_tensor_test(output, limit_to_slices=True)
 
-        assert output is None
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.1216, 0.1387, 0.1584, 0.1152, 0.1318, 0.1282, 0.1062, 0.1226, 0.1228])
+
+        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
 
 
 @slow
@@ -271,13 +303,16 @@ class BaseBnb4BitSerializationTests(Base4bitTests):
             bnb_4bit_use_double_quant=double_quant,
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
-        model_0 = SD3Transformer2DModel.from_pretrained(self.model_name, quantization_config=self.quantization_config)
-
+        model_0 = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=self.quantization_config
+        )
+        self.assertTrue("_pre_quantization_dtype" in model_0.config)
         with tempfile.TemporaryDirectory() as tmpdirname:
             model_0.save_pretrained(tmpdirname, safe_serialization=safe_serialization)
 
             config = SD3Transformer2DModel.load_config(tmpdirname)
             self.assertTrue("quantization_config" in config)
+            self.assertTrue("_pre_quantization_dtype" not in config)
 
             model_1 = SD3Transformer2DModel.from_pretrained(tmpdirname)
 
@@ -313,10 +348,12 @@ class BaseBnb4BitSerializationTests(Base4bitTests):
                         self.assertTrue(v0 == v1)
 
         # comparing forward() outputs
-        with torch.no_grad():
-            out_0 = model_0(**self.input_dict_for_transformer)[0]
-            out_1 = model_1(**self.input_dict_for_transformer)[0]
-            self.assertTrue(torch.equal(out_0, out_1))
+        dummy_inputs = self.get_dummy_inputs()
+        inputs = {k: v.to(torch_device) for k, v in dummy_inputs.items() if isinstance(v, torch.Tensor)}
+        inputs.update({k: v for k, v in dummy_inputs.items() if k not in inputs})
+        out_0 = model_0(**inputs)[0]
+        out_1 = model_1(**inputs)[0]
+        self.assertTrue(torch.equal(out_0, out_1))
 
 
 class ExtendedSerializationTest(BaseBnb4BitSerializationTests):

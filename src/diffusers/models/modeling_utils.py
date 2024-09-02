@@ -954,7 +954,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         elif torch_dtype is not None and hf_quantizer is None:
             model = model.to(torch_dtype)
 
-        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        if hf_quantizer is not None:
+            # We need to register the _pre_quantization_dtype separately for bookkeeping purposes.
+            # directly assigning `config["_pre_quantization_dtype"]` won't reflect `_pre_quantization_dtype`
+            # in `model.config`. We also make sure to purge `_pre_quantization_dtype` when we serialize
+            # the model config because `_pre_quantization_dtype` is `torch.dtype`, not JSON serializable.
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path, _pre_quantization_dtype=torch_dtype)
+        else:
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
