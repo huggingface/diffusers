@@ -162,7 +162,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
 
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "Lykon/dreamshaper-8"
         unet_lora_config = LoraConfig(
             init_lora_weights="gaussian",
             target_modules=["to_k", "to_q", "to_v", "to_out.0"],
