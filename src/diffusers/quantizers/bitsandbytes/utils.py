@@ -1,3 +1,16 @@
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/integrations/bitsandbytes.py
@@ -216,18 +229,13 @@ def _replace_with_bnb_linear(
 
 def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name=None, quantization_config=None):
     """
-    A helper function to replace all `torch.nn.Linear` modules by `bnb.nn.Linear8bit` modules from the `bitsandbytes`
-    library. This will enable running your models using mixed int8 precision as described by the paper `LLM.int8():
-    8-bit Matrix Multiplication for Transformers at Scale`. Make sure `bitsandbytes` compiled with the correct CUDA
-    version of your hardware is installed before running this function. `pip install -i https://test.pypi.org/simple/
-    bitsandbytes`.
+    Helper function to replace the `nn.Linear` layers within `model` with either `bnb.nn.Linear8bit` or
+    `bnb.nn.Linear4bit` using the `bitsandbytes` library.
 
-    The function will be run recursively and replace all `torch.nn.Linear` modules except for `modules_to_not_convert`
-    that should be kept as a `torch.nn.Linear` module. The replacement is done under `init_empty_weights` context
-    manager so no CPU/GPU memory is required to run this function. Int8 mixed-precision matrix decomposition works by
-    separating a matrix multiplication into two streams: (1) and systematic feature outlier stream matrix multiplied in
-    fp16 (0.01%), (2) a regular stream of int8 matrix multiplication (99.9%). With this method, int8 inference with no
-    predictive degradation is possible for very large models (>=176B parameters).
+    References:
+        * `bnb.nn.Linear8bit`: [LLM.int8(): 8-bit Matrix Multiplication for Transformers at
+          Scale](https://arxiv.org/abs/2208.07339)
+        * `bnb.nn.Linear4bit`: [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314)
 
     Parameters:
         model (`torch.nn.Module`):

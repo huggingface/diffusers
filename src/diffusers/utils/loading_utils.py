@@ -137,6 +137,7 @@ def load_video(
     return pil_images
 
 
+# Taken from `transformers`.
 def get_module_from_name(module, tensor_name: str) -> Tuple[Any, str]:
     if "." in tensor_name:
         splits = tensor_name.split(".")
