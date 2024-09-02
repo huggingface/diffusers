@@ -878,6 +878,8 @@ class AnimateDiffSparseControlNetPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
+        prompt_embeds = prompt_embeds.repeat_interleave(repeats=num_frames, dim=0)
+
         # 4. Prepare IP-Adapter embeddings
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(

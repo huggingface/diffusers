@@ -79,7 +79,7 @@ jobs:
           python utils/print_env.py
       - name: Pipeline CUDA Test
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -139,7 +139,7 @@ jobs:
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -152,7 +152,7 @@ jobs:
     - name: Run nightly example tests with Torch
       if: ${{ matrix.module == 'examples' }}
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -209,7 +209,7 @@ jobs:
 
     - name: Run nightly Flax TPU tests
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m pytest -n 0 \
           -s -v -k "Flax" \
@@ -264,7 +264,7 @@ jobs:
 
     - name: Run Nightly ONNXRuntime CUDA tests
       env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \

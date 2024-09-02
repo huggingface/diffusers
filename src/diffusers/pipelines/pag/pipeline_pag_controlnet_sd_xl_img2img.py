@@ -47,7 +47,6 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -56,12 +55,13 @@ from ...utils import (
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from .pag_utils import PAGMixin
 
 
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
-from .multicontrolnet import MultiControlNetModel
+from ..controlnet.multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -76,27 +76,28 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> from PIL import Image
 
-        >>> from transformers import DPTImageProcessor, DPTForDepthEstimation
-        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
+        >>> from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetPAGImg2ImgPipeline, AutoencoderKL
         >>> from diffusers.utils import load_image
 
 
         >>> depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
-        >>> feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
+        >>> feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "diffusers/controlnet-depth-sdxl-1.0-small",
         ...     variant="fp16",
-        ...     use_safetensors=True,
+        ...     use_safetensors="True",
         ...     torch_dtype=torch.float16,
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+        >>> pipe = StableDiffusionXLControlNetPAGImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
         ...     variant="fp16",
         ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
         ... )
         >>> pipe.enable_model_cpu_offload()
 
@@ -106,7 +107,7 @@ EXAMPLE_DOC_STRING = """
         ...     with torch.no_grad(), torch.autocast("cuda"):
         ...         depth_map = depth_estimator(image).predicted_depth
 
-        ...     depth_map = torch.nn.functional.interpolate(
+        ...     depth_map = torch.nn.fuctional.interpolate(
         ...         depth_map.unsqueeze(1),
         ...         size=(1024, 1024),
         ...         mode="bicubic",
@@ -156,13 +157,14 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class StableDiffusionXLControlNetImg2ImgPipeline(
+class StableDiffusionXLControlNetPAGImg2ImgPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
     FromSingleFileMixin,
     IPAdapterMixin,
+    PAGMixin,
 ):
     r"""
     Pipeline for image-to-image generation using Stable Diffusion XL with ControlNet guidance.
@@ -251,6 +253,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         add_watermarker: Optional[bool] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        pag_applied_layers: Union[str, List[str]] = "mid",  # ["mid"], ["down.block_1", "up.block_0.attentions_0"]
     ):
         super().__init__()
 
@@ -283,6 +286,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
+
+        self.set_pag_applied_layers(pag_applied_layers)
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
@@ -608,6 +613,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl_img2img.StableDiffusionXLControlNetImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -1115,7 +1121,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
+        pag_scale: float = 3.0,
+        pag_adaptive_scale: float = 0.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1271,30 +1278,21 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
+
 
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple`
-            containing the output images.
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple` containing the output images.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -1320,7 +1318,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             control_image,
             strength,
             num_inference_steps,
-            callback_steps,
+            None,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1338,6 +1336,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1352,14 +1352,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
-        global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, ControlNetModel)
-            else controlnet.nets[0].config.global_pool_conditions
-        )
-        guess_mode = guess_mode or global_pool_conditions
-
-        # 3.1. Encode input prompt
+        # 3.1 Encode input prompt
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
@@ -1386,7 +1379,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
@@ -1407,7 +1400,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
-                guess_mode=guess_mode,
+                guess_mode=False,
             )
             height, width = control_image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
@@ -1423,7 +1416,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     device=device,
                     dtype=controlnet.dtype,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=guess_mode,
+                    guess_mode=False,
                 )
 
                 control_images.append(control_image_)
@@ -1495,41 +1488,80 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             text_encoder_projection_dim=text_encoder_projection_dim,
         )
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
+        add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
-        if self.do_classifier_free_guidance:
+        control_images = control_image if isinstance(control_image, list) else [control_image]
+        for i, single_image in enumerate(control_images):
+            if self.do_classifier_free_guidance:
+                single_image = single_image.chunk(2)[0]
+
+            if self.do_perturbed_attention_guidance:
+                single_image = self._prepare_perturbed_attention_guidance(
+                    single_image, single_image, self.do_classifier_free_guidance
+                )
+            elif self.do_classifier_free_guidance:
+                single_image = torch.cat([single_image] * 2)
+            single_image = single_image.to(device)
+            control_images[i] = single_image
+
+        control_image = control_images if isinstance(control_image, list) else control_images[0]
+
+        if ip_adapter_image_embeds is not None:
+            for i, image_embeds in enumerate(ip_adapter_image_embeds):
+                negative_image_embeds = None
+                if self.do_classifier_free_guidance:
+                    negative_image_embeds, image_embeds = image_embeds.chunk(2)
+
+                if self.do_perturbed_attention_guidance:
+                    image_embeds = self._prepare_perturbed_attention_guidance(
+                        image_embeds, negative_image_embeds, self.do_classifier_free_guidance
+                    )
+                elif self.do_classifier_free_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+                image_embeds = image_embeds.to(device)
+                ip_adapter_image_embeds[i] = image_embeds
+
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_text_embeds = self._prepare_perturbed_attention_guidance(
+                add_text_embeds, negative_pooled_prompt_embeds, self.do_classifier_free_guidance
+            )
+            add_time_ids = self._prepare_perturbed_attention_guidance(
+                add_time_ids, add_neg_time_ids, self.do_classifier_free_guidance
+            )
+        elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
             add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device)
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        controlnet_prompt_embeds = prompt_embeds
+        controlnet_added_cond_kwargs = added_cond_kwargs
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.unet.attn_processors
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-
                 # controlnet(s) inference
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                    controlnet_added_cond_kwargs = {
-                        "text_embeds": add_text_embeds.chunk(2)[1],
-                        "time_ids": add_time_ids.chunk(2)[1],
-                    }
-                else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
-                    controlnet_added_cond_kwargs = added_cond_kwargs
+                control_model_input = latent_model_input
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -1544,20 +1576,13 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
-                    guess_mode=guess_mode,
+                    guess_mode=False,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
                     return_dict=False,
                 )
 
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Inferred ControlNet only for the conditional batch.
-                    # To apply the output of ControlNet to both the unconditional and conditional batches,
-                    # add 0 to the unconditional batch to keep it unchanged.
-                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
-
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -1572,7 +1597,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                    )
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -1598,9 +1627,6 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings
@@ -1649,6 +1675,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
+
+        if self.do_perturbed_attention_guidance:
+            self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image,)
