@@ -27,6 +27,7 @@ from packaging import version
 
 from .import_utils import (
     BACKENDS_MAPPING,
+    is_bitsandbytes_available,
     is_compel_available,
     is_flax_available,
     is_note_seq_available,
@@ -357,6 +358,20 @@ def require_timm(test_case):
     Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
     """
     return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+
+
+def require_bitsandbytes(test_case):
+    """
+    Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
+    """
+    return unittest.skipUnless(is_bitsandbytes_available, "test requires bitsandbytes")(test_case)
+
+
+def require_accelerate(test_case):
+    """
+    Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
+    """
+    return unittest.skipUnless(is_bitsandbytes_available, "test requires accelerate")(test_case)
 
 
 def require_peft_version_greater(peft_version):
