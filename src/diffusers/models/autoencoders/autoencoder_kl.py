@@ -253,7 +253,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         enc = self.encoder(x)
         if self.quant_conv is not None:
-            enc = self.quant_conv(x)
+            enc = self.quant_conv(enc)
 
         return enc
 
