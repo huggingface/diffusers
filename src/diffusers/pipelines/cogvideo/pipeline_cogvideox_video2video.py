@@ -50,7 +50,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
         >>> pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config)
 
-        >>> input_video = load_video("hiker.mp4")[:49]  # TODO: update with HF docs URL
+        >>> input_video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
+        ... )
         >>> prompt = (
         ...     "An astronaut stands triumphantly at the peak of a towering mountain. Panorama of rugged peaks and "
         ...     "valleys. Very futuristic vibe and animated aesthetic. Highlights of purple and golden colors in "
