@@ -124,7 +124,7 @@ else:
         "AnimateDiffSparseControlNetPipeline",
         "AnimateDiffVideoToVideoPipeline",
     ]
-    _import_structure["flux"] = ["FluxPipeline", "FluxImg2ImgPipeline", "FluxInpaintPipeline", "FluxControlNetPipeline"]
+    _import_structure["flux"] = ["FluxPipeline", "FluxControlNetPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",

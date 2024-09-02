@@ -23,8 +23,6 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_flux"] = ["FluxPipeline"]
-    _import_structure["pipeline_flux_img2img"] = ["FluxImg2ImgPipeline"]
-    _import_structure["pipeline_flux_inpaint"] = ["FluxInpaintPipeline"]
     _import_structure["pipeline_flux_controlnet"] = ["FluxControlNetPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
