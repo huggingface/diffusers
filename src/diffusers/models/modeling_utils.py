@@ -976,43 +976,47 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         return model
 
+    # Taken from `transformers`.
     @wraps(torch.nn.Module.cuda)
     def cuda(self, *args, **kwargs):
         # Checks if the model has been loaded in 8-bit
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             raise ValueError(
                 "Calling `cuda()` is not supported for `4-bit` or `8-bit` quantized models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and casted to the correct `dtype`."
+                " model has already been set to the correct devices and cast to the correct `dtype`."
             )
         else:
             return super().cuda(*args, **kwargs)
 
+    # Taken from `transformers`.
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
         # Checks if the model has been loaded in 8-bit
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             raise ValueError(
                 "`.to` is not supported for `4-bit` or `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and casted to the correct `dtype`."
+                " model has already been set to the correct devices and cast to the correct `dtype`."
             )
         return super().to(*args, **kwargs)
 
+    # Taken from `transformers`.
     def half(self, *args):
         # Checks if the model is quantized
         if getattr(self, "is_quantized", False):
             raise ValueError(
                 "`.half()` is not supported for quantized model. Please use the model as it is, since the"
-                " model has already been casted to the correct `dtype`."
+                " model has already been cast to the correct `dtype`."
             )
         else:
             return super().half(*args)
 
+    # Taken from `transformers`.
     def float(self, *args):
         # Checks if the model is quantized
         if getattr(self, "is_quantized", False):
             raise ValueError(
                 "`.float()` is not supported for quantized model. Please use the model as it is, since the"
-                " model has already been casted to the correct `dtype`."
+                " model has already been cast to the correct `dtype`."
             )
         else:
             return super().float(*args)
