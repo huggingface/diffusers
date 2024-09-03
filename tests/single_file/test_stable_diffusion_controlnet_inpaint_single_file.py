@@ -19,6 +19,7 @@ from .single_file_testing_utils import (
     download_original_config,
     download_single_file_checkpoint,
 )
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
 
 enable_full_determinism()
@@ -28,9 +29,9 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
-    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+    ckpt_path = "https://huggingface.co/benjamin-paine/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
-    repo_id = "runwayml/stable-diffusion-inpainting"
+    repo_id = "benjamin-paine/stable-diffusion-v1-5-inpainting"
 
     def setUp(self):
         super().setUp()
@@ -103,8 +104,8 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None, controlnet=controlnet)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path, controlnet=controlnet, safety_checker=None, local_files_only=True
@@ -132,8 +133,8 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
@@ -169,8 +170,8 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
