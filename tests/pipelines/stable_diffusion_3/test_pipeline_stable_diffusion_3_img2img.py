@@ -19,6 +19,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     slow,
     torch_device,
+    load_numpy
 )
 
 from ..pipeline_params import (
@@ -235,23 +236,10 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
 
         image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10]
-        expected_slice = np.array(
-            [
-                [0.50097656, 0.44726562, 0.40429688],
-                [0.5048828, 0.45703125, 0.38110352],
-                [0.4987793, 0.45141602, 0.38134766],
-                [0.49682617, 0.45336914, 0.38354492],
-                [0.49804688, 0.4555664, 0.39379883],
-                [0.5083008, 0.4645996, 0.40039062],
-                [0.50341797, 0.46240234, 0.39770508],
-                [0.49926758, 0.4572754, 0.39575195],
-                [0.50634766, 0.46435547, 0.39794922],
-                [0.50341797, 0.4572754, 0.39746094],
-            ],
-            dtype=np.float32,
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_3/sd3-img2img.npy"
         )
+        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
 
-        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
-        assert max_diff < 1e-4, f"Outputs are not close enough, got {image_slice}"
+        assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"
