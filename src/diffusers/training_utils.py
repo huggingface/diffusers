@@ -435,11 +435,11 @@ class EMAModel:
         one_minus_decay = 1 - decay
 
         context_manager = contextlib.nullcontext
-        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+        if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
             import deepspeed
 
         if self.foreach:
-            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+            if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
                 context_manager = deepspeed.zero.GatheredParameters(parameters, modifier_rank=None)
 
             with context_manager():
@@ -461,7 +461,7 @@ class EMAModel:
 
         else:
             for s_param, param in zip(self.shadow_params, parameters):
-                if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+                if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
                     context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
 
                 with context_manager():
