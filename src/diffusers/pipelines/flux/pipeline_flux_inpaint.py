@@ -541,7 +541,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         device,
         generator,
         latents=None,
-        is_strength_max=True,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -572,7 +571,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = noise if is_strength_max else self.scheduler.scale_noise(image_latents, timestep, noise)
+            latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         else:
             noise = latents.to(device)
             latents = noise
@@ -821,7 +820,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
-        is_strength_max = strength == 1.0
 
         # 2. Preprocess mask and image
         if padding_mask_crop is not None:
@@ -907,7 +905,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             device,
             generator,
             latents,
-            is_strength_max,
         )
 
         mask_condition = self.mask_processor.preprocess(
