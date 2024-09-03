@@ -290,7 +290,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
         }
         return inputs
 
-    def test_ip_adapter_single(self, from_multi=False, expected_pipe_slice=None):
+    def test_ip_adapter(self, from_multi=False, expected_pipe_slice=None):
         if not from_multi:
             expected_pipe_slice = None
             if torch_device == "cpu":
@@ -298,7 +298,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
                     [0.5752, 0.6155, 0.4826, 0.5111, 0.5741, 0.4678, 0.5199, 0.5231, 0.4794]
                 )
 
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -448,12 +448,12 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         expected_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.5617, 0.6081, 0.4807, 0.5071, 0.5665, 0.4614, 0.5165, 0.5164, 0.4786])
 
-        return super().test_ip_adapter_single(from_multi=True, expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(from_multi=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_consistent(
         self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]

@@ -190,14 +190,14 @@ class StableDiffusionXLControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    def test_ip_adapter_single(self, from_ssd1b=False, expected_pipe_slice=None):
+    def test_ip_adapter(self, from_ssd1b=False, expected_pipe_slice=None):
         if not from_ssd1b:
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
                     [0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054]
                 )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -970,12 +970,12 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
 
-        return super().test_ip_adapter_single(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

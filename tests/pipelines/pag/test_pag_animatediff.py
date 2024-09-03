@@ -175,7 +175,7 @@ class AnimateDiffPAGPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
 
         if torch_device == "cpu":
@@ -210,7 +210,7 @@ class AnimateDiffPAGPipelineFastTests(
                     0.5538,
                 ]
             )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
