@@ -80,7 +80,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
         if kwargs.get("from_flax", False):
             raise ValueError(
-                "Converting into 4-bit or 8-bit weights from flax weights is currently not supported, please make"
+                "Converting into 4-bit weights from flax weights is currently not supported, please make"
                 " sure the weights are in PyTorch format."
             )
 
@@ -102,12 +102,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
                     "https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu "
                     "for more details. "
                 )
-
-        if version.parse(importlib.metadata.version("bitsandbytes")) < version.parse("0.39.0"):
-            raise ValueError(
-                "You have a version of `bitsandbytes` that is not compatible with 4bit inference and training"
-                " make sure you have the latest version of `bitsandbytes` installed"
-            )
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         if version.parse(importlib.metadata.version("accelerate")) > version.parse("0.19.0"):
@@ -373,7 +367,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
 
         if kwargs.get("from_flax", False):
             raise ValueError(
-                "Converting into 4-bit or 8-bit weights from flax weights is currently not supported, please make"
+                "Converting into 8-bit weights from flax weights is currently not supported, please make"
                 " sure the weights are in PyTorch format."
             )
 
@@ -395,12 +389,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                     "https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu "
                     "for more details. "
                 )
-
-        if version.parse(importlib.metadata.version("bitsandbytes")) < version.parse("0.39.0"):
-            raise ValueError(
-                "You have a version of `bitsandbytes` that is not compatible with 8bit inference and training"
-                " make sure you have the latest version of `bitsandbytes` installed"
-            )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
