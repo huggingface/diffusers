@@ -555,7 +555,7 @@ pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="
 pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
 pipe.set_adapters(["lcm-lora"], [0.8])
 
-video = load_video("dance.gif")
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif")
 video = [frame.convert("RGB") for frame in video]
 
 prompt = "astronaut in space, dancing"
@@ -588,6 +588,27 @@ export_to_gif(video, f"animatediff_vid2vid_controlnet.gif", fps=8)
 ```
 
 Here are some sample outputs:
+
+<table align="center">
+    <tr>
+      <th align="center">Source Video</th>
+      <th align="center">Output Video</th>
+    </tr>
+    <tr>
+        <td align="center">
+          anime girl, dancing
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif" alt="anime girl, dancing" />
+        </td>
+        <td align="center">
+          astronaut in space, dancing
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff_vid2vid_controlnet.gif" alt="astronaut in space, dancing" />
+        </td>
+    </tr>
+</table>
+
+**The lights and composition were transferred from the Source Video.**
 
 ## Using Motion LoRAs
 

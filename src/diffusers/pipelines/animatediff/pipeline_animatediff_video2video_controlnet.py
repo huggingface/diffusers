@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.set_adapters(["lcm-lora"], [0.8])
 
-        >>> video = load_video("dance.gif")
+        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif")
         >>> video = [frame.convert("RGB") for frame in video]
 
         >>> from controlnet_aux.processor import OpenposeDetector
@@ -268,7 +268,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt,

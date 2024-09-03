@@ -152,7 +152,7 @@ class AnimateDiffSparseControlNetPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class AnimateDiffVideoToVideoPipeline(metaclass=DummyObject):
+class AnimateDiffVideoToVideoControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -167,7 +167,7 @@ class AnimateDiffVideoToVideoPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class AnimateDiffVideoToVideoControlNetPipeline(metaclass=DummyObject):
+class AnimateDiffVideoToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
