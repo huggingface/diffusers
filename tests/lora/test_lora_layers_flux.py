@@ -159,6 +159,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_gpu
 @require_peft_backend
 class FluxLoRAIntegrationTests(unittest.TestCase):
+    """internal note: The integration slices were obtained on audace."""
+
     num_inference_steps = 10
     seed = 0
 
