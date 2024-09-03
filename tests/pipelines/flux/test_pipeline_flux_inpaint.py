@@ -28,7 +28,7 @@ class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
-            in_channels=4,
+            in_channels=8,
             num_layers=1,
             num_single_layers=1,
             attention_head_dim=16,
@@ -67,7 +67,7 @@ class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             out_channels=3,
             block_out_channels=(4,),
             layers_per_block=1,
-            latent_channels=1,
+            latent_channels=2,
             norm_num_groups=1,
             use_quant_conv=False,
             use_post_quant_conv=False,
@@ -102,8 +102,8 @@ class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "height": 8,
-            "width": 8,
+            "height": 32,
+            "width": 32,
             "max_sequence_length": 48,
             "strength": 0.8,
             "output_type": "np",
