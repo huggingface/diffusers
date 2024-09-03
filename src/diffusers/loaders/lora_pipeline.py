@@ -2300,26 +2300,30 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         <Tip warning={true}>
 
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity. This function is experimental and
-        might change in the future.
+        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
+
+        This function is experimental and might change in the future.
 
         </Tip>
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 Can be either:
+
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
                       the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -2334,6 +2338,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2525,8 +2530,10 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
-            text_encoder (`T5EncoderModel`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
                 Expected prefix of the `text_encoder` in the `state_dict`.
@@ -2705,7 +2712,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
             adapter_names (`List[str]`, *optional*):
                 Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
+
         Example:
+
         ```py
         from diffusers import DiffusionPipeline
         import torch
