@@ -220,6 +220,7 @@ class ModelTesterMixin:
     base_precision = 1e-3
     forward_requires_fresh_args = False
     model_split_percents = [0.5, 0.7, 0.9]
+    uses_custom_attn_processor = False
 
     def check_device_map_is_respected(self, model, device_map):
         for param_name, param in model.named_parameters():
