@@ -562,7 +562,8 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
                 new_key += ".attn.to_out.0"
             elif "processor.proj_lora2" in old_key:
                 new_key += ".attn.to_add_out"
-            elif "processor.qkv_lora1" in old_key and "up" not in old_key:
+            # Handle text latents.
+            elif "processor.qkv_lora2" in old_key and "up" not in old_key:
                 handle_qkv(
                     old_state_dict,
                     new_state_dict,
@@ -574,7 +575,8 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
                     ],
                 )
                 # continue
-            elif "processor.qkv_lora2" in old_key and "up" not in old_key:
+            # Handle image latents.
+            elif "processor.qkv_lora1" in old_key and "up" not in old_key:
                 handle_qkv(
                     old_state_dict,
                     new_state_dict,
