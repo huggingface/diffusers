@@ -65,8 +65,7 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt=prompt, image=source, mask_image=mask).images[0]
         >>> image.save("flux_inpainting.png")
         ```
-        ```
-        """
+"""
 
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
