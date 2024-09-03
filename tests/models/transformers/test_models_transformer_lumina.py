@@ -32,6 +32,7 @@ enable_full_determinism()
 class LuminaNextDiT2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = LuminaNextDiT2DModel
     main_input_name = "hidden_states"
+    uses_custom_attn_processor = True
 
     @property
     def dummy_input(self):
