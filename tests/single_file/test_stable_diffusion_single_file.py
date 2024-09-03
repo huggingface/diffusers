@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_gpu,

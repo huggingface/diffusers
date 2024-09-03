@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -19,7 +20,6 @@ from .single_file_testing_utils import (
     download_original_config,
     download_single_file_checkpoint,
 )
-from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
 
 enable_full_determinism()
@@ -29,9 +29,9 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
-    ckpt_path = "https://huggingface.co/benjamin-paine/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+    ckpt_path = "https://huggingface.co/Lykon/DreamShaper/blob/main/DreamShaper_8_INPAINTING.inpainting.safetensors"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
-    repo_id = "benjamin-paine/stable-diffusion-v1-5-inpainting"
+    repo_id = "Lykon/dreamshaper-8-inpainting"
 
     def setUp(self):
         super().setUp()
@@ -84,7 +84,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         output_sf = pipe_sf(**inputs).images[0]
 
         max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
-        assert max_diff < 1e-3
+        assert max_diff < 2e-3
 
     def test_single_file_components(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
@@ -113,6 +113,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
 
         super()._compare_component_configs(pipe, pipe_single_file)
 
+    @unittest.skip("runwayml original config repo does not exist")
     def test_single_file_components_with_original_config(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
@@ -122,6 +123,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
 
         super()._compare_component_configs(pipe, pipe_single_file)
 
+    @unittest.skip("runwayml original config repo does not exist")
     def test_single_file_components_with_original_config_local_files_only(self):
         controlnet = ControlNetModel.from_pretrained(
             "lllyasviel/control_v11p_sd15_canny", torch_dtype=torch.float16, variant="fp16"

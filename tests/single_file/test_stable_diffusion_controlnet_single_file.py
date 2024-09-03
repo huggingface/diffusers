@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
