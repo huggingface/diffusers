@@ -1,6 +1,7 @@
 name: Fast GPU Tests on main
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
