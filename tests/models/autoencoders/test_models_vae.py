@@ -1034,7 +1034,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         ).resize((256, 256))
         image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
             None, :, :, :
-        ].cuda()
+        ].to(torch_device)
 
         latent = vae.encode(image).latent_dist.mean
 
@@ -1075,7 +1075,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         image = (
             torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
             .half()
-            .cuda()
+            .to(torch_device)
         )
 
         latent = vae.encode(image).latent_dist.mean
