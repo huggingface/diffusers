@@ -972,15 +972,32 @@ class FreeNoiseTransformerBlock(nn.Module):
         return frame_indices
 
     def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
-        if weighting_scheme == "pyramid":
+        if weighting_scheme == "flat":
+            weights = [1.0] * num_frames
+
+        elif weighting_scheme == "pyramid":
             if num_frames % 2 == 0:
                 # num_frames = 4 => [1, 2, 2, 1]
-                weights = list(range(1, num_frames // 2 + 1))
+                mid = num_frames // 2
+                weights = list(range(1, mid + 1))
                 weights = weights + weights[::-1]
             else:
                 # num_frames = 5 => [1, 2, 3, 2, 1]
-                weights = list(range(1, num_frames // 2 + 1))
-                weights = weights + [num_frames // 2 + 1] + weights[::-1]
+                mid = (num_frames + 1) // 2
+                weights = list(range(1, mid))
+                weights = weights + [mid] + weights[::-1]
+
+        elif weighting_scheme == "delayed_reverse_sawtooth":
+            if num_frames % 2 == 0:
+                # num_frames = 4 => [0.01, 2, 2, 1]
+                mid = num_frames // 2
+                weights = [0.01] * (mid - 1) + [mid]
+                weights = weights + list(range(mid, 0, -1))
+            else:
+                # num_frames = 5 => [0.01, 0.01, 3, 2, 1]
+                mid = (num_frames + 1) // 2
+                weights = [0.01] * mid
+                weights = weights + list(range(mid, 0, -1))
         else:
             raise ValueError(f"Unsupported value for weighting_scheme={weighting_scheme}")
 
