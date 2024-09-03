@@ -50,6 +50,7 @@ class QuantizationConfigMixin:
     """
 
     quant_method: QuantizationMethod
+    _exclude_attributes_at_init = []
 
     @classmethod
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
@@ -210,6 +211,8 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             Additional parameters from which to initialize the configuration object.
     """
 
+    _exclude_attributes_at_init = ["_load_in_4bit", "_load_in_8bit", "quant_method"]
+
     def __init__(
         self,
         load_in_8bit=False,
@@ -260,7 +263,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         else:
             raise ValueError("bnb_4bit_quant_storage must be a string or a torch.dtype")
 
-        if kwargs:
+        if kwargs and not all(k in self._exclude_attributes_at_init for k in kwargs):
             logger.warning(f"Unused kwargs: {list(kwargs.keys())}. These kwargs are not used in {self.__class__}.")
 
         self.post_init()
