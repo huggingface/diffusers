@@ -36,7 +36,6 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
     model_split_percents = [0.7, 0.6, 0.6]
-    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):

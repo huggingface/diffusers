@@ -35,7 +35,6 @@ enable_full_determinism()
 class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetControlNetXSModel
     main_input_name = "sample"
-    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):

@@ -41,7 +41,6 @@ enable_full_determinism()
 class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetSpatioTemporalConditionModel
     main_input_name = "sample"
-    uses_custom_attn_processor = False
 
     @property
     def dummy_input(self):
