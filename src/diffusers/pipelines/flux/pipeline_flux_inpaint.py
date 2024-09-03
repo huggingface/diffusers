@@ -556,7 +556,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         image = image.to(device=device, dtype=dtype)
         image_latents = self._encode_vae_image(image=image, generator=generator)
-        
+
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand init_latents for batch_size
             additional_image_per_prompt = batch_size // image_latents.shape[0]
@@ -568,14 +568,13 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         else:
             image_latents = torch.cat([image_latents], dim=0)
 
-
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         else:
             noise = latents.to(device)
             latents = noise
-    
+
         noise = self._pack_latents(noise, batch_size, num_channels_latents, height, width)
         image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
@@ -594,15 +593,12 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         device,
         generator,
     ):
-        
         height = 2 * (int(height) // self.vae_scale_factor)
         width = 2 * (int(width) // self.vae_scale_factor)
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
-        mask = torch.nn.functional.interpolate(
-            mask, size=(height, width)
-        )
+        mask = torch.nn.functional.interpolate(mask, size=(height, width))
         mask = mask.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -636,7 +632,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-        
+
         masked_image_latents = self._pack_latents(
             masked_image_latents,
             batch_size,
@@ -651,7 +647,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             height,
             width,
         )
-        
+
         return mask, masked_image_latents
 
     @property
