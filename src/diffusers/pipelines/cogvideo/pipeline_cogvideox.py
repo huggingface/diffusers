@@ -28,7 +28,6 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    BaseOutput,
     logging,
     replace_example_docstring,
     scale_lora_layers,
