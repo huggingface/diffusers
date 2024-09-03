@@ -528,6 +528,10 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_forward_with_norm_groups(self):
         pass
 
+    @unittest.skip("No attention module used in this model")
+    def test_set_attn_processor_for_determinism(self):
+        return
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):

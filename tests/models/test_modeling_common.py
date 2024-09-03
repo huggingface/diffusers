@@ -209,6 +209,7 @@ class ModelTesterMixin:
     base_precision = 1e-3
     forward_requires_fresh_args = False
     model_split_percents = [0.5, 0.7, 0.9]
+    uses_custom_attn_processor = False
 
     def check_device_map_is_respected(self, model, device_map):
         for param_name, param in model.named_parameters():
@@ -406,6 +407,9 @@ class ModelTesterMixin:
 
     @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
+        if self.uses_custom_attn_processor:
+            return
+
         torch.use_deterministic_algorithms(False)
         if self.forward_requires_fresh_args:
             model = self.model_class(**self.init_dict)
