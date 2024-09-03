@@ -46,6 +46,29 @@ if is_transformers_available():
 
 if is_torch_available():
     import torch
+    import torch.nn as nn
+
+    class LoRALayer(nn.Module):
+        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
+
+        Taken from
+        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_4bit.py#L62C5-L78C77
+        """
+
+        def __init__(self, module: nn.Module, rank: int):
+            super().__init__()
+            self.module = module
+            self.adapter = nn.Sequential(
+                nn.Linear(module.in_features, rank, bias=False),
+                nn.Linear(rank, module.out_features, bias=False),
+            )
+            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
+            nn.init.normal_(self.adapter[0].weight, std=small_std)
+            nn.init.zeros_(self.adapter[1].weight)
+            self.adapter.to(module.weight.device)
+
+        def forward(self, input, *args, **kwargs):
+            return self.module(input, *args, **kwargs) + self.adapter(input)
 
 
 if is_bitsandbytes_available():
@@ -239,6 +262,50 @@ class BnB4BitBasicTests(Base4bitTests):
         """
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
+
+
+class BnB4BitTrainingTests(Base4bitTests):
+    def setUp(self):
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        self.model_4bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=nf4_config
+        )
+
+    def test_training(self):
+        # Step 1: freeze all parameters
+        for param in self.model_4bit.parameters():
+            param.requires_grad = False  # freeze the model - train adapters later
+            if param.ndim == 1:
+                # cast the small parameters (e.g. layernorm) to fp32 for stability
+                param.data = param.data.to(torch.float32)
+
+        # Step 2: add adapters
+        for _, module in self.model_4bit.named_modules():
+            if "Attention" in repr(type(module)):
+                module.to_k = LoRALayer(module.to_k, rank=4)
+                module.to_q = LoRALayer(module.to_q, rank=4)
+                module.to_v = LoRALayer(module.to_v, rank=4)
+
+        # Step 3: dummy batch
+        input_dict_for_transformer = self.get_dummy_inputs()
+        model_inputs = {
+            k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
+        }
+        model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
+
+        # Step 4: Check if the gradient is not None
+        with torch.amp.autocast("cuda", dtype=torch.float16):
+            out = self.model_4bit(**model_inputs)[0]
+            out.norm().backward()
+
+        for module in self.model_4bit.modules():
+            if isinstance(module, LoRALayer):
+                self.assertTrue(module.adapter[1].weight.grad is not None)
+                self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
 
 
 @require_transformers_version_greater("4.44.0")
