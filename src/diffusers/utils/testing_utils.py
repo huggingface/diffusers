@@ -1,5 +1,6 @@
 import functools
 import importlib
+import importlib.metadata
 import inspect
 import io
 import logging
@@ -399,6 +400,31 @@ def require_accelerate_version_greater(accelerate_version):
         ) > version.parse(accelerate_version)
         return unittest.skipUnless(
             correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_bitsandbytes_version_greater(bnb_version):
+    def decorator(test_case):
+        correct_bnb_version = is_bitsandbytes_available() and version.parse(
+            version.parse(importlib.metadata.version("bitsandbytes")).base_version
+        ) > version.parse(bnb_version)
+        return unittest.skipUnless(
+            correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_transformers_version_greater(transformers_version):
+    def decorator(test_case):
+        correct_transformers_version = is_transformers_available() and version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse(transformers_version)
+        return unittest.skipUnless(
+            correct_transformers_version,
+            f"test requires transformers backend with the version greater than {transformers_version}",
         )(test_case)
 
     return decorator

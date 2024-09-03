@@ -47,6 +47,7 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_bitsandbytes_available,
+    is_bitsandbytes_version,
     is_torch_version,
     logging,
 )
@@ -976,27 +977,52 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         return model
 
-    # Taken from `transformers`.
+    # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
     def cuda(self, *args, **kwargs):
-        # Checks if the model has been loaded in 8-bit
+        # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            raise ValueError(
-                "Calling `cuda()` is not supported for `4-bit` or `8-bit` quantized models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and cast to the correct `dtype`."
-            )
-        else:
-            return super().cuda(*args, **kwargs)
+            if getattr(self, "is_loaded_in_8bit", False):
+                raise ValueError(
+                    "Calling `cuda()` is not supported for `8-bit` quantized models. "
+                    " Please use the model as it is, since the model has already been set to the correct devices."
+                )
+            elif is_bitsandbytes_version("<", "0.43.2"):
+                raise ValueError(
+                    "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
+                )
+        return super().cuda(*args, **kwargs)
 
-    # Taken from `transformers`.
+    # Adapted from `transformers`.
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
-        # Checks if the model has been loaded in 8-bit
+        dtype_present_in_args = "dtype" in kwargs
+
+        if not dtype_present_in_args:
+            for arg in args:
+                if isinstance(arg, torch.dtype):
+                    dtype_present_in_args = True
+                    break
+
+        # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            raise ValueError(
-                "`.to` is not supported for `4-bit` or `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                " model has already been set to the correct devices and cast to the correct `dtype`."
-            )
+            if dtype_present_in_args:
+                raise ValueError(
+                    "You cannot cast a bitsandbytes model in a new `dtype`. Make sure to load the model using `from_pretrained` using the"
+                    " desired `dtype` by passing the correct `torch_dtype` argument."
+                )
+
+            if getattr(self, "is_loaded_in_8bit", False):
+                raise ValueError(
+                    "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
+                    " model has already been set to the correct devices and casted to the correct `dtype`."
+                )
+            elif is_bitsandbytes_version("<", "0.43.2"):
+                raise ValueError(
+                    "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
+                )
         return super().to(*args, **kwargs)
 
     # Taken from `transformers`.

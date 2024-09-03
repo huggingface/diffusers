@@ -18,17 +18,17 @@ import unittest
 
 import numpy as np
 
-from diffusers import BitsAndBytesConfig, DiffusionPipeline, SD3Transformer2DModel
-from diffusers.utils import logging
+from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.utils.testing_utils import (
-    CaptureLogger,
     is_bitsandbytes_available,
     is_torch_available,
+    is_transformers_available,
     load_pt,
     require_accelerate,
-    require_bitsandbytes,
+    require_bitsandbytes_version_greater,
     require_torch,
     require_torch_gpu,
+    require_transformers_version_greater,
     slow,
     torch_device,
 )
@@ -41,6 +41,9 @@ def get_some_linear_layer(model):
         return NotImplementedError("Don't know what layer to retrieve here.")
 
 
+if is_transformers_available():
+    from transformers import T5EncoderModel
+
 if is_torch_available():
     import torch
 
@@ -49,7 +52,7 @@ if is_bitsandbytes_available():
     import bitsandbytes as bnb
 
 
-@require_bitsandbytes
+@require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
 @require_torch
 @require_torch_gpu
@@ -167,33 +170,46 @@ class BnB4BitBasicTests(Base4bitTests):
                     # 4-bit parameters are packed in uint8 variables
                     self.assertTrue(module.weight.dtype == torch.uint8)
 
+    def test_device_assignment(self):
+        mem_before = self.model_4bit.get_memory_footprint()
+
+        # Move to CPU
+        self.model_4bit.to("cpu")
+        self.assertEqual(self.model_4bit.device.type, "cpu")
+        self.assertAlmostEqual(self.model_4bit.get_memory_footprint(), mem_before)
+
+        # Move back to CUDA device
+        for device in [0, "cuda", "cuda:0", "call()"]:
+            if device == "call()":
+                self.model_4bit.cuda(0)
+            else:
+                self.model_4bit.to(device)
+            self.assertEqual(self.model_4bit.device, torch.device(0))
+            self.assertAlmostEqual(self.model_4bit.get_memory_footprint(), mem_before)
+            self.model_4bit.to("cpu")
+
     def test_device_and_dtype_assignment(self):
         r"""
-        Test whether trying to cast (or assigning a device to) a model after converting it in 8-bit will throw an error.
+        Test whether trying to cast (or assigning a device to) a model after converting it in 4-bit will throw an error.
         Checks also if other models are casted correctly.
         """
         with self.assertRaises(ValueError):
-            # Tries with `str`
-            self.model_4bit.to("cpu")
-
-        with self.assertRaises(ValueError):
-            # Tries with a `dtype``
+            # Tries with a `dtype`
             self.model_4bit.to(torch.float16)
 
         with self.assertRaises(ValueError):
-            # Tries with a `device`
-            self.model_4bit.to(torch.device("cuda:0"))
+            # Tries with a `device` and `dtype`
+            self.model_4bit.to(device="cuda:0", dtype=torch.float16)
 
         with self.assertRaises(ValueError):
-            # Tries with a `device`
+            # Tries with a cast
             self.model_4bit.float()
 
         with self.assertRaises(ValueError):
-            # Tries with a `device`
+            # Tries with a cast
             self.model_4bit.half()
 
         # Test if we did not break anything
-
         self.model_fp16 = self.model_fp16.to(dtype=torch.float32, device=torch_device)
         input_dict_for_transformer = self.get_dummy_inputs()
         model_inputs = {
@@ -214,6 +230,9 @@ class BnB4BitBasicTests(Base4bitTests):
         # Check this does not throw an error
         _ = self.model_fp16.float()
 
+        # Check that this does not throw an error
+        _ = self.model_fp16.cuda()
+
     def test_bnb_4bit_wrong_config(self):
         r"""
         Test whether creating a bnb config with unsupported values leads to errors.
@@ -221,18 +240,8 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
 
-    def test_model_cpu_offload_raises_warning(self):
-        pipeline_4bit = DiffusionPipeline.from_pretrained(
-            self.model_name, transformer=self.model_4bit, torch_dtype=torch.float16
-        )
-        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
-        logger.setLevel(30)
-        with CaptureLogger(logger) as cap_logger:
-            pipeline_4bit.enable_model_cpu_offload()
 
-        self.assertTrue("The module 'SD3Transformer2DModel' has been loaded in `bitsandbytes` 4bit" in cap_logger.out)
-
-
+@require_transformers_version_greater("4.44.0")
 class SlowBnb4BitTests(Base4bitTests):
     def setUp(self) -> None:
         nf4_config = BitsAndBytesConfig(
@@ -281,6 +290,55 @@ class SlowBnb4BitTests(Base4bitTests):
 
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.1216, 0.1387, 0.1584, 0.1152, 0.1318, 0.1282, 0.1062, 0.1226, 0.1228])
+        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+
+        # Since we offloaded the `pipeline_4bit.transformer` to CPU (result of `enable_model_cpu_offload()), check
+        # the following.
+        self.assertTrue(self.pipeline_4bit.transformer.device.type == "cpu")
+        # calling it again shouldn't be a problem
+        _ = self.pipeline_4bit(
+            prompt=self.prompt,
+            num_inference_steps=2,
+            generator=torch.manual_seed(self.seed),
+            output_type="np",
+        ).images
+
+
+@require_transformers_version_greater("4.44.0")
+class SlowBnb4BitFluxTests(Base4bitTests):
+    def setUp(self) -> None:
+        # TODO: Copy sayakpaul/flux.1-dev-nf4-pkg to testing repo.
+        model_id = "sayakpaul/flux.1-dev-nf4-pkg"
+        t5_4bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
+        transformer_4bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
+        self.pipeline_4bit = DiffusionPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            text_encoder_2=t5_4bit,
+            transformer=transformer_4bit,
+            torch_dtype=torch.float16,
+        )
+        self.pipeline_4bit.enable_model_cpu_offload()
+
+    def tearDown(self):
+        del self.pipeline_4bit
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_quality(self):
+        # keep the resolution and max tokens to a lower number for faster execution.
+        output = self.pipeline_4bit(
+            prompt=self.prompt,
+            num_inference_steps=self.num_inference_steps,
+            generator=torch.manual_seed(self.seed),
+            height=256,
+            width=256,
+            max_sequence_length=64,
+            output_type="np",
+        ).images
+
+        out_slice = output[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.0583, 0.0586, 0.0632, 0.0815, 0.0813, 0.0947, 0.1040, 0.1145, 0.1265])
 
         self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
 

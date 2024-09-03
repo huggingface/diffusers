@@ -32,6 +32,7 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_available,
+    is_bitsandbytes_version,
     is_torch_available,
     logging,
 )
@@ -72,7 +73,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
-        if not is_bitsandbytes_available():
+        if not is_bitsandbytes_available() and is_bitsandbytes_version("<", "0.43.3"):
             raise ImportError(
                 "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
@@ -319,9 +320,18 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
     def _dequantize(self, model):
         from .utils import dequantize_and_replace
 
+        is_model_on_cpu = model.device.type == "cpu"
+        if is_model_on_cpu:
+            logger.info(
+                "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
+            )
+            model.to(torch.cuda.current_device())
+
         model = dequantize_and_replace(
             model, self.modules_to_not_convert, quantization_config=self.quantization_config
         )
+        if is_model_on_cpu:
+            model.to("cpu")
         return model
 
 
@@ -348,17 +358,17 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if self.quantization_config.llm_int8_skip_modules is not None:
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.validate_environment with 4bit->8bit
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.validate_environment with 4-bit->8-bit
     def validate_environment(self, *args, **kwargs):
         if not torch.cuda.is_available():
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() and is_accelerate_version("<", "0.26.0"):
             raise ImportError(
-                "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
+                "Using `bitsandbytes` 8-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
-        if not is_bitsandbytes_available():
+        if not is_bitsandbytes_available() and is_bitsandbytes_version("<", "0.43.3"):
             raise ImportError(
-                "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
+                "Using `bitsandbytes` 8-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
 
         if kwargs.get("from_flax", False):

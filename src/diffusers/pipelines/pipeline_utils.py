@@ -56,6 +56,7 @@ from ..utils import (
     is_accelerate_version,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_version,
     logging,
     numpy_to_pil,
 )
@@ -428,19 +429,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
             _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(module)
-            bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
+            precision = None
+            precision = "4bit" if is_loaded_in_4bit_bnb else "8bit"
 
             if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
-                precision = bit_map[True]
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and conversion to {dtype} is not supported. Module is still in {precision} precision. In most cases, it is recommended to not change the precision."
                 )
 
-            if (is_loaded_in_4bit_bnb or is_loaded_in_4bit_bnb) and device is not None:
-                precision = bit_map[True]
+            if is_loaded_in_8bit_bnb and device is not None:
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and moving it to {device} via `.to()` is not supported. Module is still on {module.device}. In most cases, it is recommended to not change the device."
                 )
+
+            # This can happen for `transformer` models. CPU placement was added in
+            # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
+            if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
+                module.to(device=device)
             else:
                 module.to(device, dtype)
 
@@ -449,6 +454,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 and str(device) in ["cpu"]
                 and not silence_dtype_warnings
                 and not is_offloaded
+                and not is_loaded_in_4bit_bnb
             ):
                 logger.warning(
                     "Pipelines loaded with `dtype=torch.float16` cannot run with `cpu` device. It"
@@ -1023,16 +1029,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if model is not None and isinstance(model, torch.nn.Module):
                 _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(model)
 
-            bit_map = {is_loaded_in_4bit_bnb: "4bit", is_loaded_in_8bit_bnb: "8bit"}
-
             if not isinstance(model, torch.nn.Module):
                 continue
 
             # This is because the model would already be placed on a CUDA device.
-            if is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb:
-                precision = bit_map[True]
+            if is_loaded_in_8bit_bnb:  # is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb:
                 logger.info(
-                    f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` {precision}."
+                    f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` 8bit."
                 )
                 continue
 

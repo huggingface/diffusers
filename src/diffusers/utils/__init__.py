@@ -62,6 +62,7 @@ from .import_utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_available,
+    is_bitsandbytes_version,
     is_bs4_available,
     is_flax_available,
     is_ftfy_available,
