@@ -74,7 +74,9 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.set_adapters(["lcm-lora"], [0.8])
 
-        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif")
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif"
+        ... )
         >>> video = [frame.convert("RGB") for frame in video]
 
         >>> from controlnet_aux.processor import OpenposeDetector
