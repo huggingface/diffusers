@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -56,6 +55,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
+    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
 )
@@ -210,9 +210,7 @@ def log_validation(
                 }
             )
 
-    del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    clear_objs_and_retain_memory(objs=[pipeline])
 
     return images
 
@@ -1107,9 +1105,7 @@ def main(args):
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
-            del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            clear_objs_and_retain_memory(objs=[pipeline])
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1455,12 +1451,10 @@ def main(args):
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del text_encoder_one, text_encoder_two, text_encoder_three
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_objs_and_retain_memory(
+            objs=[tokenizers, text_encoders, text_encoder_one, text_encoder_two, text_encoder_three]
+        )
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1795,11 +1789,11 @@ def main(args):
                     pipeline_args=pipeline_args,
                     epoch=epoch,
                 )
+                objs = []
                 if not args.train_text_encoder:
-                    del text_encoder_one, text_encoder_two, text_encoder_three
+                    objs.extend([text_encoder_one, text_encoder_two, text_encoder_three])
 
-                torch.cuda.empty_cache()
-                gc.collect()
+                clear_objs_and_retain_memory(objs=objs)
 
     # Save the lora layers
     accelerator.wait_for_everyone()
