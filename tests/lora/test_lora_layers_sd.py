@@ -22,6 +22,7 @@ import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
 from safetensors.torch import load_file
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -80,6 +81,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
 
     def setUp(self):
         super().setUp()
@@ -150,11 +157,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
                 self.assertTrue(m.weight.device != torch.device("cpu"))
 
+    @slow
     @require_torch_gpu
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
 
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "Lykon/dreamshaper-8"
         unet_lora_config = LoraConfig(
             init_lora_weights="gaussian",
             target_modules=["to_k", "to_q", "to_v", "to_out.0"],

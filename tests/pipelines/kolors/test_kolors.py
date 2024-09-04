@@ -20,12 +20,11 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    ChatGLMModel,
-    ChatGLMTokenizer,
     EulerDiscreteScheduler,
     KolorsPipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import (
@@ -96,6 +95,8 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
         return components
 
@@ -132,21 +133,11 @@ class KolorsPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    # should skip it but pipe._optional_components = [] so it doesn't
     def test_save_load_optional_components(self):
-        pass
+        super().test_save_load_optional_components(expected_max_difference=2e-4)
 
-    # throws AttributeError: property 'eos_token' of 'ChatGLMTokenizer' object has no setter
-    # not sure if it is worth to fix it before integrating it to transformers
     def test_save_load_float16(self):
-        # TODO (Alvaro) need to fix later
-        pass
-
-    # throws AttributeError: property 'eos_token' of 'ChatGLMTokenizer' object has no setter
-    # not sure if it is worth to fix it before integrating it to transformers
-    def test_save_load_local(self):
-        # TODO (Alvaro) need to fix later
-        pass
+        super().test_save_load_float16(expected_max_diff=2e-1)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=5e-4)
+        self._test_inference_batch_single_identical(expected_max_diff=5e-4)

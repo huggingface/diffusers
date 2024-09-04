@@ -26,8 +26,8 @@ from transformers import (
     CLIPTextModel,
     CLIPTokenizer,
     DPTConfig,
-    DPTFeatureExtractor,
     DPTForDepthEstimation,
+    DPTImageProcessor,
 )
 
 from diffusers import (
@@ -145,9 +145,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
             backbone_featmap_shape=[1, 384, 24, 24],
         )
         depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
-        feature_extractor = DPTFeatureExtractor.from_pretrained(
-            "hf-internal-testing/tiny-random-DPTForDepthEstimation"
-        )
+        feature_extractor = DPTImageProcessor.from_pretrained("hf-internal-testing/tiny-random-DPTForDepthEstimation")
 
         components = {
             "unet": unet,
@@ -282,9 +280,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
 
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 1e-4)
-
-    def test_progress_bar(self):
-        super().test_progress_bar()
 
     def test_stable_diffusion_depth2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

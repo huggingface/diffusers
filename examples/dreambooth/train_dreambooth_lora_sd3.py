@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -56,6 +55,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
+    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
 )
@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -210,9 +210,7 @@ def log_validation(
                 }
             )
 
-    del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    clear_objs_and_retain_memory(objs=[pipeline])
 
     return images
 
@@ -522,6 +520,13 @@ def parse_args(input_args=None):
         type=float,
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
+    parser.add_argument(
+        "--precondition_outputs",
+        type=int,
+        default=1,
+        help="Flag indicating if we are preconditioning the model outputs or not as done in EDM. This affects how "
+        "model `target` is calculated.",
     )
     parser.add_argument(
         "--optimizer",
@@ -1100,9 +1105,7 @@ def main(args):
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
-            del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            clear_objs_and_retain_memory(objs=[pipeline])
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1264,7 +1267,7 @@ def main(args):
         lora_state_dict = StableDiffusion3Pipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
-            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+            f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
         }
         transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
         incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
@@ -1447,13 +1450,11 @@ def main(args):
             )
 
     # Clear the memory here
-    if not args.train_text_encoder and train_dataset.custom_instance_prompts:
-        del tokenizers, text_encoders
+    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del text_encoder_one, text_encoder_two, text_encoder_three
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_objs_and_retain_memory(
+            objs=[tokenizers, text_encoders, text_encoder_one, text_encoder_two, text_encoder_three]
+        )
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1636,7 +1637,7 @@ def main(args):
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = model_input * vae.config.scaling_factor
+                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1656,8 +1657,9 @@ def main(args):
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
+                # zt = (1 - texp) * x + texp * z1
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = sigmas * noise + (1.0 - sigmas) * model_input
+                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
                 model_pred = transformer(
@@ -1670,14 +1672,18 @@ def main(args):
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
-                model_pred = model_pred * (-sigmas) + noisy_model_input
+                if args.precondition_outputs:
+                    model_pred = model_pred * (-sigmas) + noisy_model_input
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
                 # flow matching loss
-                target = model_input
+                if args.precondition_outputs:
+                    target = model_input
+                else:
+                    target = noise - model_input
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -1783,11 +1789,11 @@ def main(args):
                     pipeline_args=pipeline_args,
                     epoch=epoch,
                 )
+                objs = []
                 if not args.train_text_encoder:
-                    del text_encoder_one, text_encoder_two, text_encoder_three
+                    objs.extend([text_encoder_one, text_encoder_two, text_encoder_three])
 
-                torch.cuda.empty_cache()
-                gc.collect()
+                clear_objs_and_retain_memory(objs=objs)
 
     # Save the lora layers
     accelerator.wait_for_everyone()
