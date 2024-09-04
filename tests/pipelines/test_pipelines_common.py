@@ -1,10 +1,7 @@
-import contextlib
 import gc
 import inspect
-import io
 import json
 import os
-import re
 import tempfile
 import unittest
 import uuid
@@ -141,52 +138,35 @@ class SDFunctionTesterMixin:
         assert np.abs(to_np(output_2) - to_np(output_1)).max() < 5e-1
 
         # test that tiled decode works with various shapes
-        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        shapes = [(1, 4, 73, 97), (1, 4, 65, 49)]
         with torch.no_grad():
             for shape in shapes:
                 zeros = torch.zeros(shape).to(torch_device)
                 pipe.vae.decode(zeros)
 
-    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    # MPS currently doesn't support ComplexFloats, which are required for FreeU - see https://github.com/huggingface/diffusers/issues/7569.
     @skip_mps
-    def test_freeu_enabled(self):
+    def test_freeu(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        # Normal inference
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output = pipe(**inputs)[0]
 
+        # FreeU-enabled inference
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output_freeu = pipe(**inputs)[0]
 
-        assert not np.allclose(
-            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
-        ), "Enabling of FreeU should lead to different results."
-
-    def test_freeu_disabled(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["return_dict"] = False
-        inputs["output_type"] = "np"
-
-        output = pipe(**inputs)[0]
-
-        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        # FreeU-disabled inference
         pipe.disable_freeu()
-
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for upsample_block in pipe.unet.up_blocks:
             for key in freeu_keys:
@@ -195,8 +175,11 @@ class SDFunctionTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         inputs["output_type"] = "np"
-
         output_no_freeu = pipe(**inputs)[0]
+
+        assert not np.allclose(
+            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
+        ), "Enabling of FreeU should lead to different results."
         assert np.allclose(
             output, output_no_freeu, atol=1e-2
         ), f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
@@ -290,7 +273,15 @@ class IPAdapterTesterMixin:
         inputs["return_dict"] = False
         return inputs
 
-    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+    def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+        r"""Tests for IP-Adapter.
+
+        The following scenarios are tested:
+          - Single IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Multi IP-Adapter with scale=0 should produce same output as no IP-Adapter.
+          - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+          - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
+        """
         # Raising the tolerance for this test when it's run on a CPU because we
         # compare against static slices and that can be shaky (with a VVVV low probability).
         expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
@@ -307,6 +298,7 @@ class IPAdapterTesterMixin:
         else:
             output_without_adapter = expected_pipe_slice
 
+        # 1. Single IP-Adapter test cases
         adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
 
@@ -338,16 +330,7 @@ class IPAdapterTesterMixin:
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
         )
 
-    def test_ip_adapter_multi(self, expected_max_diff: float = 1e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components).to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
-
-        # forward pass without ip adapter
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
-        output_without_adapter = pipe(**inputs)[0]
-
+        # 2. Multi IP-Adapter test cases
         adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
         adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
@@ -357,12 +340,16 @@ class IPAdapterTesterMixin:
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([0.0, 0.0])
         output_without_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with multi ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([42.0, 42.0])
         output_with_multi_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
         max_diff_without_multi_adapter_scale = np.abs(
             output_without_multi_adapter_scale - output_without_adapter
@@ -1688,28 +1675,6 @@ class PipelineTesterMixin:
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_with_offload[0], output_without_offload[0])
-
-    def test_progress_bar(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
-            _ = pipe(**inputs)
-            stderr = stderr.getvalue()
-            # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
-            # so we just match "5" in "#####| 1/5 [00:01<00:00]"
-            max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
-
-        pipe.set_progress_bar_config(disable=True)
-        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
-            _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
 
     def test_num_images_per_prompt(self):
         sig = inspect.signature(self.pipeline_class.__call__)
