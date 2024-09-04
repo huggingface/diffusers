@@ -192,33 +192,41 @@ class AnimateDiffVideoToVideoControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
-
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
                 [
-                    0.5569,
-                    0.6250,
-                    0.4145,
-                    0.5613,
-                    0.5563,
-                    0.5213,
-                    0.5092,
-                    0.4950,
-                    0.4950,
-                    0.5685,
-                    0.3858,
-                    0.4864,
-                    0.6458,
-                    0.4312,
-                    0.5518,
-                    0.5608,
-                    0.4418,
-                    0.5378,
+                    0.5216,
+                    0.5620,
+                    0.4927,
+                    0.5082,
+                    0.4786,
+                    0.5932,
+                    0.5125,
+                    0.4514,
+                    0.5315,
+                    0.4694,
+                    0.3276,
+                    0.4863,
+                    0.3920,
+                    0.3684,
+                    0.5745,
+                    0.4499,
+                    0.5081,
+                    0.5414,
+                    0.6014,
+                    0.5062,
+                    0.3630,
+                    0.5296,
+                    0.6018,
+                    0.5098,
+                    0.4948,
+                    0.5101,
+                    0.5620,
                 ]
             )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_single_identical(
         self,
