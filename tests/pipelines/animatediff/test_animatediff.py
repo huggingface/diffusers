@@ -460,6 +460,30 @@ class AnimateDiffPipelineFastTests(
                     "Disabling of FreeNoise should lead to results similar to the default pipeline results",
                 )
 
+    def test_free_noise_split_inference(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise(8, 4)
+
+        inputs_normal = self.get_dummy_inputs(torch_device)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        # Test FreeNoise with split inference memory-optimization
+        pipe.enable_free_noise_split_inference(spatial_split_size=16, temporal_split_size=4)
+
+        inputs_enable_split_inference = self.get_dummy_inputs(torch_device)
+        frames_enable_split_inference = pipe(**inputs_enable_split_inference).frames[0]
+
+        sum_split_inference = np.abs(to_np(frames_normal) - to_np(frames_enable_split_inference)).sum()
+        self.assertLess(
+            sum_split_inference,
+            1e-4,
+            "Enabling FreeNoise Split Inference memory-optimizations should lead to results similar to the default pipeline results",
+        )
+
     def test_free_noise_multi_prompt(self):
         components = self.get_dummy_components()
         pipe: AnimateDiffPipeline = self.pipeline_class(**components)

@@ -179,6 +179,12 @@
     title: Optimized hardware
   title: Accelerate inference and reduce memory
 - sections:
+  - local: quantization/overview
+    title: Getting Started
+  - local: quantization/bitsandbytes
+    title: bitsandbytes
+  title: Quantization 
+- sections:
   - local: conceptual/philosophy
     title: Philosophy
   - local: using-diffusers/controlling_generation
@@ -203,6 +209,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/quantization
+      title: Quantization
     title: Main Classes
   - isExpanded: false
     sections:

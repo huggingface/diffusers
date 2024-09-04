@@ -173,6 +173,8 @@ def load_model_dict_into_meta(
     hf_quantizer=None,
     keep_in_fp32_modules=None,
 ) -> List[str]:
+    # TODO: update this logic because `device` can be 0 (device_id) and in that
+    # case "or" will destroy things for us.
     device = device or torch.device("cpu") if hf_quantizer is None else device
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None

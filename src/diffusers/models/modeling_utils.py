@@ -47,7 +47,6 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_bitsandbytes_available,
-    is_bitsandbytes_version,
     is_torch_version,
     logging,
 )
@@ -988,11 +987,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `cuda()` is not supported for `8-bit` quantized models. "
                     " Please use the model as it is, since the model has already been set to the correct devices."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
-                )
         return super().cuda(*args, **kwargs)
 
     # Adapted from `transformers`.
@@ -1018,11 +1012,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError(
                     "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
                     " model has already been set to the correct devices and casted to the correct `dtype`."
-                )
-            elif is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
         return super().to(*args, **kwargs)
 
