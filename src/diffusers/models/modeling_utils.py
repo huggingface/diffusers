@@ -830,6 +830,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     )
                     if hf_quantizer is None:
                         param_device = "cpu"
+                    # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     elif is_quant_method_bnb:
                         param_device = torch.cuda.current_device()
                     state_dict = load_state_dict(model_file, variant=variant)

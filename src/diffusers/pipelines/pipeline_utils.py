@@ -398,9 +398,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        pipeline_has_bnb_quant = any(_check_bnb_status(module)[0] for _, module in self.components.items())
+        pipeline_has_8bit_bnb_quant = any(_check_bnb_status(module)[-1] for _, module in self.components.items())
         if (
-            not pipeline_has_bnb_quant
+            not pipeline_has_8bit_bnb_quant
             and pipeline_is_sequentially_offloaded
             and device
             and torch.device(device).type == "cuda"
@@ -434,12 +434,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and conversion to {dtype} is not supported. Module is still in {precision} precision. In most cases, it is recommended to not change the precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and conversion to {dtype} is not supported. Module is still in {precision} precision."
                 )
 
             if is_loaded_in_8bit_bnb and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and moving it to {device} via `.to()` is not supported. Module is still on {module.device}. In most cases, it is recommended to not change the device."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {precision} and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
 
             # This can happen for `transformer` models. CPU placement was added in
@@ -1033,7 +1033,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
 
             # This is because the model would already be placed on a CUDA device.
-            if is_loaded_in_8bit_bnb:  # is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb:
+            if is_loaded_in_8bit_bnb:
                 logger.info(
                     f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` 8bit."
                 )
