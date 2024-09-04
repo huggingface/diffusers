@@ -550,7 +550,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
-    def test_ip_adapter_single_mask(self):
+    def test_ip_adapter_mask(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",

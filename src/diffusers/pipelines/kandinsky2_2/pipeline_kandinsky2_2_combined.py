@@ -547,7 +547,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         negative_image_embeds = prior_outputs[1]
 
         prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
-        image = [image] if isinstance(prompt, PIL.Image.Image) else image
+        image = [image] if isinstance(image, PIL.Image.Image) else image
 
         if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:
             prompt = (image_embeds.shape[0] // len(prompt)) * prompt
@@ -813,7 +813,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         negative_image_embeds = prior_outputs[1]
 
         prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
-        image = [image] if isinstance(prompt, PIL.Image.Image) else image
+        image = [image] if isinstance(image, PIL.Image.Image) else image
         mask_image = [mask_image] if isinstance(mask_image, PIL.Image.Image) else mask_image
 
         if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:

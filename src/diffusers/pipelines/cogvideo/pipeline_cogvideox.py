@@ -15,7 +15,6 @@
 
 import inspect
 import math
-from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -23,11 +22,13 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
+from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import BaseOutput, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
+from .pipeline_output import CogVideoXPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -40,6 +41,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogVideoXPipeline
         >>> from diffusers.utils import export_to_video
 
+        >>> # Models: "THUDM/CogVideoX-2b" or "THUDM/CogVideoX-5b"
         >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16).to("cuda")
         >>> prompt = (
         ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
@@ -53,6 +55,25 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_video(video, "output.mp4", fps=8)
         ```
 """
+
+
+# Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
+def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
+    tw = tgt_width
+    th = tgt_height
+    h, w = src
+    r = h / w
+    if r > (th / tw):
+        resize_height = th
+        resize_width = int(round(th / h * w))
+    else:
+        resize_width = tw
+        resize_height = int(round(tw / w * h))
+
+    crop_top = int(round((th - resize_height) / 2.0))
+    crop_left = int(round((tw - resize_width) / 2.0))
+
+    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -113,21 +134,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
-
-@dataclass
-class CogVideoXPipelineOutput(BaseOutput):
-    r"""
-    Output class for CogVideo pipelines.
-
-    Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-            List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
-            denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
-            `(batch_size, num_frames, channels, height, width)`.
-    """
-
-    frames: torch.Tensor
 
 
 class CogVideoXPipeline(DiffusionPipeline):
@@ -332,20 +338,11 @@ class CogVideoXPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def decode_latents(self, latents: torch.Tensor, num_seconds: int):
+    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        frames = []
-        for i in range(num_seconds):
-            start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-
-            current_frames = self.vae.decode(latents[:, :, start_frame:end_frame]).sample
-            frames.append(current_frames)
-
-        self.vae.clear_fake_context_parallel_cache()
-
-        frames = torch.cat(frames, dim=2)
+        frames = self.vae.decode(latents).sample
         return frames
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -418,6 +415,45 @@ class CogVideoXPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    def fuse_qkv_projections(self) -> None:
+        r"""Enables fused QKV projections."""
+        self.fusing_transformer = True
+        self.transformer.fuse_qkv_projections()
+
+    def unfuse_qkv_projections(self) -> None:
+        r"""Disable QKV projection fusion if enabled."""
+        if not self.fusing_transformer:
+            logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
+        else:
+            self.transformer.unfuse_qkv_projections()
+            self.fusing_transformer = False
+
+    def _prepare_rotary_positional_embeddings(
+        self,
+        height: int,
+        width: int,
+        num_frames: int,
+        device: torch.device,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_width = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_height = 480 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+
+        grid_crops_coords = get_resize_crop_region_for_grid(
+            (grid_height, grid_width), base_size_width, base_size_height
+        )
+        freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+            embed_dim=self.transformer.config.attention_head_dim,
+            crops_coords=grid_crops_coords,
+            grid_size=(grid_height, grid_width),
+            temporal_size=num_frames,
+        )
+
+        freqs_cos = freqs_cos.to(device=device)
+        freqs_sin = freqs_sin.to(device=device)
+        return freqs_cos, freqs_sin
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -438,8 +474,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
         width: int = 720,
-        num_frames: int = 48,
-        fps: int = 8,
+        num_frames: int = 49,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
@@ -534,9 +569,10 @@ class CogVideoXPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        assert (
-            num_frames <= 48 and num_frames % fps == 0 and fps == 8
-        ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
+        if num_frames > 49:
+            raise ValueError(
+                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
+            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -593,7 +629,6 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
-        num_frames += 1
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
@@ -609,7 +644,14 @@ class CogVideoXPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 7. Create rotary embeds if required
+        image_rotary_emb = (
+            self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
+            if self.transformer.config.use_rotary_positional_embeddings
+            else None
+        )
+
+        # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -630,6 +672,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
+                    image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.float()
@@ -673,7 +716,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         if not output_type == "latent":
-            video = self.decode_latents(latents, num_frames // fps)
+            video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents

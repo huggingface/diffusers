@@ -528,6 +528,10 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_forward_with_norm_groups(self):
         pass
 
+    @unittest.skip("No attention module used in this model")
+    def test_set_attn_processor_for_determinism(self):
+        return
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
@@ -1032,9 +1036,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         ).resize((256, 256))
-        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
-            None, :, :, :
-        ].cuda()
+        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :].to(
+            torch_device
+        )
 
         latent = vae.encode(image).latent_dist.mean
 
@@ -1075,7 +1079,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         image = (
             torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
             .half()
-            .cuda()
+            .to(torch_device)
         )
 
         latent = vae.encode(image).latent_dist.mean
