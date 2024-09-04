@@ -163,3 +163,15 @@ image.save("flux-fp8-dev.png")
 [[autodoc]] FluxPipeline
 	- all
 	- __call__
+
+## FluxImg2ImgPipeline
+
+[[autodoc]] FluxImg2ImgPipeline
+	- all
+	- __call__
+
+## FluxInpaintPipeline
+
+[[autodoc]] FluxInpaintPipeline
+	- all
+	- __call__
