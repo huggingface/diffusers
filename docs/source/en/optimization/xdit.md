@@ -1,6 +1,12 @@
 # xDiT
 
-xDiT is an inference engine designed for the parallel deployment of DiTs on large scale. xDiT provides a suite of efficient parallel approaches for Diffusion Models, as well as GPU kernel accelerations.
+[xDiT](https://github.com/xdit-project/xDiT) is an inference engine designed for the large scale parallel deployment of Diffusion Transformers (DiTs). xDiT provides a suite of efficient parallel approaches for Diffusion Models, as well as GPU kernel accelerations.
+
+There are four parallel methods supported in xDiT, including [Unified Sequence Parallelism](https://arxiv.org/abs/2405.07719), [PipeFusion](https://arxiv.org/abs/2405.14430), CFG parallelism and data parallelism. The four parallel methods in xDiT can be configured in a hybrid manner, optimizing communication patterns to best suit the underlying network hardware.
+
+Optimization orthogonal to parallelization focuses on accelerating single GPU performance. In addition to utilizing well-known Attention optimization libraries, we leverage compilation acceleration technologies such as torch.compile and onediff.
+
+The overview of xDiT is shown as follows.
 
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/methods/xdit_overview.png">
@@ -12,7 +18,7 @@ You can install xDiT using the following command:
 pip install xfuser
 ```
 
-Here's an example of using xDiT to accelerate the inference of a diffusers model:
+Here's an example of using xDiT to accelerate inference of a Diffusers model.
 
 ```diff
  import torch
@@ -55,11 +61,9 @@ if __name__ == "__main__":
 
 ```
 
-As you can see, we only need to use xFuserArgs from xDiT to get configuration parameters, and pass these parameters along with the pipeline object from the diffusers library into xDiTParallel to complete the parallelization of a specific pipeline in diffusers.
+As you can see, we only need to use xFuserArgs from xDiT to get configuration parameters, and pass these parameters along with the pipeline object from the Diffusers library into xDiTParallel to complete the parallelization of a specific pipeline in Diffusers.
 
-
-xDiT runtime parameters can be viewed in the command line using -h, and detailed introductions can also be found on the [xDiT Github page](https://github.com/xdit-project/xDiT?tab=readme-ov-file#2-usage).
-
+xDiT runtime parameters can be viewed in the command line using `-h`, and you can refer to this [usage](https://github.com/xdit-project/xDiT?tab=readme-ov-file#2-usage) example for more details.
 
 xDiT needs to be launched using torchrun to support its multi-node, multi-GPU parallel capabilities. For example, the following command can be used for 8-GPU parallel inference:
 
@@ -67,50 +71,42 @@ xDiT needs to be launched using torchrun to support its multi-node, multi-GPU pa
 torchrun --nproc_per_node=8 ./inference.py --model models/FLUX.1-dev --data_parallel_degree 2 --ulysses_degree 2 --ring_degree 2 --prompt "A snowy mountain" "A small dog" --num_inference_steps 50
 ```
 
-# Supported Models
+# Supported models
 
-We have supported a subset of diffusers models in xDiT, including the most popular models such as Flux.1, Stable Diffusion 3, etc. The latest supported models can be found on https://github.com/xdit-project/xDiT?tab=readme-ov-file#-supported-dits
+A subset of Diffusers models are supported in xDiT, such as Flux.1, Stable Diffusion 3, etc. The latest supported models can be found [here](https://github.com/xdit-project/xDiT?tab=readme-ov-file#-supported-dits).
 
-# Benchmark
+## Benchmark
+We tested different models on various machines, and here is some of the benchmark data.
 
-We tested different models on various machines. Here is some of the data:
 
-
-## Flux.1-schnell
-* Flux.1-schnell with 4 steps on 8 * L40
+### Flux.1-schnell
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/flux/Flux-2k-L40.png">
 </div>
 
 
-* Flux.1-schnell with 4 steps on 8 * A100
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/flux/Flux-2K-A100.png">
 </div>
 
-## Stable Diffusion 3
-* Stable Diffusion 3 with 20 steps on 8 * L40
+### Stable Diffusion 3
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/sd3/L40-SD3.png">
 </div>
 
-* Stable Diffusion 3 with 20 steps on 8 * A100
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/sd3/A100-SD3.png">
 </div>
 
-## HunyuanDiT
-* HunyuanDiT with 20 steps on 8 * L40
+### HunyuanDiT
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/L40-HunyuanDiT.png">
 </div>
 
-* HunyuanDiT with 50 steps on 8 * A100
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/A100-HunyuanDiT.png">
 </div>
 
-* HunyuanDiT with 50 steps on 4 * T4
 <div class="flex justify-center">
     <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/T4-HunyuanDiT.png">
 </div>
