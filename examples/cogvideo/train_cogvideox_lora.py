@@ -331,9 +331,10 @@ def get_args():
     # Optimizer
     parser.add_argument(
         "--optimizer",
-        type=str,
-        default="AdamW",
-        help=('The optimizer type to use. Choose between ["AdamW"]'),
+        type=lambda s: s.lower(),
+        default="adam",
+        choices=["adam", "adamw", "prodigy"],
+        help=("The optimizer type to use."),
     )
     parser.add_argument(
         "--use_8bit_adam",
@@ -844,10 +845,10 @@ def prepare_rotary_positional_embeddings(
 
 def get_optimizer(args, params_to_optimize):
     # Optimizer creation
-    if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
+    supported_optimizers = ["adam", "adamw", "prodigy"]
+    if args.optimizer not in ["adam", "adamw", "prodigy"]:
         logger.warning(
-            f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
-            "Defaulting to adamW"
+            f"Unsupported choice of optimizer: {args.optimizer}. Supported optimizers include {supported_optimizers}. Defaulting to AdamW"
         )
         args.optimizer = "adamw"
 
@@ -857,24 +858,31 @@ def get_optimizer(args, params_to_optimize):
             f"set to {args.optimizer.lower()}"
         )
 
-    if args.optimizer.lower() == "adamw":
-        if args.use_8bit_adam:
-            try:
-                import bitsandbytes as bnb
-            except ImportError:
-                raise ImportError(
-                    "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
-                )
+    if args.use_8bit_adam:
+        try:
+            import bitsandbytes as bnb
+        except ImportError:
+            raise ImportError(
+                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            )
 
-            optimizer_class = bnb.optim.AdamW8bit
-        else:
-            optimizer_class = torch.optim.AdamW
+    if args.optimizer.lower() == "adamw":
+        optimizer_class = bnb.optim.AdamW8bit if args.use_8bit_adam else torch.optim.AdamW
 
         optimizer = optimizer_class(
             params_to_optimize,
             betas=(args.adam_beta1, args.adam_beta2),
-            weight_decay=args.adam_weight_decay,
             eps=args.adam_epsilon,
+            weight_decay=args.adam_weight_decay,
+        )
+    elif args.optimizer.lower() == "adam":
+        optimizer_class = bnb.optim.Adam8bit if args.use_8bit_adam else torch.optim.Adam
+
+        optimizer = optimizer_class(
+            params_to_optimize,
+            betas=(args.adam_beta1, args.adam_beta2),
+            eps=args.adam_epsilon,
+            weight_decay=args.adam_weight_decay,
         )
 
     return optimizer
