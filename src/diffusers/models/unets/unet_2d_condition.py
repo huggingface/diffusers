@@ -1141,7 +1141,6 @@ class UNet2DConditionModel(
         # 1. time
         t_emb = self.get_time_embed(sample=sample, timestep=timestep)
         emb = self.time_embedding(t_emb, timestep_cond)
-        aug_emb = None
 
         class_emb = self.get_class_embed(sample=sample, class_labels=class_labels)
         if class_emb is not None:
