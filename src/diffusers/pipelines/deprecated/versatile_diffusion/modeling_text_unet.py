@@ -1915,10 +1915,14 @@ class CrossAttnUpBlockFlat(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
+        ff_act_fn: str = "geglu",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        norm_type: str = "layer_norm",
+        ff_norm_type: str = "group_norm",
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
+        cross_attention_norm: Optional[str] = None,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         dual_cross_attention: bool = False,
@@ -1926,6 +1930,8 @@ class CrossAttnUpBlockFlat(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
+        attention_pre_only: bool = False,
+        attention_bias: bool = False,
     ):
         super().__init__()
         resnets = []
@@ -1963,11 +1969,17 @@ class CrossAttnUpBlockFlat(nn.Module):
                         in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
+                        cross_attention_norm=cross_attention_norm,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
+                        norm_type=norm_type,
+                        ff_norm_type=ff_norm_type,
                         attention_type=attention_type,
+                        attention_pre_only=attention_pre_only,
+                        attention_bias=attention_bias,
+                        activation_fn=ff_act_fn,
                     )
                 )
             else:
@@ -2246,16 +2258,22 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
+        ff_act_fn: str = "geglu",
         resnet_groups: int = 32,
         resnet_groups_out: Optional[int] = None,
         resnet_pre_norm: bool = True,
+        norm_type: str = "layer_norm",
+        ff_norm_type: str = "group_norm",
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
+        cross_attention_norm: Optional[str] = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
+        attention_pre_only: bool = False,
+        attention_bias: bool = False,
     ):
         super().__init__()
 
@@ -2300,10 +2318,16 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
+                        cross_attention_norm=cross_attention_norm,
                         norm_num_groups=resnet_groups_out,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
+                        norm_type=norm_type,
+                        ff_norm_type=ff_norm_type,
                         attention_type=attention_type,
+                        attention_pre_only=attention_pre_only,
+                        attention_bias=attention_bias,
+                        activation_fn=ff_act_fn,
                     )
                 )
             else:
