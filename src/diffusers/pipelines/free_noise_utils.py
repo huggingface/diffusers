@@ -35,6 +35,46 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SplitInferenceModule(nn.Module):
+    r"""
+    A wrapper module class that splits inputs along a specified dimension before performing a forward pass.
+
+    This module is useful when you need to perform inference on large tensors in a memory-efficient way by breaking
+    them into smaller chunks, processing each chunk separately, and then reassembling the results.
+
+    Args:
+        module (`nn.Module`):
+            The underlying PyTorch module that will be applied to each chunk of split inputs.
+        split_size (`int`, defaults to `1`):
+            The size of each chunk after splitting the input tensor.
+        split_dim (`int`, defaults to `0`):
+            The dimension along which the input tensors are split.
+        input_kwargs_to_split (`List[str]`, defaults to `["hidden_states"]`):
+            A list of keyword arguments (strings) that represent the input tensors to be split.
+
+    Workflow:
+        1. The keyword arguments specified in `input_kwargs_to_split` are split into smaller chunks using
+        `torch.split()` along the dimension `split_dim` and with a chunk size of `split_size`.
+        2. The `module` is invoked once for each split with both the split inputs and any unchanged arguments
+        that were passed.
+        3. The output tensors from each split are concatenated back together along `split_dim` before returning.
+
+    Example:
+        ```python
+        >>> import torch
+        >>> import torch.nn as nn
+
+        >>> model = nn.Linear(1000, 1000)
+        >>> split_module = SplitInferenceModule(model, split_size=2, split_dim=0, input_kwargs_to_split=["input"])
+
+        >>> input_tensor = torch.randn(42, 1000)
+        >>> # Will split the tensor into 21 slices of shape [2, 1000].
+        >>> output = split_module(input=input_tensor)
+        ```
+
+    It is also possible to nest `SplitInferenceModule` across different split dimensions for more complex
+    multi-dimensional splitting.
+    """
+
     def __init__(
         self,
         module: nn.Module,
@@ -72,31 +112,6 @@ class SplitInferenceModule(nn.Module):
                 along the same `split_dim` after processing all splits.
                 - If the underlying module returns a tuple of tensors, each element of the tuple will be concatenated
                 along the `split_dim` across all splits, and the final result will be a tuple of concatenated tensors.
-
-        Workflow:
-            1. The keyword arguments specified in `input_kwargs_to_split` are split into smaller chunks using
-            `torch.split()` along the dimension `split_dim` and with a chunk size of `split_size`.
-            2. The `module` is invoked once for each split with both the split inputs and any unchanged arguments
-            that were passed.
-            3. The output tensors from each split are concatenated back together along `split_dim` before returning.
-
-        Example:
-            ```python
-            >>> import torch
-            >>> import torch.nn as nn
-
-            >>> model = nn.Linear(1000, 1000)
-            >>> split_module = SplitInferenceModule(model, split_size=2, split_dim=0, input_kwargs_to_split=["input"])
-
-            >>> input_tensor = torch.randn(42, 1000)
-            >>> # Will split the tensor into 21 slices of shape [2, 1000].
-            >>> output = split_module(input=input_tensor)
-            ```
-
-        This method is useful when you need to perform inference on large tensors in a memory-efficient way by breaking
-        them into smaller chunks, processing each chunk separately, and then reassembling the results.
-
-        It is also possible to nest `SplitInferenceModule` across different split dimensions.
         """
         split_inputs = {}
 
