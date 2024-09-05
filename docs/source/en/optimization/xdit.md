@@ -71,7 +71,7 @@ xDiT needs to be launched using torchrun to support its multi-node, multi-GPU pa
 torchrun --nproc_per_node=8 ./inference.py --model models/FLUX.1-dev --data_parallel_degree 2 --ulysses_degree 2 --ring_degree 2 --prompt "A snowy mountain" "A small dog" --num_inference_steps 50
 ```
 
-# Supported models
+## Supported models
 
 A subset of Diffusers models are supported in xDiT, such as Flux.1, Stable Diffusion 3, etc. The latest supported models can be found [here](https://github.com/xdit-project/xDiT?tab=readme-ov-file#-supported-dits).
 
@@ -113,7 +113,7 @@ We tested different models on various machines, and here is some of the benchmar
 
 More detailed performance metric can be found on our [github page](https://github.com/xdit-project/xDiT?tab=readme-ov-file#perf).
 
-# Reference
+## Reference
 
 [xDiT-project](https://github.com/xdit-project/xDiT)
 
