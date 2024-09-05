@@ -217,7 +217,8 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        if not self.is_cross_attention:
+            self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
@@ -2339,7 +2340,10 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        if kwargs.get("query", False):
+            query = kwargs.pop("query")
+        else:
+            query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -2387,7 +2391,7 @@ class AttnProcessor2_0:
 
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        return hidden_states
+        return hidden_states if not kwargs.get("self_attn_output", False) else hidden_states, query
 
 
 class StableAudioAttnProcessor2_0:

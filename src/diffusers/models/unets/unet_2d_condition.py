@@ -60,7 +60,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         super().__init__()
         self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
         self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0)
-        self.add_embedding = TimestepEmbedding(cross_attention_dim, time_embed_dim)
+        self.add_timestep_embedder = TimestepEmbedding(addition_time_embed_dim, time_embed_dim, act_fn=None)
 
     def forward(self, emb, encoder_hidden_states, added_cond_kwargs):
         conditioning_mask = added_cond_kwargs.get("conditioning_mask", None)
@@ -79,7 +79,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         micro = added_cond_kwargs.get("micro_conditioning_scale", None)
         if micro is not None:
             temb = self.add_time_proj(micro)
-            temb_micro_conditioning = self.add_embedding(temb)
+            temb_micro_conditioning = self.add_timestep_embedder(temb)
 
         cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
         return cond_emb, conditioning_mask
@@ -313,11 +313,6 @@ class UNet2DConditionModel(
             act_fn=act_fn,
             post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
-        )
-
-        self.cond_layers = nn.Sequential(
-            nn.Linear(timestep_input_dim, time_embed_dim),
-            nn.Linear(time_embed_dim, time_embed_dim),
         )
 
         self._set_encoder_hid_proj(
