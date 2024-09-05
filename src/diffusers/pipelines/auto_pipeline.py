@@ -29,7 +29,7 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .flux import FluxPipeline, FluxImg2ImgPipeline, FluxInpaintingPipeline
+from .flux import FluxImg2ImgPipeline, FluxInpaintPipeline, FluxPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -141,7 +141,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
-        ("flux", FluxInpaintingPipeline),
+        ("flux", FluxInpaintPipeline),
     ]
 )
 
@@ -955,7 +955,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         orig_class_name = config["_class_name"]
 
         # The `orig_class_name can be:
-        # `- *InpaintPipeline` (for inpaint-specific checkpoint) 
+        # `- *InpaintPipeline` (for inpaint-specific checkpoint)
         #  - or *Pipeline (for regular text-to-image checkpoint)
         to_replace = "InpaintPipeline" if "Inpaint" in config["_class_name"] else "Pipeline"
 
