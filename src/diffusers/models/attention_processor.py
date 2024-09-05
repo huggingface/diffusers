@@ -2368,6 +2368,9 @@ class AttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
+        if kwargs.get("self_attn_output", False):
+            hidden_states = kwargs.pop("self_attn_output") + hidden_states
+
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 

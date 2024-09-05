@@ -78,6 +78,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
+        cross_attention_norm: Optional[str] = None,
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
         num_vector_embeds: Optional[int] = None,
@@ -89,9 +90,12 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'ada_norm_continuous', 'layer_norm_i2vgen'
+        ff_norm_type: str = None,
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         attention_type: str = "default",
+        attention_context_pre_only: bool = None,
+        attention_pre_only: bool = False,
         caption_channels: int = None,
         interpolation_scale: float = None,
         use_additional_conditions: Optional[bool] = None,
@@ -172,10 +176,14 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             self._init_patched_inputs(norm_type=norm_type)
 
     def _init_continuous_input(self, norm_type):
-        self.norm = torch.nn.GroupNorm(
-            num_groups=self.config.norm_num_groups, num_channels=self.in_channels, eps=1e-6, affine=True
-        )
-        if self.use_linear_projection:
+        if self.use_linear_projection != "no_projection":
+            self.norm = torch.nn.GroupNorm(
+                num_groups=self.config.norm_num_groups, num_channels=self.in_channels, eps=1e-6, affine=True
+            )
+        if self.use_linear_projection == "no_projection":
+            self.norm = None
+            self.proj_in = None
+        elif self.use_linear_projection:
             self.proj_in = torch.nn.Linear(self.in_channels, self.inner_dim)
         else:
             self.proj_in = torch.nn.Conv2d(self.in_channels, self.inner_dim, kernel_size=1, stride=1, padding=0)
@@ -188,22 +196,27 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
                     cross_attention_dim=self.config.cross_attention_dim,
+                    cross_attention_norm=self.config.cross_attention_norm,
                     activation_fn=self.config.activation_fn,
                     num_embeds_ada_norm=self.config.num_embeds_ada_norm,
+                    norm_num_groups=self.config.norm_num_groups,
                     attention_bias=self.config.attention_bias,
                     only_cross_attention=self.config.only_cross_attention,
                     double_self_attention=self.config.double_self_attention,
                     upcast_attention=self.config.upcast_attention,
                     norm_type=norm_type,
+                    ff_norm_type=self.config.ff_norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
+                    attention_pre_only=self.config.attention_pre_only,
                 )
                 for _ in range(self.config.num_layers)
             ]
         )
-
-        if self.use_linear_projection:
+        if self.use_linear_projection == "no_projection":
+            self.proj_out = None
+        elif self.use_linear_projection:
             self.proj_out = torch.nn.Linear(self.inner_dim, self.out_channels)
         else:
             self.proj_out = torch.nn.Conv2d(self.inner_dim, self.out_channels, kernel_size=1, stride=1, padding=0)
@@ -480,7 +493,9 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         batch, _, height, width = hidden_states.shape
         hidden_states = self.norm(hidden_states)
 
-        if not self.use_linear_projection:
+        if self.use_linear_projection == "no_projection":
+            inner_dim = hidden_states.shape[1]
+        elif not self.use_linear_projection:
             hidden_states = self.proj_in(hidden_states)
             inner_dim = hidden_states.shape[1]
             hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)

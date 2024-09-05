@@ -252,17 +252,21 @@ class BasicTransformerBlock(nn.Module):
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
+        cross_attention_norm: Optional[str] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
+        norm_num_groups: Optional[int] = None,
         attention_bias: bool = False,
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'ada_norm_continuous', 'layer_norm_i2vgen'
+        ff_norm_type: str = "group_norm",
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
+        attention_pre_only: bool = False,
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
         ada_norm_continous_conditioning_embedding_dim: Optional[int] = None,
@@ -326,6 +330,8 @@ class BasicTransformerBlock(nn.Module):
                 ada_norm_bias,
                 "rms_norm",
             )
+        elif norm_type == "layer_norm_matryoshka":
+            self.norm1 = None
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
 
@@ -337,7 +343,9 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
+            norm_num_groups=norm_num_groups if norm_type == "layer_norm_matryoshka" else None,
             out_bias=attention_out_bias,
+            pre_only=attention_pre_only,
         )
 
         # 2. Cross-Attn
@@ -356,12 +364,15 @@ class BasicTransformerBlock(nn.Module):
                     ada_norm_bias,
                     "rms_norm",
                 )
+            elif norm_type == "layer_norm_matryoshka":
+                self.norm2 = None
             else:
                 self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
 
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim if not double_self_attention else None,
+                cross_attention_norm=cross_attention_norm,
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
                 dropout=dropout,
@@ -389,7 +400,7 @@ class BasicTransformerBlock(nn.Module):
 
         elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
-        elif norm_type == "layer_norm_i2vgen":
+        elif norm_type in ("layer_norm_i2vgen", "layer_norm_matryoshka"):
             self.norm3 = None
 
         self.ff = FeedForward(
@@ -399,6 +410,7 @@ class BasicTransformerBlock(nn.Module):
             final_dropout=final_dropout,
             inner_dim=ff_inner_dim,
             bias=ff_bias,
+            norm_type=ff_norm_type,
         )
 
         # 4. Fuser
@@ -453,6 +465,8 @@ class BasicTransformerBlock(nn.Module):
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+        elif self.norm_type == "layer_norm_matryoshka":
+            norm_hidden_states = hidden_states
         else:
             raise ValueError("Incorrect norm used")
 
@@ -475,7 +489,10 @@ class BasicTransformerBlock(nn.Module):
         elif self.norm_type == "ada_norm_single":
             attn_output = gate_msa * attn_output
 
-        hidden_states = attn_output + hidden_states
+        if self.norm_type != "layer_norm_matryoshka":
+            hidden_states = attn_output + hidden_states
+        else:
+            cross_attention_kwargs["self_attn_output"] = attn_output
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
@@ -489,8 +506,8 @@ class BasicTransformerBlock(nn.Module):
                 norm_hidden_states = self.norm2(hidden_states, timestep)
             elif self.norm_type in ["ada_norm_zero", "layer_norm", "layer_norm_i2vgen"]:
                 norm_hidden_states = self.norm2(hidden_states)
-            elif self.norm_type == "ada_norm_single":
-                # For PixArt norm2 isn't applied here:
+            elif self.norm_type in ("ada_norm_single", "layer_norm_matryoshka"):
+                # For PixArt and Matryoshka norm2 isn't applied here:
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
                 norm_hidden_states = hidden_states
             elif self.norm_type == "ada_norm_continuous":
@@ -507,14 +524,17 @@ class BasicTransformerBlock(nn.Module):
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,
             )
-            hidden_states = attn_output + hidden_states
 
+        if self.norm_type == "layer_norm_matryoshka":
+            hidden_states = hidden_states + attn_output
         # 4. Feed-forward
         # i2vgen doesn't have this norm 🤷‍♂️
         if self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif not self.norm_type == "ada_norm_single":
+        elif not self.norm_type in ("ada_norm_single", "layer_norm_matryoshka"):
             norm_hidden_states = self.norm3(hidden_states)
+        else:
+            norm_hidden_states = hidden_states
 
         if self.norm_type == "ada_norm_zero":
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
@@ -1147,6 +1167,7 @@ class FeedForward(nn.Module):
         final_dropout: bool = False,
         inner_dim=None,
         bias: bool = True,
+        norm_type: str = None,
     ):
         super().__init__()
         if inner_dim is None:
@@ -1165,10 +1186,13 @@ class FeedForward(nn.Module):
             act_fn = SwiGLU(dim, inner_dim, bias=bias)
 
         self.net = nn.ModuleList([])
+        if norm_type == "group_norm_matryoshka":
+            self.net.append(nn.GroupNorm(32, dim))
         # project in
         self.net.append(act_fn)
-        # project dropout
-        self.net.append(nn.Dropout(dropout))
+        if norm_type != "group_norm_matryoshka":
+            # project dropout
+            self.net.append(nn.Dropout(dropout))
         # project out
         self.net.append(nn.Linear(inner_dim, dim_out, bias=bias))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout

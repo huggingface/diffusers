@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from calendar import c
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from cv2 import add
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -53,7 +55,34 @@ from .unet_2d_blocks import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
+    def __init__(self, addition_time_embed_dim, cross_attention_dim, time_embed_dim):
+        super().__init__()
+        self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
+        self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0)
+        self.add_embedding = TimestepEmbedding(cross_attention_dim, time_embed_dim)
 
+    def forward(self, emb, encoder_hidden_states, added_cond_kwargs):
+        conditioning_mask = added_cond_kwargs.get("conditioning_mask", None)
+        masked_cross_attention = added_cond_kwargs.get("masked_cross_attention", False)
+        if conditioning_mask is None or not masked_cross_attention:
+            y = encoder_hidden_states.mean(dim=1)
+        else:
+            y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / conditioning_mask.sum(
+                dim=1, keepdim=True
+            )
+        if not masked_cross_attention:
+            conditioning_mask = None
+        cond_emb = self.cond_emb(y)
+        cond_emb = cond_emb + emb
+
+        micro = added_cond_kwargs.get('micro_conditioning_scale', None)
+        if micro is not None:
+            temb = self.add_time_proj(micro)
+            temb_micro_conditioning = self.add_embedding(temb)
+
+        cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
+        return cond_emb, conditioning_mask
 
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
@@ -192,6 +221,8 @@ class UNet2DConditionModel(
         dropout: float = 0.0,
         act_fn: str = "silu",
         ff_act_fn: str = "geglu",
+        norm_type: str = "layer_norm",
+        ff_norm_type: str = None,
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
@@ -220,6 +251,10 @@ class UNet2DConditionModel(
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         attention_type: str = "default",
+        attention_pre_only: bool = False,
+        attention_bias: bool = False,
+        masked_cross_attention: bool = False,
+        micro_conditioning_scale: int = None,
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
@@ -279,6 +314,11 @@ class UNet2DConditionModel(
             cond_proj_dim=time_cond_proj_dim,
         )
 
+        self.cond_layers = nn.Sequential(
+            nn.Linear(timestep_input_dim, time_embed_dim),
+            nn.Linear(time_embed_dim, time_embed_dim),
+        )
+
         self._set_encoder_hid_proj(
             encoder_hid_dim_type,
             cross_attention_dim=cross_attention_dim,
@@ -298,7 +338,7 @@ class UNet2DConditionModel(
         self._set_add_embedding(
             addition_embed_type,
             addition_embed_type_num_heads=addition_embed_type_num_heads,
-            addition_time_embed_dim=addition_time_embed_dim,
+            addition_time_embed_dim=timestep_input_dim,
             cross_attention_dim=cross_attention_dim,
             encoder_hid_dim=encoder_hid_dim,
             flip_sin_to_cos=flip_sin_to_cos,
@@ -365,6 +405,8 @@ class UNet2DConditionModel(
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 ff_act_fn=ff_act_fn,
+                norm_type=norm_type,
+                ff_norm_type=ff_norm_type,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
@@ -375,6 +417,8 @@ class UNet2DConditionModel(
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 attention_type=attention_type,
+                attention_pre_only=attention_pre_only,
+                attention_bias=attention_bias,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
@@ -390,9 +434,12 @@ class UNet2DConditionModel(
             in_channels=block_out_channels[-1],
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
+            ff_act_fn=ff_act_fn,
+            norm_type=norm_type,
+            ff_norm_type=ff_norm_type,
             resnet_groups=norm_num_groups,
             output_scale_factor=mid_block_scale_factor,
-            transformer_layers_per_block=transformer_layers_per_block[-1],
+            transformer_layers_per_block=transformer_layers_per_block[-1] if norm_type != "layer_norm_matryoshka" else 1,
             num_attention_heads=num_attention_heads[-1],
             cross_attention_dim=cross_attention_dim[-1],
             dual_cross_attention=dual_cross_attention,
@@ -401,6 +448,8 @@ class UNet2DConditionModel(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_type=attention_type,
+            attention_pre_only=attention_pre_only,
+            attention_bias=attention_bias,
             resnet_skip_time_act=resnet_skip_time_act,
             cross_attention_norm=cross_attention_norm,
             attention_head_dim=attention_head_dim[-1],
@@ -448,6 +497,9 @@ class UNet2DConditionModel(
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                ff_act_fn=ff_act_fn,
+                norm_type=norm_type,
+                ff_norm_type=ff_norm_type,
                 resolution_idx=i,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
@@ -458,6 +510,8 @@ class UNet2DConditionModel(
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 attention_type=attention_type,
+                attention_pre_only=attention_pre_only,
+                attention_bias=attention_bias,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
@@ -663,6 +717,10 @@ class UNet2DConditionModel(
 
             self.add_embedding = TextTimeEmbedding(
                 text_time_embedding_from_dim, time_embed_dim, num_heads=addition_embed_type_num_heads
+            )
+        elif addition_embed_type == "matryoshka":
+            self.add_embedding = MatryoshkaCombinedTimestepTextEmbedding(
+                addition_time_embed_dim, cross_attention_dim, time_embed_dim
             )
         elif addition_embed_type == "text_image":
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
@@ -956,6 +1014,8 @@ class UNet2DConditionModel(
         aug_emb = None
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
+        elif self.config.addition_embed_type == "matryoshka":
+            aug_emb = self.add_embedding(emb, encoder_hidden_states, added_cond_kwargs)
         elif self.config.addition_embed_type == "text_image":
             # Kandinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
@@ -1151,7 +1211,14 @@ class UNet2DConditionModel(
             else:
                 emb = emb + class_emb
 
-        aug_emb = self.get_aug_embed(
+        added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
+        added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
+
+        encoder_hidden_states = self.process_encoder_hidden_states(
+            encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+        )
+
+        aug_emb, cond_mask = self.get_aug_embed(
             emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
         )
         if self.config.addition_embed_type == "image_hint":
@@ -1162,10 +1229,6 @@ class UNet2DConditionModel(
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
-
-        encoder_hidden_states = self.process_encoder_hidden_states(
-            encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
 
         # 2. pre-process
         sample = self.conv_in(sample)
