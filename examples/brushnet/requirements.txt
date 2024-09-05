@@ -1,0 +1,16 @@
+torchvision
+transformers>=4.25.1
+ftfy
+tensorboard
+datasets
+Pillow==9.5.0 
+opencv-python 
+imgaug 
+accelerate==0.20.3
+image-reward
+hpsv2
+torchmetrics
+open-clip-torch
+clip
+gradio==3.50.0
+segment_anything
