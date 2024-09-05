@@ -5,6 +5,7 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download, snapshot_download
 
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
@@ -98,8 +99,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -138,8 +139,8 @@ class SDSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -191,8 +192,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -286,8 +287,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -327,8 +328,8 @@ class SDXLSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -364,8 +365,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
