@@ -83,15 +83,14 @@ class SplitInferenceModule(nn.Module):
         Example:
             ```python
             >>> import torch
+            >>> import torch.nn as nn
 
             >>> model = nn.Linear(1000, 1000)
-            >>> split_module = SplitInferenceModule(
-            ...     model, split_size=2, split_dim=0, input_kwargs_to_split=["input_data"]
-            ... )
+            >>> split_module = SplitInferenceModule(model, split_size=2, split_dim=0, input_kwargs_to_split=["input"])
 
             >>> input_tensor = torch.randn(42, 1000)
             >>> # Will split the tensor into 21 slices of shape [2, 1000].
-            >>> output = split_module(input_data=input_tensor)
+            >>> output = split_module(input=input_tensor)
             ```
 
         This method is useful when you need to perform inference on large tensors in a memory-efficient way by breaking

@@ -1104,6 +1104,17 @@ class FreeNoiseTransformerBlock(nn.Module):
                 accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
                 num_times_accumulated[:, frame_start:frame_end] += weights
 
+        # TODO(aryan): Maybe this could be done in a better way.
+        #
+        # Previously, this was:
+        # hidden_states = torch.where(
+        #    num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        # )
+        #
+        # The reasoning for the change here is `torch.where` became a bottleneck at some point when golfing memory
+        # spikes. It is particularly noticeable when the number of frames is high. My understanding is that this comes
+        # from tensors being copied - which is why we resort to spliting and concatenating here. I've not particularly
+        # looked into this deeply because other memory optimizations led to more pronounced reductions.
         hidden_states = torch.cat(
             [
                 torch.where(num_times_split > 0, accumulated_split / num_times_split, accumulated_split)
