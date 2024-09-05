@@ -531,7 +531,7 @@ class BasicTransformerBlock(nn.Module):
         # i2vgen doesn't have this norm 🤷‍♂️
         if self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif not self.norm_type in ("ada_norm_single", "layer_norm_matryoshka"):
+        elif self.norm_type not in ("ada_norm_single", "layer_norm_matryoshka"):
             norm_hidden_states = self.norm3(hidden_states)
         else:
             norm_hidden_states = hidden_states

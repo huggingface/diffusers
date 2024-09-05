@@ -11,11 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from calendar import c
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from cv2 import add
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -55,6 +53,8 @@ from .unet_2d_blocks import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
 class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
     def __init__(self, addition_time_embed_dim, cross_attention_dim, time_embed_dim):
         super().__init__()
@@ -76,13 +76,14 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         cond_emb = self.cond_emb(y)
         cond_emb = cond_emb + emb
 
-        micro = added_cond_kwargs.get('micro_conditioning_scale', None)
+        micro = added_cond_kwargs.get("micro_conditioning_scale", None)
         if micro is not None:
             temb = self.add_time_proj(micro)
             temb_micro_conditioning = self.add_embedding(temb)
 
         cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
         return cond_emb, conditioning_mask
+
 
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
@@ -439,7 +440,9 @@ class UNet2DConditionModel(
             ff_norm_type=ff_norm_type,
             resnet_groups=norm_num_groups,
             output_scale_factor=mid_block_scale_factor,
-            transformer_layers_per_block=transformer_layers_per_block[-1] if norm_type != "layer_norm_matryoshka" else 1,
+            transformer_layers_per_block=transformer_layers_per_block[-1]
+            if norm_type != "layer_norm_matryoshka"
+            else 1,
             num_attention_heads=num_attention_heads[-1],
             cross_attention_dim=cross_attention_dim[-1],
             dual_cross_attention=dual_cross_attention,
