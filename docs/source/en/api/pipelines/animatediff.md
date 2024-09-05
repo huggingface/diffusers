@@ -822,64 +822,6 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
     </tr>
 </table>
 
-## Using FreeNoise
-
-[FreeNoise: Tuning-Free Longer Video Diffusion via Noise Rescheduling](https://arxiv.org/abs/2310.15169) by Haonan Qiu, Menghan Xia, Yong Zhang, Yingqing He, Xintao Wang, Ying Shan, Ziwei Liu.
-
-FreeNoise is a sampling mechanism that allows the generation of longer videos with short-video generation models by employing noise-rescheduling, temporal attention over sliding windows, and weighted averaging of latent frames. It also can be used with multiple prompts to allow for interpolated video generations. More details are available in the paper.
-
-```python
-import torch
-from diffusers import AutoencoderKL, AnimateDiffPipeline, LCMScheduler, MotionAdapter
-from diffusers.utils import export_to_video, load_image
-
-# Load pipeline
-dtype = torch.float16
-motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM", torch_dtype=dtype)
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=dtype)
-
-pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=motion_adapter, vae=vae, torch_dtype=dtype)
-pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
-
-pipe.load_lora_weights(
-    "wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm_lora"
-)
-pipe.set_adapters(["lcm_lora"], [0.8])
-
-# Enable FreeNoise for long prompt generation
-pipe.enable_free_noise(context_length=16, context_stride=4)
-pipe.to("cuda")
-
-# Optionally, enable memory efficient inference
-pipe.enable_free_noise_split_inference()
-pipe.unet.enable_forward_chunking(16)
-
-# Can be a single prompt, or a dictionary with frame timesteps
-prompt = {
-    0: "A caterpillar on a leaf, high quality, photorealistic",
-    40: "A caterpillar transforming into a cocoon, on a leaf, near flowers, photorealistic",
-    80: "A cocoon on a leaf, flowers in the backgrond, photorealistic",
-    120: "A cocoon maturing and a butterfly being born, flowers and leaves visible in the background, photorealistic",
-    160: "A beautiful butterfly, vibrant colors, sitting on a leaf, flowers in the background, photorealistic",
-    200: "A beautiful butterfly, flying away in a forest, photorealistic",
-    240: "A cyberpunk butterfly, neon lights, glowing",
-}
-negative_prompt = "bad quality, worst quality, jpeg artifacts"
-
-# Run inference
-output = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    num_frames=256,
-    guidance_scale=2.5,
-    num_inference_steps=10,
-    generator=torch.Generator("cpu").manual_seed(0),
-)
-
-# Save video
-frames = output.frames[0]
-export_to_video(frames, "output.mp4", fps=16)
-```
 
 ## Using `from_single_file` with the MotionAdapter
 

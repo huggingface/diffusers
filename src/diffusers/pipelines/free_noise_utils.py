@@ -549,21 +549,6 @@ class AnimateDiffFreeNoiseMixin:
             samplers[i] = SplitInferenceModule(samplers[i], temporal_split_size, 0, ["hidden_states"])
 
     def enable_free_noise_split_inference(self, spatial_split_size: int = 256, temporal_split_size: int = 16) -> None:
-        r"""
-        Enable FreeNoise memory optimizations by utilizing
-        [`~diffusers.pipelines.free_noise_utils.SplitInferenceModule`] across different intermediate modeling blocks.
-
-        Args:
-            spatial_split_size (`int`, defaults to `256`):
-                The split size across spatial dimensions for internal blocks. This is used in facilitating split
-                inference across the effective batch dimension (`[B x H x W, F, C]`) of intermediate tensors in motion
-                modeling blocks.
-            temporal_split_size (`int`, defaults to `16`):
-                The split size across temporal dimensions for internal blocks. This is used in facilitating split
-                inference across the effective batch dimension (`[B x F, H x W, C]`) of intermediate tensors in spatial
-                attention, resnets, downsampling and upsampling blocks.
-        """
-        # TODO(aryan): Discuss on what's the best way to provide more control to users
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
         for block in blocks:
             if getattr(block, "motion_modules", None) is not None:
