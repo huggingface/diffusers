@@ -192,42 +192,6 @@ class AnimateDiffFreeNoiseMixin:
                 f"The maximum frame index in `prompt` dict must be lesser than {num_frames=} and follow 0-based indexing."
             )
 
-    def _check_inputs_free_noise(
-        self,
-        prompt,
-        negative_prompt,
-        prompt_embeds,
-        negative_prompt_embeds,
-        num_frames,
-    ) -> None:
-        if not isinstance(prompt, (str, dict)):
-            raise ValueError(f"Expected `prompt` to have type `str` or `dict` but found {type(prompt)=}")
-
-        if negative_prompt is not None:
-            if not isinstance(negative_prompt, (str, dict)):
-                raise ValueError(
-                    f"Expected `negative_prompt` to have type `str` or `dict` but found {type(negative_prompt)=}"
-                )
-
-        if prompt_embeds is not None or negative_prompt_embeds is not None:
-            raise ValueError("`prompt_embeds` and `negative_prompt_embeds` is not supported in FreeNoise yet.")
-
-        frame_indices = [isinstance(x, int) for x in prompt.keys()]
-        frame_prompts = [isinstance(x, str) for x in prompt.values()]
-        min_frame = min(list(prompt.keys()))
-        max_frame = max(list(prompt.keys()))
-
-        if not all(frame_indices):
-            raise ValueError("Expected integer keys in `prompt` dict for FreeNoise.")
-        if not all(frame_prompts):
-            raise ValueError("Expected str values in `prompt` dict for FreeNoise.")
-        if min_frame != 0:
-            raise ValueError("The minimum frame index in `prompt` dict must be 0 as a starting prompt is necessary.")
-        if max_frame >= num_frames:
-            raise ValueError(
-                f"The maximum frame index in `prompt` dict must be lesser than {num_frames=} and follow 0-based indexing."
-            )
-
     def _encode_prompt_free_noise(
         self,
         prompt: Union[str, Dict[int, str]],
