@@ -1121,7 +1121,6 @@ class FreeNoiseTransformerBlock(nn.Module):
         if self._chunk_size is not None:
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
-            norm_hidden_states = self.norm3(hidden_states)
             ff_output = self.ff(norm_hidden_states)
 
         hidden_states = ff_output + hidden_states
