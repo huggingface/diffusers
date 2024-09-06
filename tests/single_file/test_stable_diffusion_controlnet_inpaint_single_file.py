@@ -28,9 +28,9 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
-    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+    ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
-    repo_id = "runwayml/stable-diffusion-inpainting"
+    repo_id = "botp/stable-diffusion-v1-5-inpainting"
 
     def setUp(self):
         super().setUp()

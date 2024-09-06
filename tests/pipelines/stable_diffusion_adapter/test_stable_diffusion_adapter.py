@@ -609,7 +609,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_adapter_depth_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_depth_sd15v2"
-        sd_model = "Lykon/dreamshaper-8"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "desk"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/desk_depth.png"
         input_channels = 3
@@ -630,15 +630,13 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-        import numpy as np
-        np.save("../datasets/test-arrays/stable_diffusion_adapter/sd_adapter_v15_depth.npy", out)
 
         max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
         assert max_diff < 1e-2
 
     def test_stable_diffusion_adapter_zoedepth_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_zoedepth_sd15v1"
-        sd_model = "Lykon/dreamshaper-8"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "motorcycle"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motorcycle.png"
         input_channels = 3
@@ -662,7 +660,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_adapter_canny_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_canny_sd15v2"
-        sd_model = "Lykon/dreamshaper-8"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "toy"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
         input_channels = 1
@@ -690,7 +688,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_adapter_sketch_sd15(self):
         adapter_model = "TencentARC/t2iadapter_sketch_sd15v2"
-        sd_model = "Lykon/dreamshaper-8"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "cat"
         image_url = (
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/edge.png"

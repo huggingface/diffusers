@@ -15,11 +15,11 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     floats_tensor,
+    load_numpy,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
-    load_numpy
 )
 
 from ..pipeline_params import (
@@ -237,8 +237,7 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_3/sd3-img2img.npy"
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main" "/stable_diffusion_3/sd3-img2img.npy"
         )
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
 

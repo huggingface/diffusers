@@ -23,9 +23,9 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
-    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+    ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
-    repo_id = "runwayml/stable-diffusion-inpainting"
+    repo_id = "botp/stable-diffusion-v1-5-inpainting"
 
     def setUp(self):
         super().setUp()
@@ -63,7 +63,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
     def test_single_file_loading_4_channel_unet(self):
         # Test loading single file inpaint with a 4 channel UNet
-        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+        ckpt_path = "https://huggingface.co/Jiali/stable-diffusion-1.5/blob/main/v1-5-pruned-emaonly.safetensors"
         pipe = self.pipeline_class.from_single_file(ckpt_path)
 
         assert pipe.unet.config.in_channels == 4
