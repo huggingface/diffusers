@@ -68,6 +68,14 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
         assert pipe.unet.config.in_channels == 4
 
+    @unittest.skip("runwayml original config has been removed")
+    def test_single_file_components_with_original_config(self):
+        return
+
+    @unittest.skip("runwayml original config has been removed")
+    def test_single_file_components_with_original_config_local_files_only(self):
+        return
+
 
 @slow
 @require_torch_gpu
