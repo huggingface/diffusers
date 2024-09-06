@@ -245,6 +245,22 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe_control_pag = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet, enable_pag=True)
         assert pipe_control_pag.__class__.__name__ == "StableDiffusionXLControlNetPAGImg2ImgPipeline"
 
+    def test_from_pretrained_img2img_refiner(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-refiner-pipe"
+
+        pipe = AutoPipelineForImage2Image.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
+
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        pipe_control = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet)
+        assert pipe_control.__class__.__name__ == "StableDiffusionXLControlNetImg2ImgPipeline"
+
+        pipe_pag = AutoPipelineForImage2Image.from_pretrained(repo, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        pipe_control_pag = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet, enable_pag=True)
+        assert pipe_control_pag.__class__.__name__ == "StableDiffusionXLControlNetPAGImg2ImgPipeline"
+
     def test_from_pipe_pag_img2img(self):
         # test from tableDiffusionXLPAGImg2ImgPipeline
         pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
