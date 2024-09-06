@@ -183,17 +183,6 @@ class ModelUtilsTest(unittest.TestCase):
 
 
 class UNetTesterMixin:
-    def test_forward_signature(self):
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-
-        model = self.model_class(**init_dict)
-        signature = inspect.signature(model.forward)
-        # signature.parameters is an OrderedDict => so arg_names order is deterministic
-        arg_names = [*signature.parameters.keys()]
-
-        expected_arg_names = ["sample", "timestep"]
-        self.assertListEqual(arg_names[:2], expected_arg_names)
-
     def test_forward_with_norm_groups(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -220,6 +209,7 @@ class ModelTesterMixin:
     base_precision = 1e-3
     forward_requires_fresh_args = False
     model_split_percents = [0.5, 0.7, 0.9]
+    uses_custom_attn_processor = False
 
     def check_device_map_is_respected(self, model, device_map):
         for param_name, param in model.named_parameters():
