@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 
 from ..models.attention import BasicTransformerBlock, FreeNoiseTransformerBlock
+from ..models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from ..models.transformers.transformer_2d import Transformer2DModel
 from ..models.unets.unet_motion_model import (
+    AnimateDiffTransformer3D,
     CrossAttnDownBlockMotion,
     DownBlockMotion,
     UpBlockMotion,
@@ -28,6 +32,114 @@ from ..utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class SplitInferenceModule(nn.Module):
+    r"""
+    A wrapper module class that splits inputs along a specified dimension before performing a forward pass.
+
+    This module is useful when you need to perform inference on large tensors in a memory-efficient way by breaking
+    them into smaller chunks, processing each chunk separately, and then reassembling the results.
+
+    Args:
+        module (`nn.Module`):
+            The underlying PyTorch module that will be applied to each chunk of split inputs.
+        split_size (`int`, defaults to `1`):
+            The size of each chunk after splitting the input tensor.
+        split_dim (`int`, defaults to `0`):
+            The dimension along which the input tensors are split.
+        input_kwargs_to_split (`List[str]`, defaults to `["hidden_states"]`):
+            A list of keyword arguments (strings) that represent the input tensors to be split.
+
+    Workflow:
+        1. The keyword arguments specified in `input_kwargs_to_split` are split into smaller chunks using
+        `torch.split()` along the dimension `split_dim` and with a chunk size of `split_size`.
+        2. The `module` is invoked once for each split with both the split inputs and any unchanged arguments
+        that were passed.
+        3. The output tensors from each split are concatenated back together along `split_dim` before returning.
+
+    Example:
+        ```python
+        >>> import torch
+        >>> import torch.nn as nn
+
+        >>> model = nn.Linear(1000, 1000)
+        >>> split_module = SplitInferenceModule(model, split_size=2, split_dim=0, input_kwargs_to_split=["input"])
+
+        >>> input_tensor = torch.randn(42, 1000)
+        >>> # Will split the tensor into 21 slices of shape [2, 1000].
+        >>> output = split_module(input=input_tensor)
+        ```
+
+    It is also possible to nest `SplitInferenceModule` across different split dimensions for more complex
+    multi-dimensional splitting.
+    """
+
+    def __init__(
+        self,
+        module: nn.Module,
+        split_size: int = 1,
+        split_dim: int = 0,
+        input_kwargs_to_split: List[str] = ["hidden_states"],
+    ) -> None:
+        super().__init__()
+
+        self.module = module
+        self.split_size = split_size
+        self.split_dim = split_dim
+        self.input_kwargs_to_split = set(input_kwargs_to_split)
+
+    def forward(self, *args, **kwargs) -> Union[torch.Tensor, Tuple[torch.Tensor]]:
+        r"""Forward method for the `SplitInferenceModule`.
+
+        This method processes the input by splitting specified keyword arguments along a given dimension, running the
+        underlying module on each split, and then concatenating the results. The splitting is controlled by the
+        `split_size` and `split_dim` parameters specified during initialization.
+
+        Args:
+            *args (`Any`):
+                Positional arguments that are passed directly to the `module` without modification.
+            **kwargs (`Dict[str, torch.Tensor]`):
+                Keyword arguments passed to the underlying `module`. Only keyword arguments whose names match the
+                entries in `input_kwargs_to_split` and are of type `torch.Tensor` will be split. The remaining keyword
+                arguments are passed unchanged.
+
+        Returns:
+            `Union[torch.Tensor, Tuple[torch.Tensor]]`:
+                The outputs obtained from `SplitInferenceModule` are the same as if the underlying module was inferred
+                without it.
+                - If the underlying module returns a single tensor, the result will be a single concatenated tensor
+                along the same `split_dim` after processing all splits.
+                - If the underlying module returns a tuple of tensors, each element of the tuple will be concatenated
+                along the `split_dim` across all splits, and the final result will be a tuple of concatenated tensors.
+        """
+        split_inputs = {}
+
+        # 1. Split inputs that were specified during initialization and also present in passed kwargs
+        for key in list(kwargs.keys()):
+            if key not in self.input_kwargs_to_split or not torch.is_tensor(kwargs[key]):
+                continue
+            split_inputs[key] = torch.split(kwargs[key], self.split_size, self.split_dim)
+            kwargs.pop(key)
+
+        # 2. Invoke forward pass across each split
+        results = []
+        for split_input in zip(*split_inputs.values()):
+            inputs = dict(zip(split_inputs.keys(), split_input))
+            inputs.update(kwargs)
+
+            intermediate_tensor_or_tensor_tuple = self.module(*args, **inputs)
+            results.append(intermediate_tensor_or_tensor_tuple)
+
+        # 3. Concatenate split restuls to obtain final outputs
+        if isinstance(results[0], torch.Tensor):
+            return torch.cat(results, dim=self.split_dim)
+        elif isinstance(results[0], tuple):
+            return tuple([torch.cat(x, dim=self.split_dim) for x in zip(*results)])
+        else:
+            raise ValueError(
+                "In order to use the SplitInferenceModule, it is necessary for the underlying `module` to either return a torch.Tensor or a tuple of torch.Tensor's."
+            )
 
 
 class AnimateDiffFreeNoiseMixin:
@@ -70,6 +182,9 @@ class AnimateDiffFreeNoiseMixin:
                     motion_module.transformer_blocks[i].load_state_dict(
                         basic_transfomer_block.state_dict(), strict=True
                     )
+                    motion_module.transformer_blocks[i].set_chunk_feed_forward(
+                        basic_transfomer_block._chunk_size, basic_transfomer_block._chunk_dim
+                    )
 
     def _disable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
         r"""Helper function to disable FreeNoise in transformer blocks."""
@@ -97,6 +212,9 @@ class AnimateDiffFreeNoiseMixin:
 
                     motion_module.transformer_blocks[i].load_state_dict(
                         free_noise_transfomer_block.state_dict(), strict=True
+                    )
+                    motion_module.transformer_blocks[i].set_chunk_feed_forward(
+                        free_noise_transfomer_block._chunk_size, free_noise_transfomer_block._chunk_dim
                     )
 
     def _check_inputs_free_noise(
@@ -409,6 +527,69 @@ class AnimateDiffFreeNoiseMixin:
         blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
         for block in blocks:
             self._disable_free_noise_in_block(block)
+
+    def _enable_split_inference_motion_modules_(
+        self, motion_modules: List[AnimateDiffTransformer3D], spatial_split_size: int
+    ) -> None:
+        for motion_module in motion_modules:
+            motion_module.proj_in = SplitInferenceModule(motion_module.proj_in, spatial_split_size, 0, ["input"])
+
+            for i in range(len(motion_module.transformer_blocks)):
+                motion_module.transformer_blocks[i] = SplitInferenceModule(
+                    motion_module.transformer_blocks[i],
+                    spatial_split_size,
+                    0,
+                    ["hidden_states", "encoder_hidden_states"],
+                )
+
+            motion_module.proj_out = SplitInferenceModule(motion_module.proj_out, spatial_split_size, 0, ["input"])
+
+    def _enable_split_inference_attentions_(
+        self, attentions: List[Transformer2DModel], temporal_split_size: int
+    ) -> None:
+        for i in range(len(attentions)):
+            attentions[i] = SplitInferenceModule(
+                attentions[i], temporal_split_size, 0, ["hidden_states", "encoder_hidden_states"]
+            )
+
+    def _enable_split_inference_resnets_(self, resnets: List[ResnetBlock2D], temporal_split_size: int) -> None:
+        for i in range(len(resnets)):
+            resnets[i] = SplitInferenceModule(resnets[i], temporal_split_size, 0, ["input_tensor", "temb"])
+
+    def _enable_split_inference_samplers_(
+        self, samplers: Union[List[Downsample2D], List[Upsample2D]], temporal_split_size: int
+    ) -> None:
+        for i in range(len(samplers)):
+            samplers[i] = SplitInferenceModule(samplers[i], temporal_split_size, 0, ["hidden_states"])
+
+    def enable_free_noise_split_inference(self, spatial_split_size: int = 256, temporal_split_size: int = 16) -> None:
+        r"""
+        Enable FreeNoise memory optimizations by utilizing
+        [`~diffusers.pipelines.free_noise_utils.SplitInferenceModule`] across different intermediate modeling blocks.
+
+        Args:
+            spatial_split_size (`int`, defaults to `256`):
+                The split size across spatial dimensions for internal blocks. This is used in facilitating split
+                inference across the effective batch dimension (`[B x H x W, F, C]`) of intermediate tensors in motion
+                modeling blocks.
+            temporal_split_size (`int`, defaults to `16`):
+                The split size across temporal dimensions for internal blocks. This is used in facilitating split
+                inference across the effective batch dimension (`[B x F, H x W, C]`) of intermediate tensors in spatial
+                attention, resnets, downsampling and upsampling blocks.
+        """
+        # TODO(aryan): Discuss on what's the best way to provide more control to users
+        blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
+        for block in blocks:
+            if getattr(block, "motion_modules", None) is not None:
+                self._enable_split_inference_motion_modules_(block.motion_modules, spatial_split_size)
+            if getattr(block, "attentions", None) is not None:
+                self._enable_split_inference_attentions_(block.attentions, temporal_split_size)
+            if getattr(block, "resnets", None) is not None:
+                self._enable_split_inference_resnets_(block.resnets, temporal_split_size)
+            if getattr(block, "downsamplers", None) is not None:
+                self._enable_split_inference_samplers_(block.downsamplers, temporal_split_size)
+            if getattr(block, "upsamplers", None) is not None:
+                self._enable_split_inference_samplers_(block.upsamplers, temporal_split_size)
 
     @property
     def free_noise_enabled(self):
