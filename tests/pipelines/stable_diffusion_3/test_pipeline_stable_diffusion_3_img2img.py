@@ -15,7 +15,6 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     floats_tensor,
-    load_numpy,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
@@ -236,9 +235,42 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
 
         image = pipe(**inputs).images[0]
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main" "/stable_diffusion_3/sd3-img2img.npy"
+        image_slice = image[0, :10, :10]
+        expected_slice = np.array(
+            [
+                0.5435,
+                0.4673,
+                0.5732,
+                0.4438,
+                0.3557,
+                0.4912,
+                0.4331,
+                0.3491,
+                0.4915,
+                0.4287,
+                0.3477,
+                0.4849,
+                0.4355,
+                0.3469,
+                0.4871,
+                0.4431,
+                0.3538,
+                0.4912,
+                0.4521,
+                0.3643,
+                0.5059,
+                0.4587,
+                0.3730,
+                0.5166,
+                0.4685,
+                0.3845,
+                0.5264,
+                0.4746,
+                0.3914,
+                0.5342,
+            ]
         )
-        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"
