@@ -23,19 +23,11 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionImg2ImgPipeline
-<<<<<<< HEAD
     ckpt_path = "https://huggingface.co/Jiali/stable-diffusion-1.5/blob/main/v1-5-pruned-emaonly.safetensors"
     original_config = (
         "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
     )
     repo_id = "Jiali/stable-diffusion-1.5"
-=======
-    ckpt_path = "https://huggingface.co/Lykon/DreamShaper/blob/main/DreamShaper_8_pruned.safetensors"
-    original_config = (
-        "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-    )
-    repo_id = "Lykon/dreamshaper-8"
->>>>>>> main
 
     def setUp(self):
         super().setUp()
