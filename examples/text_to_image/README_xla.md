@@ -35,8 +35,8 @@ Install PyTorch and PyTorch/XLA nightly versions:
 gcloud compute tpus tpu-vm ssh ${TPU_NAME} \
 --project=${PROJECT_ID} --zone=${ZONE} --worker=all \
 --command='
-pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
-pip3 install 'torch_xla[tpu] @ https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-2.5.0.dev-cp310-cp310-linux_x86_64.whl' -f https://storage.googleapis.com/libtpu-releases/index.html
+pip3 install --pre torch==2.5.0.dev20240905+cpu torchvision==0.20.0.dev20240905+cpu --index-url https://download.pytorch.org/whl/nightly/cpu
+pip install "torch_xla[tpu] @ https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-2.5.0.dev20240905-cp310-cp310-linux_x86_64.whl" -f https://storage.googleapis.com/libtpu-releases/index.html
 '
 ```
 
