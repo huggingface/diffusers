@@ -8,7 +8,6 @@ from diffusers import (
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
 )
-from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -119,8 +118,8 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
-            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
 
             single_file_pipe = self.pipeline_class.from_single_file(
                 local_ckpt_path, adapter=adapter, safety_checker=None, local_files_only=True
@@ -151,8 +150,8 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
-            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
@@ -189,8 +188,8 @@ class StableDiffusionXLAdapterPipelineSingleFileSlowTests(unittest.TestCase, SDX
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
-            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
+            ckpt_filename = self.ckpt_path.split("/")[-1]
+            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(

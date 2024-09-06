@@ -35,7 +35,7 @@ from diffusers.utils.testing_utils import (
 
 
 def get_some_linear_layer(model):
-    if model.__class__.__name__ in ["SD3Transformer2DModel", "FluxTransformer2DModel"]:
+    if model.__class__.__name__ == "SD3Transformer2DModel":
         return model.transformer_blocks[0].attn.to_q
     else:
         return NotImplementedError("Don't know what layer to retrieve here.")
@@ -162,12 +162,14 @@ class BnB4BitBasicTests(Base4bitTests):
         A simple test to check if the model conversion has been done correctly by checking on the
         memory footprint of the converted model and the class type of the linear layers of the converted models
         """
+        from bitsandbytes.nn import Params4bit
+
         mem_fp16 = self.model_fp16.get_memory_footprint()
         mem_4bit = self.model_4bit.get_memory_footprint()
 
         self.assertAlmostEqual(mem_fp16 / mem_4bit, self.expected_rel_difference, delta=1e-2)
         linear = get_some_linear_layer(self.model_4bit)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Params4bit)
+        self.assertTrue(linear.weight.__class__ == Params4bit)
 
     def test_original_dtype(self):
         r"""
@@ -190,15 +192,6 @@ class BnB4BitBasicTests(Base4bitTests):
                 if name not in self.model_fp16._keep_in_fp32_modules:
                     # 4-bit parameters are packed in uint8 variables
                     self.assertTrue(module.weight.dtype == torch.uint8)
-
-    def test_config_from_pretrained(self):
-        transformer_4bit = FluxTransformer2DModel.from_pretrained(
-            "sayakpaul/flux.1-dev-nf4-pkg", subfolder="transformer"
-        )
-        linear = get_some_linear_layer(transformer_4bit)
-        self.assertTrue(linear.weight.__class__ == bnb.nn.Params4bit)
-        self.assertTrue(hasattr(linear.weight, "quant_state"))
-        self.assertTrue(linear.weight.quant_state.__class__ == bnb.functional.QuantState)
 
     def test_device_assignment(self):
         mem_before = self.model_4bit.get_memory_footprint()

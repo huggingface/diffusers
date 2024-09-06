@@ -16,7 +16,10 @@ Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/quantizer_bnb_4bit.py
 """
 
+import importlib
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+from packaging import version
 
 from ...utils import get_module_from_name
 from ..base import DiffusersQuantizer
@@ -43,7 +46,7 @@ logger = logging.get_logger(__name__)
 
 class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
     """
-    4-bit quantization from bitsandbytes quantization method:
+    4-bit quantization from bitsandbytes.py quantization method:
         before loading: converts transformer layers into Linear4bit during loading: load 16bit weight and pass to the
         layer object after: quantizes individual weights in Linear4bit into 4bit at the first .cuda() call saving:
             from state dict, as usual; saves weights and `quant_state` components
@@ -52,7 +55,10 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
     """
 
     use_keep_in_fp32_modules = True
+    requires_parameters_quantization = True
     requires_calibration = False
+
+    required_packages = ["bitsandbytes", "accelerate"]
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
@@ -98,10 +104,11 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
                 )
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        if target_dtype != torch.int8:
+        if version.parse(importlib.metadata.version("accelerate")) > version.parse("0.19.0"):
             from accelerate.utils import CustomDtype
 
-            logger.info("target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
+            if target_dtype != torch.int8:
+                logger.info("target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
             return CustomDtype.INT4
         else:
             raise ValueError(
@@ -289,12 +296,19 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
 
     @property
     def is_serializable(self):
-        # Because we're mandating `bitsandbytes` 0.43.3.
+        _is_4bit_serializable = version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse("0.41.3")
+
+        if not _is_4bit_serializable:
+            logger.warning(
+                "You are calling `save_pretrained` to a 4-bit converted model, but your `bitsandbytes` version doesn't support it. "
+                "If you want to save 4-bit models, make sure to have `bitsandbytes>=0.41.3` installed."
+            )
+            return False
+
         return True
 
     @property
     def is_trainable(self) -> bool:
-        # Because we're mandating `bitsandbytes` 0.43.3.
         return True
 
     def _dequantize(self, model):
@@ -327,7 +341,10 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
     """
 
     use_keep_in_fp32_modules = True
+    requires_parameters_quantization = True
     requires_calibration = False
+
+    required_packages = ["bitsandbytes", "accelerate"]
 
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
@@ -534,16 +551,24 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         model.config.quantization_config = self.quantization_config
 
     @property
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.is_serializable
     def is_serializable(self):
-        # Because we're mandating `bitsandbytes` 0.43.3.
+        _bnb_supports_8bit_serialization = version.parse(importlib.metadata.version("bitsandbytes")) > version.parse(
+            "0.37.2"
+        )
+
+        if not _bnb_supports_8bit_serialization:
+            logger.warning(
+                "You are calling `save_pretrained` to a 8-bit converted model, but your `bitsandbytes` version doesn't support it. "
+                "If you want to save 8-bit models, make sure to have `bitsandbytes>0.37.2` installed. You will most likely face errors or"
+                " unexpected behaviours."
+            )
+            return False
+
         return True
 
     @property
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.is_serializable
     def is_trainable(self) -> bool:
-        # Because we're mandating `bitsandbytes` 0.43.3.
-        return True
+        return version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse("0.37.0")
 
     def _dequantize(self, model):
         from .utils import dequantize_and_replace
