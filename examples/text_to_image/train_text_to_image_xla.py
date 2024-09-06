@@ -1,14 +1,18 @@
 import argparse
 import os
 import random
-
 import time
+
 import datasets
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-
+import torch_xla.core.xla_model as xm
+import torch_xla.debug.profiler as xp
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.distributed.spmd as xs
+import torch_xla.runtime as xr
 from torchvision import transforms
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -22,17 +26,9 @@ from diffusers.training_utils import (
     compute_snr,
 )
 
-import torch_xla
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_backend
-import torch_xla.debug.profiler as xp
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.runtime as xr
-import torch_xla.distributed.spmd as xs
-import torch_xla.distributed.xla_backend
 
-PROFILE_DIR=os.environ.get('PROFILE_DIR', None)
-CACHE_DIR = os.environ.get('CACHE_DIR', None)
+PROFILE_DIR = os.environ.get("PROFILE_DIR", None)
+CACHE_DIR = os.environ.get("CACHE_DIR", None)
 if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
 xr.use_spmd()
@@ -40,8 +36,8 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
-class TrainSD():
 
+class TrainSD:
     def __init__(
         self,
         vae,
@@ -79,7 +75,7 @@ class TrainSD():
                 break
             if step == 4 and PROFILE_DIR is not None:
                 xm.wait_device_ops()
-                xp.trace_detached('localhost:9012', PROFILE_DIR, duration_ms=args.profile_duration)
+                xp.trace_detached("localhost:9012", PROFILE_DIR, duration_ms=args.profile_duration)
             try:
                 batch = next(self.dataloader)
             except Exception as e:
@@ -90,8 +86,8 @@ class TrainSD():
             if step >= 10:
                 times.append(step_time)
             print(f"step: {step}, step_time: {step_time}")
-            if step%5 == 0:
-                print(f'step: {step}, loss: {loss}')
+            if step % 5 == 0:
+                print(f"step: {step}, loss: {loss}")
             last_time = time.time()
             self.global_step += 1
             step += 1
@@ -102,14 +98,16 @@ class TrainSD():
         self,
         pixel_values,
         input_ids,
-        ):
+    ):
         with xp.Trace("model.forward"):
             self.optimizer.zero_grad()
             latents = self.vae.encode(pixel_values).latent_dist.sample()
             latents = latents * self.vae.config.scaling_factor
             noise = torch.randn_like(latents).to(self.device, dtype=self.weight_dtype)
             bsz = latents.shape[0]
-            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+            timesteps = torch.randint(
+                0, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+            )
             timesteps = timesteps.long()
 
             noisy_latents = self.noise_scheduler.add_noise(latents, noise, timesteps)
@@ -149,14 +147,13 @@ class TrainSD():
             self.run_optimizer()
         return loss
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--input_perturbation", type=float, default=0, help="The scale of input perturbation. Recommended 0.1."
     )
-    parser.add_argument(
-        "--profile_duration", type=int, default=10000, help="Profile duration in ms"
-    )
+    parser.add_argument("--profile_duration", type=int, default=10000, help="Profile duration in ms")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -301,17 +298,13 @@ def parse_args():
         "--loader_prefetch_size",
         type=int,
         default=1,
-        help=(
-            "Number of subprocesses to use for data loading to cpu."
-        ),
+        help=("Number of subprocesses to use for data loading to cpu."),
     )
     parser.add_argument(
         "--device_prefetch_size",
         type=int,
         default=1,
-        help=(
-            "Number of subprocesses to use for data loading to tpu from cpu. "
-        ),
+        help=("Number of subprocesses to use for data loading to tpu from cpu. "),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -343,6 +336,7 @@ def parse_args():
 
     return args
 
+
 def setup_optimizer(unet, args):
     optimizer_cls = torch.optim.AdamW
     return optimizer_cls(
@@ -353,6 +347,7 @@ def setup_optimizer(unet, args):
         eps=args.adam_epsilon,
         foreach=True,
     )
+
 
 def load_dataset(args):
     if args.dataset_name is not None:
@@ -373,6 +368,7 @@ def load_dataset(args):
             cache_dir=args.cache_dir,
         )
     return dataset
+
 
 def get_column_names(dataset, args):
     column_names = dataset["train"].column_names
@@ -398,15 +394,14 @@ def get_column_names(dataset, args):
 
 
 def main(args):
-
     args = parse_args()
 
-    server = xp.start_server(9012)
+    _ = xp.start_server(9012)
 
     num_devices = xr.global_runtime_device_count()
     device_ids = np.arange(num_devices)
     mesh_shape = (num_devices, 1)
-    mesh = xs.Mesh(device_ids, mesh_shape, ('x', 'y'))
+    mesh = xs.Mesh(device_ids, mesh_shape, ("x", "y"))
     xs.set_global_mesh(mesh)
 
     text_encoder = CLIPTextModel.from_pretrained(
@@ -427,9 +422,7 @@ def main(args):
         subfolder="unet",
         revision=args.non_ema_revision,
     )
-    noise_scheduler = DDPMScheduler.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="scheduler"
-    )
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
@@ -437,6 +430,7 @@ def main(args):
     )
 
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
+
     unet = apply_xla_patch_to_nn_linear(unet, xs.xla_patched_nn_linear_forward)
 
     vae.requires_grad_(False)
@@ -491,19 +485,9 @@ def main(args):
 
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
-            (
-                transforms.CenterCrop(args.resolution)
-                if args.center_crop
-                else transforms.RandomCrop(args.resolution)
-            ),
-            (
-                transforms.RandomHorizontalFlip()
-                if args.random_flip
-                else transforms.Lambda(lambda x: x)
-            ),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            (transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)),
+            (transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x)),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -516,22 +500,18 @@ def main(args):
         return examples
 
     train_dataset = dataset["train"]
-    train_dataset.set_format('torch')
+    train_dataset.set_format("torch")
     train_dataset.set_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(
-            weight_dtype
-        )
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(weight_dtype)
         input_ids = torch.stack([example["input_ids"] for example in examples])
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     g = torch.Generator()
     g.manual_seed(xr.host_index())
-    sampler = torch.utils.data.RandomSampler(
-        train_dataset, replacement=True, num_samples=int(1e10), generator=g
-    )
+    sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10), generator=g)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
@@ -544,9 +524,7 @@ def main(args):
         train_dataloader,
         device,
         input_sharding={
-            "pixel_values": xs.ShardingSpec(
-                mesh, ("x", None, None, None), minibatch=True
-            ),
+            "pixel_values": xs.ShardingSpec(mesh, ("x", None, None, None), minibatch=True),
             "input_ids": xs.ShardingSpec(mesh, ("x", None), minibatch=True),
         },
         loader_prefetch_size=args.loader_prefetch_size,
@@ -556,20 +534,20 @@ def main(args):
     if xm.is_master_ordinal():
         print("***** Running training *****")
         print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices}")
-        print(
-            f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size}"
-        )
+        print(f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size}")
         print(f"  Total optimization steps = {args.max_train_steps}")
 
-    trainer = TrainSD(vae=vae,
-                      weight_dtype=weight_dtype,
-                      device=device,
-                      noise_scheduler=noise_scheduler,
-                      unet=unet,
-                      optimizer=optimizer,
-                      text_encoder=text_encoder,
-                      dataloader=train_dataloader,
-                      args=args)
+    trainer = TrainSD(
+        vae=vae,
+        weight_dtype=weight_dtype,
+        device=device,
+        noise_scheduler=noise_scheduler,
+        unet=unet,
+        optimizer=optimizer,
+        text_encoder=text_encoder,
+        dataloader=train_dataloader,
+        args=args,
+    )
 
     trainer.start_training()
     unet = trainer.unet.to("cpu")
