@@ -78,8 +78,8 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
 
         micro = added_cond_kwargs.get("micro_conditioning_scale", None)
         if micro is not None:
-            temb = self.add_time_proj(micro)
-            temb_micro_conditioning = self.add_timestep_embedder(temb)
+            temb = self.add_time_proj(torch.tensor([micro], device=emb.device, dtype=emb.dtype))
+            temb_micro_conditioning = self.add_timestep_embedder(temb.to(emb.dtype))
 
         cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
         return cond_emb, conditioning_mask
@@ -1209,6 +1209,7 @@ class UNet2DConditionModel(
             else:
                 emb = emb + class_emb
 
+        added_cond_kwargs = added_cond_kwargs or {}
         added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
         added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
 

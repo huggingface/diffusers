@@ -85,8 +85,15 @@ class GELU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
 
     def forward(self, hidden_states):
-        hidden_states = self.proj(hidden_states)
-        hidden_states = self.gelu(hidden_states)
+        if hidden_states.ndim == 4:
+            batch_size, channels, height, width = hidden_states.shape
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(-1, channels)
+            hidden_states = self.proj(hidden_states)
+            hidden_states = self.gelu(hidden_states)
+            hidden_states = hidden_states.reshape(batch_size, height, width, -1).permute(0, 3, 1, 2)
+        else:
+            hidden_states = self.proj(hidden_states)
+            hidden_states = self.gelu(hidden_states)
         return hidden_states
 
 

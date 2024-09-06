@@ -18,6 +18,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
+from zmq import has
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
@@ -2307,6 +2308,8 @@ class AttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
+        self_attn_output: Optional[torch.Tensor] = None,
+        query: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
@@ -2340,9 +2343,7 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if kwargs.get("query", False):
-            query = kwargs.pop("query")
-        else:
+        if query is None:
             query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
@@ -2356,7 +2357,8 @@ class AttnProcessor2_0:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        if self_attn_output is None:
+            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
@@ -2372,16 +2374,15 @@ class AttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
-        if kwargs.get("self_attn_output", False):
-            hidden_states = kwargs.pop("self_attn_output") + hidden_states
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
+        if hasattr(attn, "to_out"):
+            # linear proj
+            hidden_states = attn.to_out[0](hidden_states)
+            # dropout
+            hidden_states = attn.to_out[1](hidden_states)
 
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
@@ -2389,9 +2390,12 @@ class AttnProcessor2_0:
         if attn.residual_connection:
             hidden_states = hidden_states + residual
 
+        if self_attn_output is not None:
+            hidden_states = self_attn_output + hidden_states
+
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        return hidden_states if not kwargs.get("self_attn_output", False) else hidden_states, query
+        return hidden_states if self_attn_output is not None else (hidden_states, query)
 
 
 class StableAudioAttnProcessor2_0:

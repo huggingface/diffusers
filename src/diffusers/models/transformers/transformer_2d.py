@@ -216,7 +216,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         )
         if self.use_linear_projection == "no_projection":
             self.proj_out = None
-        elif self.use_linear_projection:
+        elif self.use_linear_projection is not None:
             self.proj_out = torch.nn.Linear(self.inner_dim, self.out_channels)
         else:
             self.proj_out = torch.nn.Conv2d(self.inner_dim, self.out_channels, kernel_size=1, stride=1, padding=0)
@@ -491,7 +491,8 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
     def _operate_on_continuous_inputs(self, hidden_states):
         batch, _, height, width = hidden_states.shape
-        hidden_states = self.norm(hidden_states)
+        if self.norm is not None:
+            hidden_states = self.norm(hidden_states)
 
         if self.use_linear_projection == "no_projection":
             inner_dim = hidden_states.shape[1]
@@ -527,6 +528,10 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         return hidden_states, encoder_hidden_states, timestep, embedded_timestep
 
     def _get_output_for_continuous_inputs(self, hidden_states, residual, batch_size, height, width, inner_dim):
+
+        if self.proj_out is None:
+            return hidden_states + residual
+
         if not self.use_linear_projection:
             hidden_states = (
                 hidden_states.reshape(batch_size, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()

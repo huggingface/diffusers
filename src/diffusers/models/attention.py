@@ -1205,5 +1205,11 @@ class FeedForward(nn.Module):
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
         for module in self.net:
-            hidden_states = module(hidden_states)
+            if isinstance(module, nn.Linear) and hidden_states.ndim == 4:
+                batch_size, channels, height, width = hidden_states.shape
+                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(-1, channels)
+                hidden_states = module(hidden_states)
+                hidden_states = hidden_states.reshape(batch_size, height, width, -1).permute(0, 3, 1, 2)
+            else:
+                hidden_states = module(hidden_states)
         return hidden_states
