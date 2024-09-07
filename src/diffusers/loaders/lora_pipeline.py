@@ -2730,6 +2730,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
@@ -2743,6 +2744,10 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+            unfuse_text_encoder (`bool`, defaults to `True`):
+                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
+                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components)
 
