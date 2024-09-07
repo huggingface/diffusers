@@ -1347,6 +1347,7 @@ def main(args):
                 target = model_input
 
                 loss = torch.mean((weights * (model_pred - target) ** 2).reshape(batch_size, -1), dim=1)
+                loss = loss.mean()
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
