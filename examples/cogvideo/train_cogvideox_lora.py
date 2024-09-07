@@ -181,8 +181,14 @@ def get_args():
     parser.add_argument(
         "--rank",
         type=int,
-        default=4,
+        default=128,
         help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--lora_alpha",
+        type=float,
+        default=1,
+        help=("The scaling factor to scale LoRA weight update. The actual scaling factor is `lora_alpha / rank`"),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -998,7 +1004,7 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
         init_lora_weights=True,
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
@@ -1007,7 +1013,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.rank,
+            lora_alpha=args.lora_alpha,
             init_lora_weights=True,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
