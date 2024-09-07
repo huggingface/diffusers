@@ -717,23 +717,9 @@ def log_validation(
                 }
             )
 
-    del pipe
-    clear_objs_and_retain_memory()
+    clear_objs_and_retain_memory([pipe])
 
     return videos
-
-
-def collate_fn(examples):
-    videos = [example["instance_video"] for example in examples]
-    prompts = [example["instance_prompt"] for example in examples]
-
-    videos = torch.stack(videos)
-    videos = videos.to(memory_format=torch.contiguous_format).float()
-
-    return {
-        "videos": videos,
-        "prompts": prompts,
-    }
 
 
 def _get_t5_prompt_embeds(
@@ -993,7 +979,6 @@ def main(args):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-    print("weight_dtype:", weight_dtype)
 
     if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -1159,6 +1144,27 @@ def main(args):
         id_token=args.id_token,
     )
 
+    def encode_video(video):
+        print(video.shape)
+        video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
+        video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
+        latent_dist = vae.encode(video).latent_dist
+        return latent_dist
+
+    train_dataset.instance_videos = [encode_video(video) for video in train_dataset.instance_videos]
+
+    def collate_fn(examples):
+        videos = [example["instance_video"].sample() * vae.config.scaling_factor for example in examples]
+        prompts = [example["instance_prompt"] for example in examples]
+
+        videos = torch.cat(videos)
+        videos = videos.to(memory_format=torch.contiguous_format).float()
+
+        return {
+            "videos": videos,
+            "prompts": prompts,
+        }
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
@@ -1281,7 +1287,7 @@ def main(args):
                 models_to_accumulate.extend([text_encoder])
 
             with accelerator.accumulate(models_to_accumulate):
-                videos = batch["videos"].to(dtype=vae.dtype)
+                model_input = batch["videos"].permute(0, 2, 1, 3, 4).to(dtype=weight_dtype)  # [B, F, C, H, W]
                 prompts = batch["prompts"]
 
                 # encode prompts
@@ -1293,11 +1299,6 @@ def main(args):
                     weight_dtype,
                     requires_grad=args.train_text_encoder,
                 )
-
-                # Convert videos to latents
-                videos = videos.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
-                model_input = vae.encode(videos).latent_dist.sample() * vae.config.scaling_factor
-                model_input = model_input.permute(0, 2, 1, 3, 4).to(dtype=weight_dtype)  # [B, F, C, H, W]
 
                 # Sample noise that will be added to the latents
                 noise = torch.rand_like(model_input)
