@@ -151,6 +151,7 @@ else:
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
             "StableDiffusionPAGPipeline",
+            "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
@@ -553,6 +554,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
+            StableDiffusionPAGInpaintPipeline,
         )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline

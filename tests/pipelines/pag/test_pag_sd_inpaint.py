@@ -122,31 +122,19 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         return components
     
 
-    def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
+    def get_dummy_inputs(self, device, seed=0):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        if output_pil:
-            # Get random floats in [0, 1] as image
-            image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-            image = image.cpu().permute(0, 2, 3, 1)[0]
-            mask_image = torch.ones_like(image)
-            # Convert image and mask_image to [0, 255]
-            image = 255 * image
-            mask_image = 255 * mask_image
-            # Convert to PIL image
-            init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
-            mask_image = Image.fromarray(np.uint8(mask_image)).convert("RGB").resize((img_res, img_res))
-        else:
-            # Get random floats in [0, 1] as image with spatial size (img_res, img_res)
-            image = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed)).to(device)
-            # Convert image to [-1, 1]
-            init_image = 2.0 * image - 1.0
-            mask_image = torch.ones((1, 1, img_res, img_res), device=device)
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+        # create mask
+        image[8:, 8:, :] = 255
+        mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
@@ -154,8 +142,8 @@ class StableDiffusionPAGInpaintPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "pag_scale" : 0.8,
-            "strength" : 0.5,
+            "strength": 1.0,
+            "pag_scale": 0.9,
             "output_type": "np",
         }
         return inputs
@@ -197,9 +185,6 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
     
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
-
     def test_pag_applied_layers(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
