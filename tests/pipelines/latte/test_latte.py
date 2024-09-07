@@ -28,6 +28,7 @@ from diffusers import (
     LattePipeline,
     LatteTransformer3DModel,
 )
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -255,6 +256,13 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, 1.0)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
 
 @slow

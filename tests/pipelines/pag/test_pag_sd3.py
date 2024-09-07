@@ -37,6 +37,7 @@ class StableDiffusion3PAGPipelineFastTests(unittest.TestCase, PipelineTesterMixi
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)

@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_pag_controlnet_sd"] = ["StableDiffusionControlNetPAGPipeline"]
     _import_structure["pipeline_pag_controlnet_sd_xl"] = ["StableDiffusionXLControlNetPAGPipeline"]
+    _import_structure["pipeline_pag_controlnet_sd_xl_img2img"] = ["StableDiffusionXLControlNetPAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_hunyuandit"] = ["HunyuanDiTPAGPipeline"]
     _import_structure["pipeline_pag_kolors"] = ["KolorsPAGPipeline"]
     _import_structure["pipeline_pag_pixart_sigma"] = ["PixArtSigmaPAGPipeline"]
@@ -44,6 +45,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_pag_controlnet_sd import StableDiffusionControlNetPAGPipeline
         from .pipeline_pag_controlnet_sd_xl import StableDiffusionXLControlNetPAGPipeline
+        from .pipeline_pag_controlnet_sd_xl_img2img import StableDiffusionXLControlNetPAGImg2ImgPipeline
         from .pipeline_pag_hunyuandit import HunyuanDiTPAGPipeline
         from .pipeline_pag_kolors import KolorsPAGPipeline
         from .pipeline_pag_pixart_sigma import PixArtSigmaPAGPipeline
