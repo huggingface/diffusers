@@ -203,7 +203,7 @@ class FluxTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin): # type: ignore
+class XFluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin): # type: ignore
     """
     The Transformer model introduced in Flux.
 
@@ -397,7 +397,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_block_samples=None,
         return_dict: bool = True,
-        interval_control=2,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
@@ -468,6 +467,8 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
 
+        controlnet_depth = len(controlnet_block_samples)
+
         for index_block, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -500,7 +501,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
             # controlnet residual
             if controlnet_block_samples is not None:
-                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+                hidden_states = hidden_states + controlnet_block_samples[index_block % controlnet_depth]
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
