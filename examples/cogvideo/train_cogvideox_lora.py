@@ -39,7 +39,11 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPi
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
-from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params
+from diffusers.training_utils import (
+    _set_state_dict_into_text_encoder,
+    cast_training_params,
+    clear_objs_and_retain_memory,
+)
 from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft, export_to_video, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -106,7 +110,7 @@ def get_args():
         "--instance_data_root",
         type=str,
         default=None,
-        help=("A folder containing the training data. "),
+        help=("A folder containing the training data."),
     )
     parser.add_argument(
         "--video_column",
@@ -119,6 +123,9 @@ def get_args():
         type=str,
         default="text",
         help="The column of the dataset containing the instance prompt for each video. Or, the name of the file in `--instance_data_root` folder containing the line-separated instance prompts.",
+    )
+    parser.add_argument(
+        "--id_token", type=str, default=None, help="Identifier token appended to the start of each prompt if provided."
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -399,7 +406,7 @@ def get_args():
 class VideoDataset(Dataset):
     def __init__(
         self,
-        instance_data_root: str,
+        instance_data_root: Optional[str] = None,
         dataset_name: Optional[str] = None,
         dataset_config_name: Optional[str] = None,
         caption_column: str = "text",
@@ -411,6 +418,7 @@ class VideoDataset(Dataset):
         skip_frames_start: int = 0,
         skip_frames_end: int = 0,
         cache_dir: Optional[str] = None,
+        id_token: Optional[str] = None,
     ) -> None:
         super().__init__()
 
@@ -426,6 +434,7 @@ class VideoDataset(Dataset):
         self.skip_frames_start = skip_frames_start
         self.skip_frames_end = skip_frames_end
         self.cache_dir = cache_dir
+        self.id_token = id_token or ""
 
         if dataset_name is not None:
             self.instance_prompts, self.instance_video_paths = self._load_dataset_from_hub()
@@ -445,7 +454,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, index):
         return {
-            "instance_prompt": self.instance_prompts[index],
+            "instance_prompt": self.id_token + self.instance_prompts[index],
             "instance_video": self.instance_videos[index],
         }
 
@@ -489,7 +498,7 @@ class VideoDataset(Dataset):
                 )
 
         instance_prompts = dataset["train"][caption_column]
-        instance_videos = dataset["train"][video_column]
+        instance_videos = [Path(self.instance_data_root, filepath) for filepath in dataset["train"][video_column]]
 
         return instance_prompts, instance_videos
 
@@ -536,7 +545,7 @@ class VideoDataset(Dataset):
         videos = []
         train_transforms = transforms.Compose(
             [
-                transforms.Lambda(lambda x: x / (255 / 2) - 1),
+                transforms.Lambda(lambda x: x / 255.0 * 2.0 - 1.0),
             ]
         )
 
@@ -678,10 +687,9 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
 
     videos = []
-    with torch.cuda.amp.autocast():
-        for _ in range(args.num_validation_videos):
-            video = pipe(**pipeline_args, generator=generator, output_type="np").frames[0]
-            videos.append(video)
+    for _ in range(args.num_validation_videos):
+        video = pipe(**pipeline_args, generator=generator, output_type="np").frames[0]
+        videos.append(video)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -710,8 +718,7 @@ def log_validation(
             )
 
     del pipe
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    clear_objs_and_retain_memory()
 
     return videos
 
@@ -986,6 +993,7 @@ def main(args):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+    print("weight_dtype:", weight_dtype)
 
     if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
         # due to pytorch#99272, MPS does not yet support bfloat16.
@@ -1148,6 +1156,7 @@ def main(args):
         skip_frames_start=args.skip_frames_start,
         skip_frames_end=args.skip_frames_end,
         cache_dir=args.cache_dir,
+        id_token=args.id_token,
     )
 
     train_dataloader = DataLoader(
@@ -1327,11 +1336,9 @@ def main(args):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
-                alphas_cumprod = scheduler.alphas_cumprod[timesteps]
-                alphas_cumprod_sqrt = alphas_cumprod**0.5
-                one_minus_alphas_cumprod_sqrt = (1 - alphas_cumprod) ** 0.5
-                model_pred = noisy_model_input * alphas_cumprod_sqrt - model_output * one_minus_alphas_cumprod_sqrt
+                model_pred = scheduler.get_velocity(model_output, noisy_model_input, timesteps)
 
+                alphas_cumprod = scheduler.alphas_cumprod[timesteps]
                 weights = 1 / (1 - alphas_cumprod)
                 while len(weights.shape) < len(model_pred.shape):
                     weights = weights.unsqueeze(-1)
@@ -1374,7 +1381,7 @@ def main(args):
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(f"Removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
                                     removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
@@ -1427,12 +1434,20 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        # transformer = transformer.to(torch.float32)
+        dtype = (
+            torch.float16
+            if args.mixed_precision == "fp16"
+            else torch.bfloat16
+            if args.mixed_precision == "bf16"
+            else torch.float32
+        )
+        transformer = transformer.to(dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
             text_encoder = unwrap_model(text_encoder)
-            text_encoder_lora_layers = get_peft_model_state_dict(text_encoder.to(torch.float32))
+            text_encoder_lora_layers = get_peft_model_state_dict(text_encoder.to(dtype))
         else:
             text_encoder_lora_layers = None
 
