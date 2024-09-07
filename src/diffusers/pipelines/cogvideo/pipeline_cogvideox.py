@@ -28,6 +28,7 @@ from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
+from ..free_noise_utils import CogVideoXFreeNoiseMixin
 from .pipeline_output import CogVideoXPipelineOutput
 
 
@@ -136,7 +137,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class CogVideoXPipeline(DiffusionPipeline):
+class CogVideoXPipeline(DiffusionPipeline, CogVideoXFreeNoiseMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -316,9 +317,17 @@ class CogVideoXPipeline(DiffusionPipeline):
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
+        num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        
+        # If FreeNoise is enabled, generate latents as described in Equation (7) of [FreeNoise](https://arxiv.org/abs/2310.15169)
+        if self.free_noise_enabled:
+            latents = self._prepare_latents_free_noise(
+                batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents
+            )
+        
         shape = (
             batch_size,
-            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+            num_frames,
             num_channels_latents,
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,

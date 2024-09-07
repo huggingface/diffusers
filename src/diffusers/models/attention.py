@@ -1054,9 +1054,8 @@ class FreeNoiseTransformerBlock(nn.Module):
         accumulated_values = torch.zeros_like(hidden_states)
 
         for i, (frame_start, frame_end) in enumerate(frame_indices):
-            # The reason for slicing here is to ensure that if (frame_end - frame_start) is to handle
-            # cases like frame_indices=[(0, 16), (16, 20)], if the user provided a video with 19 frames, or
-            # essentially a non-multiple of `context_length`.
+            # The reason for slicing here is to handle cases like frame_indices=[(0, 16), (16, 20)],
+            # if the user provided a video with 19 frames, or essentially a non-multiple of `context_length`.
             weights = torch.ones_like(num_times_accumulated[:, frame_start:frame_end])
             weights *= frame_weights
 
