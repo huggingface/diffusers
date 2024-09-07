@@ -644,7 +644,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        lora_scale = self.attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             negative_prompt,
