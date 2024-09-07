@@ -19,6 +19,7 @@ import torch.nn as nn
 
 from ..models.attention import BasicTransformerBlock, FreeNoiseTransformerBlock
 from ..models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock, CogVideoXTransformer3DModel, FreeNoiseCogVideoXBlock
 from ..models.transformers.transformer_2d import Transformer2DModel
 from ..models.unets.unet_motion_model import (
     AnimateDiffTransformer3D,
@@ -599,14 +600,61 @@ class AnimateDiffFreeNoiseMixin:
 class CogVideoXFreeNoiseMixin:
     r"""Mixin class for [FreeNoise](https://arxiv.org/abs/2310.15169) as used in CogVideoX."""
 
-    def _enable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+    def _enable_free_noise_in_block(self, transformer: CogVideoXTransformer3DModel):
         r"""Helper function to enable FreeNoise in transformer blocks."""
-        # TODO
+        for i in range(len(transformer.transformer_blocks)):
+            block = transformer.transformer_blocks[i]
 
-    def _disable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+            if isinstance(block, FreeNoiseCogVideoXBlock):
+                block.set_free_noise_properties(
+                    self._free_noise_context_length,
+                    self._free_noise_context_stride,
+                    self._free_noise_weighting_scheme,
+                )
+            else:
+                transformer.transformer_blocks[i] = FreeNoiseCogVideoXBlock(
+                    dim=block.dim,
+                    num_attention_heads=block.num_attention_heads,
+                    attention_head_dim=block.attention_head_dim,
+                    time_embed_dim=block.time_embed_dim,
+                    dropout=block.dropout,
+                    activation_fn=block.activation_fn,
+                    attention_bias=block.attention_bias,
+                    qk_norm=block.qk_norm,
+                    norm_elementwise_affine=block.norm_elementwise_affine,
+                    norm_eps=block.norm_eps,
+                    final_dropout=block.final_dropout,
+                    ff_inner_dim=block.ff_inner_dim,
+                    ff_bias=block.ff_bias,
+                    attention_out_bias=block.attention_out_bias,
+                ).to(device=self.device, dtype=self.dtype)
+
+                transformer.transformer_blocks[i].load_state_dict(block.state_dict(), strict=True)
+
+    def _disable_free_noise_in_block(self, transformer: CogVideoXTransformer3DModel):
         r"""Helper function to disable FreeNoise in transformer blocks."""
-        # TODO
-        pass
+        for i in range(len(transformer.transformer_blocks)):
+            block = transformer.transformer_blocks[i]
+
+            if isinstance(block, FreeNoiseCogVideoXBlock):
+                transformer.transformer_blocks[i] = CogVideoXBlock(
+                    dim=block.dim,
+                    num_attention_heads=block.num_attention_heads,
+                    attention_head_dim=block.attention_head_dim,
+                    time_embed_dim=block.time_embed_dim,
+                    dropout=block.dropout,
+                    activation_fn=block.activation_fn,
+                    attention_bias=block.attention_bias,
+                    qk_norm=block.qk_norm,
+                    norm_elementwise_affine=block.norm_elementwise_affine,
+                    norm_eps=block.norm_eps,
+                    final_dropout=block.final_dropout,
+                    ff_inner_dim=block.ff_inner_dim,
+                    ff_bias=block.ff_bias,
+                    attention_out_bias=block.attention_out_bias,
+                ).to(device=self.device, dtype=self.dtype)
+
+                transformer.transformer_blocks[i].load_state_dict(block.state_dict(), strict=True)
 
     # Copied from diffusers.pipelines.free_noise_utils.AnimateDiffFreeNoiseMixin._prepare_latents_free_noise
     def _prepare_latents_free_noise(
@@ -689,9 +737,6 @@ class CogVideoXFreeNoiseMixin:
         context_stride: int = 4, # 16 pixel-space frames
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
-        prompt_interpolation_callback: Optional[
-            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
-        ] = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -747,20 +792,14 @@ class CogVideoXFreeNoiseMixin:
         self._free_noise_context_stride = context_stride
         self._free_noise_weighting_scheme = weighting_scheme
         self._free_noise_noise_type = noise_type
-        self._free_noise_prompt_interpolation_callback = prompt_interpolation_callback or self._lerp
 
-        if hasattr(self.unet.mid_block, "motion_modules"):
-            blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
-        else:
-            blocks = [*self.unet.down_blocks, *self.unet.up_blocks]
-
-        for block in blocks:
-            self._enable_free_noise_in_block(block)
+        self._enable_free_noise_in_block(self.transformer)
 
     def disable_free_noise(self) -> None:
         r"""Disable the FreeNoise sampling mechanism."""
-        # TODO
-        pass
+        self._free_noise_context_length = None
+
+        self._disable_free_noise_in_block(self.transformer)
 
     @property
     def free_noise_enabled(self):

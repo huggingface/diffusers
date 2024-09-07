@@ -324,6 +324,9 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         self.context_length = context_length
         self.context_stride = context_stride
         self.weighting_scheme = weighting_scheme
+    
+    def _prepare_free_noise_encoder_hidden_states(self, encoder_hidden_states: torch.Tensor, num_frame_chunks: int) -> List[torch.Tensor]:
+        return [encoder_hidden_states.clone() for _ in range(num_frame_chunks)]
 
     def forward(
         self,
@@ -354,13 +357,16 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         # Expand frame dimension: [B, F, HW, C]
         batch_size, frames_height_width, channels = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, num_frames, frames_height_width // num_frames, channels)
+
+        if not isinstance(encoder_hidden_states, list):
+            encoder_hidden_states = self._prepare_free_noise_encoder_hidden_states(encoder_hidden_states, len(frame_indices))
         
         num_times_accumulated = torch.zeros((1, num_frames, 1, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
         
         text_seq_length = encoder_hidden_states.size(1)
 
-        for i, (frame_start, frame_end) in enumerate(frame_indices):
+        for i, (frame_start, frame_end) in enumerate(zip(frame_indices)):
             # The reason for slicing here is to handle cases like frame_indices=[(0, 16), (16, 20)],
             # if the user provided a video with 19 frames, or essentially a non-multiple of `context_length`.
             weights = torch.ones_like(num_times_accumulated[:, frame_start:frame_end])
@@ -370,7 +376,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
             # norm & modulate
             norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
-                hidden_states_chunk, encoder_hidden_states, temb
+                hidden_states_chunk, encoder_hidden_states[i], temb
             )
 
             # attention
@@ -381,11 +387,11 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             )
 
             hidden_states_chunk = hidden_states_chunk + gate_msa * attn_hidden_states
-            encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
+            encoder_hidden_states[i] = encoder_hidden_states[i] + enc_gate_msa * attn_encoder_hidden_states
 
             # norm & modulate
             norm_hidden_states, norm_encoder_hidden_states, gate_ff, enc_gate_ff = self.norm2(
-                hidden_states_chunk, encoder_hidden_states, temb
+                hidden_states_chunk, encoder_hidden_states[i], temb
             )
 
             # feed-forward
@@ -393,7 +399,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             ff_output = self.ff(norm_hidden_states)
 
             hidden_states_chunk = hidden_states_chunk + gate_ff * ff_output[:, text_seq_length:]
-            encoder_hidden_states = encoder_hidden_states + enc_gate_ff * ff_output[:, :text_seq_length]
+            encoder_hidden_states[i] = encoder_hidden_states[i] + enc_gate_ff * ff_output[:, :text_seq_length]
 
             if i == len(frame_indices) - 1 and not is_last_frame_batch_complete:
                 accumulated_values[:, -last_frame_batch_length:] += (
