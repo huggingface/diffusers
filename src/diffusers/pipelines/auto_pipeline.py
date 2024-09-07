@@ -56,6 +56,7 @@ from .pag import (
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
+    StableDiffusionPAGInpaintPipeline,
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,

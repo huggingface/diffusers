@@ -283,6 +283,9 @@ class StableDiffusionPAGInpaintPipeline(
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         self.set_pag_applied_layers(pag_applied_layers)
@@ -995,6 +998,21 @@ class StableDiffusionPAGInpaintPipeline(
         # to deal with lora scaling and other possible forward hooks
 
         # 1. Check inputs. Raise error if not correct
+        # prompt,
+        #     image,
+        #     mask_image,
+        #     height,
+        #     width,
+        #     strength,
+        #     callback_steps,
+        #     output_type,
+        #     negative_prompt=None,
+        #     prompt_embeds=None,
+        #     negative_prompt_embeds=None,
+        #     ip_adapter_image=None,
+        #     ip_adapter_image_embeds=None,
+        #     callback_on_step_end_tensor_inputs=None,
+        #     padding_mask_crop=None,
         self.check_inputs(
             prompt,
             image,
@@ -1002,6 +1020,7 @@ class StableDiffusionPAGInpaintPipeline(
             height,
             width,
             strength,
+            None,
             None,
             negative_prompt,
             prompt_embeds,
