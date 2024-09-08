@@ -19,7 +19,11 @@ import torch.nn as nn
 
 from ..models.attention import BasicTransformerBlock, FreeNoiseTransformerBlock
 from ..models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock, CogVideoXTransformer3DModel, FreeNoiseCogVideoXBlock
+from ..models.transformers.cogvideox_transformer_3d import (
+    CogVideoXBlock,
+    CogVideoXTransformer3DModel,
+    FreeNoiseCogVideoXBlock,
+)
 from ..models.transformers.transformer_2d import Transformer2DModel
 from ..models.unets.unet_motion_model import (
     AnimateDiffTransformer3D,
@@ -732,8 +736,8 @@ class CogVideoXFreeNoiseMixin:
 
     def enable_free_noise(
         self,
-        context_length: Optional[int] = 13, # 49 pixel-space frames
-        context_stride: int = 4, # 16 pixel-space frames
+        context_length: Optional[int] = 13,  # 49 pixel-space frames
+        context_stride: int = 4,  # 16 pixel-space frames
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
     ) -> None:
@@ -783,7 +787,9 @@ class CogVideoXFreeNoiseMixin:
         if context_length % 2 == 0:
             sample_frames_context_length = context_length * self.transformer.config.temporal_compression_ratio
         else:
-            sample_frames_context_length = (context_length - 1) * self.transformer.config.temporal_compression_ratio + 1
+            sample_frames_context_length = (
+                context_length - 1
+            ) * self.transformer.config.temporal_compression_ratio + 1
 
         if sample_frames_context_length > self.transformer.config.sample_frames:
             logger.warning(

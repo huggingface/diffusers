@@ -175,6 +175,7 @@ class CogVideoXBlock(nn.Module):
 # only attention layer seems to be actually doing anything with the frame dimension and so only location where FreeNoise needs to be applied
 # Since it does not matter for norm1, norm2, ff, and they might create memory bottleneck, just use FreeNoise frame split on them too
 
+
 @maybe_allow_in_graph
 class FreeNoiseCogVideoXBlock(nn.Module):
     r"""
@@ -274,7 +275,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             inner_dim=ff_inner_dim,
             bias=ff_bias,
         )
-    
+
     # Copied from diffusers.models.attention.FreeNoiseTransformerBlock._get_frame_indices
     def _get_frame_indices(self, num_frames: int) -> List[Tuple[int, int]]:
         frame_indices = []
@@ -316,7 +317,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             raise ValueError(f"Unsupported value for weighting_scheme={weighting_scheme}")
 
         return weights
-    
+
     # Copied from diffusers.models.attention.FreeNoiseTransformerBlock.set_free_noise_properties
     def set_free_noise_properties(
         self, context_length: int, context_stride: int, weighting_scheme: str = "pyramid"
@@ -324,8 +325,10 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         self.context_length = context_length
         self.context_stride = context_stride
         self.weighting_scheme = weighting_scheme
-    
-    def _prepare_free_noise_encoder_hidden_states(self, encoder_hidden_states: torch.Tensor, num_frame_chunks: int) -> List[torch.Tensor]:
+
+    def _prepare_free_noise_encoder_hidden_states(
+        self, encoder_hidden_states: torch.Tensor, num_frame_chunks: int
+    ) -> List[torch.Tensor]:
         return [encoder_hidden_states.clone() for _ in range(num_frame_chunks)]
 
     def forward(
@@ -342,7 +345,9 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
         frame_indices = self._get_frame_indices(num_frames)
         frame_weights = self._get_frame_weights(self.context_length, self.weighting_scheme)
-        frame_weights = torch.tensor(frame_weights, device=device, dtype=dtype).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        frame_weights = (
+            torch.tensor(frame_weights, device=device, dtype=dtype).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        )
         is_last_frame_batch_complete = frame_indices[-1][1] == num_frames
 
         # Handle out-of-bounds case if num_frames isn't perfectly divisible by context_length
@@ -359,12 +364,18 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         hidden_states = hidden_states.reshape(batch_size, num_frames, frames_height_width // num_frames, channels)
 
         if not isinstance(encoder_hidden_states, list):
-            encoder_hidden_states = self._prepare_free_noise_encoder_hidden_states(encoder_hidden_states, len(frame_indices))
-        
+            encoder_hidden_states = self._prepare_free_noise_encoder_hidden_states(
+                encoder_hidden_states, len(frame_indices)
+            )
+
         num_times_accumulated = torch.zeros((1, num_frames, 1, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
-        
-        text_seq_length = encoder_hidden_states[0].size(1) if isinstance(encoder_hidden_states, list) else encoder_hidden_states.size(1)
+
+        text_seq_length = (
+            encoder_hidden_states[0].size(1)
+            if isinstance(encoder_hidden_states, list)
+            else encoder_hidden_states.size(1)
+        )
 
         for i, (frame_start, frame_end) in enumerate(frame_indices):
             # The reason for slicing here is to handle cases like frame_indices=[(0, 16), (16, 20)],
@@ -414,7 +425,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             else:
                 accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
                 num_times_accumulated[:, frame_start:frame_end] += weights
-        
+
         # TODO(aryan): Maybe this could be done in a better way.
         #
         # Previously, this was:

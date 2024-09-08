@@ -318,13 +318,13 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXFreeNoiseMixin):
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
         num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        
+
         # If FreeNoise is enabled, generate latents as described in Equation (7) of [FreeNoise](https://arxiv.org/abs/2310.15169)
         if self.free_noise_enabled:
             latents = self._prepare_latents_free_noise(
                 batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents
             )
-        
+
         shape = (
             batch_size,
             num_frames,
