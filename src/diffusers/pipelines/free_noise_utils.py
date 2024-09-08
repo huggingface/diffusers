@@ -656,7 +656,6 @@ class CogVideoXFreeNoiseMixin:
 
                 transformer.transformer_blocks[i].load_state_dict(block.state_dict(), strict=True)
 
-    # Copied from diffusers.pipelines.free_noise_utils.AnimateDiffFreeNoiseMixin._prepare_latents_free_noise
     def _prepare_latents_free_noise(
         self,
         batch_size: int,
@@ -681,10 +680,10 @@ class CogVideoXFreeNoiseMixin:
 
         shape = (
             batch_size,
-            num_channels_latents,
             context_num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+            num_channels_latents,
+            height // self.vae_scale_factor_spatial,
+            width // self.vae_scale_factor_spatial,
         )
 
         if latents is None:
@@ -717,18 +716,18 @@ class CogVideoXFreeNoiseMixin:
                 current_end = min(num_frames, current_start + window_length)
                 if current_end == current_start + window_length:
                     # batch of frames perfectly fits the window
-                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+                    latents[:, current_start:current_end] = latents[:, shuffled_indices]
                 else:
                     # handle the case where the last batch of frames does not fit perfectly with the window
                     prefix_length = current_end - current_start
                     shuffled_indices = shuffled_indices[:prefix_length]
-                    latents[:, :, current_start:current_end] = latents[:, :, shuffled_indices]
+                    latents[:, current_start:current_end] = latents[:, shuffled_indices]
 
         elif self._free_noise_noise_type == "repeat_context":
             num_repeats = (num_frames + self._free_noise_context_length - 1) // self._free_noise_context_length
-            latents = torch.cat([latents] * num_repeats, dim=2)
+            latents = torch.cat([latents] * num_repeats, dim=1)
 
-        latents = latents[:, :, :num_frames]
+        latents = latents[:, :num_frames]
         return latents
 
     def enable_free_noise(
@@ -777,7 +776,16 @@ class CogVideoXFreeNoiseMixin:
         allowed_weighting_scheme = ["flat", "pyramid", "delayed_reverse_sawtooth"]
         allowed_noise_type = ["shuffle_context", "repeat_context", "random"]
 
-        if context_length > self.motion_adapter.config.motion_max_seq_length:
+        # Note: we need to do this because when CogVideoX was originally introduced, it used the wrong value
+        # for `sample_frames`. It should have been 13 and not 49 because the expected number of latent frames
+        # in the transformer is 13.
+        # Maybe try and look into what can be done before 1.0.0 release.
+        if context_length % 2 == 0:
+            sample_frames_context_length = context_length * self.transformer.config.temporal_compression_ratio
+        else:
+            sample_frames_context_length = (context_length - 1) * self.transformer.config.temporal_compression_ratio + 1
+
+        if sample_frames_context_length > self.transformer.config.sample_frames:
             logger.warning(
                 f"You have set {context_length=} which is greater than {self.motion_adapter.config.motion_max_seq_length=}. This can lead to bad generation results."
             )

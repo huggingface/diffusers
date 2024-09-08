@@ -354,7 +354,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             last_frame_batch_length = num_frames - frame_indices[-1][1]
             frame_indices.append((num_frames - self.context_length, num_frames))
 
-        # Expand frame dimension: [B, F, HW, C]
+        # Unflatten frame dimension: [B, F, HW, C]
         batch_size, frames_height_width, channels = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, num_frames, frames_height_width // num_frames, channels)
 
@@ -364,15 +364,16 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         num_times_accumulated = torch.zeros((1, num_frames, 1, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
         
-        text_seq_length = encoder_hidden_states.size(1)
+        text_seq_length = encoder_hidden_states[0].size(1) if isinstance(encoder_hidden_states, list) else encoder_hidden_states.size(1)
 
-        for i, (frame_start, frame_end) in enumerate(zip(frame_indices)):
+        for i, (frame_start, frame_end) in enumerate(frame_indices):
             # The reason for slicing here is to handle cases like frame_indices=[(0, 16), (16, 20)],
             # if the user provided a video with 19 frames, or essentially a non-multiple of `context_length`.
             weights = torch.ones_like(num_times_accumulated[:, frame_start:frame_end])
             weights *= frame_weights
 
-            hidden_states_chunk = hidden_states[:, frame_start:frame_end]
+            # Flatten frame dimension: [B, F'HW, C]
+            hidden_states_chunk = hidden_states[:, frame_start:frame_end].flatten(1, 2)
 
             # norm & modulate
             norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
@@ -400,6 +401,10 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
             hidden_states_chunk = hidden_states_chunk + gate_ff * ff_output[:, text_seq_length:]
             encoder_hidden_states[i] = encoder_hidden_states[i] + enc_gate_ff * ff_output[:, :text_seq_length]
+
+            # Unflatten frame dimension: [B, F', HW, C]
+            _num_frames = frame_end - frame_start
+            hidden_states_chunk = hidden_states_chunk.reshape(batch_size, _num_frames, -1, channels)
 
             if i == len(frame_indices) - 1 and not is_last_frame_batch_complete:
                 accumulated_values[:, -last_frame_batch_length:] += (
@@ -431,6 +436,9 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             ],
             dim=1,
         ).to(dtype)
+
+        # Flatten frame dimension: [B, FHW, C]
+        hidden_states = hidden_states.flatten(1, 2)
 
         return hidden_states, encoder_hidden_states
 
