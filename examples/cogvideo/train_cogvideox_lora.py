@@ -1151,7 +1151,6 @@ def main(args):
     )
 
     def encode_video(video):
-        print(video.shape)
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
         video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
         latent_dist = vae.encode(video).latent_dist
@@ -1475,7 +1474,9 @@ def main(args):
         pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config)
 
         # Load LoRA weights
-        pipe.load_lora_weights(args.output_dir)
+        lora_scaling = args.lora_alpha / args.rank
+        pipe.load_lora_weights(args.output_dir, adapter_name="cogvideox-lora")
+        pipe.set_adapters(["cogvideox-lora"], [lora_scaling])
 
         # Run inference
         validation_outputs = []
