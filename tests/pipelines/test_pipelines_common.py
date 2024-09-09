@@ -772,7 +772,7 @@ class PipelineFromPipeTesterMixin:
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
     )
     def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
@@ -1392,7 +1392,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
     )
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         import accelerate
@@ -1455,7 +1455,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.17.0` or higher",
     )
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         import accelerate
@@ -1512,7 +1512,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.17.0` or higher",
     )
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
@@ -1569,7 +1569,7 @@ class PipelineTesterMixin:
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
     )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
