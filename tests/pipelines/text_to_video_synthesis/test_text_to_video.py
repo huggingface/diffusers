@@ -173,9 +173,6 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
     def test_num_images_per_prompt(self):
         pass
 
-    def test_progress_bar(self):
-        return super().test_progress_bar()
-
 
 @slow
 @skip_mps
