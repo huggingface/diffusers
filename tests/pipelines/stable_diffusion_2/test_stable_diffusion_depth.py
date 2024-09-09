@@ -250,7 +250,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
@@ -262,7 +262,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
