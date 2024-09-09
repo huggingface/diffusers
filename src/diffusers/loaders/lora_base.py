@@ -38,6 +38,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from ..utils.torch_utils import is_compiled_module
 
 
 if is_transformers_available():
@@ -371,6 +372,7 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 if issubclass(model.__class__, ModelMixin):
                     model.unload_lora()
                 elif issubclass(model.__class__, PreTrainedModel):
@@ -446,6 +448,7 @@ class LoraBaseMixin:
 
             model = getattr(self, fuse_component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 # check if diffusers model
                 if issubclass(model.__class__, ModelMixin):
                     model.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
@@ -506,6 +509,7 @@ class LoraBaseMixin:
 
             model = getattr(self, fuse_component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 if issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                     for module in model.modules():
                         if isinstance(module, BaseTunerLayer):
@@ -569,6 +573,7 @@ class LoraBaseMixin:
                 _component_adapter_weights.setdefault(component, [])
                 _component_adapter_weights[component].append(component_adapter_weights)
 
+            model = model._orig_mod if is_compiled_module(model) else model
             if issubclass(model.__class__, ModelMixin):
                 model.set_adapters(adapter_names, _component_adapter_weights[component])
             elif issubclass(model.__class__, PreTrainedModel):
@@ -581,6 +586,7 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 if issubclass(model.__class__, ModelMixin):
                     model.disable_lora()
                 elif issubclass(model.__class__, PreTrainedModel):
@@ -593,6 +599,7 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 if issubclass(model.__class__, ModelMixin):
                     model.enable_lora()
                 elif issubclass(model.__class__, PreTrainedModel):
@@ -614,6 +621,7 @@ class LoraBaseMixin:
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
             if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
                 if issubclass(model.__class__, ModelMixin):
                     model.delete_adapters(adapter_names)
                 elif issubclass(model.__class__, PreTrainedModel):
@@ -645,6 +653,7 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
+            model = model._orig_mod if is_compiled_module(model) else model
             if model is not None and issubclass(model.__class__, ModelMixin):
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
@@ -666,12 +675,10 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if (
-                model is not None
-                and issubclass(model.__class__, (ModelMixin, PreTrainedModel))
-                and hasattr(model, "peft_config")
-            ):
-                set_adapters[component] = list(model.peft_config.keys())
+            if model is not None:
+                model = model._orig_mod if is_compiled_module(model) else model
+                if issubclass(model.__class__, (ModelMixin, PreTrainedModel)) and hasattr(model, "peft_config"):
+                    set_adapters[component] = list(model.peft_config.keys())
 
         return set_adapters
 

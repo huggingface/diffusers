@@ -1744,6 +1744,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for name, component in pipeline.components.items():
             if name in expected_modules and name not in passed_class_obj:
                 # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
+                component = component._orig_mod if is_compiled_module(component) else component
                 if (
                     not isinstance(component, ModelMixin)
                     or type(component) in component_types[name]
