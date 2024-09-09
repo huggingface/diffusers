@@ -16,7 +16,7 @@
 import argparse
 import contextlib
 import copy
-import gc
+import functools
 import logging
 import math
 import os
@@ -49,7 +49,11 @@ from diffusers import (
     StableDiffusion3ControlNetPipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
+from diffusers.training_utils import (
+    compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
+    clear_objs_and_retain_memory,
+)
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -93,13 +97,13 @@ def log_validation(
         variant=args.variant,
         torch_dtype=weight_dtype,
     )
-    pipeline = pipeline.to(torch.device('cuda:1'))
+    pipeline = pipeline.to(torch.device(accelerator.device))
     pipeline.set_progress_bar_config(disable=True)
 
     if args.seed is None:
         generator = None
     else:
-        generator = torch.Generator(device=torch.device('cuda:1')).manual_seed(args.seed)
+        generator = torch.manual_seed(args.seed)
 
     if len(args.validation_image) == len(args.validation_prompt):
         validation_images = args.validation_image
@@ -116,7 +120,7 @@ def log_validation(
         )
 
     image_logs = []
-    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
+    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast(accelerator.device.type)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
@@ -170,9 +174,7 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
+        clear_objs_and_retain_memory(pipeline)
 
         if not is_final_validation:
             controlnet.to(accelerator.device)
@@ -754,12 +756,14 @@ def collate_fn(examples):
     conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
     conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    prompts = [example["prompts"] for example in examples]
+    prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
+    pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
 
     return {
         "pixel_values": pixel_values,
         "conditioning_pixel_values": conditioning_pixel_values,
-        "prompts": prompts,
+        "prompt_embeds": prompt_embeds,
+        "pooled_prompt_embeds": pooled_prompt_embeds,
     }
 
 
@@ -1083,7 +1087,50 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move vae, transformer and text_encoder to device and cast to weight_dtype
+    vae.to(accelerator.device, dtype=torch.float32)
+    transformer.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_three.to(accelerator.device, dtype=weight_dtype)
+
     train_dataset = make_train_dataset(args, tokenizer_one, tokenizer_two, tokenizer_three, accelerator)
+
+    tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three]
+    text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three]
+
+    def compute_text_embeddings(batch, text_encoders, tokenizers):
+        with torch.no_grad():
+            prompt = batch["prompts"]
+            prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                text_encoders, tokenizers, prompt, args.max_sequence_length
+            )
+            prompt_embeds = prompt_embeds.to(accelerator.device)
+            pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
+        return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds}
+
+    compute_embeddings_fn = functools.partial(
+        compute_text_embeddings,
+        text_encoders=text_encoders,
+        tokenizers=tokenizers,
+    )
+    with accelerator.main_process_first():
+        from datasets.fingerprint import Hasher
+
+        # fingerprint used by the cache for the other processes to load the result
+        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+        new_fingerprint = Hasher.hash(args)
+        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+
+    clear_objs_and_retain_memory(text_encoders + tokenizers)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -1092,18 +1139,6 @@ def main(args):
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-
-    tokenizers = [tokenizer_one, tokenizer_two, tokenizer_three]
-    text_encoders = [text_encoder_one, text_encoder_two, text_encoder_three]
-
-    def compute_text_embeddings(prompt, text_encoders, tokenizers):
-        with torch.no_grad():
-            prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                text_encoders, tokenizers, prompt, args.max_sequence_length
-            )
-            prompt_embeds = prompt_embeds.to(accelerator.device)
-            pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-        return prompt_embeds, pooled_prompt_embeds
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1126,20 +1161,6 @@ def main(args):
         controlnet, optimizer, train_dataloader, lr_scheduler
     )
 
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move vae, transformer and text_encoder to device and cast to weight_dtype
-    vae.to(accelerator.device, dtype=weight_dtype)
-    transformer.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_three.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1250,10 +1271,8 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Get the text embedding for conditioning
-                prompts = batch["prompts"]
-                prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
-                    prompts, text_encoders, tokenizers
-                )
+                prompt_embeds = batch["prompt_embeds"]
+                pooled_prompt_embeds = batch["pooled_prompt_embeds"]
 
                 # controlnet(s) inference
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
@@ -1268,6 +1287,7 @@ def main(args):
                     controlnet_cond=controlnet_image,
                     return_dict=False,
                 )[0]
+                control_block_res_samples = [sample.to(dtype=weight_dtype) for sample in control_block_res_samples]
 
                 # Predict the noise residual
                 model_pred = transformer(

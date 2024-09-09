@@ -52,6 +52,15 @@ Please download the dataset and unzip it in the directory `fill50k` in the `exam
 ## Training
 
 First download the SD3 model from [Hugging Face Hub](https://huggingface.co/stabilityai/stable-diffusion-3-medium). We will use it as a base model for the ControlNet training.
+> [!NOTE]
+> As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
+
+```bash
+huggingface-cli login
+```
+
+This will also allow us to push the trained model parameters to the Hugging Face Hub platform.
+
 
 Our training examples use two test conditioning images. They can be downloaded by running
 
@@ -61,13 +70,13 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
+Then run the following commands to train a ControlNet model.
 
 ```bash
-export MODEL_DIR="path to sd3 model"
-export OUTPUT_DIR="path to save model"
+export MODEL_DIR="stabilityai/stable-diffusion-3-medium-diffusers"
+export OUTPUT_DIR="sd3-controlnet-out"
 
-CUDA_VISIBLE_DEVICES="0,1" accelerate launch train_controlnet_sd3.py \
+accelerate launch train_controlnet_sd3.py \
     --pretrained_model_name_or_path=$MODEL_DIR \
     --output_dir=$OUTPUT_DIR \
     --train_data_dir="fill50k" \
@@ -94,8 +103,8 @@ from diffusers import StableDiffusion3ControlNetPipeline, SD3ControlNetModel
 from diffusers.utils import load_image
 import torch
 
-base_model_path = "path to sd3 model"
-controlnet_path = "path to controlnet ckpt"
+base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
+controlnet_path = "sd3-controlnet-out/checkpoint-6500/controlnet"
 
 controlnet = SD3ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
 pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
@@ -120,7 +129,24 @@ image.save("./output.png")
 ### GPU usage
 
 SD3 is a large model and requires a lot of GPU memory. 
-We recommend using two GPUs with at least 80GB of memory each, as indicated in the training instructions above.
-Specifically, one GPU is used for the ControlNet-SD3 training, and the other is used for validation.
-In this example, we set `CUDA_VISIBLE_DEVICES="0,1"` to use the first two GPUs on the machine.
-Make sure to use GPU 0 when configuring the accelerator, since the validation will use GPU 1.
+We recommend using one GPU with at least 80GB of memory.
+Make sure to use the right GPU when configuring the [accelerator](https://huggingface.co/docs/transformers/en/accelerate).
+
+
+## Example results
+
+#### After 500 steps with batch size 8
+
+| |  |
+|-------------------|:-------------------------:|
+|| pale golden rod circle with old lace background |
+ ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![pale golden rod circle with old lace background](https://huggingface.co/datasets/DavyMorgan/sd3-controlnet-results/resolve/main/step-500.png) |
+
+
+#### After 6500 steps with batch size 8:
+
+| |  |
+|-------------------|:-------------------------:|
+|| pale golden rod circle with old lace background |
+ ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![pale golden rod circle with old lace background](https://huggingface.co/datasets/DavyMorgan/sd3-controlnet-results/resolve/main/step-6500.png) |
+
