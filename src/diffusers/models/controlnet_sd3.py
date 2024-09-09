@@ -242,9 +242,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             module.gradient_checkpointing = value
 
     @classmethod
-    def from_transformer(cls, transformer, num_layers=12, load_weights_from_transformer=True):
+    def from_transformer(
+        cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
+    ):
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
+        config["extra_conditioning_channels"] = num_extra_conditioning_channels
         controlnet = cls(**config)
 
         if load_weights_from_transformer:
