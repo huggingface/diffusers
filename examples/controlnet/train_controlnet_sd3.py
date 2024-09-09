@@ -43,16 +43,16 @@ from transformers import CLIPTokenizer, PretrainedConfig, T5TokenizerFast
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    SD3ControlNetModel,
     FlowMatchEulerDiscreteScheduler,
+    SD3ControlNetModel,
     SD3Transformer2DModel,
     StableDiffusion3ControlNetPipeline,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
-    clear_objs_and_retain_memory,
 )
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -79,9 +79,7 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(
-    controlnet, args, accelerator, weight_dtype, step, is_final_validation=False
-):
+def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
 
     if not is_final_validation:
@@ -147,7 +145,9 @@ def log_validation(
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
 
-                tracker.writer.add_image("Controlnet conditioning", np.asarray([validation_image]), step, dataformats="NHWC")
+                tracker.writer.add_image(
+                    "Controlnet conditioning", np.asarray([validation_image]), step, dataformats="NHWC"
+                )
 
                 formatted_images = []
                 for image in images:
@@ -198,7 +198,7 @@ def load_text_encoders(class_one, class_two, class_three):
 
 # Copied from dreambooth sd3 example
 def import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -425,7 +425,7 @@ def parse_args(input_args=None):
         type=int,
         default=1,
         help="Flag indicating if we are preconditioning the model outputs or not as done in EDM. This affects how "
-             "model `target` is calculated.",
+        "model `target` is calculated.",
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -769,12 +769,12 @@ def collate_fn(examples):
 
 # Copied from dreambooth sd3 example
 def _encode_prompt_with_t5(
-        text_encoder,
-        tokenizer,
-        max_sequence_length,
-        prompt=None,
-        num_images_per_prompt=1,
-        device=None,
+    text_encoder,
+    tokenizer,
+    max_sequence_length,
+    prompt=None,
+    num_images_per_prompt=1,
+    device=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -804,11 +804,11 @@ def _encode_prompt_with_t5(
 
 # Copied from dreambooth sd3 example
 def _encode_prompt_with_clip(
-        text_encoder,
-        tokenizer,
-        prompt: str,
-        device=None,
-        num_images_per_prompt: int = 1,
+    text_encoder,
+    tokenizer,
+    prompt: str,
+    device=None,
+    num_images_per_prompt: int = 1,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -838,12 +838,12 @@ def _encode_prompt_with_clip(
 
 # Copied from dreambooth sd3 example
 def encode_prompt(
-        text_encoders,
-        tokenizers,
-        prompt: str,
-        max_sequence_length,
-        device=None,
-        num_images_per_prompt: int = 1,
+    text_encoders,
+    tokenizers,
+    prompt: str,
+    max_sequence_length,
+    device=None,
+    num_images_per_prompt: int = 1,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -1160,7 +1160,6 @@ def main(args):
     controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         controlnet, optimizer, train_dataloader, lr_scheduler
     )
-
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
