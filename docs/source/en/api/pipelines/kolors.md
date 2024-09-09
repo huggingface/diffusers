@@ -105,3 +105,11 @@ image.save("kolors_ipa_sample.png")
 
 - all
 - __call__
+
+## KolorsImg2ImgPipeline
+
+[[autodoc]] KolorsImg2ImgPipeline
+
+- all
+- __call__
+
