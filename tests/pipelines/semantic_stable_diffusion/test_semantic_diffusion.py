@@ -237,7 +237,6 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_semantic_diffusion_fp16(self):
         """Test that stable diffusion works with fp16"""
         unet = self.dummy_cond_unet

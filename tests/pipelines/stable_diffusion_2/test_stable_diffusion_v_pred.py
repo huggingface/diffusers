@@ -213,7 +213,6 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_v_pred_fp16(self):
         """Test that stable diffusion v-prediction works with fp16"""
         unet = self.dummy_cond_unet
