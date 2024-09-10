@@ -13,12 +13,14 @@
 # limitations under the License.
 
 import collections
+import functools
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ..models.attention import BasicTransformerBlock, FreeNoiseTransformerBlock
+from ..models.embeddings import CogVideoXPatchEmbed, FreeNoiseCogVideoXPatchEmbed
 from ..models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from ..models.transformers.cogvideox_transformer_3d import (
     CogVideoXBlock,
@@ -32,7 +34,6 @@ from ..models.unets.unet_motion_model import (
     DownBlockMotion,
     UpBlockMotion,
 )
-from ..pipelines.pipeline_utils import DiffusionPipeline
 from ..utils import logging
 from ..utils.torch_utils import randn_tensor
 
@@ -51,6 +52,38 @@ def _lerp(start_index: int, end_index: int, start_tensor: torch.Tensor, end_tens
 
     interpolated_tensors = torch.cat(interpolated_tensors)
     return interpolated_tensors
+
+
+def _weighted_pooling(
+    hidden_states: List[torch.Tensor], pooling_type: str = "inverse_distance", decay_rate: float = 0.9
+) -> torch.Tensor:
+    length = len(hidden_states)
+
+    if pooling_type == "average":
+        weights = [1] * length
+    elif pooling_type == "exponential_decay":
+        weights = [decay_rate**i for i in range(length)]
+    elif pooling_type == "reverse_exponential_decay":
+        weights = [decay_rate**i for i in range(length)][::-1]
+    elif pooling_type == "distance":
+        weights = list(range(1, length + 1))
+    elif pooling_type == "reverse_distance":
+        weights = list(range(1, length + 1))[::-1]
+    elif pooling_type == "pyramid":
+        if length % 2 == 0:
+            weights = list(range(length // 2))
+            weights = weights + weights[::-1]
+        else:
+            weights = list(range(length // 2))
+            weights = weights + [length // 2] + weights[::-1]
+    else:
+        raise ValueError("Invalid weighted pooling type.")
+
+    weights = torch.tensor(weights, device=hidden_states[0].device, dtype=hidden_states[0].dtype)
+    weights = weights / weights.sum()
+
+    pooled_embeds = sum(weight * hidden_state for weight, hidden_state in zip(weights, hidden_states))
+    return pooled_embeds
 
 
 class SplitInferenceModule(nn.Module):
@@ -452,9 +485,7 @@ class AnimateDiffFreeNoiseMixin:
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
-        prompt_interpolation_callback: Optional[
-            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
-        ] = None,
+        prompt_interpolation_callback: Optional[Callable[[int, int, torch.Tensor, torch.Tensor], torch.Tensor]] = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -606,6 +637,25 @@ class CogVideoXFreeNoiseMixin:
 
     def _enable_free_noise_in_block(self, transformer: CogVideoXTransformer3DModel):
         r"""Helper function to enable FreeNoise in transformer blocks."""
+        patch_embed = transformer.patch_embed
+        transformer.patch_embed = FreeNoiseCogVideoXPatchEmbed(
+            patch_size=patch_embed.patch_size,
+            in_channels=patch_embed.in_channels,
+            embed_dim=patch_embed.embed_dim,
+            text_embed_dim=patch_embed.text_embed_dim,
+            bias=patch_embed.bias,
+            sample_width=patch_embed.sample_width,
+            sample_height=patch_embed.sample_height,
+            sample_frames=patch_embed.sample_frames,
+            temporal_compression_ratio=patch_embed.temporal_compression_ratio,
+            max_text_seq_length=patch_embed.max_text_seq_length,
+            spatial_interpolation_scale=patch_embed.spatial_interpolation_scale,
+            temporal_interpolation_scale=patch_embed.temporal_interpolation_scale,
+            use_positional_embeddings=patch_embed.use_positional_embeddings,
+        ).to(device=self.device, dtype=self.dtype)
+
+        transformer.patch_embed.load_state_dict(patch_embed.state_dict(), strict=True)
+
         for i in range(len(transformer.transformer_blocks)):
             block = transformer.transformer_blocks[i]
 
@@ -614,6 +664,8 @@ class CogVideoXFreeNoiseMixin:
                     self._free_noise_context_length,
                     self._free_noise_context_stride,
                     self._free_noise_weighting_scheme,
+                    self._free_noise_prompt_interpolation_callback,
+                    self._free_noise_prompt_pooling_callback,
                 )
             else:
                 transformer.transformer_blocks[i] = FreeNoiseCogVideoXBlock(
@@ -631,12 +683,36 @@ class CogVideoXFreeNoiseMixin:
                     ff_inner_dim=block.ff_inner_dim,
                     ff_bias=block.ff_bias,
                     attention_out_bias=block.attention_out_bias,
+                    context_length=self._free_noise_context_length,
+                    context_stride=self._free_noise_context_stride,
+                    weighting_scheme=self._free_noise_weighting_scheme,
+                    prompt_interpolation_callback=self._free_noise_prompt_interpolation_callback,
+                    prompt_pooling_callback=self._free_noise_prompt_pooling_callback,
                 ).to(device=self.device, dtype=self.dtype)
 
                 transformer.transformer_blocks[i].load_state_dict(block.state_dict(), strict=True)
 
     def _disable_free_noise_in_block(self, transformer: CogVideoXTransformer3DModel):
         r"""Helper function to disable FreeNoise in transformer blocks."""
+        patch_embed = transformer.patch_embed
+        transformer.patch_embed = CogVideoXPatchEmbed(
+            patch_size=patch_embed.patch_size,
+            in_channels=patch_embed.in_channels,
+            embed_dim=patch_embed.embed_dim,
+            text_embed_dim=patch_embed.text_embed_dim,
+            bias=patch_embed.bias,
+            sample_width=patch_embed.sample_width,
+            sample_height=patch_embed.sample_height,
+            sample_frames=patch_embed.sample_frames,
+            temporal_compression_ratio=patch_embed.temporal_compression_ratio,
+            max_text_seq_length=patch_embed.max_text_seq_length,
+            spatial_interpolation_scale=patch_embed.spatial_interpolation_scale,
+            temporal_interpolation_scale=patch_embed.temporal_interpolation_scale,
+            use_positional_embeddings=patch_embed.use_positional_embeddings,
+        ).to(device=self.device, dtype=self.dtype)
+
+        transformer.patch_embed.load_state_dict(patch_embed.state_dict(), strict=True)
+
         for i in range(len(transformer.transformer_blocks)):
             block = transformer.transformer_blocks[i]
 
@@ -706,6 +782,7 @@ class CogVideoXFreeNoiseMixin:
         negative_prompt: Optional[Union[str, Dict[int, str]]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
+        max_sequence_length: Optional[int] = None,
     ) -> Tuple[Dict[int, torch.Tensor], Optional[Dict[int, torch.Tensor]]]:
         if negative_prompt is None:
             negative_prompt = ""
@@ -735,17 +812,21 @@ class CogVideoXFreeNoiseMixin:
         prompt_embeds, _ = self.encode_prompt(
             prompt=frame_prompts,
             device=device,
-            num_images_per_prompt=num_videos_per_prompt,
+            num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=False,
             negative_prompt=None,
             prompt_embeds=None,
             negative_prompt_embeds=None,
+            max_sequence_length=max_sequence_length,
         )
 
         prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
         for i in range(len(frame_indices)):
             latent_frame_index = frame_indices[i] // self.transformer.config.temporal_compression_ratio
             prompt_embeds_frame_buckets[latent_frame_index].append(prompt_embeds[i].unsqueeze(0))
+
+        for frame_index, embeds in list(prompt_embeds_frame_buckets.items()):
+            prompt_embeds_frame_buckets[frame_index] = self._free_noise_prompt_pooling_callback(embeds)
 
         # Generate and bucketify negative prompts
         negative_prompt_embeds_frame_buckets = None
@@ -754,19 +835,25 @@ class CogVideoXFreeNoiseMixin:
             _, negative_prompt_embeds = self.encode_prompt(
                 prompt=[""] * len(frame_negative_prompts),
                 device=device,
-                num_images_per_prompt=num_videos_per_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
                 do_classifier_free_guidance=True,
                 negative_prompt=frame_negative_prompts,
                 prompt_embeds=None,
                 negative_prompt_embeds=None,
+                max_sequence_length=max_sequence_length,
             )
 
             negative_prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
             for i in range(len(frame_negative_indices)):
                 latent_frame_index = frame_negative_indices[i] // self.transformer.config.temporal_compression_ratio
-                prompt_embeds_frame_buckets[latent_frame_index].append(negative_prompt_embeds[i].unsqueeze(0))
+                negative_prompt_embeds_frame_buckets[latent_frame_index].append(negative_prompt_embeds[i].unsqueeze(0))
+
+            for frame_index, embeds in list(negative_prompt_embeds_frame_buckets.items()):
+                negative_prompt_embeds_frame_buckets[frame_index] = self._free_noise_prompt_pooling_callback(embeds)
 
             prompt_embeds_frame_buckets = (negative_prompt_embeds_frame_buckets, prompt_embeds_frame_buckets)
+        else:
+            prompt_embeds_frame_buckets = (prompt_embeds_frame_buckets,)
 
         return prompt_embeds_frame_buckets, negative_prompt_embeds_frame_buckets
 
@@ -850,9 +937,8 @@ class CogVideoXFreeNoiseMixin:
         context_stride: int = 4,  # 16 pixel-space frames
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
-        prompt_interpolation_callback: Optional[
-            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
-        ] = None,
+        prompt_interpolation_callback: Optional[Callable[[int, int, torch.Tensor, torch.Tensor], torch.Tensor]] = None,
+        prompt_pooling_type_or_callback: Optional[Union[str, Callable[[List[torch.Tensor]], torch.Tensor]]] = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -920,6 +1006,15 @@ class CogVideoXFreeNoiseMixin:
         self._free_noise_weighting_scheme = weighting_scheme
         self._free_noise_noise_type = noise_type
         self._free_noise_prompt_interpolation_callback = prompt_interpolation_callback or _lerp
+
+        if prompt_pooling_type_or_callback is None:
+            prompt_pooling_type_or_callback = "pyramid"
+        if isinstance(prompt_pooling_type_or_callback, str):
+            self._free_noise_prompt_pooling_callback = functools.partial(
+                _weighted_pooling, pooling_type=prompt_pooling_type_or_callback
+            )
+        else:
+            self._free_noise_prompt_pooling_callback = prompt_pooling_type_or_callback
 
         self._enable_free_noise_in_block(self.transformer)
 

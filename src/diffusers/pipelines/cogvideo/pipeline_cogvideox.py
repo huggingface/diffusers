@@ -618,6 +618,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXFreeNoiseMixin):
             prompt_embeds, negative_prompt_embeds = self._encode_prompt_free_noise(
                 prompt=prompt,
                 num_frames=num_frames,
+                device=device,
                 num_videos_per_prompt=num_videos_per_prompt,
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 negative_prompt=negative_prompt,

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -231,7 +231,8 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         context_length: int = 16,
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
-        prompt_interpolation_callback: Callable[]
+        prompt_interpolation_callback: Callable[[int, int, torch.Tensor, torch.Tensor], torch.Tensor] = None,
+        prompt_pooling_callback: Callable[[List[torch.Tensor]], torch.Tensor] = None,
     ):
         super().__init__()
         self.dim = dim
@@ -249,7 +250,9 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         self.ff_bias = ff_bias
         self.attention_out_bias = attention_out_bias
 
-        self.set_free_noise_properties(context_length, context_stride, weighting_scheme)
+        self.set_free_noise_properties(
+            context_length, context_stride, weighting_scheme, prompt_interpolation_callback, prompt_pooling_callback
+        )
 
         # 1. Self Attention
         self.norm1 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
@@ -276,6 +279,25 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             inner_dim=ff_inner_dim,
             bias=ff_bias,
         )
+
+    # Copied from diffusers.models.attention.FreeNoiseTransformerBlock.set_free_noise_properties
+    def set_free_noise_properties(
+        self,
+        context_length: int,
+        context_stride: int,
+        weighting_scheme: str = "pyramid",
+        prompt_interpolation_callback: Callable[[int, int, torch.Tensor, torch.Tensor], torch.Tensor] = None,
+        prompt_pooling_callback: Callable[[List[torch.Tensor]], torch.Tensor] = None,
+    ) -> None:
+        if prompt_interpolation_callback is None:
+            raise ValueError("Must pass a callback to interpolate between prompt embeddings.")
+        if prompt_pooling_callback is None:
+            raise ValueError("Must pass a callback to pool prompt embeddings.")
+        self.context_length = context_length
+        self.context_stride = context_stride
+        self.weighting_scheme = weighting_scheme
+        self.prompt_interpolation_callback = prompt_interpolation_callback
+        self.prompt_pooling_callback = prompt_pooling_callback
 
     # Copied from diffusers.models.attention.FreeNoiseTransformerBlock._get_frame_indices
     def _get_frame_indices(self, num_frames: int) -> List[Tuple[int, int]]:
@@ -319,14 +341,6 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
         return weights
 
-    # Copied from diffusers.models.attention.FreeNoiseTransformerBlock.set_free_noise_properties
-    def set_free_noise_properties(
-        self, context_length: int, context_stride: int, weighting_scheme: str = "pyramid"
-    ) -> None:
-        self.context_length = context_length
-        self.context_stride = context_stride
-        self.weighting_scheme = weighting_scheme
-
     def _prepare_free_noise_encoder_hidden_states(
         self,
         encoder_hidden_states: Union[
@@ -336,7 +350,88 @@ class FreeNoiseCogVideoXBlock(nn.Module):
     ) -> List[torch.Tensor]:
         if torch.is_tensor(encoder_hidden_states):
             encoder_hidden_states = [encoder_hidden_states.clone() for _ in range(len(frame_indices))]
-        # elif
+
+        elif isinstance(encoder_hidden_states, tuple):
+            pooled_prompt_embeds_list = []
+            pooled_negative_prompt_embeds_list = []
+            prompt_embeds_dict, negative_prompt_embeds_dict = encoder_hidden_states
+
+            for frame_start, frame_end in frame_indices:
+                pooled_prompt_embeds = None
+                pooled_negative_prompt_embeds = None
+
+                pooling_list = [
+                    prompt_embeds_dict[i] for i in range(frame_start, frame_end) if i in prompt_embeds_dict
+                ]
+                if len(pooling_list) > 0:
+                    pooled_prompt_embeds = self.prompt_pooling_callback(pooling_list)
+
+                if negative_prompt_embeds_dict is not None:
+                    pooling_list = [
+                        negative_prompt_embeds_dict[i]
+                        for i in range(frame_start, frame_end)
+                        if i in negative_prompt_embeds_dict
+                    ]
+                    if len(pooling_list) > 0:
+                        pooled_negative_prompt_embeds = self.prompt_pooling_callback(pooling_list)
+
+                pooled_prompt_embeds_list.append(pooled_prompt_embeds)
+                pooled_negative_prompt_embeds_list.append(pooled_negative_prompt_embeds)
+
+            assert pooled_prompt_embeds_list[0] is not None
+            assert pooled_prompt_embeds[-1] is not None
+            if negative_prompt_embeds_dict is not None:
+                assert pooled_negative_prompt_embeds_list[0] is not None
+                assert pooled_negative_prompt_embeds_list[-1] is not None
+
+            last_existent_embed_index = 0
+            for i in range(1, len(frame_indices)):
+                frame_start, frame_end = frame_indices[i]
+                if pooled_prompt_embeds_list[i] is not None:
+                    interpolated_embeds = self.prompt_interpolation_callback(
+                        frame_start,
+                        frame_end - 1,
+                        pooled_prompt_embeds_list[last_existent_embed_index],
+                        pooled_prompt_embeds_list[i],
+                    )
+                    pooled_prompt_embeds_list[frame_start:frame_end] = interpolated_embeds.split(1, dim=0)
+                    last_existent_embed_index = i
+            assert all(x is not None for x in pooled_prompt_embeds_list)
+
+            if negative_prompt_embeds_dict is not None:
+                last_existent_embed_index = 0
+                for i in range(1, len(frame_indices)):
+                    frame_start, frame_end = frame_indices[i]
+                    if pooled_negative_prompt_embeds_list[i] is not None:
+                        interpolated_embeds = self.prompt_interpolation_callback(
+                            frame_start,
+                            frame_end - 1,
+                            pooled_negative_prompt_embeds_list[last_existent_embed_index],
+                            pooled_negative_prompt_embeds_list[i],
+                        )
+                        pooled_negative_prompt_embeds_list[frame_start:frame_end] = interpolated_embeds.split(1, dim=0)
+                        last_existent_embed_index = i
+                assert all(x is not None for x in pooled_negative_prompt_embeds_list)
+
+            if negative_prompt_embeds_dict is not None:
+                # Classifier-free Guidance
+                pooled_prompt_embeds_list = [
+                    torch.cat([negative_prompt_embeds, prompt_embeds])
+                    for negative_prompt_embeds, prompt_embeds in zip(
+                        pooled_negative_prompt_embeds_list, pooled_prompt_embeds_list
+                    )
+                ]
+
+            encoder_hidden_states = pooled_prompt_embeds_list
+
+        else:
+            raise ValueError(
+                f"Expected `encoder_hidden_states` to be a tesnor, list of tensor, or a tuple of dictionaries, but found {type(encoder_hidden_states)=}"
+            )
+
+        print(type(encoder_hidden_states))
+        print(len(encoder_hidden_states))
+        assert isinstance(encoder_hidden_states, list) and len(encoder_hidden_states) == len(frame_indices)
         return encoder_hidden_states
 
     def forward(
@@ -375,11 +470,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         num_times_accumulated = torch.zeros((1, num_frames, 1, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
 
-        text_seq_length = (
-            encoder_hidden_states[0].size(1)
-            if isinstance(encoder_hidden_states, list)
-            else encoder_hidden_states.size(1)
-        )
+        text_seq_length = _get_text_seq_length(encoder_hidden_states)
 
         for i, (frame_start, frame_end) in enumerate(frame_indices):
             # The reason for slicing here is to handle cases like frame_indices=[(0, 16), (16, 20)],
@@ -723,12 +814,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
-        hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+        text_seq_length = _get_text_seq_length(encoder_hidden_states)
+        encoder_hidden_states, hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
         hidden_states = self.embedding_dropout(hidden_states)
-
-        text_seq_length = encoder_hidden_states.shape[1]
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
 
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
@@ -780,3 +868,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
+
+
+def _get_text_seq_length(x) -> int:
+    if isinstance(x, torch.Tensor):
+        return x.shape[0]
+    if isinstance(x, list):
+        return _get_text_seq_length(x[0])
+    if isinstance(x, dict):
+        return _get_text_seq_length(next(iter(x.values())))
+    return None
