@@ -156,14 +156,14 @@ class SDSingleFileTesterMixin:
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]
