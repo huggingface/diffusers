@@ -957,7 +957,6 @@ class ModelTesterMixin:
             # testing if loading works with the variant when the checkpoint is sharded should be
             # enough.
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
-            print(f"{os.listdir(tmp_dir)=}")
             index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_filename)))
 
