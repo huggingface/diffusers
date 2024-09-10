@@ -574,6 +574,17 @@ class DownloadTests(unittest.TestCase):
                     assert not any(f.endswith(unexpected_ext) for f in files)
                     assert all(variant in f for f in files if f.endswith(model_ext) and variant is not None)
 
+    def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
+        with self.assertWarns(FutureWarning) as warning:
+            _ = DiffusionPipeline.download(
+                "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds",
+                safety_checker=None,
+                variant="fp16",
+                use_safetensors=True,
+            )
+            string = "This serialization format is now deprecated to standardize the serialization"
+            assert string in str(warning.warnings[0].message)
+
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = True

@@ -53,6 +53,7 @@ from .constants import (
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
 )
+from .deprecation_utils import deprecate
 from .import_utils import (
     ENV_VARS_TRUE_VALUES,
     _flax_version,
@@ -271,8 +272,23 @@ if cache_version < 1:
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
-        split_index = -2 if weights_name.endswith(".index.json") else -1
-        splits = splits[:-split_index] + [variant] + splits[-split_index:]
+        # This if is for allowing to load sharded checkpoints with variants with the legacy format.
+        # Example: diffusion_pytorch_model-00001-of-00002.fp16.index.json
+        # Treatment of the legacy format.
+        if variant in weights_name and weights_name.endswith(".index.json"):
+            if weights_name.endswith(".index.json"):
+                if ".cache" in weights_name in weights_name:
+                    split_index = -3
+                else:
+                    split_index = -2
+            else:
+                split_index = -1
+
+            splits = splits[:-split_index] + [variant] + splits[-split_index:]
+            deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+            deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
+        else:
+            splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
 
     return weights_name
