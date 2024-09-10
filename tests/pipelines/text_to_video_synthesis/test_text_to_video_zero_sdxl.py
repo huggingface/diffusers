@@ -213,7 +213,6 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -279,7 +278,6 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_pipeline_call_signature(self):
         pass
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():

@@ -197,7 +197,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -229,7 +228,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
