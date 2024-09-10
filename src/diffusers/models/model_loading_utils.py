@@ -205,7 +205,7 @@ def _fetch_index_file(
             subfolder or "",
             _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
         )
-        if not os.path.exists(index_file):
+        if not os.path.exists(index_file) and variant is not None:
             # We need to account for the legacy format here.
             index_file = Path(
                 pretrained_model_name_or_path,
