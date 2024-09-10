@@ -161,6 +161,8 @@
     title: DeepCache
   - local: optimization/tgate
     title: TGATE
+  - local: optimization/xdit
+    title: xDiT
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
