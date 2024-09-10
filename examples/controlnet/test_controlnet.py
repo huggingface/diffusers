@@ -122,7 +122,7 @@ class ControlNetSD3(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_sd3.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-sd3-pipe
+            --pretrained_model_name_or_path=DavyMorgan/tiny-sd3-pipe
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
