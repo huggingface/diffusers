@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -37,6 +38,19 @@ from ..utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _lerp(start_index: int, end_index: int, start_tensor: torch.Tensor, end_tensor: torch.Tensor) -> torch.Tensor:
+    num_indices = end_index - start_index + 1
+    interpolated_tensors = []
+
+    for i in range(num_indices):
+        alpha = i / (num_indices - 1)
+        interpolated_tensor = (1 - alpha) * start_tensor + alpha * end_tensor
+        interpolated_tensors.append(interpolated_tensor)
+
+    interpolated_tensors = torch.cat(interpolated_tensors)
+    return interpolated_tensors
 
 
 class SplitInferenceModule(nn.Module):
@@ -270,7 +284,7 @@ class AnimateDiffFreeNoiseMixin:
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if negative_prompt is None:
             negative_prompt = ""
 
@@ -432,20 +446,6 @@ class AnimateDiffFreeNoiseMixin:
         latents = latents[:, :, :num_frames]
         return latents
 
-    def _lerp(
-        self, start_index: int, end_index: int, start_tensor: torch.Tensor, end_tensor: torch.Tensor
-    ) -> torch.Tensor:
-        num_indices = end_index - start_index + 1
-        interpolated_tensors = []
-
-        for i in range(num_indices):
-            alpha = i / (num_indices - 1)
-            interpolated_tensor = (1 - alpha) * start_tensor + alpha * end_tensor
-            interpolated_tensors.append(interpolated_tensor)
-
-        interpolated_tensors = torch.cat(interpolated_tensors)
-        return interpolated_tensors
-
     def enable_free_noise(
         self,
         context_length: Optional[int] = 16,
@@ -510,7 +510,7 @@ class AnimateDiffFreeNoiseMixin:
         self._free_noise_context_stride = context_stride
         self._free_noise_weighting_scheme = weighting_scheme
         self._free_noise_noise_type = noise_type
-        self._free_noise_prompt_interpolation_callback = prompt_interpolation_callback or self._lerp
+        self._free_noise_prompt_interpolation_callback = prompt_interpolation_callback or _lerp
 
         if hasattr(self.unet.mid_block, "motion_modules"):
             blocks = [*self.unet.down_blocks, self.unet.mid_block, *self.unet.up_blocks]
@@ -660,6 +660,116 @@ class CogVideoXFreeNoiseMixin:
 
                 transformer.transformer_blocks[i].load_state_dict(block.state_dict(), strict=True)
 
+    def _check_inputs_free_noise(
+        self,
+        prompt,
+        negative_prompt,
+        prompt_embeds,
+        negative_prompt_embeds,
+        num_frames,
+    ) -> None:
+        if not isinstance(prompt, (str, dict)):
+            raise ValueError(f"Expected `prompt` to have type `str` or `dict` but found {type(prompt)=}")
+
+        if negative_prompt is not None:
+            if not isinstance(negative_prompt, (str, dict)):
+                raise ValueError(
+                    f"Expected `negative_prompt` to have type `str` or `dict` but found {type(negative_prompt)=}"
+                )
+
+        if prompt_embeds is not None or negative_prompt_embeds is not None:
+            raise ValueError("`prompt_embeds` and `negative_prompt_embeds` is not supported in FreeNoise yet.")
+
+        frame_indices = [isinstance(x, int) for x in prompt.keys()]
+        frame_prompts = [isinstance(x, str) for x in prompt.values()]
+        min_frame = min(list(prompt.keys()))
+        max_frame = max(list(prompt.keys()))
+
+        if not all(frame_indices):
+            raise ValueError("Expected integer keys in `prompt` dict for FreeNoise.")
+        if not all(frame_prompts):
+            raise ValueError("Expected str values in `prompt` dict for FreeNoise.")
+        if min_frame != 0:
+            raise ValueError("The minimum frame index in `prompt` dict must be 0 as a starting prompt is necessary.")
+        if max_frame >= num_frames:
+            raise ValueError(
+                f"The maximum frame index in `prompt` dict must be lesser than {num_frames=} and follow 0-based indexing."
+            )
+
+    def _encode_prompt_free_noise(
+        self,
+        prompt: Union[str, Dict[int, str]],
+        num_frames: int,
+        device: torch.device,
+        num_videos_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, Dict[int, str]]] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+    ) -> Tuple[Dict[int, torch.Tensor], Optional[Dict[int, torch.Tensor]]]:
+        if negative_prompt is None:
+            negative_prompt = ""
+
+        # Ensure that we have a dictionary of prompts
+        if isinstance(prompt, str):
+            prompt = {0: prompt}
+        if isinstance(negative_prompt, str):
+            negative_prompt = {0: negative_prompt}
+
+        self._check_inputs_free_noise(prompt, negative_prompt, prompt_embeds, negative_prompt_embeds, num_frames)
+
+        # Sort the prompts based on frame indices
+        prompt = dict(sorted(prompt.items()))
+        negative_prompt = dict(sorted(negative_prompt.items()))
+
+        # Ensure that we have a prompt for the last frame index
+        prompt[num_frames - 1] = prompt[list(prompt.keys())[-1]]
+        negative_prompt[num_frames - 1] = negative_prompt[list(negative_prompt.keys())[-1]]
+
+        frame_indices = list(prompt.keys())
+        frame_prompts = list(prompt.values())
+        frame_negative_indices = list(negative_prompt.keys())
+        frame_negative_prompts = list(negative_prompt.values())
+
+        # Generate and bucketify positive prompts
+        prompt_embeds, _ = self.encode_prompt(
+            prompt=frame_prompts,
+            device=device,
+            num_images_per_prompt=num_videos_per_prompt,
+            do_classifier_free_guidance=False,
+            negative_prompt=None,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+        )
+
+        prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
+        for i in range(len(frame_indices)):
+            latent_frame_index = frame_indices[i] // self.transformer.config.temporal_compression_ratio
+            prompt_embeds_frame_buckets[latent_frame_index].append(prompt_embeds[i].unsqueeze(0))
+
+        # Generate and bucketify negative prompts
+        negative_prompt_embeds_frame_buckets = None
+
+        if do_classifier_free_guidance:
+            _, negative_prompt_embeds = self.encode_prompt(
+                prompt=[""] * len(frame_negative_prompts),
+                device=device,
+                num_images_per_prompt=num_videos_per_prompt,
+                do_classifier_free_guidance=True,
+                negative_prompt=frame_negative_prompts,
+                prompt_embeds=None,
+                negative_prompt_embeds=None,
+            )
+
+            negative_prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
+            for i in range(len(frame_negative_indices)):
+                latent_frame_index = frame_negative_indices[i] // self.transformer.config.temporal_compression_ratio
+                prompt_embeds_frame_buckets[latent_frame_index].append(negative_prompt_embeds[i].unsqueeze(0))
+
+            prompt_embeds_frame_buckets = (negative_prompt_embeds_frame_buckets, prompt_embeds_frame_buckets)
+
+        return prompt_embeds_frame_buckets, negative_prompt_embeds_frame_buckets
+
     def _prepare_latents_free_noise(
         self,
         batch_size: int,
@@ -740,6 +850,9 @@ class CogVideoXFreeNoiseMixin:
         context_stride: int = 4,  # 16 pixel-space frames
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
+        prompt_interpolation_callback: Optional[
+            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
+        ] = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.
@@ -806,6 +919,7 @@ class CogVideoXFreeNoiseMixin:
         self._free_noise_context_stride = context_stride
         self._free_noise_weighting_scheme = weighting_scheme
         self._free_noise_noise_type = noise_type
+        self._free_noise_prompt_interpolation_callback = prompt_interpolation_callback or _lerp
 
         self._enable_free_noise_in_block(self.transformer)
 

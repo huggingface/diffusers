@@ -231,6 +231,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         context_length: int = 16,
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
+        prompt_interpolation_callback: Callable[]
     ):
         super().__init__()
         self.dim = dim
@@ -327,9 +328,16 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         self.weighting_scheme = weighting_scheme
 
     def _prepare_free_noise_encoder_hidden_states(
-        self, encoder_hidden_states: torch.Tensor, num_frame_chunks: int
+        self,
+        encoder_hidden_states: Union[
+            torch.Tensor, List[torch.Tensor], Tuple[Dict[int, torch.Tensor], Optional[Dict[int, torch.Tensor]]]
+        ],
+        frame_indices: List[int],
     ) -> List[torch.Tensor]:
-        return [encoder_hidden_states.clone() for _ in range(num_frame_chunks)]
+        if torch.is_tensor(encoder_hidden_states):
+            encoder_hidden_states = [encoder_hidden_states.clone() for _ in range(len(frame_indices))]
+        # elif
+        return encoder_hidden_states
 
     def forward(
         self,
@@ -362,11 +370,7 @@ class FreeNoiseCogVideoXBlock(nn.Module):
         # Unflatten frame dimension: [B, F, HW, C]
         batch_size, frames_height_width, channels = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, num_frames, frames_height_width // num_frames, channels)
-
-        if not isinstance(encoder_hidden_states, list):
-            encoder_hidden_states = self._prepare_free_noise_encoder_hidden_states(
-                encoder_hidden_states, len(frame_indices)
-            )
+        encoder_hidden_states = self._prepare_free_noise_encoder_hidden_states(encoder_hidden_states, frame_indices)
 
         num_times_accumulated = torch.zeros((1, num_frames, 1, 1), device=device)
         accumulated_values = torch.zeros_like(hidden_states)
