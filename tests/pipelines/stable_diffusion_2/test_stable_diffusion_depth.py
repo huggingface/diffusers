@@ -251,7 +251,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
 
     @unittest.skipIf(
         not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
