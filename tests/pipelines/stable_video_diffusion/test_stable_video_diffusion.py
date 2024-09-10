@@ -428,7 +428,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
     )
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
@@ -446,7 +446,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs).frames[0]
 
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs).frames[0]
 
