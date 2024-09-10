@@ -131,12 +131,14 @@ def convert_transformer(
     num_layers: int,
     num_attention_heads: int,
     use_rotary_positional_embeddings: bool,
+    i2v: bool,
     dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
     transformer = CogVideoXTransformer3DModel(
+        in_channels= 32 if i2v else 16,
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
@@ -205,6 +207,8 @@ def get_args():
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
     parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
+    parser.add_argument("--i2v", type=bool, default=True, help="I2V model of cogvideox-5b or not"
+                                                               "")
     return parser.parse_args()
 
 
@@ -225,6 +229,7 @@ if __name__ == "__main__":
             args.num_layers,
             args.num_attention_heads,
             args.use_rotary_positional_embeddings,
+            args.i2v,
             dtype,
         )
     if args.vae_ckpt_path is not None:
