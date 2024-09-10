@@ -13,7 +13,9 @@ specific language governing permissions and limitations under the License.
 
 # bitsandbytes
 
-[bitsandbytes](https://github.com/TimDettmers/bitsandbytes) is the easiest option for quantizing a model to 8 and 4-bit. 8-bit quantization multiplies outliers in fp16 with non-outliers in int8, converts the non-outlier values back to fp16, and then adds them together to return the weights in fp16. This reduces the degradative effect outlier values have on a model's performance. 4-bit quantization compresses a model even further, and it is commonly used with [QLoRA](https://hf.co/papers/2305.14314) to finetune quantized LLMs.
+[bitsandbytes](https://huggingface.co/docs/bitsandbytes/index) is the easiest option for quantizing a model to 8 and 4-bit. 8-bit quantization multiplies outliers in fp16 with non-outliers in int8, converts the non-outlier values back to fp16, and then adds them together to return the weights in fp16. This reduces the degradative effect outlier values have on a model's performance.
+
+4-bit quantization compresses a model even further, and it is commonly used with [QLoRA](https://hf.co/papers/2305.14314) to finetune quantized LLMs.
 
 
 To use bitsandbytes, make sure you have the following libraries installed:
@@ -22,7 +24,7 @@ To use bitsandbytes, make sure you have the following libraries installed:
 pip install diffusers transformers accelerate bitsandbytes -U
 ```
 
-Now you can quantize a model by passing a `BitsAndBytesConfig` to [`~ModelMixin.from_pretrained`] method. This works for any model in any modality, as long as it supports loading with Accelerate and contains `torch.nn.Linear` layers.
+Now you can quantize a model by passing a [`BitsAndBytesConfig`] to [`~ModelMixin.from_pretrained`]. This works for any model in any modality, as long as it supports loading with [Accelerate](https://hf.co/docs/accelerate/index) and contains `torch.nn.Linear` layers.
 
 <hfoptions id="bnb">
 <hfoption id="8-bit">
@@ -57,7 +59,7 @@ model_8bit = FluxTransformer2DModel.from_pretrained(
 model_8bit.transformer_blocks.layers[-1].norm2.weight.dtype
 ```
 
-Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization config.json file is pushed first, followed by the quantized model weights.
+Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights.
 
 ```py
 from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
@@ -104,7 +106,7 @@ model_4bit = FluxTransformer2DModel.from_pretrained(
 model_4bit.transformer_blocks.layers[-1].norm2.weight.dtype
 ```
 
-You can simply call `model.push_to_hub()` after loading it in 4-bit precision. You can also save the serialized 4-bit models locally with `model.save_pretrained()` command.  
+Call [`~ModelMixin.push_to_hub`] after loading it in 4-bit precision. You can also save the serialized 4-bit models locally with [`~ModelMixin.save_pretrained`].  
 
 </hfoption>
 </hfoptions>
@@ -115,7 +117,7 @@ Training with 8-bit and 4-bit weights are only supported for training *extra* pa
 
 </Tip>
 
-You can check your memory footprint with the `get_memory_footprint` method:
+Check your memory footprint with the `get_memory_footprint` method:
 
 ```py
 print(model.get_memory_footprint())
@@ -141,7 +143,7 @@ Learn more about the details of 8-bit quantization in this [blog post](https://h
 
 </Tip>
 
-This section explores some of the specific features of 8-bit models, such as utlier thresholds and skipping module conversion.
+This section explores some of the specific features of 8-bit models, such as outlier thresholds and skipping module conversion.
 
 ### Outlier threshold
 
@@ -165,7 +167,7 @@ model_8bit = FluxTransformer2DModel.from_pretrained(
 
 ### Skip module conversion
 
-For some models, you don't need to quantize every module to 8-bit which can actually cause instability. For example, for diffusion models like [Stable Diffusion 3](../api/pipelines/stable_diffusion/stable_diffusion_3), the `proj_out` module that could be skipped using the `llm_int8_skip_modules` parameter in [`BitsAndBytesConfig`]:
+For some models, you don't need to quantize every module to 8-bit which can actually cause instability. For example, for diffusion models like [Stable Diffusion 3](../api/pipelines/stable_diffusion/stable_diffusion_3), the `proj_out` module can be skipped using the `llm_int8_skip_modules` parameter in [`BitsAndBytesConfig`]:
 
 ```py
 from diffusers import SD3Transformer2DModel, BitsAndBytesConfig
@@ -227,7 +229,7 @@ For inference, the `bnb_4bit_quant_type` does not have a huge impact on performa
 
 ### Nested quantization
 
-Nested quantization is a technique that can save additional memory at no additional performance cost. This feature performs a second quantization of the already quantized weights to save an addition 0.4 bits/parameter. 
+Nested quantization is a technique that can save additional memory at no additional performance cost. This feature performs a second quantization of the already quantized weights to save an additional 0.4 bits/parameter. 
 
 ```py
 from diffusers import BitsAndBytesConfig

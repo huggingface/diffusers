@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 
 # Quantization
 
-Quantization techniques reduce memory and computational costs by representing weights and activations with lower-precision data types like 8-bit integers (int8). This enables loading larger models you normally wouldn't be able to fit into memory, and speeding up inference. Diffusers supports 8-bit and 4-bit quantization with [`bitsandbytes`](https://github.com/bitsandbytes-foundation/bitsandbytes).
+Quantization techniques reduce memory and computational costs by representing weights and activations with lower-precision data types like 8-bit integers (int8). This enables loading larger models you normally wouldn't be able to fit into memory, and speeding up inference. Diffusers supports 8-bit and 4-bit quantization with [bitsandbytes](https://huggingface.co/docs/bitsandbytes/en/index).
 
 Quantization techniques that aren't supported in Transformers can be added with the [`DiffusersQuantizer`] class.
 
