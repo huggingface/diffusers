@@ -17,7 +17,7 @@ Quantization techniques focus on representing data with less information while a
 
 <Tip>
 
-Interested in adding a new quantization method to Transformers? Read the [`DiffusersQuantizer`](../conceptual/contribution) guide to learn how!
+Interested in adding a new quantization method to Transformers? Refer to the [Contribute new quantization method guide](https://huggingface.co/docs/transformers/main/en/quantization/contribute) to learn more about adding a new quantization method.
 
 </Tip>
 
