@@ -352,10 +352,12 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             encoder_hidden_states = [encoder_hidden_states.clone() for _ in range(len(frame_indices))]
 
         elif isinstance(encoder_hidden_states, tuple):
+            print("frame_indices:", frame_indices)
             pooled_prompt_embeds_list = []
             pooled_negative_prompt_embeds_list = []
-            prompt_embeds_dict, negative_prompt_embeds_dict = encoder_hidden_states
+            negative_prompt_embeds_dict, prompt_embeds_dict = encoder_hidden_states
 
+            # For every batch of frames that is to be processed, pool the positive and negative prompt embeddings
             for frame_start, frame_end in frame_indices:
                 pooled_prompt_embeds = None
                 pooled_negative_prompt_embeds = None
@@ -364,7 +366,9 @@ class FreeNoiseCogVideoXBlock(nn.Module):
                     prompt_embeds_dict[i] for i in range(frame_start, frame_end) if i in prompt_embeds_dict
                 ]
                 if len(pooling_list) > 0:
+                    print("pooling", [i for i in range(frame_start, frame_end) if i in prompt_embeds_dict])
                     pooled_prompt_embeds = self.prompt_pooling_callback(pooling_list)
+                    print("after pooling:", pooled_prompt_embeds.isnan().any())
 
                 if negative_prompt_embeds_dict is not None:
                     pooling_list = [
@@ -373,7 +377,11 @@ class FreeNoiseCogVideoXBlock(nn.Module):
                         if i in negative_prompt_embeds_dict
                     ]
                     if len(pooling_list) > 0:
+                        print(
+                            "negative pooling", [i for i in range(frame_start, frame_end) if i in prompt_embeds_dict]
+                        )
                         pooled_negative_prompt_embeds = self.prompt_pooling_callback(pooling_list)
+                        print("after negative pooling:", pooled_negative_prompt_embeds.isnan().any())
 
                 pooled_prompt_embeds_list.append(pooled_prompt_embeds)
                 pooled_negative_prompt_embeds_list.append(pooled_negative_prompt_embeds)
@@ -384,37 +392,42 @@ class FreeNoiseCogVideoXBlock(nn.Module):
                 assert pooled_negative_prompt_embeds_list[0] is not None
                 assert pooled_negative_prompt_embeds_list[-1] is not None
 
+            # If there were no relevant prompts for certain frame batches, interpolate and fill in the gaps
             last_existent_embed_index = 0
             for i in range(1, len(frame_indices)):
-                frame_start, frame_end = frame_indices[i]
-                if pooled_prompt_embeds_list[i] is not None:
+                if pooled_prompt_embeds_list[i] is not None and i - last_existent_embed_index > 1:
+                    print("interpolating:", last_existent_embed_index, i)
                     interpolated_embeds = self.prompt_interpolation_callback(
-                        frame_start,
-                        frame_end - 1,
+                        last_existent_embed_index,
+                        i,
                         pooled_prompt_embeds_list[last_existent_embed_index],
                         pooled_prompt_embeds_list[i],
                     )
-                    pooled_prompt_embeds_list[frame_start:frame_end] = interpolated_embeds.split(1, dim=0)
+                    print("after interpolating", interpolated_embeds.isnan().any())
+                    pooled_prompt_embeds_list[last_existent_embed_index : i + 1] = interpolated_embeds.split(1, dim=0)
                     last_existent_embed_index = i
             assert all(x is not None for x in pooled_prompt_embeds_list)
 
             if negative_prompt_embeds_dict is not None:
                 last_existent_embed_index = 0
                 for i in range(1, len(frame_indices)):
-                    frame_start, frame_end = frame_indices[i]
-                    if pooled_negative_prompt_embeds_list[i] is not None:
+                    if pooled_negative_prompt_embeds_list[i] is not None and i - last_existent_embed_index > 1:
+                        print("negative interpolating:", last_existent_embed_index, i)
                         interpolated_embeds = self.prompt_interpolation_callback(
-                            frame_start,
-                            frame_end - 1,
+                            last_existent_embed_index,
+                            i,
                             pooled_negative_prompt_embeds_list[last_existent_embed_index],
                             pooled_negative_prompt_embeds_list[i],
                         )
-                        pooled_negative_prompt_embeds_list[frame_start:frame_end] = interpolated_embeds.split(1, dim=0)
+                        print("after negative interpolating", interpolated_embeds.isnan().any())
+                        pooled_negative_prompt_embeds_list[
+                            last_existent_embed_index : i + 1
+                        ] = interpolated_embeds.split(1, dim=0)
                         last_existent_embed_index = i
                 assert all(x is not None for x in pooled_negative_prompt_embeds_list)
 
             if negative_prompt_embeds_dict is not None:
-                # Classifier-free Guidance
+                # Classifier-Free Guidance
                 pooled_prompt_embeds_list = [
                     torch.cat([negative_prompt_embeds, prompt_embeds])
                     for negative_prompt_embeds, prompt_embeds in zip(
@@ -424,13 +437,11 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
             encoder_hidden_states = pooled_prompt_embeds_list
 
-        else:
+        elif not isinstance(encoder_hidden_states, list):
             raise ValueError(
-                f"Expected `encoder_hidden_states` to be a tesnor, list of tensor, or a tuple of dictionaries, but found {type(encoder_hidden_states)=}"
+                f"Expected `encoder_hidden_states` to be a tensor, list of tensor, or a tuple of dictionaries, but found {type(encoder_hidden_states)=}"
             )
 
-        print(type(encoder_hidden_states))
-        print(len(encoder_hidden_states))
         assert isinstance(encoder_hidden_states, list) and len(encoder_hidden_states) == len(frame_indices)
         return encoder_hidden_states
 
@@ -480,6 +491,12 @@ class FreeNoiseCogVideoXBlock(nn.Module):
 
             # Flatten frame dimension: [B, F'HW, C]
             hidden_states_chunk = hidden_states[:, frame_start:frame_end].flatten(1, 2)
+            print(
+                "debug:",
+                text_seq_length,
+                torch.isnan(hidden_states_chunk).any(),
+                torch.isnan(encoder_hidden_states[i]).any(),
+            )
 
             # norm & modulate
             norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
@@ -872,7 +889,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
 def _get_text_seq_length(x) -> int:
     if isinstance(x, torch.Tensor):
-        return x.shape[0]
+        return x.shape[1]
     if isinstance(x, list):
         return _get_text_seq_length(x[0])
     if isinstance(x, dict):

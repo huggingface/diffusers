@@ -59,6 +59,11 @@ def _weighted_pooling(
 ) -> torch.Tensor:
     length = len(hidden_states)
 
+    if length == 0:
+        raise ValueError("This method cannot be called with an empty list.")
+    if length == 1:
+        return hidden_states[0]
+
     if pooling_type == "average":
         weights = [1] * length
     elif pooling_type == "exponential_decay":
@@ -71,10 +76,10 @@ def _weighted_pooling(
         weights = list(range(1, length + 1))[::-1]
     elif pooling_type == "pyramid":
         if length % 2 == 0:
-            weights = list(range(length // 2))
+            weights = list(range(1, length // 2 + 1))
             weights = weights + weights[::-1]
         else:
-            weights = list(range(length // 2))
+            weights = list(range(1, length // 2 + 1))
             weights = weights + [length // 2] + weights[::-1]
     else:
         raise ValueError("Invalid weighted pooling type.")

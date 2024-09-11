@@ -718,7 +718,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXFreeNoiseMixin):
                         **extra_step_kwargs,
                         return_dict=False,
                     )
-                latents = latents.to(prompt_embeds.dtype)
+                latents = latents.to(prompt_embeds_dtype)
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:

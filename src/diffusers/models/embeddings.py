@@ -495,9 +495,12 @@ class FreeNoiseCogVideoXPatchEmbed(nn.Module):
             text_embeds = self.text_proj(text_embeds)
         else:
             assert isinstance(text_embeds, tuple)
+            text_embeds_output = []
             for tuple_index in range(len(text_embeds)):
+                text_embeds_output.append({})
                 for key, text_embed in list(text_embeds[tuple_index].items()):
-                    text_embeds[tuple_index][key] = self.text_proj(text_embed)
+                    text_embeds_output[tuple_index][key] = self.text_proj(text_embed)
+            text_embeds = tuple(text_embeds_output)
 
         batch, num_frames, channels, height, width = image_embeds.shape
         image_embeds = image_embeds.reshape(-1, channels, height, width)
