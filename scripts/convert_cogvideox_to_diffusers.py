@@ -94,7 +94,7 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "freqs_sin": remove_keys_inplace,
     "freqs_cos": remove_keys_inplace,
     "position_embedding": remove_keys_inplace,
-    # TODO: zR
+    # TODO  zRzRzRzRzRzRzR: really need to remove?
     "pos_embedding": remove_keys_inplace
 }
 

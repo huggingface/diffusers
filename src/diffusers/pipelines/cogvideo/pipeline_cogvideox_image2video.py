@@ -18,8 +18,6 @@ import inspect
 import PIL
 import math
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
-
 import torch
 from PIL import Image
 from transformers import T5EncoderModel, T5Tokenizer
@@ -344,16 +342,8 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             image = _resize_with_antialiasing(image, (224, 224))
             image = (image + 1.0) / 2.0
 
-        # Normalize the image with for CLIP input
-        image = self.feature_extractor(
-            images=image,
-            do_normalize=True,
-            do_center_crop=False,
-            do_resize=False,
-            do_rescale=False,
-            return_tensors="pt",
-        ).pixel_values
 
+        # encode image using VAE
         image = image.to(device=device, dtype=dtype)
         image_embeddings = self.image_encoder(image).image_embeds
         image_embeddings = image_embeddings.unsqueeze(1)
@@ -500,22 +490,21 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
     def prepare_latents(
             self,
-            batch_size: int,
-            num_frames: int,
-            num_channels_latents: int,
-            height: int,
-            width: int,
-            dtype: torch.dtype,
-            device: Union[str, torch.device],
-            generator: torch.Generator,
-            latents: Optional[torch.Tensor] = None,
+            batch_size,
+            num_channels_latents,
+            num_frames,
+            height, width,
+            dtype,
+            device,
+            generator,
+            latents=None
     ):
         shape = (
             batch_size,
-            num_frames,
-            num_channels_latents // 2,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
+            (num_frames - 1) // self.vae_scale_factor_temporal + 1,
+            num_channels_latents,
+            height // self.vae_scale_factor_spatial,
+            width // self.vae_scale_factor_spatial,
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -691,6 +680,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             negative_prompt: Optional[Union[str, List[str]]] = None,
             height: int = 480,
             width: int = 720,
+            num_frames: int = 49,
             num_inference_steps: int = 50,
             timesteps: Optional[List[int]] = None,
             strength: float = 0.8,
@@ -728,6 +718,11 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            num_frames (`int`, defaults to `48`):
+                Number of frames to generate. Must be divisible by self.vae_scale_factor_temporal. Generated video will
+                contain 1 extra frame because CogVideoX is conditioned with (num_seconds * fps + 1) frames where
+                num_seconds is 6 and fps is 4. However, since videos can be saved at any fps, the only condition that
+                needs to be satisfied is that of divisibility mentioned above.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -785,6 +780,11 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             [`~pipelines.cogvideo.pipeline_output.CogVideoXPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+
+        if num_frames > 49:
+            raise ValueError(
+                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
+            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -848,23 +848,21 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            image,
             batch_size * num_videos_per_prompt,
             latent_channels,
+            num_frames,
             height,
             width,
             prompt_embeds.dtype,
             device,
             generator,
             latents,
-            latent_timestep,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
