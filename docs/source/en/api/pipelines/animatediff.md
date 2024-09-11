@@ -921,10 +921,20 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
 FreeNoise is a sampling mechanism that allows the generation of longer videos with short-video generation models by employing noise-rescheduling, temporal attention over sliding windows, and weighted averaging of latent frames. It also can be used with multiple prompts to allow for interpolated video generations. More details are available in the paper.
 
 The currently supported AnimateDiff pipelines that can be used with FreeNoise are:
-- AnimateDiffPipeline
-- AnimateDiffControlNetPipeline
-- AnimateDiffVideoToVideoPipeline
-- AnimateDiffVideoToVideoControlNetPipeline
+- [AnimateDiffPipeline]
+- [AnimateDiffControlNetPipeline]
+- [AnimateDiffVideoToVideoPipeline]
+- [AnimateDiffVideoToVideoControlNetPipeline]
+
+In order to use FreeNoise, a single line needs to be added to the inference code after loading your pipelines.
+
+```diff
++ pipe.enable_free_noise()
+```
+
+After this, either a single prompt could be used, or multiple prompts can be passed as a dictionary of integer-string pairs. The integer keys of the dictionary correspond to the frame index at which the influence of that prompt would be maximum. Each frame index should map to a single string prompt. The prompts for intermediate frame indices, that are not passed in the dictionary, are created by interpolating between the frame prompts that are passed. By default, simple linear interpolation is used however one can customize this behaviour by a callback to the `prompt_interpolation_callback` parameter when enabling FreeNoise.
+
+Full example:
 
 ```python
 import torch
