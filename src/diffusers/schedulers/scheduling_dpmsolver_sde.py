@@ -38,7 +38,20 @@ class BatchedBrownianTree:
         except TypeError:
             seed = [seed]
             self.batched = False
-        self.trees = [torchsde.BrownianTree(t0, w0, t1, entropy=s, **kwargs) for s in seed]
+        self.trees = [
+            torchsde.BrownianInterval(
+                t0=t0,
+                t1=t1,
+                size=w0.shape,
+                dtype=w0.dtype,
+                device=w0.device,
+                entropy=s,
+                tol=1e-6,
+                pool_size=24,
+                halfway_tree=True,
+            )
+            for s in seed
+        ]
 
     @staticmethod
     def sort(a, b):
