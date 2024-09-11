@@ -98,6 +98,12 @@ It is also worth noting that torchao quantization is fully compatible with [torc
   - all
   - __call__
 
+## CogVideoXImageToVideoPipeline
+
+[[autodoc]] CogVideoXImageToVideoPipeline
+  - all
+  - __call__
+
 ## CogVideoXVideoToVideoPipeline
 
 [[autodoc]] CogVideoXVideoToVideoPipeline
