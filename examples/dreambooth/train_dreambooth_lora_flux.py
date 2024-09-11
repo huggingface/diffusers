@@ -1597,6 +1597,7 @@ def main(args):
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
                             max_sequence_length=args.max_sequence_length,
+                            device=accelerator.device,
                             prompt=prompts,
                         )
                 else:
@@ -1606,6 +1607,7 @@ def main(args):
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
                             max_sequence_length=args.max_sequence_length,
+                            device=accelerator.device,
                             prompt=args.instance_prompt,
                         )
 
