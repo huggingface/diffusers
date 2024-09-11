@@ -690,7 +690,7 @@ class FluxPosEmbed(nn.Module):
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
-        pos = ids.squeeze().float()
+        pos = ids.float()
         is_mps = ids.device.type == "mps"
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
