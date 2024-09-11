@@ -21,11 +21,12 @@ import logging
 import math
 import os
 import random
+import re
 import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 import torch
@@ -40,6 +41,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -1980,7 +1982,7 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                         max_sequence_length=args.max_sequence_length,
                         device=accelerator.device,
-                        prompt=None,
+                        prompt=prompts,
                     )
 
                 # Convert images to latent space
