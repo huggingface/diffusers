@@ -921,10 +921,10 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
 FreeNoise is a sampling mechanism that can generate longer videos with short-video generation models by employing noise-rescheduling, temporal attention over sliding windows, and weighted averaging of latent frames. It also can be used with multiple prompts to allow for interpolated video generations. More details are available in the paper.
 
 The currently supported AnimateDiff pipelines that can be used with FreeNoise are:
-- [AnimateDiffPipeline]
-- [AnimateDiffControlNetPipeline]
-- [AnimateDiffVideoToVideoPipeline]
-- [AnimateDiffVideoToVideoControlNetPipeline]
+- [`AnimateDiffPipeline`]
+- [`AnimateDiffControlNetPipeline`]
+- [`AnimateDiffVideoToVideoPipeline`]
+- [`AnimateDiffVideoToVideoControlNetPipeline`]
 
 In order to use FreeNoise, a single line needs to be added to the inference code after loading your pipelines.
 
