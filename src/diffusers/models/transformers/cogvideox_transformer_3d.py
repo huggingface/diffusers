@@ -356,35 +356,40 @@ class FreeNoiseCogVideoXBlock(nn.Module):
             pooled_prompt_embeds_list = []
             pooled_negative_prompt_embeds_list = []
             negative_prompt_embeds_dict, prompt_embeds_dict = encoder_hidden_states
+            last_frame_start = 0
 
-            # For every batch of frames that is to be processed, pool the positive and negative prompt embeddings
+            # For every batch of frames that is to be processed, pool the positive and negative prompt embeddings.
+            # TODO(aryan): Since this is experimental, I didn't try many different things. I found from testing
+            # that pooling with previous batch frame embeddings necessary to produce better results and help with
+            # prompt transitions.
             for frame_start, frame_end in frame_indices:
                 pooled_prompt_embeds = None
                 pooled_negative_prompt_embeds = None
 
                 pooling_list = [
-                    prompt_embeds_dict[i] for i in range(frame_start, frame_end) if i in prompt_embeds_dict
+                    prompt_embeds_dict[i] for i in range(last_frame_start, frame_end) if i in prompt_embeds_dict
                 ]
                 if len(pooling_list) > 0:
-                    print("pooling", [i for i in range(frame_start, frame_end) if i in prompt_embeds_dict])
+                    print("pooling", [i for i in range(last_frame_start, frame_end) if i in prompt_embeds_dict])
                     pooled_prompt_embeds = self.prompt_pooling_callback(pooling_list)
                     print("after pooling:", pooled_prompt_embeds.isnan().any())
 
                 if negative_prompt_embeds_dict is not None:
                     pooling_list = [
                         negative_prompt_embeds_dict[i]
-                        for i in range(frame_start, frame_end)
+                        for i in range(last_frame_start, frame_end)
                         if i in negative_prompt_embeds_dict
                     ]
                     if len(pooling_list) > 0:
                         print(
-                            "negative pooling", [i for i in range(frame_start, frame_end) if i in prompt_embeds_dict]
+                            "negative pooling", [i for i in range(last_frame_start, frame_end) if i in prompt_embeds_dict]
                         )
                         pooled_negative_prompt_embeds = self.prompt_pooling_callback(pooling_list)
                         print("after negative pooling:", pooled_negative_prompt_embeds.isnan().any())
 
                 pooled_prompt_embeds_list.append(pooled_prompt_embeds)
                 pooled_negative_prompt_embeds_list.append(pooled_negative_prompt_embeds)
+                last_frame_start = frame_start
 
             assert pooled_prompt_embeds_list[0] is not None
             assert pooled_prompt_embeds[-1] is not None

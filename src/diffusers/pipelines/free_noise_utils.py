@@ -825,6 +825,7 @@ class CogVideoXFreeNoiseMixin:
             max_sequence_length=max_sequence_length,
         )
 
+        # If many prompts fall into the same latent frame bucket, pool them
         prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
         for i in range(len(frame_indices)):
             latent_frame_index = frame_indices[i] // self.transformer.config.temporal_compression_ratio
@@ -848,6 +849,7 @@ class CogVideoXFreeNoiseMixin:
                 max_sequence_length=max_sequence_length,
             )
 
+            # If many prompts fall into the same latent frame bucket, pool them
             negative_prompt_embeds_frame_buckets = collections.defaultdict(lambda: [])
             for i in range(len(frame_negative_indices)):
                 latent_frame_index = frame_negative_indices[i] // self.transformer.config.temporal_compression_ratio
