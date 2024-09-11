@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import time
+from pathlib import Path
 
 import datasets
 import numpy as np
@@ -13,6 +14,7 @@ import torch_xla.debug.profiler as xp
 import torch_xla.distributed.parallel_loader as pl
 import torch_xla.distributed.spmd as xs
 import torch_xla.runtime as xr
+from huggingface_hub import create_repo, upload_folder
 from torchvision import transforms
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -22,10 +24,13 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.training_utils import (
-    compute_snr,
-)
+from diffusers.training_utils import compute_snr
+from diffusers.utils import is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
+
+if is_wandb_available():
+    pass
 
 PROFILE_DIR = os.environ.get("PROFILE_DIR", None)
 CACHE_DIR = os.environ.get("CACHE_DIR", None)
@@ -35,6 +40,75 @@ xr.use_spmd()
 DATASET_NAME_MAPPING = {
     "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
+PORT = 9012
+
+
+def save_model_card(
+    args,
+    repo_id: str,
+    repo_folder: str = None,
+):
+    model_description = f"""
+# Text-to-image finetuning - {repo_id}
+
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. \n
+
+## Pipeline usage
+
+You can use the pipeline like so:
+
+```python
+import torch
+import os
+import sys
+import  numpy as np
+
+import torch_xla.core.xla_model as xm
+from time import time
+from typing import Tuple
+from diffusers import StableDiffusionPipeline
+
+def main(args):
+    device = xm.xla_device()
+    model_path = <output_dir>
+    pipe = StableDiffusionPipeline.from_pretrained(
+        model_path,
+        torch_dtype=torch.bfloat16
+    )
+    pipe.to(device)
+    prompt = ["A naruto with green eyes and red legs."]
+    image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+    image.save("naruto.png")
+
+if __name__ == '__main__':
+    main()
+```
+
+## Training info
+
+These are the key hyperparameters used during training:
+
+* Steps: {args.max_train_steps}
+* Learning rate: {args.learning_rate}
+* Batch size: {args.train_batch_size}
+* Image resolution: {args.resolution}
+* Mixed-precision: {args.mixed_precision}
+
+"""
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=args.pretrained_model_name_or_path,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["stable-diffusion", "stable-diffusion-diffusers", "text-to-image", "diffusers", "diffusers-training"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 class TrainSD:
@@ -75,7 +149,7 @@ class TrainSD:
                 break
             if step == 4 and PROFILE_DIR is not None:
                 xm.wait_device_ops()
-                xp.trace_detached("localhost:9012", PROFILE_DIR, duration_ms=args.profile_duration)
+                xp.trace_detached(f"localhost:{PORT}", PROFILE_DIR, duration_ms=args.profile_duration)
             try:
                 batch = next(self.dataloader)
             except Exception as e:
@@ -327,6 +401,14 @@ def parse_args():
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
         ),
     )
+    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
+    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--hub_model_id",
+        type=str,
+        default=None,
+        help="The name of the repository to keep in sync with the local `output_dir`.",
+    )
 
     args = parser.parse_args()
 
@@ -396,7 +478,7 @@ def get_column_names(dataset, args):
 def main(args):
     args = parse_args()
 
-    _ = xp.start_server(9012)
+    _ = xp.start_server(PORT)
 
     num_devices = xr.global_runtime_device_count()
     device_ids = np.arange(num_devices)
@@ -422,6 +504,12 @@ def main(args):
         subfolder="unet",
         revision=args.non_ema_revision,
     )
+
+    if xm.is_master_ordinal() and args.push_to_hub:
+        repo_id = create_repo(
+            repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+        ).repo_id
+
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -533,8 +621,10 @@ def main(args):
 
     if xm.is_master_ordinal():
         print("***** Running training *****")
-        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices}")
-        print(f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size}")
+        print(f"Instantaneous batch size per device = {args.train_batch_size}")
+        print(
+            f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size * num_devices}"
+        )
         print(f"  Total optimization steps = {args.max_train_steps}")
 
     trainer = TrainSD(
@@ -563,6 +653,15 @@ def main(args):
         variant=args.variant,
     )
     pipeline.save_pretrained(args.output_dir)
+
+    if xm.is_master_ordinal() and args.push_to_hub:
+        save_model_card(args, repo_id, repo_folder=args.output_dir)
+        upload_folder(
+            repo_id=repo_id,
+            folder_path=args.output_dir,
+            commit_message="End of training",
+            ignore_patterns=["step_*", "epoch_*"],
+        )
 
 
 if __name__ == "__main__":
