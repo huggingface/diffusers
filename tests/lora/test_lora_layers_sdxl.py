@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 from packaging import version
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     ControlNetModel,
@@ -89,6 +90,14 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
         "sample_size": 128,
     }
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+    text_encoder_2_cls, text_encoder_2_id = CLIPTextModelWithProjection, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_2_cls, tokenizer_2_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
 
     def setUp(self):
         super().setUp()
@@ -114,71 +123,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-
-    def test_sdxl_0_9_lora_one(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
-        lora_filename = "daiton-xl-lora-test.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.3838, 0.3482, 0.3588, 0.3162, 0.319, 0.3369, 0.338, 0.3366, 0.3213])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 1e-3
-        pipe.unload_lora_weights()
-        release_memory(pipe)
-
-    def test_sdxl_0_9_lora_two(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
-        lora_filename = "saijo.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.3137, 0.3269, 0.3355, 0.255, 0.2577, 0.2563, 0.2679, 0.2758, 0.2626])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 1e-3
-
-        pipe.unload_lora_weights()
-        release_memory(pipe)
-
-    def test_sdxl_0_9_lora_three(self):
-        generator = torch.Generator().manual_seed(0)
-
-        pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
-        lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        pipe.enable_model_cpu_offload()
-
-        images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
-
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.4015, 0.3761, 0.3616, 0.3745, 0.3462, 0.3337, 0.3564, 0.3649, 0.3468])
-
-        max_diff = numpy_cosine_similarity_distance(expected, images)
-        assert max_diff < 5e-3
-
-        pipe.unload_lora_weights()
-        release_memory(pipe)
 
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator("cpu").manual_seed(0)

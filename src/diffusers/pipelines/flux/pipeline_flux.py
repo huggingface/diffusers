@@ -17,15 +17,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import (
-    CLIPTextModel,
-    CLIPTokenizer,
-    T5EncoderModel,
-    T5TokenizerFast,
-)
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import SD3LoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -142,7 +137,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
+class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -155,22 +150,18 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModelWithProjection`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
-            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant,
-            with an additional added projection layer that is initialized with a diagonal matrix with the `hidden_size`
-            as its dimension.
-        text_encoder_2 ([`CLIPTextModelWithProjection`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
-            specifically the
-            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
-            variant.
+        text_encoder ([`CLIPTextModel`]):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_2 (`CLIPTokenizer`):
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`T5TokenizerFast`):
             Second Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -289,7 +280,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds
@@ -323,9 +314,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
                 If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
@@ -333,7 +321,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, SD3LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, FluxLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -343,10 +331,6 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
                 scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        if prompt is not None:
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
@@ -366,18 +350,17 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
             )
 
         if self.text_encoder is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
         if self.text_encoder_2 is not None:
-            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, FluxLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
-        text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
-        text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
+        text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
@@ -437,9 +420,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
 
         latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
 
-        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 1, 1, 1)
         latent_image_ids = latent_image_ids.reshape(
-            batch_size, latent_image_id_height * latent_image_id_width, latent_image_id_channels
+            latent_image_id_height * latent_image_id_width, latent_image_id_channels
         )
 
         return latent_image_ids.to(device=device, dtype=dtype)
@@ -465,6 +447,35 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         latents = latents.reshape(batch_size, channels // (2 * 2), height * 2, width * 2)
 
         return latents
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     def prepare_latents(
         self,
@@ -525,7 +536,7 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         width: Optional[int] = None,
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
-        guidance_scale: float = 7.0,
+        guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -689,6 +700,13 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        # handle guidance
+        if self.transformer.config.guidance_embeds:
+            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+            guidance = guidance.expand(latents.shape[0])
+        else:
+            guidance = None
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -698,16 +716,8 @@ class FluxPipeline(DiffusionPipeline, SD3LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                # handle guidance
-                if self.transformer.config.guidance_embeds:
-                    guidance = torch.tensor([guidance_scale], device=device)
-                    guidance = guidance.expand(latents.shape[0])
-                else:
-                    guidance = None
-
                 noise_pred = self.transformer(
                     hidden_states=latents,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

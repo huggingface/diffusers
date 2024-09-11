@@ -20,6 +20,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import FromOriginalModelMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -32,10 +33,7 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unets.unet_2d_condition import UNet2DConditionModel
-from .unets.unet_3d_blocks import (
-    CrossAttnDownBlockMotion,
-    DownBlockMotion,
-)
+from .unets.unet_motion_model import CrossAttnDownBlockMotion, DownBlockMotion
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -95,7 +93,7 @@ class SparseControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class SparseControlNetModel(ModelMixin, ConfigMixin):
+class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
     A SparseControlNet model as described in [SparseCtrl: Adding Sparse Controls to Text-to-Video Diffusion
     Models](https://arxiv.org/abs/2311.16933).
@@ -334,8 +332,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     add_downsample=not is_final_block,
                     temporal_num_attention_heads=motion_num_attention_heads[i],
                     temporal_max_seq_length=motion_max_seq_length,
-                    temporal_double_self_attention=False,
                     temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                    temporal_double_self_attention=False,
                 )
             else:
                 raise ValueError(
@@ -693,7 +691,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         emb = emb.repeat_interleave(sample_num_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(sample_num_frames, dim=0)
 
         # 2. pre-process
         batch_size, channels, num_frames, height, width = sample.shape

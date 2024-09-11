@@ -18,7 +18,9 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
+from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import logging
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -191,7 +193,7 @@ class AnimateDiffControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         pass
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array(
@@ -216,7 +218,7 @@ class AnimateDiffControlNetPipelineFastTests(
                     0.5155,
                 ]
             )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
@@ -328,6 +330,13 @@ class AnimateDiffControlNetPipelineFastTests(
         inputs["prompt_embeds"] = torch.randn((1, 4, pipe.text_encoder.config.hidden_size), device=torch_device)
         pipe(**inputs)
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+
     def test_free_init(self):
         components = self.get_dummy_components()
         pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
@@ -408,6 +417,85 @@ class AnimateDiffControlNetPipelineFastTests(
                 1e1,
                 "Enabling of FreeInit should lead to results different from the default pipeline results",
             )
+
+    def test_free_noise_blocks(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        pipe.enable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertTrue(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must be an instance of `FreeNoiseTransformerBlock` after enabling FreeNoise.",
+                    )
+
+        pipe.disable_free_noise()
+        for block in pipe.unet.down_blocks:
+            for motion_module in block.motion_modules:
+                for transformer_block in motion_module.transformer_blocks:
+                    self.assertFalse(
+                        isinstance(transformer_block, FreeNoiseTransformerBlock),
+                        "Motion module transformer blocks must not be an instance of `FreeNoiseTransformerBlock` after disabling FreeNoise.",
+                    )
+
+    def test_free_noise(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device, num_frames=16)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        for context_length in [8, 9]:
+            for context_stride in [4, 6]:
+                pipe.enable_free_noise(context_length, context_stride)
+
+                inputs_enable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                frames_enable_free_noise = pipe(**inputs_enable_free_noise).frames[0]
+
+                pipe.disable_free_noise()
+
+                inputs_disable_free_noise = self.get_dummy_inputs(torch_device, num_frames=16)
+                frames_disable_free_noise = pipe(**inputs_disable_free_noise).frames[0]
+
+                sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_noise)).sum()
+                max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_noise)).max()
+                self.assertGreater(
+                    sum_enabled,
+                    1e1,
+                    "Enabling of FreeNoise should lead to results different from the default pipeline results",
+                )
+                self.assertLess(
+                    max_diff_disabled,
+                    1e-4,
+                    "Disabling of FreeNoise should lead to results similar to the default pipeline results",
+                )
+
+    def test_free_noise_multi_prompt(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffControlNetPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        context_length = 8
+        context_stride = 4
+        pipe.enable_free_noise(context_length, context_stride)
+
+        # Make sure that pipeline works when prompt indices are within num_frames bounds
+        inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+        inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf"}
+        pipe(**inputs).frames[0]
+
+        with self.assertRaises(ValueError):
+            # Ensure that prompt indices are within bounds
+            inputs = self.get_dummy_inputs(torch_device, num_frames=16)
+            inputs["prompt"] = {0: "Caterpillar on a leaf", 10: "Butterfly on a leaf", 42: "Error on a leaf"}
+            pipe(**inputs).frames[0]
 
     def test_vae_slicing(self, video_count=2):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
