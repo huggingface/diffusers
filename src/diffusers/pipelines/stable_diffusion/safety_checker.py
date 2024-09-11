@@ -70,13 +70,14 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         
         if self.adjustment<0:
             logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                f"You have weakened the filtering strength of safety checker. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-                )
+                " When reducing the filtering strength, take the same action as when disabling the safety checker."
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."             
+            )
 
     @torch.no_grad()
     def forward(self, clip_input, images):
