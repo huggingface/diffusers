@@ -1015,7 +1015,7 @@ def main(args):
             r=args.rank,
             lora_alpha=args.lora_alpha,
             init_lora_weights=True,
-            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            target_modules=["q", "k", "v", "o"],
         )
         text_encoder.add_adapter(text_lora_config)
 
@@ -1284,7 +1284,7 @@ def main(args):
         if args.train_text_encoder:
             text_encoder.train()
             # set top parameter requires_grad = True for gradient checkpointing works
-            accelerator.unwrap_model(text_encoder).text_model.embeddings.requires_grad_(True)
+            accelerator.unwrap_model(text_encoder).shared.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]

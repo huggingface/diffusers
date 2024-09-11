@@ -2473,7 +2473,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            # alpha_dict length should be 1, as we only have defult alpha for transformer
+            lora_config_kwargs = get_peft_kwargs(
+                rank,
+                network_alpha_dict={
+                    "transformer": 1.0
+                    },
+                peft_state_dict=state_dict
+            )
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
                     raise ValueError(
