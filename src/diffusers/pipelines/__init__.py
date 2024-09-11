@@ -127,6 +127,8 @@ else:
     ]
     _import_structure["flux"] = [
         "FluxControlNetPipeline",
+        "FluxControlNetImg2ImgPipeline",
+        "FluxControlNetInpaintPipeline",
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
@@ -501,7 +503,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
-        from .flux import FluxControlNetPipeline, FluxImg2ImgPipeline, FluxInpaintPipeline, FluxPipeline
+        from .flux import FluxControlNetPipeline, FluxControlNetImg2ImgPipeline, FluxControlNetInpaintPipeline, FluxImg2ImgPipeline, FluxInpaintPipeline, FluxPipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
