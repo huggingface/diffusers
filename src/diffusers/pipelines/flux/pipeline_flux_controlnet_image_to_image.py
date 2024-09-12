@@ -1,8 +1,8 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import PIL
 import numpy as np
+import PIL
 import torch
 from transformers import (
     CLIPTextModel,
@@ -31,6 +31,7 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import FluxPipelineOutput
 
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
@@ -47,11 +48,15 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxControlNetImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxControlNetImg2ImgPipeline.from_pretrained("black-forest-labs/FLUX.1-controlnet-canny", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxControlNetImg2ImgPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-controlnet-canny", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
-        >>> init_image = load_image("https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg")
+        >>> init_image = load_image(
+        ...     "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+        ... )
 
         >>> prompt = "A girl in city, 25 years old, cool, futuristic"
         >>> image = pipe(
@@ -67,6 +72,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
@@ -80,6 +86,7 @@ def calculate_shift(
     mu = image_seq_len * m + b
     return mu
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -92,7 +99,8 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
-    
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -152,8 +160,8 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
 
+class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -387,7 +395,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
-    
+
     def check_inputs(
         self,
         prompt,
@@ -478,7 +486,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 raise ValueError("You have multiple ControlNets, but only provided one control mode.")
             if len(control_mode) != len(self.controlnet.nets):
                 raise ValueError("Number of control modes does not match the number of ControlNets.")
-        
+
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
@@ -493,7 +501,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         )
 
         return latent_image_ids.to(device=device, dtype=dtype)
-    
+
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
@@ -517,7 +525,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         latents = latents.reshape(batch_size, channels // (2 * 2), height * 2, width * 2)
 
         return latents
-    
+
     def prepare_latents(
         self,
         image,
@@ -598,7 +606,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             image = torch.cat([image] * 2)
 
         return image
-    
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -614,7 +622,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
     @property
     def interrupt(self):
         return self._interrupt
-    
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -643,7 +651,6 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
-    
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 

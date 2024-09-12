@@ -174,11 +174,11 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array(
-            [0.5182, 0.4976, 0.4718, 0.5249, 0.5039, 0.4751, 0.5168, 0.4980, 0.4738]
-        )
+        expected_slice = np.array([0.5182, 0.4976, 0.4718, 0.5249, 0.5039, 0.4751, 0.5168, 0.4980, 0.4738])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
 
     def test_attention_slicing_forward_pass(self):
         components = self.get_dummy_components()
