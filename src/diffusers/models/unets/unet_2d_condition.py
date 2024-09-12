@@ -60,7 +60,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         super().__init__()
         self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
         self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0)
-        self.add_timestep_embedder = TimestepEmbedding(addition_time_embed_dim, time_embed_dim, act_fn=None)
+        self.add_timestep_embedder = TimestepEmbedding(addition_time_embed_dim, time_embed_dim)
 
     def forward(self, emb, encoder_hidden_states, added_cond_kwargs):
         conditioning_mask = added_cond_kwargs.get("conditioning_mask", None)
@@ -74,12 +74,11 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         if not masked_cross_attention:
             conditioning_mask = None
         cond_emb = self.cond_emb(y)
-        cond_emb = cond_emb + emb
 
         micro = added_cond_kwargs.get("micro_conditioning_scale", None)
         if micro is not None:
-            temb = self.add_time_proj(torch.tensor([micro], device=emb.device, dtype=emb.dtype))
-            temb_micro_conditioning = self.add_timestep_embedder(temb.to(emb.dtype))
+            temb = self.add_time_proj(torch.tensor([micro], device=cond_emb.device, dtype=cond_emb.dtype))
+            temb_micro_conditioning = self.add_timestep_embedder(temb.to(cond_emb.dtype))
 
         cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
         return cond_emb, conditioning_mask
