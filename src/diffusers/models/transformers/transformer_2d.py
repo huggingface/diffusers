@@ -528,7 +528,6 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         return hidden_states, encoder_hidden_states, timestep, embedded_timestep
 
     def _get_output_for_continuous_inputs(self, hidden_states, residual, batch_size, height, width, inner_dim):
-
         if self.proj_out is None:
             return hidden_states + residual
 
