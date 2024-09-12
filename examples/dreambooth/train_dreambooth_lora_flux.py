@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1597,6 +1597,7 @@ def main(args):
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
                             max_sequence_length=args.max_sequence_length,
+                            device=accelerator.device,
                             prompt=prompts,
                         )
                 else:
@@ -1606,6 +1607,7 @@ def main(args):
                             tokenizers=[None, None],
                             text_input_ids_list=[tokens_one, tokens_two],
                             max_sequence_length=args.max_sequence_length,
+                            device=accelerator.device,
                             prompt=args.instance_prompt,
                         )
 

@@ -281,9 +281,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_tuple).max()
         self.assertLess(max_diff, 1e-4)
 
-    def test_progress_bar(self):
-        super().test_progress_bar()
-
     def test_stable_diffusion_depth2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
