@@ -35,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_cogvideox import CogVideoXPipeline
+        from .pipeline_cogvideox_image2video import CogVideoXImageToVideoPipeline
         from .pipeline_cogvideox_video2video import CogVideoXVideoToVideoPipeline
 
 else:
