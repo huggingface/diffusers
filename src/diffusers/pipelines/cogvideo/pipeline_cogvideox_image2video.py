@@ -363,7 +363,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        
+
         assert image.ndim == 4
         image = image.unsqueeze(2)  # [B, C, F, H, W]
         print(image.shape)
@@ -755,7 +755,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                
+
                 latent_image_input = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
                 latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
                 print(latent_model_input.shape)
