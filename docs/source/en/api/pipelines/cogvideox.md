@@ -29,6 +29,10 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
 
+There are two models available that can be used with the CogVideoX pipeline:
+- [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b)
+- [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b)
+
 ## Inference
 
 Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
@@ -68,14 +72,25 @@ With torch.compile(): Average inference time: 76.27 seconds.
 
 ### Memory optimization
 
-CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script.
+CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script.
 
 - `pipe.enable_model_cpu_offload()`:
   - Without enabling cpu offloading, memory usage is `33 GB`
   - With enabling cpu offloading, memory usage is `19 GB`
+- `pipe.enable_sequential_cpu_offload()`:
+  - Similar to `enable_model_cpu_offload` but can significantly reduce memory usage at the cost of slow inference
+  - When enabled, memory usage is under `4 GB`
 - `pipe.vae.enable_tiling()`:
   - With enabling cpu offloading and tiling, memory usage is `11 GB`
 - `pipe.vae.enable_slicing()`
+
+### Quantized inference
+
+[torchao](https://github.com/pytorch/ao) and [optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the text encoder, transformer and VAE modules to lower the memory requirements. This makes it possible to run the model on a free-tier T4 Colab or lower VRAM GPUs!
+
+It is also worth noting that torchao quantization is fully compatible with [torch.compile](/optimization/torch2.0#torchcompile), which allows for much faster inference speed. Additionally, models can be serialized and stored in a quantized datatype to save disk space with torchao. Find examples and benchmarks in the gists below.
+- [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
+- [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
 
 ## CogVideoXPipeline
 
@@ -83,6 +98,12 @@ CogVideoX requires about 19 GB of GPU memory to decode 49 frames (6 seconds of v
   - all
   - __call__
 
+## CogVideoXVideoToVideoPipeline
+
+[[autodoc]] CogVideoXVideoToVideoPipeline
+  - all
+  - __call__
+
 ## CogVideoXPipelineOutput
 
-[[autodoc]] pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput
+[[autodoc]] pipelines.cogvideo.pipeline_output.CogVideoXPipelineOutput
