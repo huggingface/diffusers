@@ -744,6 +744,73 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
+        """
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation.
+            prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The image(s) to inpaint.
+            mask_image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The mask image(s) to use for inpainting. White pixels in the mask will be repainted, while black pixels
+                will be preserved.
+            masked_image_latents (`torch.FloatTensor`, *optional*):
+                Pre-generated masked image latents.
+            control_image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The ControlNet input condition. Image to control the generation.
+            height (`int`, *optional*, defaults to self.default_sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to self.default_sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image.
+            strength (`float`, *optional*, defaults to 0.6):
+                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1.
+            padding_mask_crop (`int`, *optional*):
+                The size of the padding to use when cropping the mask.
+            num_inference_steps (`int`, *optional*, defaults to 28):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process.
+            guidance_scale (`float`, *optional*, defaults to 7.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+            control_mode (`int` or `List[int]`, *optional*):
+                The mode for the ControlNet. If multiple ControlNets are used, this should be a list.
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original transformer.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or more [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) to
+                make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
+            joint_attention_kwargs (`dict`, *optional*):
+                Additional keyword arguments to be passed to the joint attention mechanism.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising step during the inference.
+            callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function.
+            max_sequence_length (`int`, *optional*, defaults to 512):
+                The maximum length of the sequence to be generated.
+
+        Returns:
+            [`~pipelines.flux.FluxPipelineOutput`] or `tuple`: [`~pipelines.flux.FluxPipelineOutput`] if `return_dict`
+            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
+            images.
+        """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
