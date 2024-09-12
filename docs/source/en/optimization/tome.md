@@ -28,7 +28,7 @@ You can use ToMe from the [`tomesd`](https://github.com/dbolya/tomesd) library w
   import tomesd
 
   pipeline = StableDiffusionPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
+        "Lykon/dreamshaper-8", torch_dtype=torch.float16, use_safetensors=True,
   ).to("cuda")
 + tomesd.apply_patch(pipeline, ratio=0.5)
 

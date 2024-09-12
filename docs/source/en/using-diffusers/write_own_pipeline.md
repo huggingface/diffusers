@@ -116,7 +116,7 @@ As you can see, this is already more complex than the DDPM pipeline which only c
 
 </Tip>
 
-Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint, and each component is stored in a separate subfolder:
+Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`Lykon/dreamshaper-8`](https://huggingface.co/Lykon/dreamshaper-8) checkpoint, and each component is stored in a separate subfolder:
 
 ```py
 >>> from PIL import Image

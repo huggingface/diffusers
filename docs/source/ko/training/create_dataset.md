@@ -86,7 +86,7 @@ dataset.push_to_hub("name_of_your_dataset", private=True)
 
 ```bash
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --pretrained_model_name_or_path="Lykon/dreamshaper-8" \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>
 ```

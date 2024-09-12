@@ -20,12 +20,12 @@ This is why it's important to get the most *computational* (speed) and *memory* 
 
 This tutorial walks you through how to generate faster and better with the [`DiffusionPipeline`].
 
-Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model:
+Begin by loading the [`Lykon/dreamshaper-8`](https://huggingface.co/Lykon/dreamshaper-8) model:
 
 ```python
 from diffusers import DiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "Lykon/dreamshaper-8"
 pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 
