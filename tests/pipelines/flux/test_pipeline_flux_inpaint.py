@@ -18,11 +18,11 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-@unittest.skipIf(torch_device == "mps", "Flux has a float64 operation which is not supported in MPS.")
 class FluxInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = FluxInpaintPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
     batch_params = frozenset(["prompt"])
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
