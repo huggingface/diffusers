@@ -46,22 +46,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import KolorsImg2ImgPipeline
-        >>> from diffusers.utils import load_image
-
-        >>> pipe = KolorsImg2ImgPipeline.from_pretrained(
-        ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
-        >>> url = (
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/kolors/bunny_source.png"
-        ... )
-
-
-        >>> init_image = load_image(url)
-        >>> prompt = "high quality image of a capybara wearing sunglasses. In the background of the image there are trees, poles, grass and other objects. At the bottom of the object there is the road., 8k, highly detailed."
-        >>> image = pipe(prompt, image=init_image).images[0]
+        
         ```
 """
 
