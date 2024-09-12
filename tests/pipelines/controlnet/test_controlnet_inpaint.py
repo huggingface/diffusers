@@ -459,7 +459,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None, controlnet=controlnet
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -504,7 +504,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint")
 
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "Jiali/stable-diffusion-1.5", safety_checker=None, controlnet=controlnet
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
