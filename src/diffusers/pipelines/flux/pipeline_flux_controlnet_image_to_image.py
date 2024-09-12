@@ -2,7 +2,6 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
 import torch
 from transformers import (
     CLIPTextModel,
@@ -10,8 +9,6 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
-
-from diffusers.models.attention_processor import AttnProcessor2_0
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
@@ -45,12 +42,21 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import FluxControlNetImg2ImgPipeline
+        >>> from diffusers import FluxControlNetImg2ImgPipeline, FluxControlNetModel
         >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxControlNetImg2ImgPipeline.from_pretrained(
-        ...     "black-forest-labs/FLUX.1-controlnet-canny", torch_dtype=torch.bfloat16
+        >>> device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        >>> controlnet = FluxControlNetModel.from_pretrained(
+        ...     "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
         ... )
+
+        >>> pipe = FluxControlNetImg2ImgPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, torch_dtype=torch.float16
+        ... )
+
+        >>> pipe.text_encoder.to(torch.float16)
+        >>> pipe.controlnet.to(torch.float16)
         >>> pipe.to("cuda")
 
         >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
@@ -65,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         ...     control_image=control_image,
         ...     controlnet_conditioning_scale=0.6,
         ...     strength=0.7,
-        ...     num_inference_steps=28,
+        ...     num_inference_steps=2,
         ...     guidance_scale=3.5,
         ... ).images[0]
         >>> image.save("flux_controlnet_img2img.png")
@@ -132,6 +138,8 @@ def retrieve_timesteps(
     Returns:
         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
+
+    Examples:
     """
     if timesteps is not None and sigmas is not None:
         raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
@@ -400,12 +408,9 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         self,
         prompt,
         prompt_2,
-        image,
         strength,
         height,
         width,
-        control_image,
-        control_mode,
         callback_on_step_end_tensor_inputs,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
@@ -450,42 +455,6 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
-
-        # Check `image`
-        is_compiled = hasattr(torch.functional.F, "scaled_dot_product_attention") and isinstance(
-            self.transformer.modulators.attn1.processor,
-            AttnProcessor2_0,
-        )
-        if (
-            isinstance(image, (torch.Tensor, PIL.Image.Image, np.ndarray))
-            and isinstance(control_image, (torch.Tensor, PIL.Image.Image, np.ndarray))
-            and not is_compiled
-        ):
-            raise TypeError(
-                f"image and control_image should be passed as separate arguments. But got {type(image)} and {type(control_image)}."
-            )
-
-        # Check `control_image`
-        if isinstance(self.controlnet, FluxControlNetModel):
-            self.check_image(control_image, prompt, prompt_embeds)
-        elif isinstance(self.controlnet, FluxMultiControlNetModel):
-            if not isinstance(control_image, list):
-                raise TypeError("For multiple controlnets: `control_image` must be type `list`")
-            if len(control_image) != len(self.controlnet.nets):
-                raise ValueError(
-                    "For multiple controlnets: `control_image` must have the same length as the number of controlnets."
-                )
-            for image_ in control_image:
-                self.check_image(image_, prompt, prompt_embeds)
-        else:
-            assert False
-
-        # Check `control_mode`
-        if control_mode is not None and isinstance(self.controlnet, FluxMultiControlNetModel):
-            if not isinstance(control_mode, list):
-                raise ValueError("You have multiple ControlNets, but only provided one control mode.")
-            if len(control_mode) != len(self.controlnet.nets):
-                raise ValueError("Number of control modes does not match the number of ControlNets.")
 
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
@@ -711,6 +680,8 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             [`~pipelines.flux.FluxPipelineOutput`] or `tuple`: [`~pipelines.flux.FluxPipelineOutput`] if `return_dict`
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
+
+        Examples:
         """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -718,12 +689,9 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         self.check_inputs(
             prompt,
             prompt_2,
-            image,
             strength,
             height,
             width,
-            control_image,
-            control_mode,
             callback_on_step_end_tensor_inputs,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -873,15 +841,17 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        guidance = torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
-        guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                guidance = (
+                    torch.tensor([guidance_scale], device=device) if self.controlnet.config.guidance_embeds else None
+                )
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
                     hidden_states=latents,
@@ -897,6 +867,11 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
+
+                guidance = (
+                    torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
+                )
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
