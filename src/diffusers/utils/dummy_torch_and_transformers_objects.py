@@ -272,7 +272,7 @@ class CLIPImageProjection(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class CogVideoXPipeline(metaclass=DummyObject):
+class CogVideoXImageToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -287,7 +287,7 @@ class CogVideoXPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class CogVideoXImageToVideoPipeline(metaclass=DummyObject):
+class CogVideoXPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
