@@ -1,11 +1,10 @@
 name: Fast GPU Tests on main
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-      - "v*.*.*-release"
-      - "v*.*.*-patch"
     paths:
       - "src/diffusers/**.py"
       - "examples/**.py"

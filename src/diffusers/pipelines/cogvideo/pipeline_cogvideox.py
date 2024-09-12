@@ -15,7 +15,6 @@
 
 import inspect
 import math
-from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -26,9 +25,10 @@ from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import BaseOutput, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
+from .pipeline_output import CogVideoXPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -134,21 +134,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
-
-@dataclass
-class CogVideoXPipelineOutput(BaseOutput):
-    r"""
-    Output class for CogVideo pipelines.
-
-    Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-            List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
-            denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
-            `(batch_size, num_frames, channels, height, width)`.
-    """
-
-    frames: torch.Tensor
 
 
 class CogVideoXPipeline(DiffusionPipeline):
@@ -463,7 +448,6 @@ class CogVideoXPipeline(DiffusionPipeline):
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
             temporal_size=num_frames,
-            use_real=True,
         )
 
         freqs_cos = freqs_cos.to(device=device)

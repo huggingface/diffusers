@@ -1,0 +1,389 @@
+# Duplicate workflow to push_tests.yml that is meant to run on release/patch branches as a final check
+# Creating a duplicate workflow here is simpler than adding complex path/branch parsing logic to push_tests.yml
+# Needs to be updated if push_tests.yml updated
+name: (Release) Fast GPU Tests on main
+
+on:
+  push:
+    branches:
+      - "v*.*.*-release"
+      - "v*.*.*-patch"
+
+env:
+  DIFFUSERS_IS_CI: yes
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 600
+  PIPELINE_USAGE_CUTOFF: 50000
+
+jobs:
+  setup_torch_cuda_pipeline_matrix:
+    name: Setup Torch Pipelines CUDA Slow Tests Matrix
+    runs-on:
+      group: aws-general-8-plus
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+    outputs:
+      pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Fetch Pipeline Matrix
+        id: fetch_pipeline_matrix
+        run: |
+          matrix=$(python utils/fetch_torch_cuda_pipeline_test_matrix.py)
+          echo $matrix
+          echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
+      - name: Pipeline Tests Artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: test-pipelines.json
+          path: reports
+
+  torch_pipelines_cuda_tests:
+    name: Torch Pipelines CUDA Tests
+    needs: setup_torch_cuda_pipeline_matrix
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "16gb" --ipc host --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: |
+          nvidia-smi
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -s -v -k "not Flax and not Onnx" \
+            --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
+            tests/pipelines/${{ matrix.module }}
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: pipeline_${{ matrix.module }}_test_reports
+          path: reports
+
+  torch_cuda_tests:
+    name: Torch CUDA Tests
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "16gb" --ipc host --gpus 0
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        module: [models, schedulers, lora, others, single_file]
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run PyTorch CUDA tests
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+        CUBLAS_WORKSPACE_CONFIG: :16:8
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_torch_cuda \
+          tests/${{ matrix.module }}
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_torch_cuda_stats.txt
+        cat reports/tests_torch_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: torch_cuda_test_reports
+        path: reports
+
+  flax_tpu_tests:
+    name: Flax TPU Tests
+    runs-on: docker-tpu
+    container:
+      image: diffusers/diffusers-flax-tpu
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --privileged
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run slow Flax TPU tests
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -m pytest -n 0 \
+          -s -v -k "Flax" \
+          --make-reports=tests_flax_tpu \
+          tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_flax_tpu_stats.txt
+        cat reports/tests_flax_tpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: flax_tpu_test_reports
+        path: reports
+
+  onnx_cuda_tests:
+    name: ONNX CUDA Tests
+    runs-on:
+      group: aws-g4dn-2xlarge
+    container:
+      image: diffusers/diffusers-onnxruntime-cuda
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run slow ONNXRuntime CUDA tests
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_onnx_cuda \
+          tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_onnx_cuda_stats.txt
+        cat reports/tests_onnx_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: onnx_cuda_test_reports
+        path: reports
+
+  run_torch_compile_tests:
+    name: PyTorch Compile CUDA tests
+
+    runs-on:
+      group: aws-g4dn-2xlarge
+
+    container:
+      image: diffusers/diffusers-pytorch-compile-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+    - name: Environment
+      run: |
+        python utils/print_env.py
+    - name: Run example tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        RUN_COMPILE: yes
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_compile_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: torch_compile_test_reports
+        path: reports
+
+  run_xformers_tests:
+    name: PyTorch xformers CUDA tests
+
+    runs-on:
+      group: aws-g4dn-2xlarge
+
+    container:
+      image: diffusers/diffusers-pytorch-xformers-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+    - name: Environment
+      run: |
+        python utils/print_env.py
+    - name: Run example tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "xformers" --make-reports=tests_torch_xformers_cuda tests/
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_xformers_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: torch_xformers_test_reports
+        path: reports
+
+  run_examples_tests:
+    name: Examples PyTorch CUDA tests on Ubuntu
+
+    runs-on:
+      group: aws-g4dn-2xlarge
+
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test,training]
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run example tests on GPU
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install timm
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/examples_torch_cuda_stats.txt
+        cat reports/examples_torch_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: examples_test_reports
+        path: reports
