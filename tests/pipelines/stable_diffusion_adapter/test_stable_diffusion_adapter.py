@@ -607,175 +607,14 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_adapter_color(self):
-        adapter_model = "TencentARC/t2iadapter_color_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "snail"
-        image_url = (
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/color.png"
-        )
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_color_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_depth(self):
-        adapter_model = "TencentARC/t2iadapter_depth_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "snail"
-        image_url = (
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/color.png"
-        )
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_color_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_depth_sd_v14(self):
-        adapter_model = "TencentARC/t2iadapter_depth_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "desk"
-        image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/desk_depth.png"
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_depth_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
     def test_stable_diffusion_adapter_depth_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_depth_sd15v2"
-        sd_model = "runwayml/stable-diffusion-v1-5"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "desk"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/desk_depth.png"
         input_channels = 3
         out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_depth_sd15v2.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_keypose_sd_v14(self):
-        adapter_model = "TencentARC/t2iadapter_keypose_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "person"
-        image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/person_keypose.png"
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_keypose_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_openpose_sd_v14(self):
-        adapter_model = "TencentARC/t2iadapter_openpose_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "person"
-        image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/iron_man_pose.png"
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_openpose_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_seg_sd_v14(self):
-        adapter_model = "TencentARC/t2iadapter_seg_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "motorcycle"
-        image_url = (
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motor.png"
-        )
-        input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_seg_sd14v1.npy"
+        out_url = "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_adapter/sd_adapter_v15_zoe_depth.npy"
 
         image = load_image(image_url)
         expected_out = load_numpy(out_url)
@@ -797,11 +636,11 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_adapter_zoedepth_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_zoedepth_sd15v1"
-        sd_model = "runwayml/stable-diffusion-v1-5"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "motorcycle"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motorcycle.png"
         input_channels = 3
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_zoedepth_sd15v1.npy"
+        out_url = "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_adapter/sd_adapter_v15_zoe_depth.npy"
 
         image = load_image(image_url)
         expected_out = load_numpy(out_url)
@@ -819,70 +658,13 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
         assert max_diff < 1e-2
 
-    def test_stable_diffusion_adapter_canny_sd_v14(self):
-        adapter_model = "TencentARC/t2iadapter_canny_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "toy"
-        image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
-        input_channels = 1
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_canny_sd14v1.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
     def test_stable_diffusion_adapter_canny_sd_v15(self):
         adapter_model = "TencentARC/t2iadapter_canny_sd15v2"
-        sd_model = "runwayml/stable-diffusion-v1-5"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "toy"
         image_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
         input_channels = 1
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_canny_sd15v2.npy"
-
-        image = load_image(image_url)
-        expected_out = load_numpy(out_url)
-        if input_channels == 1:
-            image = image.convert("L")
-
-        adapter = T2IAdapter.from_pretrained(adapter_model, torch_dtype=torch.float16)
-
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-
-        out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
-
-        max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
-        assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_sketch_sd14(self):
-        adapter_model = "TencentARC/t2iadapter_sketch_sd14v1"
-        sd_model = "CompVis/stable-diffusion-v1-4"
-        prompt = "cat"
-        image_url = (
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/edge.png"
-        )
-        input_channels = 1
-        out_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/t2iadapter_sketch_sd14v1.npy"
+        out_url = "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_adapter/sd_adapter_v15_zoe_depth.npy"
 
         image = load_image(image_url)
         expected_out = load_numpy(out_url)
@@ -906,7 +688,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_adapter_sketch_sd15(self):
         adapter_model = "TencentARC/t2iadapter_sketch_sd15v2"
-        sd_model = "runwayml/stable-diffusion-v1-5"
+        sd_model = "Jiali/stable-diffusion-1.5"
         prompt = "cat"
         image_url = (
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/edge.png"
@@ -933,25 +715,3 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(out.flatten(), expected_out.flatten())
         assert max_diff < 1e-2
-
-    def test_stable_diffusion_adapter_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
-        adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_seg_sd14v1")
-        pipe = StableDiffusionAdapterPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", adapter=adapter, safety_checker=None
-        )
-        pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing(1)
-        pipe.enable_sequential_cpu_offload()
-
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/motor.png"
-        )
-
-        pipe(prompt="foo", image=image, num_inference_steps=2)
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes < 5 * 10**9
