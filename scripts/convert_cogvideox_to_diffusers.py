@@ -241,7 +241,7 @@ if __name__ == "__main__":
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
 
-    text_encoder_id = "/share/official_pretrains/hf_home/t5-v1_1-xxl"
+    text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
     # Apparently, the conversion does not work any more without this :shrug:
@@ -263,18 +263,17 @@ if __name__ == "__main__":
         }
     )
     if args.i2v:
-        pipe = CogVideoXImageToVideoPipeline(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            image_encoder=vae,
-            vae=vae,
-            transformer=transformer,
-            scheduler=scheduler,
-        )
+        pipeline_cls = CogVideoXImageToVideoPipeline
     else:
-        pipe = CogVideoXPipeline(
-            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
-        )
+        pipeline_cls = CogVideoXPipeline
+
+    pipe = pipeline_cls(
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        vae=vae,
+        transformer=transformer,
+        scheduler=scheduler,
+    )
 
     if args.fp16:
         pipe = pipe.to(dtype=torch.float16)
