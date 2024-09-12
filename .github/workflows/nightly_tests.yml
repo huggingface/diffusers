@@ -43,7 +43,7 @@ jobs:
 
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: test-pipelines.json
           path: reports
@@ -95,7 +95,7 @@ jobs:
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
@@ -169,7 +169,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: torch_${{ matrix.module }}_cuda_test_reports
         path: reports
@@ -225,7 +225,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: flax_tpu_test_reports
         path: reports
@@ -280,7 +280,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.config.report }}_test_reports
         path: reports
@@ -340,7 +340,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@v2
+#        uses: actions/upload-artifact@v4
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports
@@ -396,7 +396,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@v2
+#        uses: actions/upload-artifact@v4
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports
