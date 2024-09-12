@@ -4,12 +4,13 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import (AutoencoderKLCogVideoX,
-                       CogVideoXDDIMScheduler,
-                       CogVideoXPipeline,
-                       CogVideoXImageToVideoPipeline,
-                       CogVideoXTransformer3DModel
-                       )
+from diffusers import (
+    AutoencoderKLCogVideoX,
+    CogVideoXDDIMScheduler,
+    CogVideoXImageToVideoPipeline,
+    CogVideoXPipeline,
+    CogVideoXTransformer3DModel,
+)
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -95,7 +96,7 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "freqs_cos": remove_keys_inplace,
     "position_embedding": remove_keys_inplace,
     # TODO  zRzRzRzRzRzRzR: really need to remove?
-    "pos_embedding": remove_keys_inplace
+    "pos_embedding": remove_keys_inplace,
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -134,12 +135,12 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 
 
 def convert_transformer(
-        ckpt_path: str,
-        num_layers: int,
-        num_attention_heads: int,
-        use_rotary_positional_embeddings: bool,
-        i2v: bool,
-        dtype: torch.dtype,
+    ckpt_path: str,
+    num_layers: int,
+    num_attention_heads: int,
+    use_rotary_positional_embeddings: bool,
+    i2v: bool,
+    dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -152,7 +153,7 @@ def convert_transformer(
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
-        new_key = key[len(PREFIX_KEY):]
+        new_key = key[len(PREFIX_KEY) :]
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_inplace(original_state_dict, key, new_key)
@@ -268,15 +269,11 @@ if __name__ == "__main__":
             image_encoder=vae,
             vae=vae,
             transformer=transformer,
-            scheduler=scheduler
+            scheduler=scheduler,
         )
     else:
         pipe = CogVideoXPipeline(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            vae=vae,
-            transformer=transformer,
-            scheduler=scheduler
+            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
     if args.fp16:
