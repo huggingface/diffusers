@@ -465,8 +465,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
+        # Note: we use `-1` instead of `channels`:
+        #   - It is okay to use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
+        #   - However, for CogVideoX-5b-I2V, input image (number of input channels is twice the output channels)
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:

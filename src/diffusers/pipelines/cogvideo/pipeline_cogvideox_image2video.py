@@ -338,7 +338,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        image: Optional[torch.Tensor] = None,
+        image: torch.Tensor,
         batch_size: int = 1,
         num_channels_latents: int = 16,
         num_frames: int = 13,
@@ -363,47 +363,46 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
+        
+        assert image.ndim == 4
+        image = image.unsqueeze(2)  # [B, C, F, H, W]
+        print(image.shape)
+
+        if isinstance(generator, list):
+            if len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
+            ]
+        else:
+            image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
+
+        image_latents = torch.cat(image_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
+        image_latents = self.vae.config.scaling_factor * image_latents
+
+        padding_shape = (
+            batch_size,
+            num_frames - 1,
+            num_channels_latents,
+            height // self.vae_scale_factor_spatial,
+            width // self.vae_scale_factor_spatial,
+        )
+        latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
+        print(image_latents.shape, latent_padding.shape)
+        image_latents = torch.cat([image_latents, latent_padding], dim=1)
 
         if latents is None:
-            assert image.ndim == 4
-            image = image.unsqueeze(2)  # [B, C, F, H, W]
-            print(image.shape)
-
-            if isinstance(generator, list):
-                if len(generator) != batch_size:
-                    raise ValueError(
-                        f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                        f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                    )
-
-                init_latents = [
-                    retrieve_latents(self.vae.encode(image[i].unsqueeze(0)), generator[i]) for i in range(batch_size)
-                ]
-            else:
-                init_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
-
-            init_latents = torch.cat(init_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
-            init_latents = self.vae.config.scaling_factor * init_latents
-
-            padding_shape = (
-                batch_size,
-                num_frames - 1,
-                num_channels_latents,
-                height // self.vae_scale_factor_spatial,
-                width // self.vae_scale_factor_spatial,
-            )
-            latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
-            print(init_latents.shape, latent_padding.shape)
-            init_latents = torch.cat([init_latents, latent_padding], dim=1)
-
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            latents = torch.cat([noise, init_latents], dim=2)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-        return latents
+        return latents, image_latents
 
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.decode_latents
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
@@ -446,7 +445,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         prompt,
         height,
         width,
-        strength,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
         video=None,
@@ -456,9 +454,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -567,12 +562,10 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         num_frames: int = 49,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
-        strength: float = 0.8,
         guidance_scale: float = 6,
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
-        noise_aug_strength: float = 0.02,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -614,8 +607,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
-            strength (`float`, *optional*, defaults to 0.8):
-                Higher strength leads to more differences between original video and generated video.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -682,7 +673,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             prompt,
             height,
             width,
-            strength,
             negative_prompt,
             callback_on_step_end_tensor_inputs,
             prompt_embeds,
@@ -730,7 +720,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         )
 
         latent_channels = self.transformer.config.in_channels // 2
-        latents = self.prepare_latents(
+        latents, image_latents = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
             latent_channels,
@@ -765,6 +755,10 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                
+                latent_image_input = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
+                latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
+                print(latent_model_input.shape)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
