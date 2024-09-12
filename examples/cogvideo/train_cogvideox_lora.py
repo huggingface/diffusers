@@ -1306,7 +1306,7 @@ def main(args):
                 )
 
                 # Sample noise that will be added to the latents
-                noise = torch.rand_like(model_input)
+                noise = torch.randn_like(model_input)
                 batch_size, num_frames, num_channels, height, width = model_input.shape
 
                 # Sample a random timestep for each image
