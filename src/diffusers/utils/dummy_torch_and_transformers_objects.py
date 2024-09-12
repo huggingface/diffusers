@@ -286,6 +286,7 @@ class CogVideoXPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class CogVideoXImageToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -299,6 +300,7 @@ class CogVideoXImageToVideoPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
+
 
 class CogVideoXVideoToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]

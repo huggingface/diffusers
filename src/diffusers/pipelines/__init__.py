@@ -141,7 +141,7 @@ else:
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
-        "CogVideoXVideoToVideoPipeline"
+        "CogVideoXVideoToVideoPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
