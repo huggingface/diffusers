@@ -1376,7 +1376,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
+        model = self.get_unet_model(model_id="Jiali/stable-diffusion-1.5")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1404,7 +1404,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
+        model = self.get_unet_model(model_id="Jiali/stable-diffusion-1.5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
@@ -1433,7 +1433,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
+        model = self.get_unet_model(model_id="botp/stable-diffusion-v1-5-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1461,7 +1461,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
+        model = self.get_unet_model(model_id="botp/stable-diffusion-v1-5-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 

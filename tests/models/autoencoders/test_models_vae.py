@@ -1051,7 +1051,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_sd(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
+        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", vae=vae, safety_checker=None)
         pipe.to(torch_device)
 
         out = pipe(
@@ -1099,7 +1099,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "Jiali/stable-diffusion-1.5",
             torch_dtype=torch.float16,
             vae=vae,
             safety_checker=None,
@@ -1124,7 +1124,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
     def test_vae_tiling(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+            "Jiali/stable-diffusion-1.5", vae=vae, safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

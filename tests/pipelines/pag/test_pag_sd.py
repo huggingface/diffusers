@@ -283,7 +283,7 @@ class StableDiffusionPAGPipelineFastTests(
 @require_torch_gpu
 class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusionPAGPipeline
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "Jiali/stable-diffusion-1.5"
 
     def setUp(self):
         super().setUp()

@@ -407,7 +407,7 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "Jiali/stable-diffusion-1.5", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)

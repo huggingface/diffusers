@@ -40,7 +40,7 @@ class TextToVideoZeroPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_full_model(self):
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "Jiali/stable-diffusion-1.5"
         pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         generator = torch.Generator(device="cuda").manual_seed(0)
