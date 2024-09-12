@@ -366,7 +366,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
         assert image.ndim == 4
         image = image.unsqueeze(2)  # [B, C, F, H, W]
-        print(image.shape)
 
         if isinstance(generator, list):
             if len(generator) != batch_size:
@@ -392,7 +391,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             width // self.vae_scale_factor_spatial,
         )
         latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
-        print(image_latents.shape, latent_padding.shape)
         image_latents = torch.cat([image_latents, latent_padding], dim=1)
 
         if latents is None:
@@ -758,7 +756,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
                 latent_image_input = torch.cat([image_latents] * 2) if do_classifier_free_guidance else image_latents
                 latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
-                print(latent_model_input.shape)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
