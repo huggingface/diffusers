@@ -42,20 +42,16 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import CogVideoXDPMScheduler, CogVideoXImageToVideoPipeline
-        >>> from diffusers.utils import load_image, export_to_video
+        >>> from diffusers import CogVideoXImageToVideoPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
-        >>> # Models: "THUDM/CogVideoX-5b-I2V"
         >>> pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> pipe.scheduler = CogVideoXDPMScheduler.from_config(pipe.scheduler.config)
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd-docstring-example.jpeg"
-        ... )
-        >>> image = image.resize((720, 480))
-        >>> video = pipe(image=image, prompt=prompt, strength=0.8, guidance_scale=6, num_inference_steps=50).frames[0]
-        >>> export_to_video(frames, "output.mp4", fps=8)
+        >>> prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+        >>> image = load_image("astronaut.jpg")  # TODO: Add link to 720x480 image from HF Docs repo
+        >>> video = pipe(image, prompt, use_dynamic_cfg=True)
+        >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
 """
 
