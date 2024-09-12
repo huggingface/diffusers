@@ -367,6 +367,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         if latents is None:
             assert image.ndim == 4
             image = image.unsqueeze(2)  # [B, C, F, H, W]
+            print(image.shape)
 
             if isinstance(generator, list):
                 if len(generator) != batch_size:
@@ -392,6 +393,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 width // self.vae_scale_factor_spatial,
             )
             latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
+            print(init_latents.shape, latent_padding.shape)
             init_latents = torch.cat([init_latents, latent_padding], dim=1)
 
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -723,10 +725,11 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
-        image = self.video_processor.preprocess(image, height=height, width=width).to(device)
-        image = image.unsqueeze(2)  # [B, C, F, H, W]
+        image = self.video_processor.preprocess(image, height=height, width=width).to(
+            device, dtype=prompt_embeds.dtype
+        )
 
-        latent_channels = self.transformer.config.in_channels
+        latent_channels = self.transformer.config.in_channels // 2
         latents = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
