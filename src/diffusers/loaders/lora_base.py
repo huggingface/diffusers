@@ -699,9 +699,10 @@ class LoraBaseMixin:
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
                             if hasattr(module, "lora_magnitude_vector") and module.lora_magnitude_vector is not None:
-                                module.lora_magnitude_vector[adapter_name] = module.lora_magnitude_vector[
-                                    adapter_name
-                                ].to(device)
+                                if adapter_name in module.lora_magnitude_vector:
+                                    module.lora_magnitude_vector[adapter_name] = module.lora_magnitude_vector[
+                                        adapter_name
+                                    ].to(device)
 
     @staticmethod
     def pack_weights(layers, prefix):
