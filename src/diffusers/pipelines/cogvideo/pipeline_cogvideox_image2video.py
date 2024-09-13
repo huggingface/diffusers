@@ -17,11 +17,11 @@ import inspect
 import math
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import PIL
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -49,7 +49,9 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
-        >>> image = load_image("astronaut.jpg")  # TODO: Add link to 720x480 image from HF Docs repo
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        ... )
         >>> video = pipe(image, prompt, use_dynamic_cfg=True)
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
@@ -548,7 +550,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
+        image: PipelineImageInput,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 480,
@@ -576,8 +578,8 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`List[PIL.Image.Image]`):
-                The input video to condition the generation on. Must be a list of images/frames of the video.
+            image (`PipelineImageInput`):
+                The input video to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
