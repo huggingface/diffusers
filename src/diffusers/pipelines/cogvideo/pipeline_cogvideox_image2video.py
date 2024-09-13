@@ -18,6 +18,7 @@ import math
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import PIL
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -431,6 +432,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
+        image,
         prompt,
         height,
         width,
@@ -441,6 +443,16 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
+        if (
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, list)
+        ):
+            raise ValueError(
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                f" {type(image)}"
+            )
+        
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -659,6 +671,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
+            image,
             prompt,
             height,
             width,
