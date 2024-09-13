@@ -121,8 +121,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_${{ matrix.lib-versions }}/failures_short.txt
-        cat reports/tests_models_lora_${{ matrix.lib-versions }}/failures_short.txt
+        cat reports/tests_${{ matrix.lib-versions }}_failures_short.txt
+        cat reports/tests_models_lora_${{ matrix.lib-versions }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}

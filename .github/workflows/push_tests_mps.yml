@@ -65,7 +65,7 @@ jobs:
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_mps/failures_short.txt
+      run: cat reports/tests_torch_mps_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}

@@ -93,8 +93,8 @@ jobs:
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
-          cat reports/tests_pipeline_${{ matrix.module }}_cuda/stats.txt
-          cat reports/tests_pipeline_${{ matrix.module }}_cuda/failures_short.txt
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -148,8 +148,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_torch_cuda_${{ matrix.module }}/stats.txt
-        cat reports/tests_torch_cuda_${{ matrix.module }}/failures_short.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_stats.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -195,8 +195,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_flax_tpu/stats.txt
-        cat reports/tests_flax_tpu/failures_short.txt
+        cat reports/tests_flax_tpu_stats.txt
+        cat reports/tests_flax_tpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -243,8 +243,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_onnx_cuda/stats.txt
-        cat reports/tests_onnx_cuda/failures_short.txt
+        cat reports/tests_onnx_cuda_stats.txt
+        cat reports/tests_onnx_cuda_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -287,7 +287,7 @@ jobs:
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_compile_cuda/failures_short.txt
+      run: cat reports/tests_torch_compile_cuda_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -329,7 +329,7 @@ jobs:
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "xformers" --make-reports=tests_torch_xformers_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_xformers_cuda/failures_short.txt
+      run: cat reports/tests_torch_xformers_cuda_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
@@ -379,8 +379,8 @@ jobs:
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/examples_torch_cuda/stats.txt
-        cat reports/examples_torch_cuda/failures_short.txt
+        cat reports/examples_torch_cuda_stats.txt
+        cat reports/examples_torch_cuda_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
