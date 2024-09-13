@@ -1507,18 +1507,7 @@ def main(args):
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
         text_encoder_one.add_adapter(text_lora_config)
-    # if we use textual inversion, we freeze all parameters except for the token embeddings
-    # in text encoder
-    elif args.train_text_encoder_ti:
-        text_lora_parameters_one = []  # for now only for CLIP
-        for name, param in text_encoder_one.named_parameters():
-            if "token_embedding" in name:
-                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-                param.data = param.to(dtype=torch.float32)
-                param.requires_grad = True
-                text_lora_parameters_one.append(param)
-            else:
-                param.requires_grad = False
+
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1619,6 +1608,18 @@ def main(args):
 
     if args.train_text_encoder:
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+    # if we use textual inversion, we freeze all parameters except for the token embeddings
+    # in text encoder
+    elif args.train_text_encoder_ti:
+        text_lora_parameters_one = []  # for now only for CLIP
+        for name, param in text_encoder_one.named_parameters():
+            if "token_embedding" in name:
+                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+                param.data = param.to(dtype=torch.float32)
+                param.requires_grad = True
+                text_lora_parameters_one.append(param)
+            else:
+                param.requires_grad = False
 
     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
@@ -1693,10 +1694,9 @@ def main(args):
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
             )
-            # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
+            # changes the learning rate of text_encoder_parameters_one to be
             # --learning_rate
             params_to_optimize[1]["lr"] = args.learning_rate
-            params_to_optimize[2]["lr"] = args.learning_rate
 
         optimizer = optimizer_class(
             params_to_optimize,
@@ -1960,7 +1960,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             if pivoted:
                 # stopping optimization of text_encoder params
-                # re setting the optimizer to optimize only on unet params
+                # re setting the optimizer to optimize only on transformer params
                 optimizer.param_groups[1]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
