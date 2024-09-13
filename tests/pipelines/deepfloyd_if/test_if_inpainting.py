@@ -72,7 +72,6 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
         super().test_save_load_float16(expected_max_diff=1e-1)
