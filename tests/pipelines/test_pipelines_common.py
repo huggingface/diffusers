@@ -1201,6 +1201,7 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
+    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1237,6 +1238,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
+    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
