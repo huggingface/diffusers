@@ -650,6 +650,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "commit_hash": commit_hash,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
+        # In case the index file was not found we still have to consider the legacy format.
+        # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
         if index_file is not None and index_file.is_file():

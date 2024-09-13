@@ -728,6 +728,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     filenames.append(os.path.basename(file))
 
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+            # a deprecation warning if detected.
             if len(variant_filenames) > 0 and _check_legacy_sharding_format(filenames, variant):
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
                 deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
@@ -1256,6 +1258,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if not local_files_only:
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+            # a deprecation warning if detected.
             if len(variant_filenames) > 0 and _check_legacy_sharding_format(filenames, variant):
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
                 deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
