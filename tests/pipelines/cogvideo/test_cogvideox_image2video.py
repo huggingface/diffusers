@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import inspect
 import unittest
 
@@ -21,8 +22,12 @@ from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -321,3 +326,48 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.allclose(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
+
+
+@unittest.skip("The model 'THUDM/CogVideoX-5b-I2V' is not public yet.")
+@slow
+@require_torch_gpu
+class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):
+    prompt = "A painting of a squirrel eating a burger."
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_cogvideox(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", torch_dtype=torch.bfloat16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = self.prompt
+        image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        )
+
+        videos = pipe(
+            image=image,
+            prompt=prompt,
+            height=480,
+            width=720,
+            num_frames=16,
+            generator=generator,
+            num_inference_steps=2,
+            output_type="pt",
+        ).frames
+
+        video = videos[0]
+        expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
+
+        max_diff = numpy_cosine_similarity_distance(video, expected_video)
+        assert max_diff < 1e-3, f"Max diff is too high. got {video}"
