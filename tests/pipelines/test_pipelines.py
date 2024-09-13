@@ -559,7 +559,7 @@ class DownloadTests(unittest.TestCase):
             for variant in ["fp16", None]:
                 with tempfile.TemporaryDirectory() as tmpdirname:
                     tmpdirname = DiffusionPipeline.download(
-                        "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds",
+                        "hf-internal-testing/tiny-stable-diffusion-pipe-variants-right-format",
                         safety_checker=None,
                         cache_dir=tmpdirname,
                         variant=variant,
@@ -572,8 +572,9 @@ class DownloadTests(unittest.TestCase):
                     # Check for `model_ext` and `variant`.
                     model_ext = ".safetensors" if use_safetensors else ".bin"
                     unexpected_ext = ".bin" if use_safetensors else ".safetensors"
+                    model_files = [f for f in files if f.endswith(model_ext)]
                     assert not any(f.endswith(unexpected_ext) for f in files)
-                    assert all(variant in f for f in files if f.endswith(model_ext) and variant is not None)
+                    assert all(variant in f for f in model_files if f.endswith(model_ext) and variant is not None)
 
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
