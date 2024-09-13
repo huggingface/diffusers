@@ -342,7 +342,7 @@ def require_non_cpu(test_case):
     Decorator marking a test that requires a hardware accelerator backend. These tests are skipped when there are no
     hardware accelerator available.
     """
-    return unittest.skipUnless(torch_device != "cpu", "test requires a GPU")(test_case)
+    return unittest.skipUnless(torch_device != "cpu", "test requires a hardware accelerator")(test_case)
 
 
 def require_torchsde(test_case):
