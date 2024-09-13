@@ -76,7 +76,7 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -127,7 +127,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
 
     - name: Environment
@@ -177,7 +177,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -225,7 +225,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
