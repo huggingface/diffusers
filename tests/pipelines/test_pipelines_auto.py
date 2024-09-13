@@ -40,7 +40,7 @@ from diffusers.utils.testing_utils import slow
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
     [
-        ("stable-diffusion", "runwayml/stable-diffusion-v1-5"),
+        ("stable-diffusion", "Jiali/stable-diffusion-1.5"),
         ("if", "DeepFloyd/IF-I-XL-v1.0"),
         ("kandinsky", "kandinsky-community/kandinsky-2-1"),
         ("kandinsky22", "kandinsky-community/kandinsky-2-2-decoder"),
@@ -235,8 +235,31 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe = AutoPipelineForImage2Image.from_pretrained(repo)
         assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
 
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        pipe_control = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet)
+        assert pipe_control.__class__.__name__ == "StableDiffusionXLControlNetImg2ImgPipeline"
+
         pipe_pag = AutoPipelineForImage2Image.from_pretrained(repo, enable_pag=True)
         assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        pipe_control_pag = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet, enable_pag=True)
+        assert pipe_control_pag.__class__.__name__ == "StableDiffusionXLControlNetPAGImg2ImgPipeline"
+
+    def test_from_pretrained_img2img_refiner(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-refiner-pipe"
+
+        pipe = AutoPipelineForImage2Image.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLImg2ImgPipeline"
+
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        pipe_control = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet)
+        assert pipe_control.__class__.__name__ == "StableDiffusionXLControlNetImg2ImgPipeline"
+
+        pipe_pag = AutoPipelineForImage2Image.from_pretrained(repo, enable_pag=True)
+        assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGImg2ImgPipeline"
+
+        pipe_control_pag = AutoPipelineForImage2Image.from_pretrained(repo, controlnet=controlnet, enable_pag=True)
+        assert pipe_control_pag.__class__.__name__ == "StableDiffusionXLControlNetPAGImg2ImgPipeline"
 
     def test_from_pipe_pag_img2img(self):
         # test from tableDiffusionXLPAGImg2ImgPipeline
@@ -264,6 +287,16 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         pipe_pag = AutoPipelineForInpainting.from_pretrained(repo, enable_pag=True)
         assert pipe_pag.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
+
+    def test_from_pretrained_inpaint_from_inpaint(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-xl-inpaint-pipe"
+
+        pipe = AutoPipelineForInpainting.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "StableDiffusionXLInpaintPipeline"
+
+        # make sure you can use pag with inpaint-specific pipeline
+        pipe = AutoPipelineForInpainting.from_pretrained(repo, enable_pag=True)
+        assert pipe.__class__.__name__ == "StableDiffusionXLPAGInpaintPipeline"
 
     def test_from_pipe_pag_inpaint(self):
         # test from tableDiffusionXLPAGInpaintPipeline
@@ -506,7 +539,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
 
     def test_controlnet(self):
         # test from_pretrained
-        model_repo = "runwayml/stable-diffusion-v1-5"
+        model_repo = "Jiali/stable-diffusion-1.5"
         controlnet_repo = "lllyasviel/sd-controlnet-canny"
 
         controlnet = ControlNetModel.from_pretrained(controlnet_repo, torch_dtype=torch.float16)
