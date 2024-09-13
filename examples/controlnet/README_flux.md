@@ -103,7 +103,7 @@ To better track our training experiments, we're using the following flags in the
 * `report_to="tensorboard` will ensure the training runs are tracked on Weights and Biases.
 * `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
-Our experiments were conducted on a single 40GB A100 GPU.
+Our experiments were conducted on a single 80GB A100 GPU.
 
 ### Inference
 
