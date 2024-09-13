@@ -240,6 +240,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
 
+        if not use_rotary_positional_embeddings and use_learned_positional_embeddings:
+            raise ValueError(
+                "There are no CogVideoX checkpoints available with disable rotary embeddings and learned positional "
+                "embeddings. If you're using a custom model and/or believe this should be supported, please open an "
+                "issue at https://github.com/huggingface/diffusers/issues."
+            )
+
         # 1. Patch embedding
         self.patch_embed = CogVideoXPatchEmbed(
             patch_size=patch_size,

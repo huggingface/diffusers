@@ -80,6 +80,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_size=2,
             temporal_compression_ratio=4,
             max_text_seq_length=16,
+            use_rotary_positional_embeddings=True,
+            use_learned_positional_embeddings=True,
         )
 
         torch.manual_seed(0)
