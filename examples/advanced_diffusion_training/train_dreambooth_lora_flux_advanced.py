@@ -26,7 +26,7 @@ import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
-from safetensors.torch import load_file, save_file
+from safetensors.torch import save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -106,9 +106,9 @@ def save_model_card(
         embeddings_filename = f"{repo_folder}_emb"
         ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
         trigger_str = (
-                "To trigger image generation of trained concept(or concepts) replace each concept identifier "
-                "in you prompt with the new inserted tokens:\n"
-            )
+            "To trigger image generation of trained concept(or concepts) replace each concept identifier "
+            "in you prompt with the new inserted tokens:\n"
+        )
         diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
     from safetensors.torch import load_file
             """
@@ -348,8 +348,8 @@ def parse_args(input_args=None):
         type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-             "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
-             "'TOK,TOK2,TOK3' etc.",
+        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
+        "'TOK,TOK2,TOK3' etc.",
     )
 
     parser.add_argument(
@@ -357,8 +357,8 @@ def parse_args(input_args=None):
         type=int,
         default=2,
         help="number of new tokens inserted to the tokenizers per token_abstraction identifier when "
-             "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
-             "tokens - <si><si+1> ",
+        "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
+        "tokens - <si><si+1> ",
     )
     parser.add_argument(
         "--class_prompt",
@@ -741,6 +741,7 @@ def parse_args(input_args=None):
 
     return args
 
+
 # Modified from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
 class TokenEmbeddingsHandler:
     def __init__(self, text_encoders, tokenizers):
@@ -1000,7 +1001,7 @@ class DreamBoothDataset(Dataset):
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else: # the given instance prompt is used for all images
+        else:  # the given instance prompt is used for all images
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -1164,7 +1165,7 @@ def encode_prompt(
         prompt=prompt,
         device=device if device is not None else text_encoders[0].device,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[0] if text_input_ids_list is not None else None
+        text_input_ids=text_input_ids_list[0] if text_input_ids_list is not None else None,
     )
 
     prompt_embeds = _encode_prompt_with_t5(
@@ -1174,7 +1175,7 @@ def encode_prompt(
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[1].device,
-        text_input_ids=text_input_ids_list[1] if text_input_ids_list is not None else None
+        text_input_ids=text_input_ids_list[1] if text_input_ids_list is not None else None,
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
@@ -1453,9 +1454,7 @@ def main(args):
                 args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
 
         # initialize the new tokens for textual inversion
-        embedding_handler = TokenEmbeddingsHandler(
-            [text_encoder_one], [tokenizer_one]
-        )
+        embedding_handler = TokenEmbeddingsHandler([text_encoder_one], [tokenizer_one])
         inserting_toks = []
         for new_tok in token_abstraction_dict.values():
             inserting_toks.extend(new_tok)
@@ -1511,7 +1510,7 @@ def main(args):
     # if we use textual inversion, we freeze all parameters except for the token embeddings
     # in text encoder
     elif args.train_text_encoder_ti:
-        text_lora_parameters_one = [] # for now only for CLIP
+        text_lora_parameters_one = []  # for now only for CLIP
         for name, param in text_encoder_one.named_parameters():
             if "token_embedding" in name:
                 # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
@@ -1536,7 +1535,7 @@ def main(args):
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    if args.train_text_encoder: # when --train_text_encoder_ti we don't save the layers
+                    if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
@@ -1790,12 +1789,16 @@ def main(args):
         # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts)
         # we need to tokenize and encode the batch prompts on all training steps
         else:
-            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens)
+            tokens_one = tokenize_prompt(
+                tokenizer_one, args.instance_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens
+            )
             tokens_two = tokenize_prompt(
                 tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length
             )
             if args.with_prior_preservation:
-                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens)
+                class_tokens_one = tokenize_prompt(
+                    tokenizer_one, args.class_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens
+                )
                 class_tokens_two = tokenize_prompt(
                     tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length
                 )
@@ -1970,9 +1973,13 @@ def main(args):
                             prompts, text_encoders, tokenizers
                         )
                     else:
-                        tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77, add_special_tokens=add_special_tokens)
+                        tokens_one = tokenize_prompt(
+                            tokenizer_one, prompts, max_sequence_length=77, add_special_tokens=add_special_tokens
+                        )
                         tokens_two = tokenize_prompt(
-                            tokenizer_two, prompts, max_sequence_length=args.max_sequence_length,
+                            tokenizer_two,
+                            prompts,
+                            max_sequence_length=args.max_sequence_length,
                         )
 
                 if not freeze_text_encoder:

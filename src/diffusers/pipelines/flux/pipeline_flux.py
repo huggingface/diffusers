@@ -137,7 +137,12 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin,):
+class FluxPipeline(
+    DiffusionPipeline,
+    FluxLoraLoaderMixin,
+    FromSingleFileMixin,
+    TextualInversionLoaderMixin,
+):
     r"""
     The Flux pipeline for text-to-image generation.
 
