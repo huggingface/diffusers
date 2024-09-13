@@ -518,6 +518,12 @@ def _get_checkpoint_shard_files(
     return cached_folder, sharded_metadata
 
 
+def _check_legacy_sharding_format(filenames: List[str], variant: str):
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+    return any(variant_file_re.match(f.split("/")[-1]) is not None for f in filenames)
+
+
 class PushToHubMixin:
     """
     A Mixin to push a model, scheduler, or pipeline to the Hugging Face Hub.

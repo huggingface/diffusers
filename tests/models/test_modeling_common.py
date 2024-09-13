@@ -133,6 +133,22 @@ class ModelUtilsTest(unittest.TestCase):
         warning_message = str(warning.warnings[0].message)
         self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_message)
 
+    # Local tests are already covered down below.
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolde", "unet"),
+        ]
+    )
+    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder):
+        def load_model():
+            kwargs = {"variant": "fp16"}
+            if subfolder:
+                kwargs["subfolder"] = subfolder
+            return UNet2DConditionModel.from_pretrained(repo_id, **kwargs)
+
+        assert load_model()
+
     def test_cached_files_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
         response_mock = mock.Mock()
@@ -957,6 +973,7 @@ class ModelTesterMixin:
             # testing if loading works with the variant when the checkpoint is sharded should be
             # enough.
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
+
             index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_filename)))
 

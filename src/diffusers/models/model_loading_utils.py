@@ -205,23 +205,6 @@ def _fetch_index_file(
             subfolder or "",
             _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME, variant),
         )
-        if not os.path.exists(index_file) and variant is not None:
-            # We need to account for the legacy format here.
-            index_file = Path(
-                pretrained_model_name_or_path,
-                subfolder or "",
-                SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME,
-            ).as_posix()
-            splits = index_file.split(".")
-            split_index = -3 if ".cache" in index_file else -2
-            splits = splits[:-split_index] + [variant] + splits[-split_index:]
-            index_file = ".".join(splits)
-            if os.path.exists(index_file):
-                deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
-                index_file = Path(index_file)
-            else:
-                index_file = None
     else:
         index_file_in_repo = Path(
             subfolder or "",
@@ -243,34 +226,69 @@ def _fetch_index_file(
             )
             index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
-            try:  # We try the legacy format too.
-                if variant is not None:
-                    index_file_in_repo = Path(
-                        subfolder or "",
-                        SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME,
-                    ).as_posix()
-                    splits = index_file_in_repo.split(".")
-                    split_index = -2
-                    splits = splits[:-split_index] + [variant] + splits[-split_index:]
-                    index_file_in_repo = ".".join(splits)
-                    index_file = _get_model_file(
-                        pretrained_model_name_or_path,
-                        weights_name=index_file_in_repo,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        revision=revision,
-                        subfolder=None,
-                        user_agent=user_agent,
-                        commit_hash=commit_hash,
-                    )
-                    index_file = Path(index_file)
-                    deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                    deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
-                else:
-                    index_file = None
+            index_file = None
+
+    return index_file
+
+
+def _fetch_index_file_legacy(
+    is_local,
+    pretrained_model_name_or_path,
+    subfolder,
+    use_safetensors,
+    cache_dir,
+    variant,
+    force_download,
+    proxies,
+    local_files_only,
+    token,
+    revision,
+    user_agent,
+    commit_hash,
+):
+    if is_local:
+        index_file = Path(
+            pretrained_model_name_or_path,
+            subfolder or "",
+            SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME,
+        ).as_posix()
+        splits = index_file.split(".")
+        split_index = -3 if ".cache" in index_file else -2
+        splits = splits[:-split_index] + [variant] + splits[-split_index:]
+        index_file = ".".join(splits)
+        if os.path.exists(index_file):
+            deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+            deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
+            index_file = Path(index_file)
+        else:
+            index_file = None
+    else:
+        if variant is not None:
+            index_file_in_repo = Path(
+                subfolder or "",
+                SAFE_WEIGHTS_INDEX_NAME if use_safetensors else WEIGHTS_INDEX_NAME,
+            ).as_posix()
+            splits = index_file_in_repo.split(".")
+            split_index = -2
+            splits = splits[:-split_index] + [variant] + splits[-split_index:]
+            index_file_in_repo = ".".join(splits)
+            try:
+                index_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=index_file_in_repo,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=None,
+                    user_agent=user_agent,
+                    commit_hash=commit_hash,
+                )
+                index_file = Path(index_file)
+                deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+                deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
             except (EntryNotFoundError, EnvironmentError):
                 index_file = None
 

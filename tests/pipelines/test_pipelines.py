@@ -30,6 +30,7 @@ import requests_mock
 import safetensors.torch
 import torch
 import torch.nn as nn
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
@@ -575,15 +576,26 @@ class DownloadTests(unittest.TestCase):
                     assert all(variant in f for f in files if f.endswith(model_ext) and variant is not None)
 
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
-        with self.assertWarns(FutureWarning) as warning:
-            _ = DiffusionPipeline.download(
-                "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds",
-                safety_checker=None,
-                variant="fp16",
-                use_safetensors=True,
-            )
-            string = "This serialization format is now deprecated to standardize the serialization"
-            assert string in str(warning.warnings[0].message)
+        repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
+        for local in [True, False]:
+            with self.assertWarns(FutureWarning) as warning:
+                if not local:
+                    _ = DiffusionPipeline.download(
+                        repo_id,
+                        safety_checker=None,
+                        variant="fp16",
+                        use_safetensors=True,
+                    )
+                else:
+                    download_dir = snapshot_download(repo_id)
+                    _ = DiffusionPipeline.from_pretrained(
+                        download_dir,
+                        safety_checker=None,
+                        variant="fp16",
+                        use_safetensors=True,
+                    )
+                string = "This serialization format is now deprecated to standardize the serialization"
+                assert string in str(warning.warnings[0].message)
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None

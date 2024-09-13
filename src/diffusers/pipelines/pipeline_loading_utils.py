@@ -155,32 +155,13 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
     transformers_index_format = r"\d{5}-of-\d{5}"
 
     if variant is not None:
-        # Examples:
-        # For transformers, `pytorch_model.fp16.bin` as well as `pytorch_model.fp16-00001-of-00004.bin`.
-        # For diffusers `diffusion_pytorch_model.fp16.bin` as well as `diffusion_pytorch_model-00001-of-00002.fp16.safetensors`
-        # These differences exist because `diffusers` delegates the process of loading sharded checkpoints
-        # to `accelerate`. However, `transformers` has custom code that takes care of it.
-        # TODO (sayakpaul): Remove the extra diffusers regex after the sharded checkpoints with variants format
-        # has been standardized in https://github.com/huggingface/diffusers/pull/9253 and deprecated appropriately.
+        # `diffusion_pytorch_model.fp16.bin` as well as `model.fp16-00001-of-00002.safetensors`
         variant_file_re = re.compile(
-            rf"({'|'.join(weight_prefixes)})"
-            rf"(?:"
-            rf"\.({variant}(?:-{transformers_index_format})?)"
-            rf"|"
-            rf"-({transformers_index_format})\.({variant})"
-            rf")"
-            rf"\.({'|'.join(weight_suffixs)})$"
+            rf"({'|'.join(weight_prefixes)})\.({variant}|{variant}-{transformers_index_format})\.({'|'.join(weight_suffixs)})$"
         )
-        # Examples:
-        # For transformers, it will be `text_encoder/pytorch_model.bin.index.fp16.json`
-        # for diffusers, it will be `unet/diffusion_pytorch_model.safetensors.fp16.index.json`
-        # TODO (sayakpaul): Remove the extra diffusers regex after the sharded checkpoints with variants format
-        # has been standardized in https://github.com/huggingface/diffusers/pull/9253 and deprecated appropriately.
+        # `text_encoder/pytorch_model.bin.index.fp16.json`
         variant_index_re = re.compile(
-            rf"({'|'.join(weight_prefixes)})"
-            rf"\.({'|'.join(weight_suffixs)})"
-            rf"(?:\.{variant}\.index|\.index\.{variant})"
-            rf"\.json$"
+            rf"({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
         )
 
     # `diffusion_pytorch_model.bin` as well as `model-00001-of-00002.safetensors`
@@ -203,43 +184,20 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
 
     # all variant filenames will be used by default
     usable_filenames = set(variant_filenames)
-    transformers_weight_prefixes = ("pytorch_model", "model")
-
-    def is_transformers_file(filename):
-        return filename.split("/")[-1].startswith(transformers_weight_prefixes)
 
     def convert_to_variant(filename):
-        is_legacy = False
         if "index" in filename:
-            if is_transformers_file(filename):
-                variant_filename = filename.replace("index", f"index.{variant}")
-            else:
-                variant_filename = filename.replace("index", f"{variant}.index")
-                if variant is not None:
-                    is_legacy = True
+            variant_filename = filename.replace("index", f"index.{variant}")
         elif re.compile(f"^(.*?){transformers_index_format}").match(filename) is not None:
-            if is_transformers_file(filename):
-                variant_filename = f"{filename.split('-')[0]}.{variant}-{'-'.join(filename.split('-')[1:])}"
-            else:
-                variant_filename = f"{filename.split('-')[0]}-{'-'.join(filename.split('-')[1:])}"
-                variant_ext = variant_filename.split(".")[-1]
-                variant_filename = variant_filename.replace(variant_ext, f"{variant}.{variant_ext}")
-                if variant is not None:
-                    is_legacy = True
+            variant_filename = f"{filename.split('-')[0]}.{variant}-{'-'.join(filename.split('-')[1:])}"
         else:
             variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
-        return variant_filename, is_legacy
+        return variant_filename
 
-    legacy_flags = {}
     for f in non_variant_filenames:
-        variant_filename, is_legacy = convert_to_variant(f)
-        legacy_flags[f] = is_legacy
+        variant_filename = convert_to_variant(f)
         if variant_filename not in usable_filenames:
             usable_filenames.add(f)
-
-    if any(legacy_flags[flag] for flag in legacy_flags):
-        deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-        deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
 
     return usable_filenames, variant_filenames
 

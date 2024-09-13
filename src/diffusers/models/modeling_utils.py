@@ -54,6 +54,7 @@ from ..utils.hub_utils import (
 from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
+    _fetch_index_file_legacy,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -633,21 +634,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         is_sharded = False
         index_file = None
         is_local = os.path.isdir(pretrained_model_name_or_path)
-        index_file = _fetch_index_file(
-            is_local=is_local,
-            pretrained_model_name_or_path=pretrained_model_name_or_path,
-            subfolder=subfolder or "",
-            use_safetensors=use_safetensors,
-            cache_dir=cache_dir,
-            variant=variant,
-            force_download=force_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            user_agent=user_agent,
-            commit_hash=commit_hash,
-        )
+        index_file_kwargs = {
+            "is_local": is_local,
+            "pretrained_model_name_or_path": pretrained_model_name_or_path,
+            "subfolder": subfolder or "",
+            "use_safetensors": use_safetensors,
+            "cache_dir": cache_dir,
+            "variant": variant,
+            "force_download": force_download,
+            "proxies": proxies,
+            "local_files_only": local_files_only,
+            "token": token,
+            "revision": revision,
+            "user_agent": user_agent,
+            "commit_hash": commit_hash,
+        }
+        index_file = _fetch_index_file(**index_file_kwargs)
+        if index_file is None or not os.path.exists(index_file):
+            index_file = _fetch_index_file_legacy(**index_file_kwargs)
         if index_file is not None and index_file.is_file():
             is_sharded = True
 
