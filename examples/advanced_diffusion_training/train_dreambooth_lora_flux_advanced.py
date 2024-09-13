@@ -21,10 +21,12 @@ import logging
 import math
 import os
 import random
+import re
 import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Union, List
 
 import numpy as np
 import torch
@@ -39,6 +41,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -82,17 +85,43 @@ def save_model_card(
     images=None,
     base_model: str = None,
     train_text_encoder=False,
+    train_text_encoder_ti=False,
+    token_abstraction_dict=None,
     instance_prompt=None,
     validation_prompt=None,
     repo_folder=None,
 ):
     widget_dict = []
+    trigger_str = f"You should use {instance_prompt} to trigger the image generation."
+
     if images is not None:
         for i, image in enumerate(images):
             image.save(os.path.join(repo_folder, f"image_{i}.png"))
             widget_dict.append(
                 {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
             )
+    diffusers_imports_pivotal = ""
+    diffusers_example_pivotal = ""
+    if train_text_encoder_ti:
+        embeddings_filename = f"{repo_folder}_emb"
+        ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
+        trigger_str = (
+                "To trigger image generation of trained concept(or concepts) replace each concept identifier "
+                "in you prompt with the new inserted tokens:\n"
+            )
+        diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+            """
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors', repo_type="model")
+    state_dict = load_file(embedding_path)
+    pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+            """
+        if token_abstraction_dict:
+            for key, value in token_abstraction_dict.items():
+                tokens = "".join(value)
+                trigger_str += f"""
+    to trigger concept `{key}` → use `{tokens}` in your prompt \n
+    """
 
     model_description = f"""
 # Flux DreamBooth LoRA - {repo_id}
@@ -107,9 +136,11 @@ The weights were trained using [DreamBooth](https://dreambooth.github.io/) with 
 
 Was LoRA for the text encoder enabled? {train_text_encoder}.
 
+Pivotal tuning was enabled: {train_text_encoder_ti}.
+
 ## Trigger words
 
-You should use `{instance_prompt}` to trigger the image generation.
+{trigger_str}
 
 ## Download model
 
@@ -120,8 +151,10 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
+{diffusers_imports_pivotal}
 pipeline = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
+{diffusers_example_pivotal}
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
 
@@ -311,6 +344,23 @@ def parse_args(input_args=None):
         help="The prompt with identifier specifying the instance, e.g. 'photo of a TOK dog', 'in the style of TOK'",
     )
     parser.add_argument(
+        "--token_abstraction",
+        type=str,
+        default="TOK",
+        help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
+             "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
+             "'TOK,TOK2,TOK3' etc.",
+    )
+
+    parser.add_argument(
+        "--num_new_tokens_per_abstraction",
+        type=int,
+        default=2,
+        help="number of new tokens inserted to the tokenizers per token_abstraction identifier when "
+             "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
+             "tokens - <si><si+1> ",
+    )
+    parser.add_argument(
         "--class_prompt",
         type=str,
         default=None,
@@ -399,6 +449,25 @@ def parse_args(input_args=None):
         "--train_text_encoder",
         action="store_true",
         help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
+    )
+    parser.add_argument(
+        "--train_text_encoder_ti",
+        action="store_true",
+        help=("Whether to use textual inversion"),
+    )
+
+    parser.add_argument(
+        "--train_text_encoder_ti_frac",
+        type=float,
+        default=0.5,
+        help=("The percentage of epochs to perform textual inversion"),
+    )
+
+    parser.add_argument(
+        "--train_text_encoder_frac",
+        type=float,
+        default=1.0,
+        help=("The percentage of epochs to perform text encoder tuning"),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -600,6 +669,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--cache_latents",
+        action="store_true",
+        default=False,
+        help="Cache the VAE latents",
+    )
+    parser.add_argument(
         "--report_to",
         type=str,
         default="tensorboard",
@@ -642,6 +717,12 @@ def parse_args(input_args=None):
     if args.dataset_name is not None and args.instance_data_dir is not None:
         raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
 
+    if args.train_text_encoder and args.train_text_encoder_ti:
+        raise ValueError(
+            "Specify only one of `--train_text_encoder` or `--train_text_encoder_ti. "
+            "For full LoRA text encoder training check --train_text_encoder, for textual "
+            "inversion training check `--train_text_encoder_ti`"
+        )
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -660,6 +741,103 @@ def parse_args(input_args=None):
 
     return args
 
+# Modified from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
+class TokenEmbeddingsHandler:
+    def __init__(self, text_encoders, tokenizers):
+        self.text_encoders = text_encoders
+        self.tokenizers = tokenizers
+
+        self.train_ids: Optional[torch.Tensor] = None
+        self.inserting_toks: Optional[List[str]] = None
+        self.embeddings_settings = {}
+
+    def initialize_new_tokens(self, inserting_toks: List[str]):
+        idx = 0
+        for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
+            assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
+            assert all(
+                isinstance(tok, str) for tok in inserting_toks
+            ), "All elements in inserting_toks should be strings."
+
+            self.inserting_toks = inserting_toks
+            special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
+            tokenizer.add_special_tokens(special_tokens_dict)
+            text_encoder.resize_token_embeddings(len(tokenizer))
+
+            self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
+
+            # random initialization of new tokens
+            std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
+
+            print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
+
+            text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
+                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+                .to(device=self.device)
+                .to(dtype=self.dtype)
+                * std_token_embedding
+            )
+            self.embeddings_settings[
+                f"original_embeddings_{idx}"
+            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
+
+            inu = torch.ones((len(tokenizer),), dtype=torch.bool)
+            inu[self.train_ids] = False
+
+            self.embeddings_settings[f"index_no_updates_{idx}"] = inu
+
+            print(self.embeddings_settings[f"index_no_updates_{idx}"].shape)
+
+            idx += 1
+
+    def save_embeddings(self, file_path: str):
+        assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
+        tensors = {}
+        # text_encoder_0 - CLIP ViT-L/14, for now only optimizing and saving embeddings for CLIP (text_encoder_two - T5, remains untouched)
+        idx_to_text_encoder_name = {0: "clip_l"}
+        for idx, text_encoder in enumerate(self.text_encoders):
+            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
+                self.tokenizers[0]
+            ), "Tokenizers should be the same."
+            new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
+
+            # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0),
+            # Note: When loading with diffusers, any name can work - simply specify in inference
+            tensors[idx_to_text_encoder_name[idx]] = new_token_embeddings
+            # tensors[f"text_encoders_{idx}"] = new_token_embeddings
+
+        save_file(tensors, file_path)
+
+    @property
+    def dtype(self):
+        return self.text_encoders[0].dtype
+
+    @property
+    def device(self):
+        return self.text_encoders[0].device
+
+    @torch.no_grad()
+    def retract_embeddings(self):
+        for idx, text_encoder in enumerate(self.text_encoders):
+            index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_no_updates] = (
+                self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
+                .to(device=text_encoder.device)
+                .to(dtype=text_encoder.dtype)
+            )
+
+            # for the parts that were updated, we need to normalize them
+            # to have the same std as before
+            std_token_embedding = self.embeddings_settings[f"std_token_embedding_{idx}"]
+
+            index_updates = ~index_no_updates
+            new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
+            off_ratio = std_token_embedding / new_embeddings.std()
+
+            new_embeddings = new_embeddings * (off_ratio**0.1)
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
+
 
 class DreamBoothDataset(Dataset):
     """
@@ -672,6 +850,8 @@ class DreamBoothDataset(Dataset):
         instance_data_root,
         instance_prompt,
         class_prompt,
+        train_text_encoder_ti,
+        token_abstraction_dict=None,  # token mapping for textual inversion
         class_data_root=None,
         class_num=None,
         size=1024,
@@ -684,7 +864,8 @@ class DreamBoothDataset(Dataset):
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
-
+        self.token_abstraction_dict = token_abstraction_dict
+        self.train_text_encoder_ti = train_text_encoder_ti
         # if --dataset_name is provided or a metadata jsonl file is provided in the local --instance_data directory,
         # we load the training data using load_dataset
         if args.dataset_name is not None:
@@ -811,11 +992,15 @@ class DreamBoothDataset(Dataset):
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
             if caption:
+                if self.train_text_encoder_ti:
+                    # replace instances of --token_abstraction in caption with the new tokens: "<si><si+1>" etc.
+                    for token_abs, token_replacement in self.token_abstraction_dict.items():
+                        caption = caption.replace(token_abs, "".join(token_replacement))
                 example["instance_prompt"] = caption
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else:  # custom prompts were provided, but length does not match size of image dataset
+        else: # the given instance prompt is used for all images
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -864,7 +1049,7 @@ class PromptDataset(Dataset):
         return example
 
 
-def tokenize_prompt(tokenizer, prompt, max_sequence_length):
+def tokenize_prompt(tokenizer, prompt, max_sequence_length, add_special_tokens=False):
     text_inputs = tokenizer(
         prompt,
         padding="max_length",
@@ -872,6 +1057,7 @@ def tokenize_prompt(tokenizer, prompt, max_sequence_length):
         truncation=True,
         return_length=False,
         return_overflowing_tokens=False,
+        add_special_tokens=add_special_tokens,
         return_tensors="pt",
     )
     text_input_ids = text_inputs.input_ids
@@ -978,7 +1164,7 @@ def encode_prompt(
         prompt=prompt,
         device=device if device is not None else text_encoders[0].device,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[0] if text_input_ids_list else None,
+        text_input_ids=text_input_ids_list[0] if text_input_ids_list is not None else None
     )
 
     prompt_embeds = _encode_prompt_with_t5(
@@ -988,13 +1174,115 @@ def encode_prompt(
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
         device=device if device is not None else text_encoders[1].device,
-        text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
+        text_input_ids=text_input_ids_list[1] if text_input_ids_list is not None else None
     )
 
     text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
     text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
 
     return prompt_embeds, pooled_prompt_embeds, text_ids
+
+
+# CustomFlowMatchEulerDiscreteScheduler was taken from ostris ai-toolkit trainer:
+# https://github.com/ostris/ai-toolkit/blob/9ee1ef2a0a2a9a02b92d114a95f21312e5906e54/toolkit/samplers/custom_flowmatch_sampler.py#L95
+class CustomFlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        with torch.no_grad():
+            # create weights for timesteps
+            num_timesteps = 1000
+
+            # generate the multiplier based on cosmap loss weighing
+            # this is only used on linear timesteps for now
+
+            # cosine map weighing is higher in the middle and lower at the ends
+            # bot = 1 - 2 * self.sigmas + 2 * self.sigmas ** 2
+            # cosmap_weighing = 2 / (math.pi * bot)
+
+            # sigma sqrt weighing is significantly higher at the end and lower at the beginning
+            sigma_sqrt_weighing = (self.sigmas**-2.0).float()
+            # clip at 1e4 (1e6 is too high)
+            sigma_sqrt_weighing = torch.clamp(sigma_sqrt_weighing, max=1e4)
+            # bring to a mean of 1
+            sigma_sqrt_weighing = sigma_sqrt_weighing / sigma_sqrt_weighing.mean()
+
+            # Create linear timesteps from 1000 to 0
+            timesteps = torch.linspace(1000, 0, num_timesteps, device="cpu")
+
+            self.linear_timesteps = timesteps
+            # self.linear_timesteps_weights = cosmap_weighing
+            self.linear_timesteps_weights = sigma_sqrt_weighing
+
+            # self.sigmas = self.get_sigmas(timesteps, n_dim=1, dtype=torch.float32, device='cpu')
+            pass
+
+    def get_weights_for_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
+        # Get the indices of the timesteps
+        step_indices = [(self.timesteps == t).nonzero().item() for t in timesteps]
+
+        # Get the weights for the timesteps
+        weights = self.linear_timesteps_weights[step_indices].flatten()
+
+        return weights
+
+    def get_sigmas(self, timesteps: torch.Tensor, n_dim, dtype, device) -> torch.Tensor:
+        sigmas = self.sigmas.to(device=device, dtype=dtype)
+        schedule_timesteps = self.timesteps.to(device)
+        timesteps = timesteps.to(device)
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+
+        return sigma
+
+    def add_noise(
+        self,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
+        ## ref https://github.com/huggingface/diffusers/blob/fbe29c62984c33c6cf9cf7ad120a992fe6d20854/examples/dreambooth/train_dreambooth_sd3.py#L1578
+        ## Add noise according to flow matching.
+        ## zt = (1 - texp) * x + texp * z1
+
+        # sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
+        # noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
+
+        # timestep needs to be in [0, 1], we store them in [0, 1000]
+        # noisy_sample = (1 - timestep) * latent + timestep * noise
+        t_01 = (timesteps / 1000).to(original_samples.device)
+        noisy_model_input = (1 - t_01) * original_samples + t_01 * noise
+
+        # n_dim = original_samples.ndim
+        # sigmas = self.get_sigmas(timesteps, n_dim, original_samples.dtype, original_samples.device)
+        # noisy_model_input = (1.0 - sigmas) * original_samples + sigmas * noise
+        return noisy_model_input
+
+    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+        return sample
+
+    def set_train_timesteps(self, num_timesteps, device, linear=False):
+        if linear:
+            timesteps = torch.linspace(1000, 0, num_timesteps, device=device)
+            self.timesteps = timesteps
+            return timesteps
+        else:
+            # distribute them closer to center. Inference distributes them as a bias toward first
+            # Generate values from 0 to 1
+            t = torch.sigmoid(torch.randn((num_timesteps,), device=device))
+
+            # Scale and reverse the values to go from 1000 to 0
+            timesteps = (1 - t) * 1000
+
+            # Sort the timesteps in descending order
+            timesteps, _ = torch.sort(timesteps, descending=True)
+
+            self.timesteps = timesteps.to(device=device)
+
+            return timesteps
 
 
 def main(args):
@@ -1127,7 +1415,7 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    noise_scheduler = CustomFlowMatchEulerDiscreteScheduler.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
@@ -1141,6 +1429,37 @@ def main(args):
     transformer = FluxTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision, variant=args.variant
     )
+
+    if args.train_text_encoder_ti:
+        # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
+        # TOK2" -> ["TOK", "TOK2"] etc.
+        token_abstraction_list = "".join(args.token_abstraction.split()).split(",")
+        logger.info(f"list of token identifiers: {token_abstraction_list}")
+
+        token_abstraction_dict = {}
+        token_idx = 0
+        for i, token in enumerate(token_abstraction_list):
+            token_abstraction_dict[token] = [
+                f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
+            ]
+            token_idx += args.num_new_tokens_per_abstraction - 1
+
+        # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
+        for token_abs, token_replacement in token_abstraction_dict.items():
+            args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
+            if args.with_prior_preservation:
+                args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
+            if args.validation_prompt:
+                args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
+
+        # initialize the new tokens for textual inversion
+        embedding_handler = TokenEmbeddingsHandler(
+            [text_encoder_one], [tokenizer_one]
+        )
+        inserting_toks = []
+        for new_tok in token_abstraction_dict.values():
+            inserting_toks.extend(new_tok)
+        embedding_handler.initialize_new_tokens(inserting_toks=inserting_toks)
 
     # We only train the additional adapter LoRA layers
     transformer.requires_grad_(False)
@@ -1180,6 +1499,7 @@ def main(args):
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
     transformer.add_adapter(transformer_lora_config)
+
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
@@ -1188,6 +1508,18 @@ def main(args):
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
         text_encoder_one.add_adapter(text_lora_config)
+    # if we use textual inversion, we freeze all parameters except for the token embeddings
+    # in text encoder
+    elif args.train_text_encoder_ti:
+        text_lora_parameters_one = [] # for now only for CLIP
+        for name, param in text_encoder_one.named_parameters():
+            if "token_embedding" in name:
+                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+                param.data = param.to(dtype=torch.float32)
+                param.requires_grad = True
+                text_lora_parameters_one.append(param)
+            else:
+                param.requires_grad = False
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1204,7 +1536,8 @@ def main(args):
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    if args.train_text_encoder: # when --train_text_encoder_ti we don't save the layers
+                        text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1216,6 +1549,8 @@ def main(args):
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
             )
+        if args.train_text_encoder_ti:
+            embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         transformer_ = None
@@ -1282,16 +1617,22 @@ def main(args):
         cast_training_params(models, dtype=torch.float32)
 
     transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
+
     if args.train_text_encoder:
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
 
+    # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
+    freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
+
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
-    if args.train_text_encoder:
+    if not freeze_text_encoder:
         # different learning rate for text encoder and unet
         text_parameters_one_with_lr = {
             "params": text_lora_parameters_one,
-            "weight_decay": args.adam_weight_decay_text_encoder,
+            "weight_decay": args.adam_weight_decay_text_encoder
+            if args.adam_weight_decay_text_encoder
+            else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
         params_to_optimize = [
@@ -1374,6 +1715,8 @@ def main(args):
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
+        train_text_encoder_ti=args.train_text_encoder_ti,
+        token_abstraction_dict=token_abstraction_dict if args.train_text_encoder_ti else None,
         class_prompt=args.class_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_num=args.num_class_images,
@@ -1390,7 +1733,7 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    if not args.train_text_encoder:
+    if freeze_text_encoder:
         tokenizers = [tokenizer_one, tokenizer_two]
         text_encoders = [text_encoder_one, text_encoder_two]
 
@@ -1407,20 +1750,20 @@ def main(args):
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
-    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
+    if freeze_text_encoder and not train_dataset.custom_instance_prompts:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds, instance_text_ids = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        if not args.train_text_encoder:
+        if freeze_text_encoder:
             class_prompt_hidden_states, class_pooled_prompt_embeds, class_text_ids = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
             )
 
     # Clear the memory here
-    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
+    if freeze_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
         del text_encoder_one, text_encoder_two
@@ -1428,12 +1771,15 @@ def main(args):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
+    add_special_tokens = True if args.train_text_encoder_ti else False
+
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
 
     if not train_dataset.custom_instance_prompts:
-        if not args.train_text_encoder:
+        if freeze_text_encoder:
             prompt_embeds = instance_prompt_hidden_states
             pooled_prompt_embeds = instance_pooled_prompt_embeds
             text_ids = instance_text_ids
@@ -1444,17 +1790,35 @@ def main(args):
         # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts)
         # we need to tokenize and encode the batch prompts on all training steps
         else:
-            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77)
+            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens)
             tokens_two = tokenize_prompt(
                 tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length
             )
             if args.with_prior_preservation:
-                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77)
+                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens)
                 class_tokens_two = tokenize_prompt(
                     tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length
                 )
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
+
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
+    vae_config_block_out_channels = vae.config.block_out_channels
+    if args.cache_latents:
+        latents_cache = []
+        for batch in tqdm(train_dataloader, desc="Caching latents"):
+            with torch.no_grad():
+                batch["pixel_values"] = batch["pixel_values"].to(
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
+                )
+                latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+
+        if args.validation_prompt is None:
+            del vae
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                gc.collect()
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1473,7 +1837,7 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    if args.train_text_encoder:
+    if not freeze_text_encoder:
         (
             transformer,
             text_encoder_one,
@@ -1502,7 +1866,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-flux-dev-lora"
+        tracker_name = "dreambooth-flux-dev-lora-advanced"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1566,57 +1930,71 @@ def main(args):
             sigma = sigma.unsqueeze(-1)
         return sigma
 
+    if args.train_text_encoder:
+        num_train_epochs_text_encoder = int(args.train_text_encoder_frac * args.num_train_epochs)
+    elif args.train_text_encoder_ti:  # args.train_text_encoder_ti
+        num_train_epochs_text_encoder = int(args.train_text_encoder_ti_frac * args.num_train_epochs)
+    # flag used for textual inversion
+    pivoted = False
+
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
-        if args.train_text_encoder:
-            text_encoder_one.train()
-            # set top parameter requires_grad = True for gradient checkpointing works
-            accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+        # if performing any kind of optimization of text_encoder params
+        if args.train_text_encoder or args.train_text_encoder_ti:
+            if epoch == num_train_epochs_text_encoder:
+                print("PIVOT HALFWAY", epoch)
+                # stopping optimization of text_encoder params
+                # this flag is used to reset the optimizer to optimize only on unet params
+                pivoted = True
+
+            else:
+                # still optimizing the text encoder
+                text_encoder_one.train()
+                # set top parameter requires_grad = True for gradient checkpointing works
+                if args.train_text_encoder:
+                    accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
-            models_to_accumulate = [transformer]
-            if args.train_text_encoder:
-                models_to_accumulate.extend([text_encoder_one])
-            with accelerator.accumulate(models_to_accumulate):
-                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+            if pivoted:
+                # stopping optimization of text_encoder params
+                # re setting the optimizer to optimize only on unet params
+                optimizer.param_groups[1]["lr"] = 0.0
+
+            with accelerator.accumulate(transformer):
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-                    if not args.train_text_encoder:
+                    if freeze_text_encoder:
                         prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
                         )
                     else:
-                        tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77)
+                        tokens_one = tokenize_prompt(tokenizer_one, prompts, max_sequence_length=77, add_special_tokens=add_special_tokens)
                         tokens_two = tokenize_prompt(
-                            tokenizer_two, prompts, max_sequence_length=args.max_sequence_length
+                            tokenizer_two, prompts, max_sequence_length=args.max_sequence_length,
                         )
-                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
-                            text_encoders=[text_encoder_one, text_encoder_two],
-                            tokenizers=[None, None],
-                            text_input_ids_list=[tokens_one, tokens_two],
-                            max_sequence_length=args.max_sequence_length,
-                            device=accelerator.device,
-                            prompt=prompts,
-                        )
-                else:
-                    if args.train_text_encoder:
-                        prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
-                            text_encoders=[text_encoder_one, text_encoder_two],
-                            tokenizers=[None, None],
-                            text_input_ids_list=[tokens_one, tokens_two],
-                            max_sequence_length=args.max_sequence_length,
-                            device=accelerator.device,
-                            prompt=args.instance_prompt,
-                        )
+
+                if not freeze_text_encoder:
+                    prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
+                        text_encoders=[text_encoder_one, text_encoder_two],
+                        tokenizers=[None, None],
+                        text_input_ids_list=[tokens_one, tokens_two],
+                        max_sequence_length=args.max_sequence_length,
+                        device=accelerator.device,
+                        prompt=prompts,
+                    )
 
                 # Convert images to latent space
-                model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
+                if args.cache_latents:
+                    model_input = latents_cache[step].sample()
+                else:
+                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+                vae_scale_factor = 2 ** (len(vae_config_block_out_channels))
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
@@ -1716,7 +2094,7 @@ def main(args):
                 if accelerator.sync_gradients:
                     params_to_clip = (
                         itertools.chain(transformer.parameters(), text_encoder_one.parameters())
-                        if args.train_text_encoder
+                        if not freeze_text_encoder
                         else transformer.parameters()
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -1724,6 +2102,10 @@ def main(args):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
+
+                # every step, we reset the embeddings to the original embeddings.
+                if args.train_text_encoder_ti:
+                    embedding_handler.retract_embeddings()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -1766,7 +2148,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                if not args.train_text_encoder:
+                if freeze_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
@@ -1786,8 +2168,12 @@ def main(args):
                     pipeline_args=pipeline_args,
                     epoch=epoch,
                 )
-                if not args.train_text_encoder:
+                if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                else:
+                    del text_encoder_two
                     torch.cuda.empty_cache()
                     gc.collect()
 
@@ -1795,7 +2181,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
@@ -1809,6 +2195,10 @@ def main(args):
             transformer_lora_layers=transformer_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
+
+        if args.train_text_encoder_ti:
+            embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
 
         # Final inference
         # Load previous pipeline
@@ -1834,16 +2224,18 @@ def main(args):
                 is_final_validation=True,
             )
 
+        save_model_card(
+            repo_id,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            train_text_encoder=args.train_text_encoder,
+            train_text_encoder_ti=args.train_text_encoder_ti,
+            token_abstraction_dict=train_dataset.token_abstraction_dict,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=args.validation_prompt,
+            repo_folder=args.output_dir,
+        )
         if args.push_to_hub:
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                train_text_encoder=args.train_text_encoder,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
