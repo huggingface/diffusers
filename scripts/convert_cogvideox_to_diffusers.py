@@ -84,6 +84,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "mixins.final_layer.norm_final": "norm_out.norm",
     "mixins.final_layer.linear": "proj_out",
     "mixins.final_layer.adaLN_modulation.1": "norm_out.linear",
+    "mixins.pos_embed.pos_embedding": "patch_embed.pos_embedding",  # Specific to CogVideoX-5b-I2V
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
@@ -95,8 +96,6 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "freqs_sin": remove_keys_inplace,
     "freqs_cos": remove_keys_inplace,
     "position_embedding": remove_keys_inplace,
-    # TODO  zRzRzRzRzRzRzR: really need to remove?
-    "pos_embedding": remove_keys_inplace,
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -150,6 +149,7 @@ def convert_transformer(
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
+        use_learned_positional_embeddings=i2v,
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):

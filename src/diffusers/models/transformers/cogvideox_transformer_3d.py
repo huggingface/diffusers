@@ -235,6 +235,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
+        use_learned_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -254,6 +255,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             spatial_interpolation_scale=spatial_interpolation_scale,
             temporal_interpolation_scale=temporal_interpolation_scale,
             use_positional_embeddings=not use_rotary_positional_embeddings,
+            use_learned_positional_embeddings=use_learned_positional_embeddings,
         )
         self.embedding_dropout = nn.Dropout(dropout)
 
