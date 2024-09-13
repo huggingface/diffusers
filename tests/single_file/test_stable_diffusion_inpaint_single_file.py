@@ -9,7 +9,7 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
 )
 
@@ -20,7 +20,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/Lykon/DreamShaper/blob/main/DreamShaper_8_INPAINTING.inpainting.safetensors"
@@ -78,7 +78,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = (
