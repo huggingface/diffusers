@@ -118,10 +118,13 @@ from diffusers.models.controlnet_flux import FluxControlNetModel
 base_model = 'black-forest-labs/FLUX.1-dev'
 controlnet_model = 'path to controlnet'
 controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
-pipe = FluxControlNetPipeline.from_pretrained(base_model, 
-                                              controlnet=controlnet, 
-                                              torch_dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe = FluxControlNetPipeline.from_pretrained(
+    base_model, 
+    controlnet=controlnet, 
+    torch_dtype=torch.bfloat16
+)
+# enable memory optimizations   
+pipe.enable_model_cpu_offload()
 
 control_image = load_image("./conditioning_image_1.png").resize((1024, 1024))
 prompt = "pale golden rod circle with old lace background"
