@@ -771,8 +771,8 @@ class PipelineFromPipeTesterMixin:
                 ), "`from_pipe` changed the attention processor in original pipeline."
 
     @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
+        torch_device = "cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
@@ -1317,6 +1317,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
+    @unittest.skipIf(torch_device = "cpu", reason="Hardware accelerator and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1391,8 +1392,8 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
+        torch_device = "cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         import accelerate
@@ -1454,8 +1455,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with `accelerate v0.17.0` or higher",
+        torch_device = "cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
     )
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         import accelerate
@@ -1511,8 +1512,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with `accelerate v0.17.0` or higher",
+        torch_device = "cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
     )
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
@@ -1568,8 +1569,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
+        torch_device = "cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate

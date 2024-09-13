@@ -272,6 +272,7 @@ class AnimateDiffPipelineFastTests(
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
+    @unittest.skipIf(torch_device = "cpu", reason="Hardware Accelerator and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
