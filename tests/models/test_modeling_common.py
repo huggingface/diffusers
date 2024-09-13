@@ -783,7 +783,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -817,7 +817,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
