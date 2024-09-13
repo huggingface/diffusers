@@ -876,7 +876,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -908,7 +908,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_with_variant(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -945,7 +945,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_sharded_checkpoints_device_map(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
