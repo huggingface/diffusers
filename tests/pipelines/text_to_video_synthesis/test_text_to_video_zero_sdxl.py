@@ -329,7 +329,6 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -342,12 +341,12 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     @unittest.skip(
         reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
