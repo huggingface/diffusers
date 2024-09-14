@@ -30,7 +30,7 @@ diffusion 파이프라인은 diffusion 모델, 스케줄러 등의 컴포넌트�
 
 ## 파이프라인 불러오기
 
-먼저 스테이블 diffusion 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 diffusion을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/runwayml/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요. 
+먼저 스테이블 diffusion 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 diffusion을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/runwayml/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요.
 
 *역자 주: 다만, 현재 신규로 생성한 허깅페이스 계정에 대해서는 라이센스 동의를 요구하지 않는 것으로 보입니다!*
 
@@ -58,7 +58,7 @@ pipeline.to("cuda")
 
 ## 스케줄러 액세스
 
-스케줄러는 언제나 파이프라인의 컴포넌트로서 존재하며, 일반적으로 파이프라인 인스턴스 내에 `scheduler`라는 이름의 속성(property)으로 정의되어 있습니다. 
+스케줄러는 언제나 파이프라인의 컴포넌트로서 존재하며, 일반적으로 파이프라인 인스턴스 내에 `scheduler`라는 이름의 속성(property)으로 정의되어 있습니다.
 
 ```python
 pipeline.scheduler
@@ -82,13 +82,13 @@ PNDMScheduler {
 }
 ```
 
-출력 결과를 통해, 우리는 해당 스케줄러가 [`PNDMScheduler`]의 인스턴스라는 것을 알 수 있습니다. 이제 [`PNDMScheduler`]와 다른 스케줄러들의 성능을 비교해보도록 하겠습니다. 먼저 테스트에 사용할 프롬프트를 다음과 같이 정의해보도록 하겠습니다. 
+출력 결과를 통해, 우리는 해당 스케줄러가 [`PNDMScheduler`]의 인스턴스라는 것을 알 수 있습니다. 이제 [`PNDMScheduler`]와 다른 스케줄러들의 성능을 비교해보도록 하겠습니다. 먼저 테스트에 사용할 프롬프트를 다음과 같이 정의해보도록 하겠습니다.
 
 ```python
 prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
 ```
 
-다음으로 유사한 이미지 생성을 보장하기 위해서, 다음과 같이 랜덤시드를 고정해주도록 하겠습니다. 
+다음으로 유사한 이미지 생성을 보장하기 위해서, 다음과 같이 랜덤시드를 고정해주도록 하겠습니다.
 
 ```python
 generator = torch.Generator(device="cuda").manual_seed(8)
@@ -107,7 +107,7 @@ image
 
 ## 스케줄러 교체하기
 
-다음으로 파이프라인의 스케줄러를 다른 스케줄러로 교체하는 방법에 대해 알아보겠습니다. 모든 스케줄러는 [`SchedulerMixin.compatibles`]라는 속성(property)을 갖고 있습니다. 해당 속성은 **호환 가능한** 스케줄러들에 대한 정보를 담고 있습니다. 
+다음으로 파이프라인의 스케줄러를 다른 스케줄러로 교체하는 방법에 대해 알아보겠습니다. 모든 스케줄러는 [`SchedulerMixin.compatibles`]라는 속성(property)을 갖고 있습니다. 해당 속성은 **호환 가능한** 스케줄러들에 대한 정보를 담고 있습니다.
 
 ```python
 pipeline.scheduler.compatibles
@@ -127,12 +127,12 @@ pipeline.scheduler.compatibles
 
 호환되는 스케줄러들을 살펴보면 아래와 같습니다.
 
-- [`LMSDiscreteScheduler`], 
-- [`DDIMScheduler`], 
-- [`DPMSolverMultistepScheduler`], 
-- [`EulerDiscreteScheduler`], 
-- [`PNDMScheduler`], 
-- [`DDPMScheduler`], 
+- [`LMSDiscreteScheduler`],
+- [`DDIMScheduler`],
+- [`DPMSolverMultistepScheduler`],
+- [`EulerDiscreteScheduler`],
+- [`PNDMScheduler`],
+- [`DDPMScheduler`],
 - [`EulerAncestralDiscreteScheduler`].
 
 앞서 정의했던 프롬프트를 사용해서 각각의 스케줄러들을 비교해보도록 하겠습니다.
@@ -161,7 +161,7 @@ FrozenDict([('num_train_timesteps', 1000),
             ('clip_sample', False)])
 ```
 
-기존 스케줄러의 config를 호환 가능한 다른 스케줄러에 이식하는 것 역시 가능합니다. 
+기존 스케줄러의 config를 호환 가능한 다른 스케줄러에 이식하는 것 역시 가능합니다.
 
 다음 예시는 기존 스케줄러(`pipeline.scheduler`)를 다른 종류의 스케줄러(`DDIMScheduler`)로 바꾸는 코드입니다. 기존 스케줄러가 갖고 있던 config를 `.from_config` 메서드의 인자로 전달하는 것을 확인할 수 있습니다.
 
@@ -296,7 +296,7 @@ scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     model_id,
     scheduler=scheduler,
-    revision="bf16",
+    variant="bf16",
     dtype=jax.numpy.bfloat16,
 )
 params["scheduler"] = scheduler_state

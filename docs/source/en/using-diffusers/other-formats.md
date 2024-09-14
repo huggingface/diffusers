@@ -74,7 +74,7 @@ pipeline = StableDiffusionPipeline.from_single_file(
 
 [LoRA](https://hf.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) is a lightweight adapter that is fast and easy to train, making them especially popular for generating images in a certain way or style. These adapters are commonly stored in a safetensors file, and are widely popular on model sharing platforms like [civitai](https://civitai.com/).
 
-LoRAs are loaded into a base model with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method.
+LoRAs are loaded into a base model with the [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] method.
 
 ```py
 from diffusers import StableDiffusionXLPipeline
@@ -418,7 +418,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
 )
 
 pipeline = StableDiffusionXLPipeline.from_single_file(my_local_checkpoint_path, config=my_local_config_path, local_files_only=True)
@@ -438,7 +438,7 @@ my_local_checkpoint_path = hf_hub_download(
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir="my_local_config"
 )
 
@@ -468,11 +468,10 @@ print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
-    allowed_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
+    allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
     local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
-
 ```
 
 Then you can pass the local paths to the `pretrained_model_link_or_path` and `config` parameters.

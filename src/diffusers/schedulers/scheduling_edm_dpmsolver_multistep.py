@@ -134,7 +134,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = self.precondition_noise(sigmas)
 
-        self.sigmas = self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
         # setable values
         self.num_inference_steps = None
@@ -594,7 +594,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: int,
+        timestep: Union[int, torch.Tensor],
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,

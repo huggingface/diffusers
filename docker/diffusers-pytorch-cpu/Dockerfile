@@ -16,6 +16,7 @@ RUN apt install -y bash \
                    ca-certificates \
                    libsndfile1-dev \
                    python3.10 \
+                   python3.10-dev \
                    python3-pip \
                    libgl1 \
                    python3.10-venv && \
@@ -40,7 +41,7 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         huggingface-hub \
         Jinja2 \
         librosa \
-        numpy \
+        numpy==1.26.4 \
         scipy \
         tensorboard \
         transformers matplotlib

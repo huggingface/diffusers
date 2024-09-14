@@ -11,9 +11,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ckpt",
         type=str,
-        default="runwayml/stable-diffusion-v1-5",
+        default="Lykon/DreamShaper",
         choices=[
-            "runwayml/stable-diffusion-v1-5",
+            "Lykon/DreamShaper",
             "stabilityai/stable-diffusion-2-1",
             "stabilityai/stable-diffusion-xl-refiner-1.0",
             "stabilityai/sdxl-turbo",

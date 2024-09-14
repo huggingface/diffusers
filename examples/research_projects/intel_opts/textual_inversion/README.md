@@ -52,7 +52,7 @@ python -m intel_extension_for_pytorch.cpu.launch --distributed \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
   --placeholder_token="<dicoo>" --initializer_token="toy" \
-  --seed=7 \ 
+  --seed=7 \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \

@@ -22,6 +22,7 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 
 ## Supported pipelines
 
+- [`CogVideoXPipeline`]
 - [`StableDiffusionPipeline`]
 - [`StableDiffusionImg2ImgPipeline`]
 - [`StableDiffusionInpaintPipeline`]
@@ -35,6 +36,7 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 - [`StableDiffusionXLInstructPix2PixPipeline`]
 - [`StableDiffusionXLControlNetPipeline`]
 - [`StableDiffusionXLKDiffusionPipeline`]
+- [`StableDiffusion3Pipeline`]
 - [`LatentConsistencyModelPipeline`]
 - [`LatentConsistencyModelImg2ImgPipeline`]
 - [`StableDiffusionControlNetXSPipeline`]
@@ -48,7 +50,10 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 - [`UNet2DConditionModel`]
 - [`StableCascadeUNet`]
 - [`AutoencoderKL`]
+- [`AutoencoderKLCogVideoX`]
 - [`ControlNetModel`]
+- [`SD3Transformer2DModel`]
+- [`FluxTransformer2DModel`]
 
 ## FromSingleFileMixin
 

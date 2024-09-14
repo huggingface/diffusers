@@ -38,8 +38,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -86,6 +84,7 @@ EXAMPLE_DOC_STRING = """
         >>> # !pip install transformers accelerate
         >>> from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
         >>> from diffusers.utils import load_image
+        >>> from PIL import Image
         >>> import numpy as np
         >>> import torch
 
@@ -534,6 +533,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
+        image_embeds = []
+        if do_classifier_free_guidance:
+            negative_image_embeds = []
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
@@ -543,7 +545,6 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
                 )
 
-            image_embeds = []
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
@@ -551,36 +552,28 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
-                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-                single_negative_image_embeds = torch.stack(
-                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
-                )
 
+                image_embeds.append(single_image_embeds[None, :])
                 if do_classifier_free_guidance:
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                    single_image_embeds = single_image_embeds.to(device)
-
-                image_embeds.append(single_image_embeds)
+                    negative_image_embeds.append(single_negative_image_embeds[None, :])
         else:
-            repeat_dims = [1]
-            image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
-                    )
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                else:
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
+                    negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
 
-        return image_embeds
+        ip_adapter_image_embeds = []
+        for i, single_image_embeds in enumerate(image_embeds):
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
+            single_image_embeds = single_image_embeds.to(device=device)
+            ip_adapter_image_embeds.append(single_image_embeds)
+
+        return ip_adapter_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -1031,14 +1024,16 @@ class StableDiffusionXLControlNetInpaintPipeline(
         if denoising_start is None:
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
             t_start = max(num_inference_steps - init_timestep, 0)
+
+            timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+            return timesteps, num_inference_steps - t_start
+
         else:
-            t_start = 0
-
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        # Strength is irrelevant if we directly request a timestep to start at;
-        # that is, strength is determined by the denoising_start instead.
-        if denoising_start is not None:
+            # Strength is irrelevant if we directly request a timestep to start at;
+            # that is, strength is determined by the denoising_start instead.
             discrete_timestep_cutoff = int(
                 round(
                     self.scheduler.config.num_train_timesteps
@@ -1046,7 +1041,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 )
             )
 
-            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
+            num_inference_steps = (self.scheduler.timesteps < discrete_timestep_cutoff).sum().item()
             if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
                 # if the scheduler is a 2nd order scheduler we might have to do +1
                 # because `num_inference_steps` might be even given that every timestep
@@ -1057,10 +1052,11 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 num_inference_steps = num_inference_steps + 1
 
             # because t_n+1 >= t_n, we slice the timesteps starting from the end
-            timesteps = timesteps[-num_inference_steps:]
+            t_start = len(self.scheduler.timesteps) - num_inference_steps
+            timesteps = self.scheduler.timesteps[t_start:]
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index(t_start)
             return timesteps, num_inference_steps
-
-        return timesteps, num_inference_steps - t_start
 
     def _get_add_time_ids(
         self,
@@ -1117,8 +1113,6 @@ class StableDiffusionXLControlNetInpaintPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
@@ -1748,7 +1742,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 )
 
                 if guess_mode and self.do_classifier_free_guidance:
-                    # Infered ControlNet only for the conditional batch.
+                    # Inferred ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]

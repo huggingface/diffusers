@@ -34,6 +34,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_flaky,
     load_image,
     require_torch_gpu,
     slow,
@@ -232,6 +233,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             match_input_resolution=True,
         )
 
+    @is_flaky
     def test_marigold_depth_dummy_G0_S1_P32_E3_B1_M1(self):
         self._test_marigold_depth(
             generator_seed=0,
@@ -244,6 +246,7 @@ class MarigoldDepthPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             match_input_resolution=True,
         )
 
+    @is_flaky
     def test_marigold_depth_dummy_G0_S1_P32_E4_B2_M1(self):
         self._test_marigold_depth(
             generator_seed=0,

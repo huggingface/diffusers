@@ -533,7 +533,7 @@ python train_dreambooth_lora.py \
     --resolution=256 \
     --train_batch_size=4 \
     --gradient_accumulation_steps=1 \
-    --learning_rate=1e-6 \ 
+    --learning_rate=1e-6 \
     --max_train_steps=2000 \
     --validation_prompt="a sks dog" \
     --validation_epochs=100 \

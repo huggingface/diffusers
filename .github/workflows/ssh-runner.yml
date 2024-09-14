@@ -1,4 +1,4 @@
-name: SSH into runners
+name: SSH into GPU runners
 
 on:
   workflow_dispatch:
@@ -22,7 +22,8 @@ env:
 jobs:
   ssh_runner:
     name: "SSH"
-    runs-on: [single-gpu, nvidia-gpu, "${{ github.event.inputs.runner_type }}", ci]
+    runs-on:
+      group: "${{ github.event.inputs.runner_type }}"
     container:
       image: ${{ github.event.inputs.docker_image }}
       options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
