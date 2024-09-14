@@ -46,8 +46,8 @@ from diffusers.utils.testing_utils import (
     get_python_version,
     is_torch_compile,
     require_torch_2,
-    require_torch_accelerator,
     require_torch_accelerator_with_training,
+    require_torch_gpu,
     require_torch_multi_gpu,
     run_test_in_subprocess,
     torch_device,
@@ -405,7 +405,7 @@ class ModelTesterMixin:
         assert torch.allclose(output, output_3, atol=self.base_precision)
         assert torch.allclose(output_2, output_3, atol=self.base_precision)
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
         if self.uses_custom_attn_processor:
             return
@@ -752,7 +752,7 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -782,7 +782,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_disk_offload_without_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -816,7 +816,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_disk_offload_with_safetensors(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
@@ -875,7 +875,7 @@ class ModelTesterMixin:
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_sharded_checkpoints(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -907,7 +907,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_sharded_checkpoints_with_variant(self):
         torch.manual_seed(0)
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -944,7 +944,7 @@ class ModelTesterMixin:
 
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
 
-    @require_torch_accelerator
+    @require_torch_gpu
     def test_sharded_checkpoints_device_map(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
