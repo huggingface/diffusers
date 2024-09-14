@@ -12,35 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import sys
-import tempfile
 import unittest
 
-import numpy as np
-import safetensors.torch
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
-from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend, torch_device
+from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend
 
 
 if is_peft_available():
-    from peft.utils import get_peft_model_state_dict
+    pass
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
-    scheduler_kwargs = {
-        "timestep_spacing": "trailing"
-    }
+    scheduler_kwargs = {"timestep_spacing": "trailing"}
 
     transformer_kwargs = {
         "num_attention_heads": 4,
@@ -96,7 +90,7 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         sequence_length = 16
         num_channels = 4
         num_frames = 9
-        num_latent_frames = 3 # (9 - 1) // temporal_compression_ratio + 1
+        num_latent_frames = 3  # (9 - 1) // temporal_compression_ratio + 1
         sizes = (2, 2)
 
         generator = torch.manual_seed(0)

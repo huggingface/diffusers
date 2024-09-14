@@ -289,26 +289,30 @@ class PeftLoraLoaderMixinTests:
             )
 
             if self.unet_kwargs is not None:
-                output_lora_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                ), self.output_identifier_attribute)
+                output_lora_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}),
+                    self.output_identifier_attribute,
+                )
             else:
-                output_lora_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                ), self.output_identifier_attribute)
+                output_lora_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}),
+                    self.output_identifier_attribute,
+                )
             self.assertTrue(
                 not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
             )
 
             if self.unet_kwargs is not None:
-                output_lora_0_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                ), self.output_identifier_attribute)
+                output_lora_0_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}),
+                    self.output_identifier_attribute,
+                )
             else:
-                output_lora_0_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                ), self.output_identifier_attribute)
+                output_lora_0_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}),
+                    self.output_identifier_attribute,
+                )
             self.assertTrue(
                 np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
@@ -466,7 +470,9 @@ class PeftLoraLoaderMixinTests:
 
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            images_lora_from_pretrained = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            images_lora_from_pretrained = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
@@ -541,7 +547,9 @@ class PeftLoraLoaderMixinTests:
             pipe.unload_lora_weights()
             pipe.load_lora_weights(state_dict)
 
-            output_partial_lora = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_partial_lora = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             self.assertTrue(
                 not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
                 "Removing adapters should change the output",
@@ -594,7 +602,9 @@ class PeftLoraLoaderMixinTests:
                         "Lora not correctly set in text encoder 2",
                     )
 
-            images_lora_save_pretrained = getattr(pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            images_lora_save_pretrained = getattr(
+                pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertTrue(
                 np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
@@ -671,7 +681,9 @@ class PeftLoraLoaderMixinTests:
 
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            images_lora_from_pretrained = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            images_lora_from_pretrained = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
@@ -727,26 +739,30 @@ class PeftLoraLoaderMixinTests:
             )
 
             if self.unet_kwargs is not None:
-                output_lora_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                ), self.output_identifier_attribute)
+                output_lora_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}),
+                    self.output_identifier_attribute,
+                )
             else:
-                output_lora_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                ), self.output_identifier_attribute)
+                output_lora_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}),
+                    self.output_identifier_attribute,
+                )
             self.assertTrue(
                 not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
             )
 
             if self.unet_kwargs is not None:
-                output_lora_0_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                ), self.output_identifier_attribute)
+                output_lora_0_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}),
+                    self.output_identifier_attribute,
+                )
             else:
-                output_lora_0_scale = getattr(pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                ), self.output_identifier_attribute)
+                output_lora_0_scale = getattr(
+                    pipe(**inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}),
+                    self.output_identifier_attribute,
+                )
             self.assertTrue(
                 np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
@@ -900,11 +916,15 @@ class PeftLoraLoaderMixinTests:
 
             pipe.fuse_lora()
 
-            output_fused_lora = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_fused_lora = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.unfuse_lora()
 
-            output_unfused_lora = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_unfused_lora = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             # unloading should remove the LoRA layers
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
@@ -965,14 +985,20 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_2 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_mixed = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -1038,11 +1064,15 @@ class PeftLoraLoaderMixinTests:
 
             weights_1 = {"text_encoder": 2, "unet": {"down": 5}}
             pipe.set_adapters("adapter-1", weights_1)
-            output_weights_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_weights_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             weights_2 = {"unet": {"up": 5}}
             pipe.set_adapters("adapter-1", weights_2)
-            output_weights_2 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_weights_2 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertFalse(
                 np.allclose(output_weights_1, output_weights_2, atol=1e-3, rtol=1e-3),
@@ -1113,14 +1143,20 @@ class PeftLoraLoaderMixinTests:
             scales_2 = {"unet": {"down": 5, "mid": 5}}
             pipe.set_adapters("adapter-1", scales_1)
 
-            output_adapter_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters("adapter-2", scales_2)
-            output_adapter_2 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_2 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1, scales_2])
 
-            output_adapter_mixed = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_mixed = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -1287,14 +1323,20 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_2 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_mixed = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertFalse(
                 np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
@@ -1312,7 +1354,9 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.delete_adapters("adapter-1")
-            output_deleted_adapter_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_deleted_adapter_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertTrue(
                 np.allclose(output_deleted_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
@@ -1320,7 +1364,9 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.delete_adapters("adapter-2")
-            output_deleted_adapters = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_deleted_adapters = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
@@ -1342,7 +1388,9 @@ class PeftLoraLoaderMixinTests:
             pipe.set_adapters(["adapter-1", "adapter-2"])
             pipe.delete_adapters(["adapter-1", "adapter-2"])
 
-            output_deleted_adapters = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_deleted_adapters = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
@@ -1393,14 +1441,20 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_1 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_2 = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_mixed = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -1419,7 +1473,9 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
-            output_adapter_mixed_weighted = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_adapter_mixed_weighted = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertFalse(
                 np.allclose(output_adapter_mixed_weighted, output_adapter_mixed, atol=1e-3, rtol=1e-3),
@@ -1638,7 +1694,9 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(adapter_names=["adapter-1"])
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
-            outputs_lora_1_fused = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            outputs_lora_1_fused = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertTrue(
                 np.allclose(ouputs_lora_1, outputs_lora_1_fused, atol=1e-3, rtol=1e-3),
@@ -1649,7 +1707,9 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(adapter_names=["adapter-2", "adapter-1"])
 
             # Fusing should still keep the LoRA layers
-            output_all_lora_fused = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_all_lora_fused = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             self.assertTrue(
                 np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should not change the output",
@@ -1669,7 +1729,9 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_dora_lora = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_no_dora_lora = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
             self.assertTrue(output_no_dora_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -1690,7 +1752,9 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            output_dora_lora = getattr(pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute)
+            output_dora_lora = getattr(
+                pipe(**inputs, generator=torch.manual_seed(0)), self.output_identifier_attribute
+            )
 
             self.assertFalse(
                 np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
