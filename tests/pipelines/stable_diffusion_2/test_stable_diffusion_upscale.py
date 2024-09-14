@@ -29,6 +29,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    require_non_cpu,
     require_torch_gpu,
     slow,
     torch_device,
@@ -289,6 +290,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_prompt_embeds_slice.flatten() - expected_slice).max() < 1e-2
 
+    @require_non_cpu
     def test_stable_diffusion_upscale_fp16(self):
         """Test that stable diffusion upscale works with fp16"""
         unet = self.dummy_cond_unet_upscale

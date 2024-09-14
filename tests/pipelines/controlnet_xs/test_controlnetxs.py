@@ -38,6 +38,7 @@ from diffusers.utils.testing_utils import (
     is_torch_compile,
     load_image,
     load_numpy,
+    require_non_cpu,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -306,6 +307,7 @@ class ControlNetXSPipelineFastTests(
 
             assert out_vae_np.shape == out_np.shape
 
+    @require_non_cpu
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

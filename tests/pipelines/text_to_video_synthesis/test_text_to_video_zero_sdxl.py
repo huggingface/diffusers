@@ -24,7 +24,13 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    nightly,
+    require_non_cpu,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineTesterMixin
@@ -213,6 +219,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
+    @require_non_cpu
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -278,6 +285,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_pipeline_call_signature(self):
         pass
 
+    @require_non_cpu
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -329,6 +337,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
+    @require_non_cpu
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

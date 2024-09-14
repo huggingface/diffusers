@@ -19,7 +19,7 @@ from diffusers import (
 )
 from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import require_non_cpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
@@ -218,6 +218,7 @@ class AnimateDiffPAGPipelineFastTests(
             expected_slice = np.array([0.5295, 0.3947, 0.5300, 0.4864, 0.4518, 0.5315, 0.5440, 0.4775, 0.5538])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
+    @require_non_cpu
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

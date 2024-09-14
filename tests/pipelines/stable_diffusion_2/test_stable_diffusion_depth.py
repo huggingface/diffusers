@@ -43,6 +43,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    require_non_cpu,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -194,6 +195,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
+    @require_non_cpu
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
