@@ -145,7 +145,7 @@ This is an experimental process, I am not sure if it is suitable for everyone, w
 Please modify some of the code in the script.
 ### 1.Customize zero3 settings
 
-Copy the accelerate_config_zero3.yaml,modify `num_processes` according to the number of gpu you want to use:
+Copy the **accelerate_config_zero3.yaml**,modify `num_processes` according to the number of gpus you want to use:
 
 ```bash
 compute_environment: LOCAL_MACHINE
@@ -175,7 +175,7 @@ use_cpu: false
 
 ### 2.Precompute all inputs (latent, embeddings)
 
-In the **train_controlnet_flux.py**, We need to pre-calculate all parameters and put them into batches.So we first need to rewrite the <span style="color:pink;">compute_embeddings</span> function. 
+In the train_controlnet_flux.py, We need to pre-calculate all parameters and put them into batches.So we first need to rewrite the `compute_embeddings` function. 
 
 ```python
 def compute_embeddings(batch, proportion_empty_prompts, vae, flux_controlnet_pipeline, weight_dtype, is_train=True):
@@ -260,7 +260,7 @@ def compute_embeddings(batch, proportion_empty_prompts, vae, flux_controlnet_pip
     return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids, "pixel_latents": pixel_latents, "control_latents": control_latents, "latent_image_ids": latent_image_ids}
 ```
 
-Because we need images to pass through vae, we need to preprocess the images in the dataset first. At the same time, vae requires more video memory, so you may need to modify the <span style="color:orange;">batch_size</span>  below
+Because we need images to pass through vae, we need to preprocess the images in the dataset first. At the same time, vae requires more gpu memory, so you may need to modify the `batch_size` below
 ```diff
 +train_dataset = prepare_train_dataset(train_dataset, accelerator)
 with accelerator.main_process_first():
@@ -283,7 +283,7 @@ torch.cuda.empty_cache()
 ```
 ### 3.Redefine the behavior of getting batchsize
 
-Now that we have all the preprocessing done, we need to modify the <span style="color:pink;">collate_fn</span> function.
+Now that we have all the preprocessing done, we need to modify the `collate_fn` function.
 
 ```python
 def collate_fn(examples):
