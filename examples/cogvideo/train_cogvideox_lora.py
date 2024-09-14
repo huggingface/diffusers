@@ -187,7 +187,7 @@ def get_args():
     parser.add_argument(
         "--lora_alpha",
         type=float,
-        default=1,
+        default=128,
         help=("The scaling factor to scale LoRA weight update. The actual scaling factor is `lora_alpha / rank`"),
     )
     parser.add_argument(
@@ -366,7 +366,7 @@ def get_args():
         default=None,
         help="Coefficients for computing the Prodigy optimizer's stepsize using running averages. If set to None, uses the value of square root of beta2.",
     )
-    parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
+    parser.add_argument("--prodigy_decouple", action="store_true", help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
@@ -379,12 +379,11 @@ def get_args():
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
-        "--prodigy_use_bias_correction", type=bool, default=True, help="Turn on Adam's bias correction."
+        "--prodigy_use_bias_correction", action="store_true", help="Turn on Adam's bias correction."
     )
     parser.add_argument(
         "--prodigy_safeguard_warmup",
-        type=bool,
-        default=True,
+        action="store_true",
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage.",
     )
 

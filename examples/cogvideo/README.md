@@ -151,7 +151,7 @@ accelerate launch --gpu_ids $GPU_IDS examples/cogvideo/train_cogvideox_lora.py \
   --validation_epochs 10 \
   --seed 42 \
   --rank 64 \
-  --lora_alpha 1 \
+  --lora_alpha 64 \
   --mixed_precision fp16 \
   --output_dir /raid/aryan/cogvideox-lora \
   --height 480 --width 720 --fps 8 --max_num_frames 49 --skip_frames_start 0 --skip_frames_end 0 \
@@ -185,14 +185,24 @@ Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimen
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training.
 
 > [!IMPORTANT]
-> The following settings have been tested to work at the time of adding CogVideoX LoRA training support:
-> - TODO: Add more insights
+> The following settings have been tested at the time of adding CogVideoX LoRA training support:
+> - Our testing was primarily done on CogVideoX-2b. We will work on CogVideoX-5b and CogVideoX-5b-I2V soon
+> - One dataset comprised of 70 training videos of resolutions `200 x 480 x 720` (F x H x W). From this, by using frame skipping in data preprocessing, we created two smaller 49-frame and 16-frame datasets for faster experimentation and because the maximum limit recommended by the CogVideoX team is 49 frames. Out of the 70 videos, we created three groups of 10, 25 and 50 videos. All videos were similar in nature of the concept being trained.
+> - 25+ videos worked best for training new concepts and styles.
+> - We found that it is better to train with an identifier token that can be specified as `--id_token`. This is similar to Dreambooth-like training but normal finetuning without such a token works too.
+> - Trained concept seemed to work decently well when combined with completely unrelated prompts. We expect even better results if CogVideoX-5B is finetuned.
+> - The original repository uses a `lora_alpha` of `1`. We found this not suitable in many runs, possibly due to difference in modeling backends and training settings. Our recommendation is to set to the `lora_alpha` to either `rank` or `rank // 2`.
+> - If you're training on data whose captions generate bad results with the original model, a `rank` of 64 and above is good and also the recommendation by the team behind CogVideoX. One might also benefit from finetuning the text encoder in this case. If the generations are already moderately good on your training captions, a `rank` of 16/32 should work. We found that setting the rank too low, say `4`, is not ideal and doesn't produce promising results.
+> - The authors of CogVideoX recommend 4000 training steps and 100 training videos overall to achieve the best result. From our limited experimentation, we found 2000 steps and 25 videos to be sufficient.
+> - When using the Prodigy opitimizer for trainign
+>
+> Note that our testing is not exhaustive due to limited time for exploration. Our recommendation would be to play around with the different knobs and dials to find the best settings for your data.
 
 <!-- TODO: Test finetuning with CogVideoX-5b and CogVideoX-5b-I2V and update scripts accordingly -->
 
 ## Inference
 
-Once you have trained a lora model, the inference can be done simply loading the lora weights into the `CogVideoXPipeline`.is `sd-naruto-model-lora`.
+Once you have trained a lora model, the inference can be done simply loading the lora weights into the `CogVideoXPipeline`.
 
 ```python
 import torch
