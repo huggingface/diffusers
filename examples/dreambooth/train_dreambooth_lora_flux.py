@@ -171,13 +171,14 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1814,6 +1815,7 @@ def main(args):
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
                     epoch=epoch,
+                    torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
                     clear_objs_and_retain_memory([text_encoder_one, text_encoder_two])
@@ -1862,6 +1864,7 @@ def main(args):
                 pipeline_args=pipeline_args,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:
