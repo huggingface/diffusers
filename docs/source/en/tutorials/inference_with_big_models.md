@@ -90,8 +90,8 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
--    "Lykon/dreamshaper-8", torch_dtype=torch.float16, use_safetensors=True,
-+    "Lykon/dreamshaper-8", torch_dtype=torch.float16, use_safetensors=True, device_map="balanced"
+-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
++    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, device_map="balanced"
 )
 image = pipeline("a dog").images[0]
 image
@@ -105,7 +105,7 @@ import torch
 
 max_memory = {0:"1GB", 1:"1GB"}
 pipeline = DiffusionPipeline.from_pretrained(
-    "Lykon/dreamshaper-8",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
     device_map="balanced",
