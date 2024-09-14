@@ -214,8 +214,8 @@ pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch
 pipe.load_lora_weights("my-awesome-hf-username/my-awesome-lora-name", adapter_name="cogvideox-lora") # If loading from the HF Hub
 pipe.to("cuda")
 
-# Assuming lora_alpha=1 and rank=64 for training. If different, set accordingly
-pipe.set_adapters(["cogvideox-lora"], [1 / 64])
+# Assuming lora_alpha=32 and rank=64 for training. If different, set accordingly
+pipe.set_adapters(["cogvideox-lora"], [32 / 64])
 
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The "
