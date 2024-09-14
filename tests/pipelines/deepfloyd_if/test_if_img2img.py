@@ -70,12 +70,10 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_save_load_float16(self):
         # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
         super().test_save_load_float16(expected_max_diff=1e-1)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1e-1)
 
