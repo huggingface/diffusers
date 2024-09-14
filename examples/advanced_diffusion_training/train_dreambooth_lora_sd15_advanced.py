@@ -83,6 +83,7 @@ def save_model_card(
     base_model=str,
     train_text_encoder=False,
     train_text_encoder_ti=False,
+    base_new_tokens_off_token_abstractions=False,
     token_abstraction_dict=None,
     instance_prompt=str,
     validation_prompt=str,
@@ -104,8 +105,17 @@ def save_model_card(
         - text: '{instance_prompt}'
         """
     embeddings_filename = f"{repo_folder}_emb"
-    instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
-    ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
+    if base_new_tokens_off_token_abstractions and token_abstraction_dict:
+        ti_keys = []
+        for key in token_abstraction_dict.keys():
+            instance_prompt_webui = re.sub(
+                rf"<{key}_\d+>", "", re.sub(rf"<{key}_\d+>", embeddings_filename, instance_prompt, count=1)
+            )
+            ti_keys += [f'"{match}"' for match in re.findall(rf"<{key}_\d+>", instance_prompt)]
+        ti_keys = ", ".join(ti_keys)
+    else:
+        instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
+        ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
     if instance_prompt_webui != embeddings_filename:
         instance_prompt_sentence = f"For example, `{instance_prompt_webui}`"
     else:
@@ -328,6 +338,13 @@ def parse_args(input_args=None):
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
         "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
         "'TOK,TOK2,TOK3' etc.",
+    )
+
+    parser.add_argument(
+        "--base_new_tokens_off_token_abstractions",
+        default=False,
+        action="store_true",
+        help="utilize <TOK_0><TOK_1>... per each token instead of the default <si><si+1>...",
     )
 
     parser.add_argument(
@@ -744,9 +761,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -1170,9 +1187,12 @@ def main(args):
         token_abstraction_dict = {}
         token_idx = 0
         for i, token in enumerate(token_abstraction_list):
-            token_abstraction_dict[token] = [
-                f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
-            ]
+            if args.base_new_tokens_off_token_abstractions:
+                token_abstraction_dict[token] = [f"<{token}_{j}>" for j in range(args.num_new_tokens_per_abstraction)]
+            else:
+                token_abstraction_dict[token] = [
+                    f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
+                ]
             token_idx += args.num_new_tokens_per_abstraction - 1
 
         # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
