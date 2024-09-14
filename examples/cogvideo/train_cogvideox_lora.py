@@ -378,9 +378,7 @@ def get_args():
         help="Epsilon value for the Adam optimizer and Prodigy optimizers.",
     )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument(
-        "--prodigy_use_bias_correction", action="store_true", help="Turn on Adam's bias correction."
-    )
+    parser.add_argument("--prodigy_use_bias_correction", action="store_true", help="Turn on Adam's bias correction.")
     parser.add_argument(
         "--prodigy_safeguard_warmup",
         action="store_true",
