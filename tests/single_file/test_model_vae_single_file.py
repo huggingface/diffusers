@@ -25,7 +25,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_hf_numpy,
     numpy_cosine_similarity_distance,
-    require_torch_accelerator,
+    require_torch_gpu,
     slow,
     torch_device,
 )
@@ -35,7 +35,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_accelerator
+@require_torch_gpu
 class AutoencoderKLSingleFileTests(unittest.TestCase):
     model_class = AutoencoderKL
     ckpt_path = (
