@@ -125,7 +125,6 @@ def log_validation(
     else:
         # t5 seems not support autocast and i don't know why
         autocast_ctx = nullcontext()
-
         # autocast_ctx = torch.autocast(accelerator.device.type)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
