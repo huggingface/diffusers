@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -23,6 +23,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKL, HunyuanDiT2DModel
 from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -138,7 +139,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class HunyuanDiTPipeline(DiffusionPipeline):
+class HunyuanDiTPipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for English/Chinese-to-image generation using HunyuanDiT.
 
@@ -238,6 +239,8 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
+
+        self.unet_name = 'transformer' # to support load_lora_weights
 
     def encode_prompt(
         self,
@@ -558,6 +561,10 @@ class HunyuanDiTPipeline(DiffusionPipeline):
     @property
     def interrupt(self):
         return self._interrupt
+    
+    @property
+    def cross_attention_kwargs(self):
+        return self._cross_attention_kwargs
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -592,6 +599,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         target_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
@@ -663,7 +671,11 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                 Whether to use resolution binning or not. If `True`, the input resolution will be mapped to the closest
                 standard resolution. Supported resolutions are 1024x1024, 1280x1280, 1024x768, 1152x864, 1280x960,
                 768x1024, 864x1152, 960x1280, 1280x768, and 768x1280. It is recommended to set this to `True`.
-
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            
         Examples:
 
         Returns:
@@ -707,6 +719,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         )
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
+        self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -720,7 +733,6 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. Encode input prompt
-
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -780,7 +792,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7 create image_rotary_emb, style embedding & time ids
+        # 7. Create image_rotary_emb, style embedding & time ids
         grid_height = height // 8 // self.transformer.config.patch_size
         grid_width = width // 8 // self.transformer.config.patch_size
         base_size = 512 // 8 // self.transformer.config.patch_size
@@ -837,6 +849,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                     text_embedding_mask=prompt_attention_mask,
                     encoder_hidden_states_t5=prompt_embeds_2,
                     text_embedding_mask_t5=prompt_attention_mask_2,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
                     image_meta_size=add_time_ids,
                     style=style,
                     image_rotary_emb=image_rotary_emb,

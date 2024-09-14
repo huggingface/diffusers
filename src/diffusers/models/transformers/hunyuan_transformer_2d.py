@@ -11,13 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor, FusedHunyuanAttnProcessor2_0, HunyuanAttnProcessor2_0
@@ -170,6 +171,7 @@ class HunyuanDiTBlock(nn.Module):
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb=None,
         skip=None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Long Skip Connection
@@ -200,7 +202,7 @@ class HunyuanDiTBlock(nn.Module):
         return hidden_states
 
 
-class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
+class HunyuanDiT2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     HunYuanDiT: Diffusion model with a Transformer backbone.
 
@@ -431,6 +433,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         text_embedding_mask=None,
         encoder_hidden_states_t5=None,
         text_embedding_mask_t5=None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         image_meta_size=None,
         style=None,
         image_rotary_emb=None,
@@ -455,6 +458,10 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         text_embedding_mask_t5: torch.Tensor
             An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. This is the output
             of T5 Text Encoder.
+        cross_attention_kwargs (`dict`, *optional*):
+            A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+            `self.processor` in
+            [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
         image_meta_size (torch.Tensor):
             Conditional embedding indicate the image sizes
         style: torch.Tensor:
@@ -485,7 +492,21 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         text_embedding_mask = text_embedding_mask.unsqueeze(2).bool()
 
         encoder_hidden_states = torch.where(text_embedding_mask, encoder_hidden_states, self.text_embedding_padding)
+         
+        # lora related
+        # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
+        # to the internal blocks and will raise deprecation warnings. this will be confusing for our users.
+        if cross_attention_kwargs is not None:
+            cross_attention_kwargs = cross_attention_kwargs.copy()
+            lora_scale = cross_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+        
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
 
+        # main forward network
         skips = []
         for layer, block in enumerate(self.blocks):
             if layer > self.config.num_layers // 2:
@@ -499,6 +520,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     image_rotary_emb=image_rotary_emb,
                     skip=skip,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )  # (N, L, D)
             else:
                 hidden_states = block(
@@ -506,6 +528,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
                     temb=temb,
                     encoder_hidden_states=encoder_hidden_states,
                     image_rotary_emb=image_rotary_emb,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )  # (N, L, D)
 
             if layer < (self.config.num_layers // 2 - 1):
