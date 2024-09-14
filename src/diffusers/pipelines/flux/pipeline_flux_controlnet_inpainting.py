@@ -176,6 +176,36 @@ def retrieve_timesteps(
 
 
 class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
+    r"""
+    The Flux controlnet pipeline for inpainting.
+
+    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+
+    Args:
+        transformer ([`FluxTransformer2DModel`]):
+            Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`T5TokenizerFast`):
+            Second Tokenizer of class
+            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+    """
+
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    _optional_components = []
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
@@ -788,12 +818,12 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             max_sequence_length (`int`, *optional*, defaults to 512):
                 The maximum length of the sequence to be generated.
 
+        Examples:
+
         Returns:
             [`~pipelines.flux.FluxPipelineOutput`] or `tuple`: [`~pipelines.flux.FluxPipelineOutput`] if `return_dict`
             is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
             images.
-
-        Examples:
         """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
