@@ -58,6 +58,7 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    clear_objs_and_retain_memory
 )
 from diffusers.utils import (
     check_min_version,
@@ -1436,12 +1437,7 @@ def main(args):
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        del tokenizers, text_encoders
-        # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del text_encoder_one, text_encoder_two
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_objs_and_retain_memory([tokenizers, text_encoders, text_encoder_one, text_encoder_two])
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1484,10 +1480,7 @@ def main(args):
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
 
         if args.validation_prompt is None:
-            del vae
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                gc.collect()
+            clear_objs_and_retain_memory([vae])
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1823,9 +1816,7 @@ def main(args):
                     epoch=epoch,
                 )
                 if not args.train_text_encoder:
-                    del text_encoder_one, text_encoder_two
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    clear_objs_and_retain_memory([text_encoder_one, text_encoder_two])
 
     # Save the lora layers
     accelerator.wait_for_everyone()
