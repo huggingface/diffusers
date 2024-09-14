@@ -578,8 +578,10 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+
         for local in [True, False]:
-            with self.assertWarns(FutureWarning) as warning:
+            with CaptureLogger(logger) as cap_logger:
                 if not local:
                     _ = DiffusionPipeline.download(
                         repo_id,
@@ -595,8 +597,8 @@ class DownloadTests(unittest.TestCase):
                         variant="fp16",
                         use_safetensors=True,
                     )
-                string = "This serialization format is now deprecated to standardize the serialization"
-                assert string in str(warning.warnings[0].message)
+            string = "This serialization format is now deprecated to standardize the serialization"
+            assert string in str(cap_logger)
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None

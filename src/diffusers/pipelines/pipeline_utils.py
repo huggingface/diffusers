@@ -50,7 +50,6 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -58,7 +57,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import _check_legacy_sharding_format, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -727,18 +726,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 for file in files:
                     filenames.append(os.path.basename(file))
 
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+            _, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
             # The variant filenames can have the legacy sharding checkpoint format that we check and throw
-            # a deprecation warning if detected.
-            if len(variant_filenames) > 0 and _check_legacy_sharding_format(filenames, variant):
-                deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
-            if len(variant_filenames) == 0 and variant is not None:
-                error_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f" Available ones are: {model_filenames}."
-                )
-                raise ValueError(error_message)
+            # a warning if detected.
+            if len(variant_filenames) > 0 and _check_legacy_sharding_variant_format(filenames, variant):
+                warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+                logger.warning(warn_msg)
 
         config_dict = cls.load_config(cached_folder)
 
@@ -750,6 +743,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
         # with variant being `"fp16"`.
         model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
+        if len(model_variants) == 0 and variant is not None:
+            error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+            raise ValueError(error_message)
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -1259,16 +1255,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
             # The variant filenames can have the legacy sharding checkpoint format that we check and throw
-            # a deprecation warning if detected.
-            if len(variant_filenames) > 0 and _check_legacy_sharding_format(filenames, variant):
-                deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                deprecate("legacy_sharded_ckpts_with_variant", "1.0.0", deprecation_message, standard_warn=False)
-            if len(variant_filenames) == 0 and variant is not None:
-                error_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f" Available ones are: {model_filenames}."
-                )
-                raise ValueError(error_message)
+            # a warning if detected.
+            if len(variant_filenames) > 0 and _check_legacy_sharding_variant_format(filenames, variant):
+                warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+                logger.warning(warn_msg)
 
             config_file = hf_hub_download(
                 pretrained_model_name,
