@@ -23,7 +23,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_accelerator,
+    require_torch_gpu,
     slow,
 )
 
@@ -32,7 +32,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_accelerator
+@require_torch_gpu
 class ControlNetModelSingleFileTests(unittest.TestCase):
     model_class = ControlNetModel
     ckpt_path = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"

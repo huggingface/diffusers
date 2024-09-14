@@ -9,7 +9,7 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_accelerator,
+    require_torch_gpu,
     slow,
 )
 
@@ -20,7 +20,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_accelerator
+@require_torch_gpu
 class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
@@ -78,7 +78,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
 
 @slow
-@require_torch_accelerator
+@require_torch_gpu
 class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = (
