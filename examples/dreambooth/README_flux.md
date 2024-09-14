@@ -225,7 +225,7 @@ Make sure to install `bitsandbytes` if you want to do so.
 When training w/o validation runs, we can pre-encode the training images with the vae, and then delete it to free up some memory. 
 to enable `latent_caching` simply pass `--cache_latents`.
 ### Precision of saved LoRA layers
-By default, trained transformer layers are saved in the precision dtype in which training was performed. E.g. when training in mixed precision is enabled with `--mixed_precision="bf16"`, final finetuned layers will be saved in `bf16` as well. 
+By default, trained transformer layers are saved in the precision dtype in which training was performed. E.g. when training in mixed precision is enabled with `--mixed_precision="bf16"`, final finetuned layers will be saved in `torch.bfloat16` as well. 
 This reduces memory requirements significantly w/o a significant quality loss. Note that if you do wish to save the final layers in float32 at the expanse of more memory usage, 
 you can do so by passing `--upcast_before_saving`
 
