@@ -44,10 +44,13 @@ First, load the pipeline:
 
 ```python
 import torch
-from diffusers import CogVideoXPipeline
-from diffusers.utils import export_to_video
-
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b").to("cuda")
+from diffusers import CogVideoXPipeline, CogVideoXImageToVideoPipeline
+from diffusers.utils import export_to_video,load_image
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b").to("cuda") # or "THUDM/CogVideoX-2b" 
+```
+If you are using the image-to-video pipeline, load it as follows:
+```python
+pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V").to("cuda") # Image-to-Video pipeline
 ```
 
 Then change the memory layout of the pipelines `transformer` component to `torch.channels_last`:
@@ -56,7 +59,7 @@ Then change the memory layout of the pipelines `transformer` component to `torch
 pipe.transformer.to(memory_format=torch.channels_last)
 ```
 
-Finally, compile the components and run inference:
+compile the components and run inference:
 
 ```python
 pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
@@ -65,6 +68,21 @@ pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", full
 prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
 video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 ```
+
+if you are using the image-to-video pipeline, you can use the following code to generate a video from an image:
+
+```python
+image = load_image("image_of_panda.jpg")
+prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
+video = pipe(prompt=prompt, image=image, guidance_scale=6, num_inference_steps=50).frames[0]
+```
+
+To save the video, use the following code:
+
+```python
+export_to_video(video, "panda_video.mp4")
+```
+
 
 The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f) results on an 80GB A100 machine are:
 
