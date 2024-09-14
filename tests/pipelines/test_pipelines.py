@@ -1695,7 +1695,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_error_no_variant_available(self):
         variant = "fp16"
         with self.assertRaises(ValueError) as error_context:
-            _ = StableDiffusionPipeline.download(
+            _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
