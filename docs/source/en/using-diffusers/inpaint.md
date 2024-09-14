@@ -216,11 +216,8 @@ make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ## Non-inpaint specific checkpoints
 
-<<<<<<< HEAD
-So far, this guide has used inpaint specific checkpoints such as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). But you can also use regular checkpoints like [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
-=======
-So far, this guide has used inpaint specific checkpoints such as [Lykon/dreamshaper-8-inpainting](Lykon/dreamshaper-8-inpainting). But you can also use regular checkpoints like [Lykon/dreamshaper-8](https://huggingface.co/Lykon/dreamshaper-8). Let's compare the results of the two checkpoints.
->>>>>>> b18f38b00b69ef2ac894d38e19fb6b159994d494
+
+So far, this guide has used inpaint specific checkpoints such as [stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting). But you can also use regular checkpoints like [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
 
 The image on the left is generated from a regular checkpoint, and the image on the right is from an inpaint checkpoint. You'll immediately notice the image on the left is not as clean, and you can still see the outline of the area the model is supposed to inpaint. The image on the right is much cleaner and the inpainted area appears more natural.
 
