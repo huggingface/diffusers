@@ -41,7 +41,7 @@ class FlaxControlNetPipelineIntegrationTests(unittest.TestCase):
             "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
+            "Jiali/stable-diffusion-1.5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
         params["controlnet"] = controlnet_params
 
@@ -86,7 +86,7 @@ class FlaxControlNetPipelineIntegrationTests(unittest.TestCase):
             "lllyasviel/sd-controlnet-openpose", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
+            "Jiali/stable-diffusion-1.5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
         params["controlnet"] = controlnet_params
 

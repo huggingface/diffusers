@@ -307,7 +307,7 @@ print(pipeline)
 
 위의 코드 출력 결과를 확인해보면, `pipeline`은 [`StableDiffusionPipeline`]의 인스턴스이며, 다음과 같이 총 7개의 컴포넌트로 구성된다는 것을 알 수 있습니다.
 
-- `"feature_extractor"`: [`~transformers.CLIPFeatureExtractor`]의 인스턴스
+- `"feature_extractor"`: [`~transformers.CLIPImageProcessor`]의 인스턴스
 - `"safety_checker"`: 유해한 컨텐츠를 스크리닝하기 위한 [컴포넌트](https://github.com/huggingface/diffusers/blob/e55687e1e15407f60f32242027b7bb8170e58266/src/diffusers/pipelines/stable_diffusion/safety_checker.py#L32)
 - `"scheduler"`: [`PNDMScheduler`]의 인스턴스
 - `"text_encoder"`: [`~transformers.CLIPTextModel`]의 인스턴스

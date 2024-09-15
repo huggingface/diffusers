@@ -77,6 +77,36 @@ class AmusedPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class AnimateDiffControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class AnimateDiffPAGPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class AnimateDiffPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -108,6 +138,21 @@ class AnimateDiffSDXLPipeline(metaclass=DummyObject):
 
 
 class AnimateDiffSparseControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class AnimateDiffVideoToVideoControlNetPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -212,37 +257,37 @@ class AuraFlowPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class ChatGLMModel(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-
-class ChatGLMTokenizer(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-
 class CLIPImageProjection(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class CogVideoXPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class CogVideoXVideoToVideoPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -272,7 +317,82 @@ class CycleDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class FluxControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class FluxImg2ImgPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class FluxInpaintPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class FluxPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class HunyuanDiTControlNetPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class HunyuanDiTPAGPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -707,36 +827,6 @@ class KandinskyV22PriorPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class KolorsImg2ImgPipeline(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-
-class KolorsPipeline(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-
 class LatentConsistencyModelImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -932,6 +1022,21 @@ class PixArtAlphaPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class PixArtSigmaPAGPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class PixArtSigmaPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -978,6 +1083,36 @@ class ShapEImg2ImgPipeline(metaclass=DummyObject):
 
 
 class ShapEPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class StableAudioPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class StableAudioProjectionModel(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1068,6 +1203,21 @@ class StableDiffusion3Img2ImgPipeline(metaclass=DummyObject):
 
 
 class StableDiffusion3InpaintPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class StableDiffusion3PAGPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1533,6 +1683,21 @@ class StableDiffusionXLControlNetImg2ImgPipeline(metaclass=DummyObject):
 
 
 class StableDiffusionXLControlNetInpaintPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class StableDiffusionXLControlNetPAGImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

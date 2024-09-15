@@ -76,7 +76,7 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
         inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
@@ -385,14 +385,14 @@ class StableDiffusionInpaintPipelineFastTests(
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
-    def test_ip_adapter_single(self, from_simple=False, expected_pipe_slice=None):
+    def test_ip_adapter(self, from_simple=False, expected_pipe_slice=None):
         if not from_simple:
             expected_pipe_slice = None
             if torch_device == "cpu":
                 expected_pipe_slice = np.array(
                     [0.4390, 0.5452, 0.3772, 0.5448, 0.6031, 0.4480, 0.5194, 0.4687, 0.4640]
                 )
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
@@ -481,11 +481,11 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         }
         return inputs
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.6345, 0.5395, 0.5611, 0.5403, 0.5830, 0.5855, 0.5193, 0.5443, 0.5211])
-        return super().test_ip_adapter_single(from_simple=True, expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(from_simple=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -628,7 +628,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_ddim(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -645,7 +645,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_fp16(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
@@ -662,7 +662,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_pndm(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
@@ -680,7 +680,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_k_lms(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
@@ -702,7 +702,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
@@ -728,7 +728,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
@@ -747,7 +747,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_inpaint_strength_test(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_default_attn_processor()
@@ -767,7 +767,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         assert np.abs(expected_slice - image_slice).max() < 1e-3
 
     def test_stable_diffusion_simple_inpaint_ddim(self):
-        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("Jiali/stable-diffusion-1.5", safety_checker=None)
         pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -818,7 +818,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
     def test_stable_diffusion_inpaint_ddim(self):
         vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.vae = vae
         pipe.unet.set_default_attn_processor()
@@ -840,7 +840,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
             "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
         )
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", torch_dtype=torch.float16, safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.vae = vae
@@ -860,7 +860,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
     def test_stable_diffusion_inpaint_pndm(self):
         vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.vae = vae
@@ -881,7 +881,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
     def test_stable_diffusion_inpaint_k_lms(self):
         vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.vae = vae
@@ -906,7 +906,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
             "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
         )
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None, torch_dtype=torch.float16
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.vae = vae
         pipe.set_progress_bar_config(disable=None)
@@ -930,7 +930,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
             "cross-attention/asymmetric-autoencoder-kl-x-1-5",
         )
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.vae = vae
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
@@ -951,7 +951,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
     def test_stable_diffusion_inpaint_strength_test(self):
         vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", safety_checker=None
+            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
         )
         pipe.unet.set_default_attn_processor()
         pipe.vae = vae
@@ -973,7 +973,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
 
     def test_stable_diffusion_simple_inpaint_ddim(self):
         vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
-        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("Jiali/stable-diffusion-1.5", safety_checker=None)
         pipe.vae = vae
         pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
@@ -993,7 +993,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         vae = AsymmetricAutoencoderKL.from_pretrained(
             "cross-attention/asymmetric-autoencoder-kl-x-1-5", torch_dtype=torch.float16
         )
-        filename = hf_hub_download("runwayml/stable-diffusion-inpainting", filename="sd-v1-5-inpainting.ckpt")
+        filename = hf_hub_download("botp/stable-diffusion-v1-5-inpainting", filename="sd-v1-5-inpainting.ckpt")
 
         pipe = StableDiffusionInpaintPipeline.from_single_file(filename, torch_dtype=torch.float16)
         pipe.vae = vae
@@ -1042,7 +1042,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def test_inpaint_ddim(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1057,7 +1057,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_inpaint_pndm(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
         sd_pipe.scheduler = PNDMScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -1073,7 +1073,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_inpaint_lms(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -1089,7 +1089,7 @@ class StableDiffusionInpaintPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_inpaint_dpm(self):
-        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+        sd_pipe = StableDiffusionInpaintPipeline.from_pretrained("botp/stable-diffusion-v1-5-inpainting")
         sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)

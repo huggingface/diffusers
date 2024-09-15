@@ -64,7 +64,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -157,13 +157,14 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1725,6 +1726,7 @@ def main(args):
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
                     epoch=epoch,
+                    torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two, text_encoder_three
@@ -1775,6 +1777,7 @@ def main(args):
                 pipeline_args=pipeline_args,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:

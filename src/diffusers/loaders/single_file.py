@@ -23,6 +23,7 @@ from packaging import version
 from ..utils import deprecate, is_transformers_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
+    _is_legacy_scheduler_kwargs,
     _is_model_weights_in_cached_folder,
     _legacy_load_clip_tokenizer,
     _legacy_load_safety_checker,
@@ -41,7 +42,6 @@ logger = logging.get_logger(__name__)
 
 # Legacy behaviour. `from_single_file` does not load the safety checker unless explicitly provided
 SINGLE_FILE_OPTIONAL_COMPONENTS = ["safety_checker"]
-
 
 if is_transformers_available():
     import transformers
@@ -135,7 +135,7 @@ def load_single_file_sub_model(
             class_obj, checkpoint=checkpoint, config=cached_model_config_path, local_files_only=local_files_only
         )
 
-    elif is_diffusers_scheduler and is_legacy_loading:
+    elif is_diffusers_scheduler and (is_legacy_loading or _is_legacy_scheduler_kwargs(kwargs)):
         loaded_sub_model = _legacy_load_scheduler(
             class_obj, checkpoint=checkpoint, component_name=name, original_config=original_config, **kwargs
         )

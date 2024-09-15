@@ -1,6 +1,7 @@
-name: Slow Tests on main
+name: Fast GPU Tests on main
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -19,7 +20,8 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     container:
       image: diffusers/diffusers-pytorch-cpu
     outputs:
@@ -44,7 +46,7 @@ jobs:
           echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: test-pipelines.json
           path: reports
@@ -57,7 +59,8 @@ jobs:
       max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host --gpus 0
@@ -94,14 +97,15 @@ jobs:
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
 
   torch_cuda_tests:
     name: Torch CUDA Tests
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host --gpus 0
@@ -109,6 +113,8 @@ jobs:
       run:
         shell: bash
     strategy:
+      fail-fast: false
+      max-parallel: 2
       matrix:
         module: [models, schedulers, lora, others, single_file]
     steps:
@@ -147,7 +153,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: torch_cuda_test_reports
         path: reports
@@ -194,14 +200,15 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: flax_tpu_test_reports
         path: reports
 
   onnx_cuda_tests:
     name: ONNX CUDA Tests
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-onnxruntime-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ --gpus 0
@@ -241,7 +248,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: onnx_cuda_test_reports
         path: reports
@@ -249,7 +256,8 @@ jobs:
   run_torch_compile_tests:
     name: PyTorch Compile CUDA tests
 
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
 
     container:
       image: diffusers/diffusers-pytorch-compile-cuda
@@ -283,7 +291,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: torch_compile_test_reports
         path: reports
@@ -291,7 +299,8 @@ jobs:
   run_xformers_tests:
     name: PyTorch xformers CUDA tests
 
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
 
     container:
       image: diffusers/diffusers-pytorch-xformers-cuda
@@ -324,7 +333,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: torch_xformers_test_reports
         path: reports
@@ -332,7 +341,8 @@ jobs:
   run_examples_tests:
     name: Examples PyTorch CUDA tests on Ubuntu
 
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on:
+      group: aws-g4dn-2xlarge
 
     container:
       image: diffusers/diffusers-pytorch-cuda
@@ -374,7 +384,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: examples_test_reports
         path: reports

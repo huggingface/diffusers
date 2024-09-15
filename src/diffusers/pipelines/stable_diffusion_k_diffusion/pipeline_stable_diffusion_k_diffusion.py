@@ -602,9 +602,9 @@ class StableDiffusionKDiffusionPipeline(
             sigma_min: float = self.k_diffusion_model.sigmas[0].item()
             sigma_max: float = self.k_diffusion_model.sigmas[-1].item()
             sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigma_min, sigma_max=sigma_max)
-            sigmas = sigmas.to(device)
         else:
             sigmas = self.scheduler.sigmas
+        sigmas = sigmas.to(device)
         sigmas = sigmas.to(prompt_embeds.dtype)
 
         # 6. Prepare latent variables
