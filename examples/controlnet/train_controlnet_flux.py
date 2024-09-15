@@ -554,6 +554,13 @@ def parse_args(input_args=None):
         help="Path to the jsonl file containing the training data.",
     )
 
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=3.5,
+        help="the guidance scale used for transformer.",
+    )
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -669,7 +676,6 @@ def prepare_train_dataset(dataset, accelerator):
     )
 
     def preprocess_train(examples):
-        # print(f"{examples[args.image_column]=}")
         images = [
             (image.convert("RGB") if not isinstance(image, str) else Image.open(image).convert("RGB"))
             for image in examples[args.image_column]
@@ -997,7 +1003,6 @@ def main(args):
 
         # text_ids [512,3] to [bs,512,3]
         text_ids = text_ids.unsqueeze(0).expand(prompt_embeds.shape[0], -1, -1)
-        print(text_ids.shape)
         # unet_added_cond_kwargs = {"pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
         return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
 
@@ -1206,7 +1211,7 @@ def main(args):
                 ) * noise
 
                 guidance_vec = torch.full(
-                    (noisy_latents.shape[0],), 3.5, device=noisy_latents.device, dtype=weight_dtype
+                    (noisy_latents.shape[0],), args.guidance_scale, device=noisy_latents.device, dtype=weight_dtype
                 )
 
                 controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
