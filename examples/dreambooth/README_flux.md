@@ -221,8 +221,12 @@ Instead, only a subset of these activations (the checkpoints) are stored and the
 ### 8-bit-Adam Optimizer
 When training with `AdamW`(doesn't apply to `prodigy`) You can pass `--use_8bit_adam` to reduce the memory requirements of training. 
 Make sure to install `bitsandbytes` if you want to do so.
-### latent caching
+### Latent caching
 When training w/o validation runs, we can pre-encode the training images with the vae, and then delete it to free up some memory. 
-to enable `latent_caching`, first, use the version in [this PR](https://github.com/huggingface/diffusers/blob/1b195933d04e4c8281a2634128c0d2d380893f73/examples/dreambooth/train_dreambooth_lora_flux.py), and then pass `--cache_latents`
+to enable `latent_caching` simply pass `--cache_latents`.
+### Precision of saved LoRA layers
+By default, trained transformer layers are saved in the precision dtype in which training was performed. E.g. when training in mixed precision is enabled with `--mixed_precision="bf16"`, final finetuned layers will be saved in `torch.bfloat16` as well. 
+This reduces memory requirements significantly w/o a significant quality loss. Note that if you do wish to save the final layers in float32 at the expanse of more memory usage, you can do so by passing `--upcast_before_saving`.
+
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️

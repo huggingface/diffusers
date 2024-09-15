@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -56,6 +55,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
+    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
 )
@@ -601,6 +601,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--cache_latents",
+        action="store_true",
+        default=False,
+        help="Cache the VAE latents",
+    )
+    parser.add_argument(
         "--report_to",
         type=str,
         default="tensorboard",
@@ -618,6 +624,15 @@ def parse_args(input_args=None):
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
+    )
+    parser.add_argument(
+        "--upcast_before_saving",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to upcast the trained transformer layers to float32 before saving (at the end of training). "
+            "Defaults to precision dtype used for training to save memory"
         ),
     )
     parser.add_argument(
@@ -1422,12 +1437,7 @@ def main(args):
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        del tokenizers, text_encoders
-        # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del text_encoder_one, text_encoder_two
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        clear_objs_and_retain_memory([tokenizers, text_encoders, text_encoder_one, text_encoder_two])
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1456,6 +1466,21 @@ def main(args):
                 )
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
+
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
+    vae_config_block_out_channels = vae.config.block_out_channels
+    if args.cache_latents:
+        latents_cache = []
+        for batch in tqdm(train_dataloader, desc="Caching latents"):
+            with torch.no_grad():
+                batch["pixel_values"] = batch["pixel_values"].to(
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
+                )
+                latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+
+        if args.validation_prompt is None:
+            clear_objs_and_retain_memory([vae])
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1579,7 +1604,6 @@ def main(args):
             if args.train_text_encoder:
                 models_to_accumulate.extend([text_encoder_one])
             with accelerator.accumulate(models_to_accumulate):
-                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1613,11 +1637,15 @@ def main(args):
                         )
 
                 # Convert images to latent space
-                model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
+                if args.cache_latents:
+                    model_input = latents_cache[step].sample()
+                else:
+                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+                vae_scale_factor = 2 ** (len(vae_config_block_out_channels))
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
@@ -1789,15 +1817,16 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
-                    del text_encoder_one, text_encoder_two
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    clear_objs_and_retain_memory([text_encoder_one, text_encoder_two])
 
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        if args.upcast_before_saving:
+            transformer.to(torch.float32)
+        else:
+            transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
