@@ -18,22 +18,22 @@ Original model checkpoints for Flux can be found [here](https://huggingface.co/b
 
 <Tip>
 
-Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more. For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
+Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more.  For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
 
 </Tip>
 
 Flux comes in two variants:
 
-- Timestep-distilled (`black-forest-labs/FLUX.1-schnell`)
-- Guidance-distilled (`black-forest-labs/FLUX.1-dev`)
+* Timestep-distilled (`black-forest-labs/FLUX.1-schnell`)
+* Guidance-distilled (`black-forest-labs/FLUX.1-dev`)
 
 Both checkpoints have slightly difference usage which we detail below.
 
 ### Timestep-distilled
 
-- `max_sequence_length` cannot be more than 256.
-- `guidance_scale` needs to be 0.
-- As this is a timestep-distilled model, it benefits from fewer sampling steps.
+* `max_sequence_length` cannot be more than 256.
+* `guidance_scale` needs to be 0.
+* As this is a timestep-distilled model, it benefits from fewer sampling steps.
 
 ```python
 import torch
@@ -56,8 +56,8 @@ out.save("image.png")
 
 ### Guidance-distilled
 
-- The guidance-distilled variant takes about 50 sampling steps for good-quality generation.
-- It doesn't have any limitations around the `max_sequence_length`.
+* The guidance-distilled variant takes about 50 sampling steps for good-quality generation.
+* It doesn't have any limitations around the `max_sequence_length`.
 
 ```python
 import torch
@@ -78,11 +78,9 @@ out.save("image.png")
 ```
 
 ## Running FP16 inference
-
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
 
 FP16 inference code:
-
 ```python
 import torch
 from diffusers import FluxPipeline
@@ -162,20 +160,31 @@ image.save("flux-fp8-dev.png")
 
 ## FluxPipeline
 
-[[autodoc]] FluxPipeline - all - **call**
+[[autodoc]] FluxPipeline
+	- all
+	- __call__
 
 ## FluxImg2ImgPipeline
 
-[[autodoc]] FluxImg2ImgPipeline - all - **call**
+[[autodoc]] FluxImg2ImgPipeline
+	- all
+	- __call__
 
 ## FluxInpaintPipeline
 
-[[autodoc]] FluxInpaintPipeline - all - **call**
+[[autodoc]] FluxInpaintPipeline
+	- all
+	- __call__
+
 
 ## FluxControlNetInpaintPipeline
 
-[[autodoc]] FluxControlNetInpaintPipeline - all - **call**
+[[autodoc]] FluxControlNetInpaintPipeline
+	- all
+	- __call__
 
 ## FluxControlNetImg2ImgPipeline
 
-[[autodoc]] FluxControlNetImg2ImgPipeline - all - **call**
+[[autodoc]] FluxControlNetImg2ImgPipeline
+	- all
+	- __call__
