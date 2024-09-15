@@ -628,7 +628,7 @@ def save_model_card(
 
 These are {repo_id} LoRA weights for {base_model}.
 
-The weights were trained using the [CogVideoX Diffusers trainer](TODO).
+The weights were trained using the [CogVideoX Diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/cogvideo/train_cogvideox_lora.py).
 
 Was LoRA for the text encoder enabled? {train_text_encoder}.
 
@@ -643,8 +643,15 @@ from diffusers import CogVideoXPipeline
 import torch
 
 pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16).to("cuda")
-pipe.load_lora_weights("{repo_id}", weight_name="pytorch_lora_weights.safetensors")
-video = pipe("{validation_prompt}").frames[0]
+pipe.load_lora_weights("{repo_id}", weight_name="pytorch_lora_weights.safetensors", adapter_name=["cogvideox-lora"])
+
+# The LoRA adapter weights are determined by what was used for training.
+# In this case, we assume `--lora_alpha` is 32 and `--rank` is 64.
+# It can be made lower or higher from what was used in training to decrease or amplify the effect
+# of the LoRA upto a tolerance, beyond which one might notice no effect at all or overflows.
+pipe.set_adapters(["cogvideox-lora"], [32 / 64])
+
+video = pipe("{validation_prompt}", guidance_scale=6, use_dynamic_cfg=True).frames[0]
 ```
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
