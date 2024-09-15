@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -56,9 +55,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
+    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
-    clear_objs_and_retain_memory
 )
 from diffusers.utils import (
     check_min_version,
