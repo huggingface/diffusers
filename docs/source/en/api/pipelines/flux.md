@@ -172,105 +172,10 @@ image.save("flux-fp8-dev.png")
 
 [[autodoc]] FluxInpaintPipeline - all - **call**
 
-## Flux ControlNet Inpaint Pipeline
+## FluxControlNetInpaintPipeline
 
-The Flux ControlNet Inpaint pipeline is designed for controllable image inpainting using the Flux architecture.
+[[autodoc]] FluxControlNetInpaintPipeline - all - **call**
 
-### Overview
+## FluxControlNetImg2ImgPipeline
 
-This pipeline combines the power of Flux's transformer-based architecture with ControlNet conditioning and inpainting capabilities. It allows for guided image generation within specified masked areas of an input image.
-
-### Usage
-
-```python
-import torch
-from diffusers import FluxControlNetInpaintPipeline
-from diffusers.models import FluxControlNetModel
-from diffusers.utils import load_image
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-controlnet = FluxControlNetModel.from_pretrained(
-    "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
-)
-
-pipe = FluxControlNetInpaintPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, torch_dtype=torch.bfloat16
-)
-
-pipe.text_encoder.to(torch.float16)
-pipe.controlnet.to(torch.float16)
-pipe.to(device)
-
-control_image = load_image(
-    "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Canny-alpha/resolve/main/canny.jpg"
-)
-init_image = load_image(
-    "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-)
-mask_image = load_image(
-    "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-)
-
-prompt = "A girl holding a sign that says InstantX"
-image = pipe(
-    prompt,
-    image=init_image,
-    mask_image=mask_image,
-    control_image=control_image,
-    controlnet_conditioning_scale=0.7,
-    strength=0.7,
-    num_inference_steps=28,
-    guidance_scale=3.5,
-).images[0]
-
-image.save("flux_controlnet_inpaint.png")
-```
-
-## Flux ControlNet Image to Image Pipeline
-
-The Flux ControlNet Img2Img pipeline enables controllable image-to-image translation using the Flux architecture combined with ControlNet conditioning.
-
-### Overview
-
-This pipeline allows for the transformation of input images based on text prompts and ControlNet conditions. It leverages the Flux transformer-based architecture to generate high-quality output images while maintaining control over the generation process.
-
-### Usage
-
-```python
-import torch
-from diffusers import FluxControlNetImg2ImgPipeline, FluxControlNetModel
-from diffusers.utils import load_image
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-controlnet = FluxControlNetModel.from_pretrained(
-    "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
-)
-
-pipe = FluxControlNetImg2ImgPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", controlnet=controlnet, torch_dtype=torch.float16
-)
-
-pipe.text_encoder.to(torch.float16)
-pipe.controlnet.to(torch.float16)
-pipe.to(device)
-
-control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
-init_image = load_image(
-    "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-)
-
-prompt = "A girl in city, 25 years old, cool, futuristic"
-image = pipe(
-    prompt,
-    image=init_image,
-    control_image=control_image,
-    controlnet_conditioning_scale=0.6,
-    strength=0.7,
-    num_inference_steps=2,
-    guidance_scale=3.5,
-).images[0]
-
-image.save("flux_controlnet_img2img.png")
-```
+[[autodoc]] FluxControlNetImg2ImgPipeline - all - **call**
