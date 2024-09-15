@@ -48,11 +48,19 @@ When running `accelerate config`, if we specify torch compile mode to True there
 
 ## Custom Datasets
 
-We support importing data from jsonl(xxx.jsonl),here is a brief example:
+We support dataset formats:
+The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script, To use our example, add `--dataset_name=fusing/fill50k \` to the script and remove line `--jsonl_for_train` mentioned below.
+
+
+We also support importing data from jsonl(xxx.jsonl),using `--jsonl_for_train` to enable it, here is a brief example of jsonl files:
 ```sh
-{"image_path": "xxx", "caption": "xxx", "control_path": "xxx"}
-{"image_path": "xxx", "caption": "xxx", "control_path": "xxx"}
+{"image": "xxx", "text": "xxx", "conditioning_image": "xxx"}
+{"image": "xxx", "text": "xxx", "conditioning_image": "xxx"}
 ```
+
+
+
+
 
 
 ## Training
@@ -77,11 +85,11 @@ export TRAIN_JSON_FILE="path to your jsonl file"
 
 accelerate launch train_controlnet_flux.py \
     --pretrained_model_name_or_path=$MODEL_DIR \
-    --conditioning_image_column=control_path \
-    --image_column=image_path \
-    --caption_column=caption \
+    --dataset_name=fusing/fill50k \
+    --conditioning_image_column=conditioning_image \
+    --image_column=image \
+    --caption_column=text \
     --output_dir=$OUTPUT_DIR \
-    --jsonl_for_train=$TRAIN_JSON_FILE \
     --mixed_precision="bf16" \
     --resolution=512 \
     --learning_rate=1e-5 \
