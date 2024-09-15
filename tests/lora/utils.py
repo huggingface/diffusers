@@ -85,7 +85,10 @@ class PeftLoraLoaderMixinTests:
     unet_kwargs = None
     transformer_cls = None
     transformer_kwargs = None
+    vae_cls = AutoencoderKL
     vae_kwargs = None
+
+    text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
 
     def get_dummy_components(self, scheduler_cls=None, use_dora=False):
         if self.unet_kwargs and self.transformer_kwargs:
@@ -105,7 +108,7 @@ class PeftLoraLoaderMixinTests:
         scheduler = scheduler_cls(**self.scheduler_kwargs)
 
         torch.manual_seed(0)
-        vae = AutoencoderKL(**self.vae_kwargs)
+        vae = self.vae_cls(**self.vae_kwargs)
 
         text_encoder = self.text_encoder_cls.from_pretrained(self.text_encoder_id)
         tokenizer = self.tokenizer_cls.from_pretrained(self.tokenizer_id)
@@ -121,7 +124,7 @@ class PeftLoraLoaderMixinTests:
         text_lora_config = LoraConfig(
             r=rank,
             lora_alpha=rank,
-            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            target_modules=self.text_encoder_target_modules,
             init_lora_weights=False,
             use_dora=use_dora,
         )
@@ -212,7 +215,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
 
             _, _, inputs = self.get_dummy_inputs()
-            output_no_lora = pipe(**inputs).images
+            output_no_lora = pipe(**inputs)[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
     def test_simple_inference_with_text_lora(self):
@@ -230,7 +233,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -244,7 +247,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
@@ -264,7 +267,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -278,7 +281,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
@@ -286,11 +289,11 @@ class PeftLoraLoaderMixinTests:
             if self.unet_kwargs is not None:
                 output_lora_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                ).images
+                )[0]
             else:
                 output_lora_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                ).images
+                )[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
@@ -299,11 +302,11 @@ class PeftLoraLoaderMixinTests:
             if self.unet_kwargs is not None:
                 output_lora_0_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                ).images
+                )[0]
             else:
                 output_lora_0_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                ).images
+                )[0]
             self.assertTrue(
                 np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
@@ -324,7 +327,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -347,7 +350,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
                 np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
@@ -367,7 +370,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -394,7 +397,7 @@ class PeftLoraLoaderMixinTests:
                         "Lora not correctly unloaded in text encoder 2",
                     )
 
-            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should change the output",
@@ -414,7 +417,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -427,7 +430,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
@@ -461,7 +464,7 @@ class PeftLoraLoaderMixinTests:
 
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
@@ -500,7 +503,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -527,7 +530,7 @@ class PeftLoraLoaderMixinTests:
                         }
                     )
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
@@ -536,7 +539,7 @@ class PeftLoraLoaderMixinTests:
             pipe.unload_lora_weights()
             pipe.load_lora_weights(state_dict)
 
-            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3),
                 "Removing adapters should change the output",
@@ -556,7 +559,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -569,7 +572,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 pipe.save_pretrained(tmpdirname)
@@ -589,7 +592,7 @@ class PeftLoraLoaderMixinTests:
                         "Lora not correctly set in text encoder 2",
                     )
 
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)).images
+            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
@@ -613,7 +616,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -633,7 +636,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
@@ -666,7 +669,7 @@ class PeftLoraLoaderMixinTests:
 
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
             self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
@@ -697,7 +700,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -716,7 +719,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
@@ -724,11 +727,11 @@ class PeftLoraLoaderMixinTests:
             if self.unet_kwargs is not None:
                 output_lora_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                ).images
+                )[0]
             else:
                 output_lora_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                ).images
+                )[0]
             self.assertTrue(
                 not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
@@ -737,11 +740,11 @@ class PeftLoraLoaderMixinTests:
             if self.unet_kwargs is not None:
                 output_lora_0_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                ).images
+                )[0]
             else:
                 output_lora_0_scale = pipe(
                     **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                ).images
+                )[0]
             self.assertTrue(
                 np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
@@ -767,7 +770,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -799,7 +802,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
                 np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
@@ -819,7 +822,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -855,7 +858,7 @@ class PeftLoraLoaderMixinTests:
                         "Lora not correctly unloaded in text encoder 2",
                     )
 
-            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should change the output",
@@ -895,11 +898,11 @@ class PeftLoraLoaderMixinTests:
 
             pipe.fuse_lora()
 
-            output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.unfuse_lora()
 
-            output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             # unloading should remove the LoRA layers
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
@@ -932,7 +935,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
@@ -960,14 +963,14 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -987,7 +990,7 @@ class PeftLoraLoaderMixinTests:
 
             pipe.disable_lora()
 
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
@@ -1012,7 +1015,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             if self.unet_kwargs is not None:
@@ -1033,11 +1036,11 @@ class PeftLoraLoaderMixinTests:
 
             weights_1 = {"text_encoder": 2, "unet": {"down": 5}}
             pipe.set_adapters("adapter-1", weights_1)
-            output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             weights_2 = {"unet": {"up": 5}}
             pipe.set_adapters("adapter-1", weights_2)
-            output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertFalse(
                 np.allclose(output_weights_1, output_weights_2, atol=1e-3, rtol=1e-3),
@@ -1053,7 +1056,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.disable_lora()
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
@@ -1078,7 +1081,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
@@ -1108,14 +1111,14 @@ class PeftLoraLoaderMixinTests:
             scales_2 = {"unet": {"down": 5, "mid": 5}}
             pipe.set_adapters("adapter-1", scales_1)
 
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters("adapter-2", scales_2)
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1, scales_2])
 
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -1135,7 +1138,7 @@ class PeftLoraLoaderMixinTests:
 
             pipe.disable_lora()
 
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
@@ -1148,7 +1151,7 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
-        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline"]:
+        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline", "CogVideoXPipeline"]:
             return
 
         def updown_options(blocks_with_tf, layers_per_block, value):
@@ -1253,7 +1256,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
@@ -1282,14 +1285,14 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertFalse(
                 np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
@@ -1307,7 +1310,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.delete_adapters("adapter-1")
-            output_deleted_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_deleted_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_deleted_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
@@ -1315,7 +1318,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.delete_adapters("adapter-2")
-            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
@@ -1337,7 +1340,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_adapters(["adapter-1", "adapter-2"])
             pipe.delete_adapters(["adapter-1", "adapter-2"])
 
-            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
@@ -1359,7 +1362,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
@@ -1388,14 +1391,14 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
 
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -1414,7 +1417,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
-            output_adapter_mixed_weighted = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_adapter_mixed_weighted = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertFalse(
                 np.allclose(output_adapter_mixed_weighted, output_adapter_mixed, atol=1e-3, rtol=1e-3),
@@ -1423,7 +1426,7 @@ class PeftLoraLoaderMixinTests:
 
             pipe.disable_lora()
 
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
@@ -1469,7 +1472,7 @@ class PeftLoraLoaderMixinTests:
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(safe_fusing=False)
 
-            out = pipe("test", num_inference_steps=2, output_type="np").images
+            out = pipe("test", num_inference_steps=2, output_type="np")[0]
 
             self.assertTrue(np.isnan(out).all())
 
@@ -1590,7 +1593,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1621,15 +1624,15 @@ class PeftLoraLoaderMixinTests:
 
             # set them to multi-adapter inference mode
             pipe.set_adapters(["adapter-1", "adapter-2"])
-            ouputs_all_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouputs_all_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.set_adapters(["adapter-1"])
-            ouputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.fuse_lora(adapter_names=["adapter-1"])
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
-            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
                 np.allclose(ouputs_lora_1, outputs_lora_1_fused, atol=1e-3, rtol=1e-3),
@@ -1640,7 +1643,7 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(adapter_names=["adapter-2", "adapter-1"])
 
             # Fusing should still keep the LoRA layers
-            output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
                 np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should not change the output",
@@ -1660,7 +1663,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(output_no_dora_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
@@ -1681,7 +1684,7 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertFalse(
                 np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
@@ -1727,10 +1730,10 @@ class PeftLoraLoaderMixinTests:
                 pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
 
             # Just makes sure it works..
-            _ = pipe(**inputs, generator=torch.manual_seed(0)).images
+            _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     def test_modify_padding_mode(self):
-        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline"]:
+        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline", "CogVideoXPipeline"]:
             return
 
         def set_pad_mode(network, mode="circular"):
@@ -1751,4 +1754,4 @@ class PeftLoraLoaderMixinTests:
             set_pad_mode(pipe.unet, _pad_mode)
 
             _, _, inputs = self.get_dummy_inputs()
-            _ = pipe(**inputs).images
+            _ = pipe(**inputs)[0]
