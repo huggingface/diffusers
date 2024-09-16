@@ -1089,8 +1089,10 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return self.tiled_encode(x)
 
         frame_batch_size = self.num_sample_frames_batch_size
+        # Note: We expect the number of frames to be either `1` or `frame_batch_size * k` or `frame_batch_size * k + 1` for some k.
+        num_batches = num_frames // frame_batch_size if num_frames > 1 else 1
         enc = []
-        for i in range(num_frames // frame_batch_size):
+        for i in range(num_batches):
             remaining_frames = num_frames % frame_batch_size
             start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
             end_frame = frame_batch_size * (i + 1) + remaining_frames
@@ -1140,8 +1142,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return self.tiled_decode(z, return_dict=return_dict)
 
         frame_batch_size = self.num_latent_frames_batch_size
+        num_batches = num_frames // frame_batch_size
         dec = []
-        for i in range(num_frames // frame_batch_size):
+        for i in range(num_batches):
             remaining_frames = num_frames % frame_batch_size
             start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
             end_frame = frame_batch_size * (i + 1) + remaining_frames
@@ -1233,8 +1236,10 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for i in range(0, height, overlap_height):
             row = []
             for j in range(0, width, overlap_width):
+                # Note: We expect the number of frames to be either `1` or `frame_batch_size * k` or `frame_batch_size * k + 1` for some k.
+                num_batches = num_frames // frame_batch_size if num_frames > 1 else 1
                 time = []
-                for k in range(num_frames // frame_batch_size):
+                for k in range(num_batches):
                     remaining_frames = num_frames % frame_batch_size
                     start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
                     end_frame = frame_batch_size * (k + 1) + remaining_frames
@@ -1309,8 +1314,9 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         for i in range(0, height, overlap_height):
             row = []
             for j in range(0, width, overlap_width):
+                num_batches = num_frames // frame_batch_size
                 time = []
-                for k in range(num_frames // frame_batch_size):
+                for k in range(num_batches):
                     remaining_frames = num_frames % frame_batch_size
                     start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
                     end_frame = frame_batch_size * (k + 1) + remaining_frames

@@ -23,6 +23,8 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 ## Supported pipelines
 
 - [`CogVideoXPipeline`]
+- [`CogVideoXImageToVideoPipeline`]
+- [`CogVideoXVideoToVideoPipeline`]
 - [`StableDiffusionPipeline`]
 - [`StableDiffusionImg2ImgPipeline`]
 - [`StableDiffusionInpaintPipeline`]
