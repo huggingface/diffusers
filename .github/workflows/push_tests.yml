@@ -76,7 +76,7 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -127,8 +127,8 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -142,20 +142,20 @@ jobs:
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_torch_cuda \
+          --make-reports=tests_torch_cuda_${{ matrix.module }} \
           tests/${{ matrix.module }}
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_torch_cuda_stats.txt
-        cat reports/tests_torch_cuda_failures_short.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_stats.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: torch_cuda_test_reports
+        name: torch_cuda_test_reports_${{ matrix.module }}
         path: reports
 
   flax_tpu_tests:
@@ -177,7 +177,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -225,7 +225,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
