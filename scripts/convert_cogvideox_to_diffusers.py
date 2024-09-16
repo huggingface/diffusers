@@ -134,12 +134,12 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 
 
 def convert_transformer(
-        ckpt_path: str,
-        num_layers: int,
-        num_attention_heads: int,
-        use_rotary_positional_embeddings: bool,
-        i2v: bool,
-        dtype: torch.dtype,
+    ckpt_path: str,
+    num_layers: int,
+    num_attention_heads: int,
+    use_rotary_positional_embeddings: bool,
+    i2v: bool,
+    dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -153,7 +153,7 @@ def convert_transformer(
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
-        new_key = key[len(PREFIX_KEY):]
+        new_key = key[len(PREFIX_KEY) :]
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_inplace(original_state_dict, key, new_key)
