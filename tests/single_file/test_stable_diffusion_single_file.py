@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_gpu,
@@ -25,11 +26,11 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
-    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+    ckpt_path = "https://huggingface.co/Jiali/stable-diffusion-1.5/blob/main/v1-5-pruned-emaonly.safetensors"
     original_config = (
         "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
     )
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "Jiali/stable-diffusion-1.5"
 
     def setUp(self):
         super().setUp()
@@ -58,8 +59,8 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
 
     def test_single_file_legacy_scheduler_loading(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             pipe = self.pipeline_class.from_single_file(

@@ -58,7 +58,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -78,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -180,6 +180,7 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
@@ -201,7 +202,7 @@ def log_validation(
 
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1260,7 +1261,7 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
         unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
@@ -1890,6 +1891,7 @@ def main(args):
                     accelerator,
                     pipeline_args,
                     epoch,
+                    torch_dtype=weight_dtype,
                 )
 
     # Save the lora layers
@@ -1955,6 +1957,7 @@ def main(args):
                 pipeline_args,
                 epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:

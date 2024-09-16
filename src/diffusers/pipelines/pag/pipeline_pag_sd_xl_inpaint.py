@@ -897,14 +897,16 @@ class StableDiffusionXLPAGInpaintPipeline(
         if denoising_start is None:
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
             t_start = max(num_inference_steps - init_timestep, 0)
+
+            timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+            return timesteps, num_inference_steps - t_start
+
         else:
-            t_start = 0
-
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        # Strength is irrelevant if we directly request a timestep to start at;
-        # that is, strength is determined by the denoising_start instead.
-        if denoising_start is not None:
+            # Strength is irrelevant if we directly request a timestep to start at;
+            # that is, strength is determined by the denoising_start instead.
             discrete_timestep_cutoff = int(
                 round(
                     self.scheduler.config.num_train_timesteps
@@ -912,7 +914,7 @@ class StableDiffusionXLPAGInpaintPipeline(
                 )
             )
 
-            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
+            num_inference_steps = (self.scheduler.timesteps < discrete_timestep_cutoff).sum().item()
             if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
                 # if the scheduler is a 2nd order scheduler we might have to do +1
                 # because `num_inference_steps` might be even given that every timestep
@@ -923,10 +925,11 @@ class StableDiffusionXLPAGInpaintPipeline(
                 num_inference_steps = num_inference_steps + 1
 
             # because t_n+1 >= t_n, we slice the timesteps starting from the end
-            timesteps = timesteps[-num_inference_steps:]
+            t_start = len(self.scheduler.timesteps) - num_inference_steps
+            timesteps = self.scheduler.timesteps[t_start:]
+            if hasattr(self.scheduler, "set_begin_index"):
+                self.scheduler.set_begin_index(t_start)
             return timesteps, num_inference_steps
-
-        return timesteps, num_inference_steps - t_start
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
     def _get_add_time_ids(
@@ -1471,6 +1474,14 @@ class StableDiffusionXLPAGInpaintPipeline(
             generator,
             self.do_classifier_free_guidance,
         )
+        if self.do_perturbed_attention_guidance:
+            if self.do_classifier_free_guidance:
+                mask, _ = mask.chunk(2)
+                masked_image_latents, _ = masked_image_latents.chunk(2)
+            mask = self._prepare_perturbed_attention_guidance(mask, mask, self.do_classifier_free_guidance)
+            masked_image_latents = self._prepare_perturbed_attention_guidance(
+                masked_image_latents, masked_image_latents, self.do_classifier_free_guidance
+            )
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
@@ -1659,10 +1670,10 @@ class StableDiffusionXLPAGInpaintPipeline(
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
-                    if self.do_classifier_free_guidance:
-                        init_mask, _ = mask.chunk(2)
+                    if self.do_perturbed_attention_guidance:
+                        init_mask, *_ = mask.chunk(3) if self.do_classifier_free_guidance else mask.chunk(2)
                     else:
-                        init_mask = mask
+                        init_mask, *_ = mask.chunk(2) if self.do_classifier_free_guidance else mask
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]

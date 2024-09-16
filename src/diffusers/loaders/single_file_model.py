@@ -24,6 +24,7 @@ from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_flux_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_sd3_transformer_checkpoint_to_diffusers,
@@ -73,6 +74,13 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MotionAdapter": {
         "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
+    "SparseControlNetModel": {
+        "checkpoint_mapping_fn": convert_animatediff_checkpoint_to_diffusers,
+    },
+    "FluxTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
 }
 
@@ -137,9 +145,7 @@ class FromOriginalModelMixin:
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -188,7 +194,6 @@ class FromOriginalModelMixin:
                 "`from_single_file` cannot accept both `config` and `original_config` arguments. Please provide only one of these arguments"
             )
 
-        resume_download = kwargs.pop("resume_download", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
@@ -203,7 +208,6 @@ class FromOriginalModelMixin:
         else:
             checkpoint = load_single_file_checkpoint(
                 pretrained_model_link_or_path_or_dict,
-                resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 token=token,
