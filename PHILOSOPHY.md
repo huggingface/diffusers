@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 🧨 Diffusers provides **state-of-the-art** pretrained diffusion models across multiple modalities.
 Its purpose is to serve as a **modular toolbox** for both inference and training.
 
-We aim at building a library that stands the test of time and therefore take API design very seriously.
+We aim to build a library that stands the test of time and therefore take API design very seriously.
 
 In a nutshell, Diffusers is built to be a natural extension of PyTorch. Therefore, most of our design choices are based on [PyTorch's Design Principles](https://pytorch.org/docs/stable/community/design.html#pytorch-design-philosophy). Let's go over the most important ones:
 

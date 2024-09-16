@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# 철학 [[philosophy]] 
+# 철학 [[philosophy]]
 
 🧨 Diffusers는 다양한 모달리티에서 **최신의** 사전 훈련된 diffusion 모델을 제공합니다.
 그 목적은 추론과 훈련을 위한 **모듈식 툴박스**로 사용되는 것입니다.

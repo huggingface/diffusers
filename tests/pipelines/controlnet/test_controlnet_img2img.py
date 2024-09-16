@@ -173,11 +173,11 @@ class ControlNetImg2ImgPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.7096, 0.5149, 0.3571, 0.5897, 0.4715, 0.4052, 0.6098, 0.6886, 0.4213])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -371,11 +371,11 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.5293, 0.7339, 0.6642, 0.3950, 0.5212, 0.5175, 0.7002, 0.5907, 0.5182])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
@@ -407,7 +407,7 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
 
         pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "Jiali/stable-diffusion-1.5", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
