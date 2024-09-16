@@ -361,6 +361,16 @@ def parse_args(input_args=None):
         "tokens - <si><si+1> ",
     )
     parser.add_argument(
+        "--initializer_token",
+        type=str,
+        default="random",
+        help="the token (or tokens) to use to initialize the new inserted tokens when training with "
+        "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
+        "Alternatively, you could specify a different token whos value will be used as the starting point for the new inserted tokens"
+        "to do so, please specify the initializer tokens in a comma seperated string - e.g. 'random,dog,illustration'."
+        " such that the order of the initializers matches the order of the identifiers specified in --token_abstraction."
+    )
+    parser.add_argument(
         "--class_prompt",
         type=str,
         default=None,
@@ -763,8 +773,10 @@ class TokenEmbeddingsHandler:
             self.inserting_toks = inserting_toks
             special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
             tokenizer.add_special_tokens(special_tokens_dict)
+            # Resize the token embeddings as we are adding new special tokens to the tokenizer
             text_encoder.resize_token_embeddings(len(tokenizer))
 
+            # Convert the token abstractions to ids
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
@@ -772,21 +784,33 @@ class TokenEmbeddingsHandler:
 
             print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
-            text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
-                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
-                .to(device=self.device)
-                .to(dtype=self.dtype)
-                * std_token_embedding
-            )
+            if args.initializer_token.lower == "random":
+                text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
+                    torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+                    .to(device=self.device)
+                    .to(dtype=self.dtype)
+                    * std_token_embedding
+                )
+            else:
+                # Convert the initializer_token, placeholder_token to ids
+                token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
+                # Check if initializer_token is a single token or a sequence of tokens
+                if len(token_ids) > 1:
+                    raise ValueError("The initializer token must be a single token.")
+                initializer_token_id = token_ids[0]
+                text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
+                    text_encoder.text_model.embeddings.token_embedding.weight.data)[initializer_token_id].clone()
+
             self.embeddings_settings[
                 f"original_embeddings_{idx}"
             ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
-            inu = torch.ones((len(tokenizer),), dtype=torch.bool)
-            inu[self.train_ids] = False
+            # makes sure we don't update any embedding weights besides the newly added token
+            index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+            index_no_updates[self.train_ids] = False
 
-            self.embeddings_settings[f"index_no_updates_{idx}"] = inu
+            self.embeddings_settings[f"index_no_updates_{idx}"] = index_no_updates
 
             print(self.embeddings_settings[f"index_no_updates_{idx}"].shape)
 
