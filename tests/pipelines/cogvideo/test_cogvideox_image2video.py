@@ -67,15 +67,18 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
             # But, since we are using tiny-random-t5 here, we need the internal dim of CogVideoXTransformer3DModel
             # to be 32. The internal dim is product of num_attention_heads and attention_head_dim
-            num_attention_heads=4,
-            attention_head_dim=8,
+            # Note: The num_attention_heads and attention_head_dim is different from the T2V and I2V tests because
+            # attention_head_dim must be divisible by 16 for RoPE to work. We also need to maintain a product of 32 as
+            # detailed above.
+            num_attention_heads=2,
+            attention_head_dim=16,
             in_channels=8,
             out_channels=4,
             time_embed_dim=2,
             text_embed_dim=32,  # Must match with tiny-random-t5
             num_layers=1,
-            sample_width=16,  # latent width: 2 -> final width: 16
-            sample_height=16,  # latent height: 2 -> final height: 16
+            sample_width=2,  # latent width: 2 -> final width: 16
+            sample_height=2,  # latent height: 2 -> final height: 16
             sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
             patch_size=2,
             temporal_compression_ratio=4,
@@ -127,7 +130,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        # Cannot reduce because convolution kernel becomes bigger than sample
+        # Cannot reduce below 16 because convolution kernel becomes bigger than sample
+        # Cannot reduce below 32 because 3D RoPE errors out
         image_height = 16
         image_width = 16
         image = Image.new("RGB", (image_width, image_height))
@@ -264,6 +268,14 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Note(aryan): Investigate why this needs a bit higher tolerance
         generator_device = "cpu"
         components = self.get_dummy_components()
+
+        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions.
+        # See the if-statement on "self.use_learned_positional_embeddings"
+        components["transformer"] = CogVideoXTransformer3DModel.from_config(
+            components["transformer"].config,
+            sample_height=16,
+            sample_width=16,
+        )
 
         pipe = self.pipeline_class(**components)
         pipe.to("cpu")
