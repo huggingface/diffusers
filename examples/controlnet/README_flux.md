@@ -4,6 +4,13 @@ The `train_controlnet_flux.py` script shows how to implement the ControlNet trai
 
 Training script provided by LibAI, which is an institution dedicated to the progress and achievement of artificial general intelligence. LibAI is the developer of [cutout.pro](https://www.cutout.pro/) and [promeai.pro](https://www.promeai.pro/).
 
+> [!NOTE]
+> **Memory consumption**
+>
+> Flux can be quite expensive to run on consumer hardware devices and as a result, ControlNet training of it comes with higher memory requirements than usual. 
+> **Gated access**
+> As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in: `huggingface-cli login`
+
 ## Running locally with PyTorch
 
 ### Installing the dependencies
