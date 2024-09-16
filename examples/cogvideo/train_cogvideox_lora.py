@@ -26,7 +26,7 @@ import torch
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
+from accelerate.utils import DistributedDataParallelKwargs, DummyOptim, DummyScheduler, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
@@ -866,7 +866,14 @@ def prepare_rotary_positional_embeddings(
     return freqs_cos, freqs_sin
 
 
-def get_optimizer(args, params_to_optimize):
+def get_optimizer(accelerator, args, params_to_optimize):
+    # Use DeepSpeed optimzer
+    if (
+        accelerator.state.deepspeed_plugin is not None
+        and "optimizer" in accelerator.state.deepspeed_plugin.deepspeed_config
+    ):
+        return DummyOptim(params_to_optimize, lr=args.learning_rate)
+
     # Optimizer creation
     supported_optimizers = ["adam", "adamw", "prodigy"]
     if args.optimizer not in ["adam", "adamw", "prodigy"]:
@@ -1207,7 +1214,7 @@ def main(args):
     else:
         params_to_optimize = [transformer_parameters_with_lr]
 
-    optimizer = get_optimizer(args, params_to_optimize)
+    optimizer = get_optimizer(accelerator, args, params_to_optimize)
 
     # Dataset and DataLoader
     train_dataset = VideoDataset(
@@ -1261,14 +1268,25 @@ def main(args):
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
-        num_cycles=args.lr_num_cycles,
-        power=args.lr_power,
-    )
+    if (
+        accelerator.state.deepspeed_plugin is not None
+        and "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
+    ):
+        lr_scheduler = DummyScheduler(
+            name=args.lr_scheduler,
+            optimizer=optimizer,
+            total_num_steps=args.max_train_steps * accelerator.num_processes,
+            num_warmup_steps=args.lr_awrmup_steps * accelerator.num_processes,
+        )
+    else:
+        lr_scheduler = get_scheduler(
+            args.lr_scheduler,
+            optimizer=optimizer,
+            num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+            num_training_steps=args.max_train_steps * accelerator.num_processes,
+            num_cycles=args.lr_num_cycles,
+            power=args.lr_power,
+        )
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
@@ -1443,9 +1461,11 @@ def main(args):
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
-                optimizer.step()
+                if accelerator.state.deepspeed_plugin is None:
+                    optimizer.step()
+                    optimizer.zero_grad()
+
                 lr_scheduler.step()
-                optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
