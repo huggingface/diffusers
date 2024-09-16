@@ -63,7 +63,7 @@ Now we can launch the training using:
 **___Note: Please follow the [README_sdxl.md](./README_sdxl.md) if you are using the [stable-diffusion-xl](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).___**
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATA_DIR="./cat"
 
 accelerate launch textual_inversion.py \

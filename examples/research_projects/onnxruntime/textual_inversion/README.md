@@ -39,7 +39,7 @@ accelerate config
 
 ### Cat toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree.
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5), read the license and tick the checkbox if you agree.
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -73,7 +73,7 @@ In order to leverage onnxruntime to accelerate training, please use textual_inve
 The command to train on custom data with onnxruntime:
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATA_DIR="path-to-dir-containing-images"
 
 accelerate launch textual_inversion.py \

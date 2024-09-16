@@ -33,7 +33,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 ```
 
@@ -52,18 +52,18 @@ image
 
 ## Popular models
 
-The most common text-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder). There are also ControlNet models or adapters that can be used with text-to-image models for more direct control in generating images. The results from each model are slightly different because of their architecture and training process, but no matter which model you choose, their usage is more or less the same. Let's use the same prompt for each model and compare their results.
+The most common text-to-image models are [Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder). There are also ControlNet models or adapters that can be used with text-to-image models for more direct control in generating images. The results from each model are slightly different because of their architecture and training process, but no matter which model you choose, their usage is more or less the same. Let's use the same prompt for each model and compare their results.
 
 ### Stable Diffusion v1.5
 
-[Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) is a latent diffusion model initialized from [Stable Diffusion v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4), and finetuned for 595K steps on 512x512 images from the LAION-Aesthetics V2 dataset. You can use this model like:
+[Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) is a latent diffusion model initialized from [Stable Diffusion v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4), and finetuned for 595K steps on 512x512 images from the LAION-Aesthetics V2 dataset. You can use this model like:
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
@@ -106,7 +106,7 @@ image
 
 ### ControlNet
 
-ControlNet models are auxiliary models or adapters that are finetuned on top of text-to-image models, such as [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Using ControlNet models in combination with text-to-image models offers diverse options for more explicit control over how to generate an image. With ControlNet, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
+ControlNet models are auxiliary models or adapters that are finetuned on top of text-to-image models, such as [Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5). Using ControlNet models in combination with text-to-image models offers diverse options for more explicit control over how to generate an image. With ControlNet, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
 
 In this example, let's condition the ControlNet with a human pose estimation image. Load the ControlNet model pretrained on human pose estimations:
 
@@ -125,7 +125,7 @@ Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prom
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=pose_image, generator=generator).images[0]
@@ -164,7 +164,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", height=768, width=512
@@ -191,7 +191,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", guidance_scale=3.5
@@ -223,7 +223,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
 	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
@@ -254,7 +254,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 generator = torch.Generator(device="cuda").manual_seed(30)
 image = pipeline(
@@ -285,7 +285,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
 	prompt_embeds=prompt_embeds, # generated from Compel
@@ -309,7 +309,7 @@ PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*s
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16").to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16").to("cuda")
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 

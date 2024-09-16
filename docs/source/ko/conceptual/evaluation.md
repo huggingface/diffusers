@@ -88,7 +88,7 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 ![parti-prompts-14](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-14.png)
 
 
-`num_images_per_prompt`를 설정하여 동일한 프롬프트에 대해 다른 이미지를 비교할 수도 있습니다. 다른 체크포인트([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5))로 동일한 파이프라인을 실행하면 다음과 같은 결과가 나옵니다:
+`num_images_per_prompt`를 설정하여 동일한 프롬프트에 대해 다른 이미지를 비교할 수도 있습니다. 다른 체크포인트([v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5))로 동일한 파이프라인을 실행하면 다음과 같은 결과가 나옵니다:
 
 ![parti-prompts-15](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-15.png)
 
@@ -170,10 +170,10 @@ generator = torch.manual_seed(seed)
 images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
-그런 다음 [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5)를 로드하여 이미지를 생성합니다:
+그런 다음 [v1-5 checkpoint](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)를 로드하여 이미지를 생성합니다:
 
 ```python
-model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
+model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
@@ -191,7 +191,7 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 # CLIP Score with v-1-5: 36.2137
 ```
 
-[v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 체크포인트가 이전 버전보다 더 나은 성능을 보이는 것 같습니다. 그러나 CLIP 점수를 계산하기 위해 사용한 프롬프트의 수가 상당히 적습니다. 보다 실용적인 평가를 위해서는 이 수를 훨씬 높게 설정하고, 프롬프트를 다양하게 사용해야 합니다.
+[v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 체크포인트가 이전 버전보다 더 나은 성능을 보이는 것 같습니다. 그러나 CLIP 점수를 계산하기 위해 사용한 프롬프트의 수가 상당히 적습니다. 보다 실용적인 평가를 위해서는 이 수를 훨씬 높게 설정하고, 프롬프트를 다양하게 사용해야 합니다.
 
 <Tip warning={true}>
 

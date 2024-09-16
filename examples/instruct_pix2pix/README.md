@@ -65,7 +65,7 @@ Configure environment variables such as the dataset identifier and the Stable Di
 checkpoint:
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 ```
 
@@ -122,7 +122,7 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
- --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
+ --pretrained_model_name_or_path=stable-diffusion-v1-5/stable-diffusion-v1-5 \
  --dataset_name=sayakpaul/instructpix2pix-1000-samples \
  --use_ema \
  --enable_xformers_memory_efficient_attention \

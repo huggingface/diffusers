@@ -73,7 +73,7 @@ Generating outputs is super easy with 🤗 Diffusers. To generate an image from 
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipeline.to("cuda")
 pipeline("An image of a squirrel in Picasso style").images[0]
 ```
@@ -144,7 +144,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
   <tr style="border-top: 2px solid black">
     <td>Text-to-Image</td>
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/text2img">Stable Diffusion Text-to-Image</a></td>
-      <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
+      <td><a href="https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5"> stable-diffusion-v1-5/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr>
     <td>Text-to-Image</td>
@@ -174,7 +174,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
   <tr>
     <td>Text-guided Image-to-Image</td>
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/img2img">Stable Diffusion Image-to-Image</a></td>
-      <td><a href="https://huggingface.co/runwayml/stable-diffusion-v1-5"> runwayml/stable-diffusion-v1-5 </a></td>
+      <td><a href="https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5"> stable-diffusion-v1-5/stable-diffusion-v1-5 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image Inpainting</td>
