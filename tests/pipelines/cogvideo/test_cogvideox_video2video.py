@@ -260,14 +260,6 @@ class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         generator_device = "cpu"
         components = self.get_dummy_components()
 
-        # Unlike the ImageToVideo test, this is not needed here because positional embeds can be generated on-the-fly
-        # due to them being static
-        # components["transformer"] = CogVideoXTransformer3DModel.from_config(
-        #     components["transformer"].config,
-        #     sample_height=16,
-        #     sample_width=16,
-        # )
-
         pipe = self.pipeline_class(**components)
         pipe.to("cpu")
         pipe.set_progress_bar_config(disable=None)
