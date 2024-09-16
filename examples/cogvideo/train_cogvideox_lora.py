@@ -32,7 +32,7 @@ from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dic
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import T5EncoderModel, T5Tokenizer
+from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import diffusers
 from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
@@ -810,13 +810,16 @@ def encode_prompt(
     return prompt_embeds
 
 
-def compute_prompt_embeddings(tokenizer, text_encoder, prompt, device, dtype, requires_grad: bool = False):
+def compute_prompt_embeddings(
+    tokenizer, text_encoder, prompt, max_sequence_length, device, dtype, requires_grad: bool = False
+):
     if requires_grad:
         prompt_embeds = encode_prompt(
             tokenizer,
             text_encoder,
             prompt,
             num_videos_per_prompt=1,
+            max_sequence_length=max_sequence_length,
             device=device,
             dtype=dtype,
         )
@@ -827,6 +830,7 @@ def compute_prompt_embeddings(tokenizer, text_encoder, prompt, device, dtype, re
                 text_encoder,
                 prompt,
                 num_videos_per_prompt=1,
+                max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
@@ -1002,7 +1006,7 @@ def main(args):
             ).repo_id
 
     # Prepare models and scheduler
-    tokenizer = T5Tokenizer.from_pretrained(
+    tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
 
@@ -1375,6 +1379,7 @@ def main(args):
                     tokenizer,
                     text_encoder,
                     prompts,
+                    model_config.max_text_seq_length,
                     accelerator.device,
                     weight_dtype,
                     requires_grad=args.train_text_encoder,
