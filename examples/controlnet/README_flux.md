@@ -94,6 +94,7 @@ accelerate launch train_controlnet_flux.py \
     --num_double_layers=4 \
     --num_single_layers=0 \
     --seed=42 \
+    --push_to_hub \
 ```
 
 To better track our training experiments, we're using the following flags in the command above:
