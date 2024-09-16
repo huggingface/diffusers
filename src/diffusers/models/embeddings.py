@@ -342,14 +342,57 @@ class CogVideoXPatchEmbed(nn.Module):
         embed_dim: int = 1920,
         text_embed_dim: int = 4096,
         bias: bool = True,
+        sample_width: int = 90,
+        sample_height: int = 60,
+        sample_frames: int = 49,
+        temporal_compression_ratio: int = 4,
+        max_text_seq_length: int = 226,
+        spatial_interpolation_scale: float = 1.875,
+        temporal_interpolation_scale: float = 1.0,
+        use_positional_embeddings: bool = True,
     ) -> None:
         super().__init__()
+
         self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.sample_height = sample_height
+        self.sample_width = sample_width
+        self.sample_frames = sample_frames
+        self.temporal_compression_ratio = temporal_compression_ratio
+        self.max_text_seq_length = max_text_seq_length
+        self.spatial_interpolation_scale = spatial_interpolation_scale
+        self.temporal_interpolation_scale = temporal_interpolation_scale
+        self.use_positional_embeddings = use_positional_embeddings
 
         self.proj = nn.Conv2d(
             in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
         )
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
+
+        if use_positional_embeddings:
+            pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
+            self.register_buffer("pos_embedding", pos_embedding, persistent=False)
+
+    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+        post_patch_height = sample_height // self.patch_size
+        post_patch_width = sample_width // self.patch_size
+        post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
+        num_patches = post_patch_height * post_patch_width * post_time_compression_frames
+
+        pos_embedding = get_3d_sincos_pos_embed(
+            self.embed_dim,
+            (post_patch_width, post_patch_height),
+            post_time_compression_frames,
+            self.spatial_interpolation_scale,
+            self.temporal_interpolation_scale,
+        )
+        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
+        joint_pos_embedding = torch.zeros(
+            1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
+        )
+        joint_pos_embedding.data[:, self.max_text_seq_length :].copy_(pos_embedding)
+
+        return joint_pos_embedding
 
     def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         r"""
@@ -371,6 +414,21 @@ class CogVideoXPatchEmbed(nn.Module):
         embeds = torch.cat(
             [text_embeds, image_embeds], dim=1
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
+
+        if self.use_positional_embeddings:
+            pre_time_compression_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
+            if (
+                self.sample_height != height
+                or self.sample_width != width
+                or self.sample_frames != pre_time_compression_frames
+            ):
+                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
+                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+            else:
+                pos_embedding = self.pos_embedding
+
+            embeds = embeds + pos_embedding
+
         return embeds
 
 
@@ -550,8 +608,11 @@ def get_1d_rotary_pos_embed(
         pos = torch.from_numpy(pos)  # type: ignore  # [S]
 
     theta = theta * ntk_factor
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype)[: (dim // 2)] / dim)) / linear_factor  # [D/2]
-    freqs = freqs.to(pos.device)
+    freqs = (
+        1.0
+        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
+        / linear_factor
+    )  # [D/2]
     freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
     if use_real and repeat_interleave_real:
         # flux, hunyuan-dit, cogvideox
@@ -629,7 +690,7 @@ class FluxPosEmbed(nn.Module):
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
-        pos = ids.squeeze().float()
+        pos = ids.float()
         is_mps = ids.device.type == "mps"
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
