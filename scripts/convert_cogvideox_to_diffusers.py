@@ -134,12 +134,12 @@ def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key:
 
 
 def convert_transformer(
-    ckpt_path: str,
-    num_layers: int,
-    num_attention_heads: int,
-    use_rotary_positional_embeddings: bool,
-    i2v: bool,
-    dtype: torch.dtype,
+        ckpt_path: str,
+        num_layers: int,
+        num_attention_heads: int,
+        use_rotary_positional_embeddings: bool,
+        i2v: bool,
+        dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -153,7 +153,7 @@ def convert_transformer(
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
-        new_key = key[len(PREFIX_KEY) :]
+        new_key = key[len(PREFIX_KEY):]
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_inplace(original_state_dict, key, new_key)
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
 
-    text_encoder_id = "google/t5-v1_1-xxl"
+    text_encoder_id = "/share/official_pretrains/hf_home//t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
     # Apparently, the conversion does not work anymore without this :shrug:
@@ -283,4 +283,7 @@ if __name__ == "__main__":
     # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
     # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
     # is either fp16/bf16 here).
-    pipe.save_pretrained(args.output_path, safe_serialization=True, push_to_hub=args.push_to_hub)
+
+    # This is necessary This is necessary for users with insufficient memory,
+    # such as those using Colab and notebooks, as it can save some memory used for model loading.
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", push_to_hub=args.push_to_hub)
