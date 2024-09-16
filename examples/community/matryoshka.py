@@ -4,6 +4,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+from torch import nn
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5TokenizerFast
 
@@ -27,6 +28,8 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.models.attention_processor import Attention, FusedAttnProcessor2_0
+from diffusers.models.activations import GELU
 
 
 if is_torch_xla_available():
@@ -125,6 +128,167 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+# Copied from diffusers.models.attention._chunked_feed_forward
+def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int):
+    # "feed_forward_chunk_size" can be used to save memory
+    if hidden_states.shape[chunk_dim] % chunk_size != 0:
+        raise ValueError(
+            f"`hidden_states` dimension to be chunked: {hidden_states.shape[chunk_dim]} has to be divisible by chunk size: {chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
+        )
+
+    num_chunks = hidden_states.shape[chunk_dim] // chunk_size
+    ff_output = torch.cat(
+        [ff(hid_slice) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
+        dim=chunk_dim,
+    )
+    return ff_output
+
+class MatryoshkaTransformerBlock(nn.Module):
+    r"""
+    Matryoshka Transformer block.
+
+    Parameters:
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        cross_attention_dim: Optional[int] = None,
+        upcast_attention: bool = True,
+        attention_type: str = "default",
+        attention_ff_inner_dim: Optional[int] = None,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        self.cross_attention_dim = cross_attention_dim
+
+        # Define 3 blocks.
+        # 1. Self-Attn
+        self.attn1 = Attention(
+            query_dim=dim,
+            cross_attention_dim=None,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            norm_num_groups=32 or None,
+            bias=True,
+            upcast_attention=upcast_attention,
+            pre_only=True,
+            processor=FusedAttnProcessor2_0(),
+        )
+        self.attn1.fuse_projections()
+
+        # 2. Cross-Attn
+        if cross_attention_dim is not None and cross_attention_dim > 0:
+            self.attn2 = Attention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim,
+                cross_attention_norm="layer_norm",
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                bias=True,
+                upcast_attention=upcast_attention,
+                pre_only=True,
+                processor=FusedAttnProcessor2_0(),
+            )
+            self.attn2.fuse_projections()
+            # self.attn2.to_q = None
+
+        self.proj_out = nn.Linear(dim, dim)
+
+        if attention_ff_inner_dim is not None:
+            # 3. Feed-forward
+            self.ff = MatryoshkaFeedForward(
+                dim,
+                inner_dim=attention_ff_inner_dim,
+            )
+        else:
+            self.ff = None
+
+        # let chunk size default to None
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
+    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+        # Sets chunk feed-forward
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+
+        # 1. Self-Attention
+        batch_size, channels, *spatial_dims = hidden_states.shape
+
+        attn_output, query = self.attn1(
+            hidden_states,
+            **cross_attention_kwargs,
+        )
+        cross_attention_kwargs["self_attention_output"] = attn_output
+        cross_attention_kwargs["self_attention_query"] = query
+
+        # 2. Cross-Attention
+        if self.cross_attention_dim is not None and self.cross_attention_dim > 0:
+            attn_output_cond = self.attn2(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=encoder_attention_mask,
+                **cross_attention_kwargs,
+            )
+            attn_output = attn_output + attn_output_cond
+
+        attn_output = attn_output.reshape(batch_size, channels, *spatial_dims)
+        attn_output = self.proj_out(attn_output)
+        hidden_states = hidden_states + attn_output
+
+        if self.ff is not None:
+            # 4. Feed-forward
+            if self._chunk_size is not None:
+                # "feed_forward_chunk_size" can be used to save memory
+                ff_output = _chunked_feed_forward(self.ff, hidden_states, self._chunk_dim, self._chunk_size)
+            else:
+                ff_output = self.ff(hidden_states)
+
+            hidden_states = ff_output + hidden_states
+
+        return hidden_states
+
+class MatryoshkaFeedForward(nn.Module):
+    r"""
+    A feed-forward layer for the Matryoshka models.
+
+    Parameters:"""
+
+    def __init__(
+        self,
+        dim: int,
+    ):
+        super().__init__()
+
+        self.group_norm = nn.GroupNorm(32, dim)
+        self.linear_gelu = GELU(dim, dim * 4)
+        self.linear_out = nn.Linear(dim * 4, dim)
+
+    def forward(self, x):
+        return self.linear_out(self.linear_gelu(self.group_norm(x)))
+
 
 
 class MatryoshkaPipeline(
