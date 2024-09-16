@@ -42,6 +42,7 @@ DATASET_NAME_MAPPING = {
 }
 PORT = 9012
 
+
 def save_model_card(
     args,
     repo_id: str,
@@ -152,13 +153,15 @@ class TrainSD:
                 dataloader_exception = True
                 print(e)
                 break
-            if step ==  measure_start_step and PROFILE_DIR is not None:
+            if step == measure_start_step and PROFILE_DIR is not None:
                 xm.wait_device_ops()
-                xp.trace_detached('localhost:9012', PROFILE_DIR, duration_ms=args.profile_duration)
+                xp.trace_detached("localhost:9012", PROFILE_DIR, duration_ms=args.profile_duration)
             loss = self.step_fn(batch["pixel_values"], batch["input_ids"])
             losses.append(loss)
             if step > measure_start_step and step % print_every == 0:
-                print(f"step: {step}, avg. time: {((time.time() - start_time) / print_every)}, avg loss: {sum(losses) / len(losses)}")
+                print(
+                    f"step: {step}, avg. time: {((time.time() - start_time) / print_every)}, avg loss: {sum(losses) / len(losses)}"
+                )
                 start_time = time.time()
             self.global_step += 1
         xm.mark_step()
