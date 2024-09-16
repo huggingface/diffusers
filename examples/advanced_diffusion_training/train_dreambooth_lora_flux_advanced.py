@@ -480,6 +480,13 @@ def parse_args(input_args=None):
         help=("The percentage of epochs to perform text encoder tuning"),
     )
     parser.add_argument(
+        "--train_transformer_frac",
+        type=float,
+        default=1.0,
+        help=("The percentage of epochs to perform transformer tuning"),
+    )
+
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -732,6 +739,10 @@ def parse_args(input_args=None):
             "Specify only one of `--train_text_encoder` or `--train_text_encoder_ti. "
             "For full LoRA text encoder training check --train_text_encoder, for textual "
             "inversion training check `--train_text_encoder_ti`"
+        )
+    if args.train_transformer_frac == 0 and not (args.train_text_encoder or args.train_text_encoder_ti):
+        raise ValueError(
+            "--train_transformer_frac must be > 0 if text_encoder training / textual inversion is not enabled"
         )
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -1959,21 +1970,28 @@ def main(args):
 
     if args.train_text_encoder:
         num_train_epochs_text_encoder = int(args.train_text_encoder_frac * args.num_train_epochs)
+        num_train_epochs_transformer = int(args.train_transformer_frac * args.num_train_epochs)
     elif args.train_text_encoder_ti:  # args.train_text_encoder_ti
         num_train_epochs_text_encoder = int(args.train_text_encoder_ti_frac * args.num_train_epochs)
-    # flag used for textual inversion
-    pivoted = False
+        num_train_epochs_transformer = int(args.train_transformer_frac * args.num_train_epochs)
 
+    # flag used for textual inversion
+    pivoted_te = False
+    pivoted_tr = False
     for epoch in range(first_epoch, args.num_train_epochs):
-        transformer.train()
+        if epoch == num_train_epochs_transformer:
+            print("PIVOT TRANSFORMER", epoch)
+            # stopping optimization of transformer params
+            pivoted_tr = True
+        else:
+            transformer.train()
         # if performing any kind of optimization of text_encoder params
         if args.train_text_encoder or args.train_text_encoder_ti:
             if epoch == num_train_epochs_text_encoder:
-                print("PIVOT HALFWAY", epoch)
+                print("PIVOT TE", epoch)
                 # stopping optimization of text_encoder params
-                # this flag is used to reset the optimizer to optimize only on unet params
-                pivoted = True
-
+                # this flag is used to reset the optimizer to optimize only on transformer params
+                pivoted_te = True
             else:
                 # still optimizing the text encoder
                 text_encoder_one.train()
@@ -1982,10 +2000,12 @@ def main(args):
                     accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
-            if pivoted:
+            if pivoted_te:
                 # stopping optimization of text_encoder params
                 # re setting the optimizer to optimize only on transformer params
                 optimizer.param_groups[1]["lr"] = 0.0
+            elif pivoted_tr:
+                optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
                 prompts = batch["prompts"]
