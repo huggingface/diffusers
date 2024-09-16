@@ -350,6 +350,7 @@ class CogVideoXPatchEmbed(nn.Module):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_positional_embeddings: bool = True,
+        use_learned_positional_embeddings: bool = True,
     ) -> None:
         super().__init__()
 
@@ -363,15 +364,17 @@ class CogVideoXPatchEmbed(nn.Module):
         self.spatial_interpolation_scale = spatial_interpolation_scale
         self.temporal_interpolation_scale = temporal_interpolation_scale
         self.use_positional_embeddings = use_positional_embeddings
+        self.use_learned_positional_embeddings = use_learned_positional_embeddings
 
         self.proj = nn.Conv2d(
             in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
         )
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
 
-        if use_positional_embeddings:
+        if use_positional_embeddings or use_learned_positional_embeddings:
+            persistent = use_learned_positional_embeddings
             pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
-            self.register_buffer("pos_embedding", pos_embedding, persistent=False)
+            self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
     def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
         post_patch_height = sample_height // self.patch_size
@@ -415,8 +418,15 @@ class CogVideoXPatchEmbed(nn.Module):
             [text_embeds, image_embeds], dim=1
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
 
-        if self.use_positional_embeddings:
+        if self.use_positional_embeddings or self.use_learned_positional_embeddings:
+            if self.use_learned_positional_embeddings and (self.sample_width != width or self.sample_height != height):
+                raise ValueError(
+                    "It is currently not possible to generate videos at a different resolution that the defaults. This should only be the case with 'THUDM/CogVideoX-5b-I2V'."
+                    "If you think this is incorrect, please open an issue at https://github.com/huggingface/diffusers/issues."
+                )
+
             pre_time_compression_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
+
             if (
                 self.sample_height != height
                 or self.sample_width != width
