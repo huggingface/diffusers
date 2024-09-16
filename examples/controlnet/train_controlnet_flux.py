@@ -23,7 +23,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
-
+import copy
 import accelerate
 import numpy as np
 import torch
@@ -58,7 +58,7 @@ from diffusers.utils import check_min_version, is_wandb_available, make_image_gr
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-from diffusers.training_utils import clear_objs_and_retain_memory
+from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
 
 if is_wandb_available():
     import wandb
@@ -218,12 +218,16 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
 
 These are controlnet weights trained on {base_model} with new type of conditioning.
 {img_str}
+
+## License
+
+Please adhere to the licensing terms as described [here](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md)
 """
 
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="other",
         base_model=base_model,
         model_description=model_description,
         inference=True,
@@ -604,6 +608,27 @@ def parse_args(input_args=None):
         ),
     )
 
+    parser.add_argument(
+        "--weighting_scheme",
+        type=str,
+        default="none",
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
+        help=('We default to the "none" weighting scheme for uniform sampling and uniform loss'),
+    )
+    parser.add_argument(
+        "--logit_mean", type=float, default=0.0, help="mean to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--logit_std", type=float, default=1.0, help="std to use when using the `'logit_normal'` weighting scheme."
+    )
+    parser.add_argument(
+        "--mode_scale",
+        type=float,
+        default=1.29,
+        help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
+
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -874,7 +899,7 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="scheduler",
     )
-
+    noise_scheduler_copy = copy.deepcopy(noise_scheduler)
     vae.requires_grad_(False)
     flux_transformer.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
@@ -1179,12 +1204,22 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        sigmas = noise_scheduler_copy.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler_copy.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+    
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(flux_controlnet):
                 # Convert images to latent space
-
                 # vae encode
                 pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
                 pixel_latents_tmp = vae.encode(pixel_values).latent_dist.sample()
@@ -1216,28 +1251,32 @@ def main(args):
                     dtype=pixel_values.dtype,
                 )
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(pixel_latents).to(accelerator.device).to(dtype=weight_dtype)
                 bsz = pixel_latents.shape[0]
-
+                noise = torch.randn_like(pixel_latents).to(accelerator.device).to(dtype=weight_dtype)
                 # Sample a random timestep for each image
-                t = torch.sigmoid(torch.randn((bsz,), device=accelerator.device, dtype=weight_dtype))
+                # for weighting schemes where we sample timesteps non-uniformly
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme=args.weighting_scheme,
+                    batch_size=bsz,
+                    logit_mean=args.logit_mean,
+                    logit_std=args.logit_std,
+                    mode_scale=args.mode_scale,
+                )
+                indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
 
-                # apply flow matching
-                noisy_latents = (
-                    1 - t.unsqueeze(1).unsqueeze(2).repeat(1, pixel_latents.shape[1], pixel_latents.shape[2])
-                ) * pixel_latents + t.unsqueeze(1).unsqueeze(2).repeat(
-                    1, pixel_latents.shape[1], pixel_latents.shape[2]
-                ) * noise
+                # Add noise according to flow matching.
+                sigmas = get_sigmas(timesteps, n_dim=pixel_latents.ndim, dtype=pixel_latents.dtype)
+                noisy_model_input = (1.0 - sigmas) * pixel_latents + sigmas * noise
 
                 guidance_vec = torch.full(
-                    (noisy_latents.shape[0],), args.guidance_scale, device=noisy_latents.device, dtype=weight_dtype
+                    (noisy_model_input.shape[0],), args.guidance_scale, device=noisy_model_input.device, dtype=weight_dtype
                 )
 
                 controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
-                    hidden_states=noisy_latents,
+                    hidden_states=noisy_model_input,
                     controlnet_cond=control_image,
-                    timestep=t,
+                    timestep=timesteps  / 1000,
                     guidance=guidance_vec,
                     pooled_projections=batch["unet_added_conditions"]["pooled_prompt_embeds"].to(dtype=weight_dtype),
                     encoder_hidden_states=batch["prompt_ids"].to(dtype=weight_dtype),
@@ -1247,8 +1286,8 @@ def main(args):
                 )
 
                 noise_pred = flux_transformer(
-                    hidden_states=noisy_latents,
-                    timestep=t,
+                    hidden_states=noisy_model_input,
+                    timestep=timesteps  / 1000,
                     guidance=guidance_vec,
                     pooled_projections=batch["unet_added_conditions"]["pooled_prompt_embeds"].to(dtype=weight_dtype),
                     encoder_hidden_states=batch["prompt_ids"].to(dtype=weight_dtype),
