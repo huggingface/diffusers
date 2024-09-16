@@ -29,7 +29,6 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusio
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.models.attention_processor import Attention, FusedAttnProcessor2_0
-from diffusers.models.activations import GELU
 
 
 if is_torch_xla_available():
@@ -268,6 +267,40 @@ class MatryoshkaTransformerBlock(nn.Module):
 
             hidden_states = ff_output + hidden_states
 
+        return hidden_states
+
+class GELU(nn.Module):
+    r"""
+    GELU activation function with tanh approximation support with `approximate="tanh"`.
+
+    Parameters:
+        dim_in (`int`): The number of channels in the input.
+        dim_out (`int`): The number of channels in the output.
+        approximate (`str`, *optional*, defaults to `"none"`): If `"tanh"`, use tanh approximation.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
+    """
+
+    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none", bias: bool = True):
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
+        self.approximate = approximate
+
+    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
+        if gate.device.type != "mps":
+            return F.gelu(gate, approximate=self.approximate)
+        # mps: gelu is not implemented for float16
+        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
+
+    def forward(self, hidden_states):
+        if hidden_states.ndim == 4:
+            batch_size, channels, height, width = hidden_states.shape
+            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(-1, channels)
+            hidden_states = self.proj(hidden_states)
+            hidden_states = self.gelu(hidden_states)
+            hidden_states = hidden_states.reshape(batch_size, height, width, -1).permute(0, 3, 1, 2)
+        else:
+            hidden_states = self.proj(hidden_states)
+            hidden_states = self.gelu(hidden_states)
         return hidden_states
 
 class MatryoshkaFeedForward(nn.Module):
