@@ -34,7 +34,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from torchvision import transforms
@@ -54,10 +54,11 @@ from diffusers import (
 from diffusers.models.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-
+from diffusers.training_utils import clear_objs_and_retain_memory
 
 if is_wandb_available():
     import wandb
@@ -85,7 +86,7 @@ def log_validation(
             torch_dtype=torch.bfloat16,
         )
     else:
-        flux_controlnet = FluxControlNetModel.from_pretrained(args.output_dir, torch_dtype=torch.bfloat16)
+        flux_controlnet = FluxControlNetModel.from_pretrained(args.output_dir, torch_dtype=torch.bfloat16, variant=args.save_weight_dtype)
         pipeline = FluxControlNetPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             controlnet=flux_controlnet,
@@ -197,6 +198,48 @@ def log_validation(
 
         return image_logs
 
+
+def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
+    img_str = ""
+    if image_logs is not None:
+        img_str = "You can find some example images below.\n\n"
+        for i, log in enumerate(image_logs):
+            images = log["images"]
+            validation_prompt = log["validation_prompt"]
+            validation_image = log["validation_image"]
+            validation_image.save(os.path.join(repo_folder, "image_control.png"))
+            img_str += f"prompt: {validation_prompt}\n"
+            images = [validation_image] + images
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            img_str += f"![images_{i})](./images_{i}.png)\n"
+
+    model_description = f"""
+# controlnet-{repo_id}
+
+These are controlnet weights trained on {base_model} with new type of conditioning.
+{img_str}
+"""
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="openrail++",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "flux",
+        "flux-diffusers",
+        "text-to-image",
+        "diffusers",
+        "controlnet",
+        "diffusers-training",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
@@ -399,7 +442,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--report_to",
         type=str,
-        default="tensorboard",
+        default="wandb",
         help=(
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
@@ -446,16 +489,6 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
-    )
-    parser.add_argument(
-        "--train_data_dir",
-        type=str,
-        default=None,
-        help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
-        ),
     )
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
@@ -541,7 +574,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--tracker_project_name",
         type=str,
-        default="sd_xl_train_controlnet",
+        default="flux_train_controlnet",
         help=(
             "The `project_name` argument passed to Accelerator.init_trackers for"
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
@@ -560,17 +593,27 @@ def parse_args(input_args=None):
         default=3.5,
         help="the guidance scale used for transformer.",
     )
+    
+    parser.add_argument(
+        "--save_weight_dtype",
+       type=str,
+        default="fp32",
+        choices=["fp16", "bf16", "fp32",],
+        help=(
+            "Preserve precision type according to selected weight"
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
 
-    # if args.dataset_name is None and args.train_data_dir is None:
-    #     raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
+    if args.dataset_name is None and args.jsonl_for_train is None:
+        raise ValueError("Specify either `--dataset_name` or `--jsonl_for_train`")
 
-    # if args.dataset_name is not None and args.train_data_dir is not None:
-    #     raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
+    if args.dataset_name is not None and args.jsonl_for_train is not None:
+        raise ValueError("Specify only one of `--dataset_name` or `--jsonl_for_train`")
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
@@ -719,11 +762,11 @@ def collate_fn(examples):
 
 
 def main(args):
-    # if args.report_to == "wandb" and args.hub_token is not None:
-    #     raise ValueError(
-    #         "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-    #         " Please use `huggingface-cli login` to authenticate with the Hub."
-    #     )
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
 
@@ -1025,9 +1068,8 @@ def main(args):
             compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=100
         )
 
-    del text_encoders, tokenizers
-    gc.collect()
-    torch.cuda.empty_cache()
+
+    clear_objs_and_retain_memory([text_encoders, tokenizers])
 
     # Then get the training dataset ready to be passed to the dataloader.
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
@@ -1137,28 +1179,6 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
-    # copied from pipeline_flux_controlnet
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height // 2, width // 2, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
-
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids[None, :].repeat(batch_size, 1, 1, 1)
-        latent_image_ids = latent_image_ids.reshape(
-            batch_size, latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
-
-    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-        latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
-
-        return latents
-
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
@@ -1169,7 +1189,7 @@ def main(args):
                 pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
                 pixel_latents_tmp = vae.encode(pixel_values).latent_dist.sample()
                 pixel_latents_tmp = (pixel_latents_tmp - vae.config.shift_factor) * vae.config.scaling_factor
-                pixel_latents = _pack_latents(
+                pixel_latents = FluxControlNetPipeline._pack_latents(
                     pixel_latents_tmp,
                     pixel_values.shape[0],
                     pixel_latents_tmp.shape[1],
@@ -1180,7 +1200,7 @@ def main(args):
                 control_values = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 control_latents = vae.encode(control_values).latent_dist.sample()
                 control_latents = (control_latents - vae.config.shift_factor) * vae.config.scaling_factor
-                control_image = _pack_latents(
+                control_image = FluxControlNetPipeline._pack_latents(
                     control_latents,
                     control_values.shape[0],
                     control_latents.shape[1],
@@ -1188,7 +1208,7 @@ def main(args):
                     control_latents.shape[3],
                 )
 
-                latent_image_ids = _prepare_latent_image_ids(
+                latent_image_ids = FluxControlNetPipeline._prepare_latent_image_ids(
                     batch_size=pixel_latents_tmp.shape[0],
                     height=pixel_latents_tmp.shape[2],
                     width=pixel_latents_tmp.shape[3],
@@ -1222,7 +1242,7 @@ def main(args):
                     pooled_projections=batch["unet_added_conditions"]["pooled_prompt_embeds"].to(dtype=weight_dtype),
                     encoder_hidden_states=batch["prompt_ids"].to(dtype=weight_dtype),
                     txt_ids=batch["unet_added_conditions"]["time_ids"][0].to(dtype=weight_dtype),
-                    img_ids=latent_image_ids[0],
+                    img_ids=latent_image_ids,
                     return_dict=False,
                 )
 
@@ -1241,7 +1261,7 @@ def main(args):
                     if controlnet_single_block_samples is not None
                     else None,
                     txt_ids=batch["unet_added_conditions"]["time_ids"][0].to(dtype=weight_dtype),
-                    img_ids=latent_image_ids[0],
+                    img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
 
@@ -1311,7 +1331,13 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         flux_controlnet = unwrap_model(flux_controlnet)
-        flux_controlnet.save_pretrained(args.output_dir)
+        save_weight_dtype = torch.float32
+        if args.save_weight_dtype == "fp16":
+            save_weight_dtype = torch.float16
+        elif args.save_weight_dtype == "bf16":
+            save_weight_dtype = torch.bfloat16
+        flux_controlnet.to(save_weight_dtype)
+        flux_controlnet.save_pretrained(args.output_dir,variant=args.save_weight_dtype)
 
         # Run a final round of validation.
         # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
@@ -1327,6 +1353,22 @@ def main(args):
                 step=global_step,
                 is_final_validation=True,
             )
+
+        if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                image_logs=image_logs,
+                base_model=args.pretrained_model_name_or_path,
+                repo_folder=args.output_dir,
+            )
+
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
+
     accelerator.end_training()
 
 

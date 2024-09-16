@@ -58,11 +58,6 @@ We also support importing data from jsonl(xxx.jsonl),using `--jsonl_for_train` t
 {"image": "xxx", "text": "xxx", "conditioning_image": "xxx"}
 ```
 
-
-
-
-
-
 ## Training
 
 Our training examples use two test conditioning images. They can be downloaded by running
@@ -78,18 +73,13 @@ we can define the num_layers, num_single_layers, which determines the size of th
 
 
 ```bash
-export MODEL_DIR="black-forest-labs/FLUX.1-dev"
-export OUTPUT_DIR="path to save model"
-export TRAIN_JSON_FILE="path to your jsonl file"
-
-
 accelerate launch train_controlnet_flux.py \
-    --pretrained_model_name_or_path=$MODEL_DIR \
+    --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
     --dataset_name=fusing/fill50k \
     --conditioning_image_column=conditioning_image \
     --image_column=image \
     --caption_column=text \
-    --output_dir=$OUTPUT_DIR \
+    --output_dir="path to save model" \
     --mixed_precision="bf16" \
     --resolution=512 \
     --learning_rate=1e-5 \
@@ -100,7 +90,7 @@ accelerate launch train_controlnet_flux.py \
     --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
     --train_batch_size=1 \
     --gradient_accumulation_steps=4 \
-    --report_to="tensorboard" \
+    --report_to="wandb" \
     --num_double_layers=4 \
     --num_single_layers=0 \
     --seed=42 \
@@ -108,7 +98,7 @@ accelerate launch train_controlnet_flux.py \
 
 To better track our training experiments, we're using the following flags in the command above:
 
-* `report_to="tensorboard` will ensure the training runs are tracked on Weights and Biases.
+* `report_to="wandb` will ensure the training runs are tracked on Weights and Biases.
 * `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 80GB A100 GPU.
