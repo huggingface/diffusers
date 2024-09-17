@@ -235,9 +235,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
+        use_learned_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
+
+        if not use_rotary_positional_embeddings and use_learned_positional_embeddings:
+            raise ValueError(
+                "There are no CogVideoX checkpoints available with disable rotary embeddings and learned positional "
+                "embeddings. If you're using a custom model and/or believe this should be supported, please open an "
+                "issue at https://github.com/huggingface/diffusers/issues."
+            )
 
         # 1. Patch embedding
         self.patch_embed = CogVideoXPatchEmbed(
@@ -254,6 +262,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             spatial_interpolation_scale=spatial_interpolation_scale,
             temporal_interpolation_scale=temporal_interpolation_scale,
             use_positional_embeddings=not use_rotary_positional_embeddings,
+            use_learned_positional_embeddings=use_learned_positional_embeddings,
         )
         self.embedding_dropout = nn.Dropout(dropout)
 
@@ -465,8 +474,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
+        # Note: we use `-1` instead of `channels`:
+        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
+        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:
