@@ -63,7 +63,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     text_encoder_name = TEXT_ENCODER_NAME
 
     def load_lora_weights(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name=None,
+        hotswap: bool = False,
+        **kwargs,
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
@@ -88,6 +92,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            hotswap TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -109,6 +114,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            hotswap=hotswap,
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -232,7 +238,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return state_dict, network_alphas
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, hotswap: bool = False):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -250,6 +256,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            hotswap TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -263,7 +270,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                hotswap=hotswap,
             )
 
     @classmethod

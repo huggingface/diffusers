@@ -18,6 +18,7 @@ import json
 import os
 import random
 import shutil
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -2014,3 +2015,40 @@ class PipelineNightlyTests(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
+
+
+class TestLoraHotSwapping:
+    def test_hotswapping_peft_config_incompatible_raises(self):
+        # TODO
+        pass
+
+    def test_hotswapping_no_existing_adapter_raises(self):
+        # TODO
+        pass
+
+    def test_hotswapping_works(self):
+        # TODO
+        pass
+
+    def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
+        # TODO: kinda slow, should it get a slow marker?
+        env = {"TORCH_LOGS": "guards,recompiles"}
+        here = os.path.dirname(__file__)
+        file_name = os.path.join(here, "run_compiled_model_hotswap.py")
+
+        process = subprocess.Popen(
+            [sys.executable, file_name],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        # Communicate will read the output and error streams, preventing deadlock
+        stdout, stderr = process.communicate()
+        exit_code = process.returncode
+
+        # sanity check:
+        assert exit_code == 0
+
+        # check that the recompilation message is not present
+        assert "__recompiles" not in stderr.decode()
