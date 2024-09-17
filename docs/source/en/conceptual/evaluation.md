@@ -92,7 +92,7 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 ![parti-prompts-14](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-14.png)
 
-We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)), yields:
+We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)), yields:
 
 ![parti-prompts-15](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-15.png)
 
@@ -177,10 +177,10 @@ generator = torch.manual_seed(seed)
 images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
-Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images:
+Then we load the [v1-5 checkpoint](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) to generate images:
 
 ```python
-model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
+model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
@@ -198,7 +198,7 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 # CLIP Score with v-1-5: 36.2137
 ```
 
-It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint performs better than its predecessor. Note, however, that the number of prompts we used to compute the CLIP scores is quite low. For a more practical evaluation, this number should be way higher, and the prompts should be diverse.
+It seems like the [v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint performs better than its predecessor. Note, however, that the number of prompts we used to compute the CLIP scores is quite low. For a more practical evaluation, this number should be way higher, and the prompts should be diverse.
 
 <Tip warning={true}>
 
