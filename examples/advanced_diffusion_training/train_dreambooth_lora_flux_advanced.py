@@ -2283,8 +2283,13 @@ def main(args):
             pipeline.load_lora_weights(args.output_dir)
         if args.train_text_encoder_ti:
             # load embeddings
-            pass
-
+            tokens = list(itertools.chain.from_iterable(train_dataset.token_abstraction_dict.values()))
+            embedding_path = hf_hub_download(repo_id=repo_id,
+                                             filename=f"{args.output_dir}_emb.safetensors",
+                                             repo_type="model")
+            state_dict = load_file(embedding_path)
+            pipeline.load_textual_inversion(state_dict["clip_l"], token=tokens,
+                                            text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
 
         # run inference
         images = []
