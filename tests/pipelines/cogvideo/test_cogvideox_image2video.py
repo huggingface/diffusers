@@ -269,8 +269,9 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator_device = "cpu"
         components = self.get_dummy_components()
 
-        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions.
-        # See the if-statement on "self.use_learned_positional_embeddings"
+        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initalization.
+        # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
+        # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
         components["transformer"] = CogVideoXTransformer3DModel.from_config(
             components["transformer"].config,
             sample_height=16,
