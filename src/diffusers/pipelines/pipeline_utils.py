@@ -389,7 +389,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         def model_has_device_map(model):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
-            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+            return getattr(model, "hf_device_map", None) is not None
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -991,7 +991,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         def model_has_device_map(model):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
-            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+            return getattr(model, "hf_device_map", None) is not None
 
         # device-mapped modules should not go through any device placements.
         pipeline_has_device_mapped_modules = any(model_has_device_map(module) for _, module in self.components.items())
@@ -1097,7 +1097,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         def model_has_device_map(model):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
-            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+            return getattr(model, "hf_device_map", None) is not None
 
         # device-mapped modules should not go through any device placements.
         pipeline_has_device_mapped_modules = any(model_has_device_map(module) for _, module in self.components.items())
