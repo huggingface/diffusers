@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5TokenizerFast
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.configuration_utils import ConfigMixin, FrozenDict, register_to_config
+from diffusers.configuration_utils import ConfigMixin, FrozenDict, register_to_config, LegacyConfigMixin
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
@@ -47,7 +47,7 @@ from diffusers.models.embeddings import (
     Timesteps,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.models.modeling_utils import ModelMixin
+from diffusers.models.modeling_utils import ModelMixin, LegacyModelMixin
 from diffusers.models.resnet import ResnetBlock2D
 from diffusers.models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
 from diffusers.models.upsampling import Upsample2D
@@ -213,6 +213,7 @@ class CrossAttnDownBlock2D(nn.Module):
         attention_type: str = "default",
         attention_pre_only: bool = False,
         attention_bias: bool = False,
+        use_attention_ffn: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -240,21 +241,14 @@ class CrossAttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                MatryoshkaTransformerBlock(
+                MatryoshkaTransformer2DModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],
+                    num_layers=transformer_layers_per_block[i],  # ????
                     cross_attention_dim=cross_attention_dim,
-                    cross_attention_norm=cross_attention_norm,
-                    norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
-                    only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    attention_type=attention_type,
-                    attention_pre_only=attention_pre_only,
-                    attention_bias=attention_bias,
+                    use_attention_ffn=use_attention_ffn,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -356,12 +350,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
-        ff_act_fn: str = "geglu",
         resnet_groups: int = 32,
         resnet_groups_out: Optional[int] = None,
         resnet_pre_norm: bool = True,
         norm_type: str = "layer_norm",
-        ff_norm_type: str = "group_norm",
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
@@ -372,6 +364,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_type: str = "default",
         attention_pre_only: bool = False,
         attention_bias: bool = False,
+        use_attention_ffn: bool = True,
     ):
         super().__init__()
 
@@ -409,22 +402,14 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         for i in range(num_layers):
             attentions.append(
-                MatryoshkaTransformerBlock(
+                MatryoshkaTransformer2DModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],
+                    num_layers=transformer_layers_per_block[i],  # ????
                     cross_attention_dim=cross_attention_dim,
-                    cross_attention_norm=cross_attention_norm,
-                    norm_num_groups=resnet_groups_out,
-                    use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    ff_norm_type=ff_norm_type,
-                    attention_type=attention_type,
-                    attention_pre_only=attention_pre_only,
-                    attention_bias=attention_bias,
-                    activation_fn=ff_act_fn,
+                    use_attention_ffn=use_attention_ffn,
                 )
             )
             resnets.append(
@@ -516,11 +501,9 @@ class CrossAttnUpBlock2D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
-        ff_act_fn: str = "geglu",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         norm_type: str = "layer_norm",
-        ff_norm_type: str = "group_norm",
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         cross_attention_norm: Optional[str] = None,
@@ -533,6 +516,7 @@ class CrossAttnUpBlock2D(nn.Module):
         attention_type: str = "default",
         attention_pre_only: bool = False,
         attention_bias: bool = False,
+        use_attention_ffn: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -563,23 +547,14 @@ class CrossAttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                MatryoshkaTransformerBlock(
+                MatryoshkaTransformer2DModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],
+                    num_layers=transformer_layers_per_block[i],  # ????
                     cross_attention_dim=cross_attention_dim,
-                    cross_attention_norm=cross_attention_norm,
-                    norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
-                    only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    ff_norm_type=ff_norm_type,
-                    attention_type=attention_type,
-                    attention_pre_only=attention_pre_only,
-                    attention_bias=attention_bias,
-                    activation_fn=ff_act_fn,
+                    use_attention_ffn=use_attention_ffn,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -678,6 +653,40 @@ class CrossAttnUpBlock2D(nn.Module):
         return hidden_states
 
 
+class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
+
+    _supports_gradient_checkpointing = True
+    _no_split_modules = ["MatryoshkaTransformerBlock"]
+
+    @register_to_config
+    def __init__(
+        self,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 88,
+        in_channels: Optional[int] = None,
+        num_layers: int = 1,
+        cross_attention_dim: Optional[int] = None,
+        upcast_attention: bool = False,
+        use_attention_ffn: bool = True,
+    ):
+        super().__init__()
+        self.in_channels = self.config.num_attention_heads * self.config.attention_head_dim
+
+        self.transformer_blocks = nn.ModuleList(
+            [
+                MatryoshkaTransformerBlock(
+                    self.in_channels,
+                    self.config.num_attention_heads,
+                    self.config.attention_head_dim,
+                    cross_attention_dim=self.config.cross_attention_dim,
+                    upcast_attention=self.config.upcast_attention,
+                    use_attention_ffn=self.config.use_attention_ffn,
+                )
+                for _ in range(self.config.num_layers)
+            ]
+        )
+
+
 class MatryoshkaTransformerBlock(nn.Module):
     r"""
     Matryoshka Transformer block.
@@ -691,9 +700,8 @@ class MatryoshkaTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         cross_attention_dim: Optional[int] = None,
-        upcast_attention: bool = True,
-        attention_type: str = "default",
-        attention_ff_inner_dim: Optional[int] = None,
+        upcast_attention: bool = False,
+        use_attention_ffn: bool = True,
     ):
         super().__init__()
         self.dim = dim
@@ -734,12 +742,9 @@ class MatryoshkaTransformerBlock(nn.Module):
 
         self.proj_out = nn.Linear(dim, dim)
 
-        if attention_ff_inner_dim is not None:
+        if use_attention_ffn:
             # 3. Feed-forward
-            self.ff = MatryoshkaFeedForward(
-                dim,
-                inner_dim=attention_ff_inner_dim,
-            )
+            self.ff = MatryoshkaFeedForward(dim)
         else:
             self.ff = None
 
@@ -939,7 +944,6 @@ def get_down_block(
             attention_pre_only=attention_pre_only,
         )
 
-
 def get_mid_block(
     mid_block_type: str,
     temb_channels: int,
@@ -985,7 +989,6 @@ def get_mid_block(
             attention_type=attention_type,
             attention_pre_only=attention_pre_only,
         )
-
 
 def get_up_block(
     up_block_type: str,
@@ -1441,9 +1444,7 @@ class NestedUNet2DConditionModel(
             norm_type=norm_type,
             resnet_groups=norm_num_groups,
             output_scale_factor=mid_block_scale_factor,
-            transformer_layers_per_block=transformer_layers_per_block[-1]
-            if norm_type != "layer_norm_matryoshka"
-            else 1,
+            transformer_layers_per_block=1,
             num_attention_heads=num_attention_heads[-1],
             cross_attention_dim=cross_attention_dim[-1],
             dual_cross_attention=dual_cross_attention,
