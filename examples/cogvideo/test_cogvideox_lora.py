@@ -18,10 +18,10 @@ import shutil
 import sys
 import tempfile
 
-from PIL import Image
+import pytest
+from huggingface_hub import snapshot_download
 
 from diffusers import CogVideoXTransformer3DModel, DiffusionPipeline
-from diffusers.utils import export_to_video
 
 
 sys.path.append("..")
@@ -36,41 +36,36 @@ logger.addHandler(stream_handler)
 
 
 class CogVideoXLoRA(ExamplesTestsAccelerate):
+    dataset_name = "hf-internal-testing/tiny-video-dataset"
     instance_data_dir = "videos/"
-    caption_column = "prompts.txt"
+    caption_column = "captions.txt"
     video_column = "videos.txt"
-    video_filename = "00001.mp4"
-    instance_prompt = "A panda playing a guitar"
+    instance_prompt = "A hiker standing at the peak of mountain"
+    max_num_frames = 9
 
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cogvideox-pipe"
     script_path = "examples/cogvideo/train_cogvideox_lora.py"
 
-    def prepare_dummy_inputs(self, instance_data_root: str, num_frames: int = 8):
-        caption = "A panda playing a guitar"
+    dataset_path = None
 
-        # We create a longer video to also verify if the max_num_frames parameter is working correctly
-        video = [Image.new("RGB", (32, 32), color=0)] * (num_frames * 2)
+    @pytest.fixture(scope="class", autouse=True)
+    def prepare_dummy_inputs(self, request):
+        tmpdir = tempfile.mkdtemp()
 
-        print(os.path.join(instance_data_root, self.caption_column))
-        with open(os.path.join(instance_data_root, self.caption_column), "w") as file:
-            file.write(caption)
+        try:
+            if request.cls.dataset_path is None:
+                request.cls.dataset_path = snapshot_download(self.dataset_name, repo_type="dataset", cache_dir=tmpdir)
 
-        with open(os.path.join(instance_data_root, self.video_column), "w") as file:
-            file.write(f"{self.instance_data_dir}/{self.video_filename}")
-
-        video_dir = os.path.join(instance_data_root, self.instance_data_dir)
-        os.makedirs(video_dir, exist_ok=True)
-        export_to_video(video, os.path.join(video_dir, self.video_filename), fps=8)
+            yield
+        finally:
+            shutil.rmtree(tmpdir)
 
     def test_lora(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            max_num_frames = 9
-            self.prepare_dummy_inputs(tmpdir, num_frames=max_num_frames)
-
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -79,7 +74,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames {max_num_frames}
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
@@ -99,13 +94,10 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
             # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
 
-            max_num_frames = 9
-            self.prepare_dummy_inputs(tmpdir, num_frames=max_num_frames)
-
             initial_run_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -114,7 +106,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames 9
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --learning_rate 1e-3
@@ -164,7 +156,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
             resume_run_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -173,7 +165,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames 9
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --learning_rate 1e-3
@@ -207,13 +199,10 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
 
     def test_lora_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            max_num_frames = 9
-            self.prepare_dummy_inputs(tmpdir, num_frames=max_num_frames)
-
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -222,7 +211,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames 9
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --learning_rate 1e-3
@@ -244,13 +233,10 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
 
     def test_lora_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            max_num_frames = 9
-            self.prepare_dummy_inputs(tmpdir, num_frames=max_num_frames)
-
             test_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -259,7 +245,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames 9
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --learning_rate 1e-3
@@ -281,7 +267,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
             resume_run_args = f"""
                 {self.script_path}
                 --pretrained_model_name_or_path {self.pretrained_model_name_or_path}
-                --instance_data_root {tmpdir}
+                --instance_data_root {self.dataset_path}
                 --caption_column {self.caption_column}
                 --video_column {self.video_column}
                 --rank 1
@@ -290,7 +276,7 @@ class CogVideoXLoRA(ExamplesTestsAccelerate):
                 --height 32
                 --width 32
                 --fps 8
-                --max_num_frames 9
+                --max_num_frames {self.max_num_frames}
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --learning_rate 1e-3
