@@ -62,6 +62,8 @@ DIFFUSERS_TO_PEFT = {
     ".out_proj.lora_linear_layer.down": ".out_proj.lora_A",
     ".lora_linear_layer.up": ".lora_B",
     ".lora_linear_layer.down": ".lora_A",
+    "text_projection.lora.down.weight": "text_projection.lora_A.weight",
+    "text_projection.lora.up.weight": "text_projection.lora_B.weight",
 }
 
 DIFFUSERS_OLD_TO_PEFT = {
@@ -253,8 +255,8 @@ def convert_unet_state_dict_to_peft(state_dict):
 
 def convert_all_state_dict_to_peft(state_dict):
     r"""
-    Attempts to first `convert_state_dict_to_peft`, and if it doesn't detect `lora_linear_layer`
-    for a valid `DIFFUSERS` LoRA for example, attempts to exclusively convert the Unet `convert_unet_state_dict_to_peft`
+    Attempts to first `convert_state_dict_to_peft`, and if it doesn't detect `lora_linear_layer` for a valid
+    `DIFFUSERS` LoRA for example, attempts to exclusively convert the Unet `convert_unet_state_dict_to_peft`
     """
     try:
         peft_dict = convert_state_dict_to_peft(state_dict)

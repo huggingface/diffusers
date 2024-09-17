@@ -117,7 +117,7 @@ class Blip2VisionEmbeddings(nn.Module):
 
         self.position_embedding = nn.Parameter(torch.randn(1, self.num_positions, self.embed_dim))
 
-    def forward(self, pixel_values: torch.FloatTensor) -> torch.Tensor:
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         batch_size = pixel_values.shape[0]
         target_dtype = self.patch_embedding.weight.dtype
         patch_embeds = self.patch_embedding(pixel_values.to(dtype=target_dtype))  # shape = [*, width, grid, grid]
@@ -376,7 +376,7 @@ class Blip2VisionModel(Blip2PreTrainedModel):
     @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=Blip2VisionConfig)
     def forward(
         self,
-        pixel_values: Optional[torch.FloatTensor] = None,
+        pixel_values: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -524,15 +524,15 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         return_dict=None,
     ):
         r"""
-        encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, `optional`):
+        encoder_hidden_states  (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`, `optional`):
             Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
             the model is configured as a decoder.
-        encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, `optional`):
+        encoder_attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, `optional`):
             Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
             the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
-        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of:
+        past_key_values (`tuple(tuple(torch.Tensor))` of length `config.n_layers` with each tuple having 4 tensors of:
             shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`): Contains precomputed key and
             value hidden states of the attention blocks. Can be used to speed up decoding. If `past_key_values` are
             used, the user can optionally input only the last `decoder_input_ids` (those that don't have their past key

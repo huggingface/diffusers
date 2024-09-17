@@ -129,7 +129,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -175,21 +175,21 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def scale_model_input(
         self,
-        sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
-    ) -> torch.FloatTensor:
+        sample: torch.Tensor,
+        timestep: Union[float, torch.Tensor],
+    ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         if self.step_index is None:
@@ -321,7 +321,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
         # Hack to make sure that other schedulers which copy this function don't break
@@ -376,9 +376,9 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
-        timestep: Union[float, torch.FloatTensor],
-        sample: Union[torch.FloatTensor, np.ndarray],
+        model_output: Union[torch.Tensor, np.ndarray],
+        timestep: Union[float, torch.Tensor],
+        sample: Union[torch.Tensor, np.ndarray],
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
@@ -387,11 +387,11 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`float`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
@@ -477,10 +477,10 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
-    ) -> torch.FloatTensor:
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):

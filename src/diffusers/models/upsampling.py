@@ -110,7 +110,6 @@ class Upsample2D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
         self.interpolate = interpolate
-        conv_cls = nn.Conv2d
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
@@ -131,7 +130,7 @@ class Upsample2D(nn.Module):
         elif use_conv:
             if kernel_size is None:
                 kernel_size = 3
-            conv = conv_cls(self.channels, self.out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
+            conv = nn.Conv2d(self.channels, self.out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -139,9 +138,7 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, output_size: Optional[int] = None, *args, **kwargs
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, output_size: Optional[int] = None, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -218,12 +215,12 @@ class FirUpsample2D(nn.Module):
 
     def _upsample_2d(
         self,
-        hidden_states: torch.FloatTensor,
-        weight: Optional[torch.FloatTensor] = None,
-        kernel: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """Fused `upsample_2d()` followed by `Conv2d()`.
 
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
@@ -231,19 +228,19 @@ class FirUpsample2D(nn.Module):
         arbitrary order.
 
         Args:
-            hidden_states (`torch.FloatTensor`):
+            hidden_states (`torch.Tensor`):
                 Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight (`torch.FloatTensor`, *optional*):
+            weight (`torch.Tensor`, *optional*):
                 Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
                 performed by `inChannels = x.shape[0] // numGroups`.
-            kernel (`torch.FloatTensor`, *optional*):
+            kernel (`torch.Tensor`, *optional*):
                 FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
                 corresponds to nearest-neighbor upsampling.
             factor (`int`, *optional*): Integer upsampling factor (default: 2).
             gain (`float`, *optional*): Scaling factor for signal magnitude (default: 1.0).
 
         Returns:
-            output (`torch.FloatTensor`):
+            output (`torch.Tensor`):
                 Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
                 datatype as `hidden_states`.
         """
@@ -311,7 +308,7 @@ class FirUpsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.use_conv:
             height = self._upsample_2d(hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -349,6 +346,70 @@ class KUpsample2D(nn.Module):
         kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
         weight[indices, indices] = kernel
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
+
+
+class CogVideoXUpsample3D(nn.Module):
+    r"""
+    A 3D Upsample layer using in CogVideoX by Tsinghua University & ZhipuAI # Todo: Wait for paper relase.
+
+    Args:
+        in_channels (`int`):
+            Number of channels in the input image.
+        out_channels (`int`):
+            Number of channels produced by the convolution.
+        kernel_size (`int`, defaults to `3`):
+            Size of the convolving kernel.
+        stride (`int`, defaults to `1`):
+            Stride of the convolution.
+        padding (`int`, defaults to `1`):
+            Padding added to all four sides of the input.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to compress the time dimension.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: int = 1,
+        padding: int = 1,
+        compress_time: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+        self.compress_time = compress_time
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        if self.compress_time:
+            if inputs.shape[2] > 1 and inputs.shape[2] % 2 == 1:
+                # split first frame
+                x_first, x_rest = inputs[:, :, 0], inputs[:, :, 1:]
+
+                x_first = F.interpolate(x_first, scale_factor=2.0)
+                x_rest = F.interpolate(x_rest, scale_factor=2.0)
+                x_first = x_first[:, :, None, :, :]
+                inputs = torch.cat([x_first, x_rest], dim=2)
+            elif inputs.shape[2] > 1:
+                inputs = F.interpolate(inputs, scale_factor=2.0)
+            else:
+                inputs = inputs.squeeze(2)
+                inputs = F.interpolate(inputs, scale_factor=2.0)
+                inputs = inputs[:, :, None, :, :]
+        else:
+            # only interpolate 2D
+            b, c, t, h, w = inputs.shape
+            inputs = inputs.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            inputs = F.interpolate(inputs, scale_factor=2.0)
+            inputs = inputs.reshape(b, t, c, *inputs.shape[2:]).permute(0, 2, 1, 3, 4)
+
+        b, c, t, h, w = inputs.shape
+        inputs = inputs.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        inputs = self.conv(inputs)
+        inputs = inputs.reshape(b, t, *inputs.shape[1:]).permute(0, 2, 1, 3, 4)
+
+        return inputs
 
 
 def upfirdn2d_native(
@@ -402,11 +463,11 @@ def upfirdn2d_native(
 
 
 def upsample_2d(
-    hidden_states: torch.FloatTensor,
-    kernel: Optional[torch.FloatTensor] = None,
+    hidden_states: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
     factor: int = 2,
     gain: float = 1,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     r"""Upsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
     filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
@@ -414,9 +475,9 @@ def upsample_2d(
     a: multiple of the upsampling factor.
 
     Args:
-        hidden_states (`torch.FloatTensor`):
+        hidden_states (`torch.Tensor`):
             Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel (`torch.FloatTensor`, *optional*):
+        kernel (`torch.Tensor`, *optional*):
             FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
             corresponds to nearest-neighbor upsampling.
         factor (`int`, *optional*, default to `2`):
@@ -425,7 +486,7 @@ def upsample_2d(
             Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
-        output (`torch.FloatTensor`):
+        output (`torch.Tensor`):
             Tensor of the shape `[N, C, H * factor, W * factor]`
     """
     assert isinstance(factor, int) and factor >= 1

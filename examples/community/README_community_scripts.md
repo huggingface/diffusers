@@ -1,6 +1,6 @@
 # Community Scripts
 
-**Community scripts** consist of inference examples using Diffusers pipelines that have been added by the community. 
+**Community scripts** consist of inference examples using Diffusers pipelines that have been added by the community.
 Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste code example that you can try out.
 If a community script doesn't work as expected, please open an issue and ping the author on it.
 
@@ -209,7 +209,7 @@ def seamless_tiling(pipeline, x_axis, y_axis):
         layer._conv_forward = asymmetric_conv2d_convforward.__get__(layer, torch.nn.Conv2d)
     return pipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 prompt = ["texture of a red brick wall"]
 seed = 123456

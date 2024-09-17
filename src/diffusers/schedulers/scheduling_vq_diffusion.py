@@ -38,7 +38,7 @@ class VQDiffusionSchedulerOutput(BaseOutput):
     prev_sample: torch.LongTensor
 
 
-def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.FloatTensor:
+def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.Tensor:
     """
     Convert batch of vector of class indices into batch of log onehot vectors
 
@@ -50,7 +50,7 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.FloatTen
             number of classes to be used for the onehot vectors
 
     Returns:
-        `torch.FloatTensor` of shape `(batch size, num classes, vector length)`:
+        `torch.Tensor` of shape `(batch size, num classes, vector length)`:
             Log onehot vectors
     """
     x_onehot = F.one_hot(x, num_classes)
@@ -59,7 +59,7 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.FloatTen
     return log_x
 
 
-def gumbel_noised(logits: torch.FloatTensor, generator: Optional[torch.Generator]) -> torch.FloatTensor:
+def gumbel_noised(logits: torch.Tensor, generator: Optional[torch.Generator]) -> torch.Tensor:
     """
     Apply gumbel noise to `logits`
     """
@@ -199,7 +199,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: torch.long,
         sample: torch.LongTensor,
         generator: Optional[torch.Generator] = None,
@@ -210,7 +210,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computer.
 
         Args:
-            log_p_x_0: (`torch.FloatTensor` of shape `(batch size, num classes - 1, num latent pixels)`):
+            log_p_x_0: (`torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`):
                 The log probabilities for the predicted classes of the initial latent pixels. Does not include a
                 prediction for the masked class as the initial unnoised image cannot be masked.
             t (`torch.long`):
@@ -251,7 +251,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         ```
 
         Args:
-            log_p_x_0 (`torch.FloatTensor` of shape `(batch size, num classes - 1, num latent pixels)`):
+            log_p_x_0 (`torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`):
                 The log probabilities for the predicted classes of the initial latent pixels. Does not include a
                 prediction for the masked class as the initial unnoised image cannot be masked.
             x_t (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
@@ -260,7 +260,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 The timestep that determines which transition matrix is used.
 
         Returns:
-            `torch.FloatTensor` of shape `(batch size, num classes, num latent pixels)`:
+            `torch.Tensor` of shape `(batch size, num classes, num latent pixels)`:
                 The log probabilities for the predicted classes of the image at timestep `t-1`.
         """
         log_onehot_x_t = index_to_log_onehot(x_t, self.num_embed)
@@ -354,7 +354,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         return log_p_x_t_min_1
 
     def log_Q_t_transitioning_to_known_class(
-        self, *, t: torch.int, x_t: torch.LongTensor, log_onehot_x_t: torch.FloatTensor, cumulative: bool
+        self, *, t: torch.int, x_t: torch.LongTensor, log_onehot_x_t: torch.Tensor, cumulative: bool
     ):
         """
         Calculates the log probabilities of the rows from the (cumulative or non-cumulative) transition matrix for each
@@ -365,14 +365,14 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 The timestep that determines which transition matrix is used.
             x_t (`torch.LongTensor` of shape `(batch size, num latent pixels)`):
                 The classes of each latent pixel at time `t`.
-            log_onehot_x_t (`torch.FloatTensor` of shape `(batch size, num classes, num latent pixels)`):
+            log_onehot_x_t (`torch.Tensor` of shape `(batch size, num classes, num latent pixels)`):
                 The log one-hot vectors of `x_t`.
             cumulative (`bool`):
                 If cumulative is `False`, the single step transition matrix `t-1`->`t` is used. If cumulative is
                 `True`, the cumulative transition matrix `0`->`t` is used.
 
         Returns:
-            `torch.FloatTensor` of shape `(batch size, num classes - 1, num latent pixels)`:
+            `torch.Tensor` of shape `(batch size, num classes - 1, num latent pixels)`:
                 Each _column_ of the returned matrix is a _row_ of log probabilities of the complete probability
                 transition matrix.
 

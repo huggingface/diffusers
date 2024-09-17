@@ -31,11 +31,11 @@ class UNet1DOutput(BaseOutput):
     The output of [`UNet1DModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, sample_size)`):
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, sample_size)`):
             The hidden states output from the last layer of the model.
     """
 
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 class UNet1DModel(ModelMixin, ConfigMixin):
@@ -194,7 +194,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[UNet1DOutput, Tuple]:
@@ -202,15 +202,15 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         The [`UNet1DModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch_size, num_channels, sample_size)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unets.unet_1d.UNet1DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_1d.UNet1DOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_1d.UNet1DOutput`] is returned, otherwise a `tuple` is
+            [`~models.unets.unet_1d.UNet1DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_1d.UNet1DOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is the sample tensor.
         """
 

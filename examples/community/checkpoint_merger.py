@@ -71,7 +71,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             **kwargs:
                 Supports all the default DiffusionPipeline.get_config_dict kwargs viz..
 
-                cache_dir, resume_download, force_download, proxies, local_files_only, token, revision, torch_dtype, device_map.
+                cache_dir, force_download, proxies, local_files_only, token, revision, torch_dtype, device_map.
 
                 alpha - The interpolation parameter. Ranges from 0 to 1.  It affects the ratio in which the checkpoints are merged. A 0.8 alpha
                     would mean that the first model checkpoints would affect the final result far less than an alpha of 0.2
@@ -86,7 +86,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         """
         # Default kwargs from DiffusionPipeline
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -124,7 +123,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             config_dict = DiffusionPipeline.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
@@ -138,7 +136,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
             comparison_result &= self._compare_model_configs(config_dicts[idx - 1], config_dicts[idx])
             if not force and comparison_result is False:
                 raise ValueError("Incompatible checkpoints. Please check model_index.json for the models.")
-                print(config_dicts[0], config_dicts[1])
         print("Compatible model_index.json files found")
         # Step 2: Basic Validation has succeeded. Let's download the models and save them into our local files.
         cached_folders = []
@@ -161,7 +158,6 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 else snapshot_download(
                     pretrained_model_name_or_path,
                     cache_dir=cache_dir,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,

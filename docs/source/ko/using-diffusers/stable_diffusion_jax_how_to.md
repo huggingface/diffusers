@@ -83,7 +83,7 @@ Flax는 함수형 프레임워크이므로 모델은 무상태(stateless)형이�
 ```python
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    revision="bf16",
+    variant="bf16",
     dtype=dtype,
 )
 ```

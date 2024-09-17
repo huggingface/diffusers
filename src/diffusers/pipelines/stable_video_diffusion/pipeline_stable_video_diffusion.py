@@ -21,11 +21,12 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -37,10 +38,14 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableVideoDiffusionPipeline
         >>> from diffusers.utils import load_image, export_to_video
 
-        >>> pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
+        >>> pipe = StableVideoDiffusionPipeline.from_pretrained(
+        ...     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
+        ... )
         >>> pipe.to("cuda")
 
-        >>> image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd-docstring-example.jpeg")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd-docstring-example.jpeg"
+        ... )
         >>> image = image.resize((1024, 576))
 
         >>> frames = pipe(image, num_frames=25, decode_chunk_size=8).frames[0]
@@ -57,26 +62,64 @@ def _append_dims(x, target_dims):
     return x[(...,) + (None,) * dims_to_append]
 
 
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: VaeImageProcessor, output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
+):
+    """
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
-        outputs.append(batch_output)
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`List[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
 
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
-
-    return outputs
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 @dataclass
@@ -85,12 +128,12 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
     Output class for Stable Video Diffusion pipeline.
 
     Args:
-        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.FloatTensor`]):
-            List of denoised PIL images of length `batch_size` or numpy array or torch tensor
-            of shape `(batch_size, num_frames, height, width, num_channels)`.
+        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.Tensor`]):
+            List of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
+            num_frames, height, width, num_channels)`.
     """
 
-    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.FloatTensor]
+    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.Tensor]
 
 
 class StableVideoDiffusionPipeline(DiffusionPipeline):
@@ -104,7 +147,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         vae ([`AutoencoderKLTemporalDecoder`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
-            Frozen CLIP image-encoder ([laion/CLIP-ViT-H-14-laion2B-s32B-b79K](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K)).
+            Frozen CLIP image-encoder
+            ([laion/CLIP-ViT-H-14-laion2B-s32B-b79K](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K)).
         unet ([`UNetSpatioTemporalConditionModel`]):
             A `UNetSpatioTemporalConditionModel` to denoise the encoded image latents.
         scheduler ([`EulerDiscreteScheduler`]):
@@ -134,7 +178,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(do_resize=True, vae_scale_factor=self.vae_scale_factor)
 
     def _encode_image(
         self,
@@ -142,12 +186,12 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         device: Union[str, torch.device],
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor.pil_to_numpy(image)
-            image = self.image_processor.numpy_to_pt(image)
+            image = self.video_processor.pil_to_numpy(image)
+            image = self.video_processor.numpy_to_pt(image)
 
             # We normalize the image before resizing to match with the original implementation.
             # Then we unnormalize it after resizing.
@@ -194,6 +238,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image = image.to(device=device)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
+        # duplicate image_latents for each generation per prompt, using mps friendly method
+        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
+
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
 
@@ -201,9 +248,6 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             image_latents = torch.cat([negative_image_latents, image_latents])
-
-        # duplicate image_latents for each generation per prompt, using mps friendly method
-        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
 
         return image_latents
 
@@ -235,7 +279,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         return add_time_ids
 
-    def decode_latents(self, latents: torch.FloatTensor, num_frames: int, decode_chunk_size: int = 14):
+    def decode_latents(self, latents: torch.Tensor, num_frames: int, decode_chunk_size: int = 14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
 
@@ -271,7 +315,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -288,7 +332,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         dtype: torch.dtype,
         device: Union[str, torch.device],
         generator: torch.Generator,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
     ):
         shape = (
             batch_size,
@@ -333,11 +377,12 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
         num_inference_steps: int = 25,
+        sigmas: Optional[List[float]] = None,
         min_guidance_scale: float = 1.0,
         max_guidance_scale: float = 3.0,
         fps: int = 7,
@@ -346,7 +391,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -356,39 +401,46 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
-                Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0, 1]`.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
+                Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0,
+                1]`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             num_frames (`int`, *optional*):
-                The number of video frames to generate. Defaults to `self.unet.config.num_frames`
-                (14 for `stable-video-diffusion-img2vid` and to 25 for `stable-video-diffusion-img2vid-xt`).
+                The number of video frames to generate. Defaults to `self.unet.config.num_frames` (14 for
+                `stable-video-diffusion-img2vid` and to 25 for `stable-video-diffusion-img2vid-xt`).
             num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference. This parameter is modulated by `strength`.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             min_guidance_scale (`float`, *optional*, defaults to 1.0):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
             max_guidance_scale (`float`, *optional*, defaults to 3.0):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
             fps (`int`, *optional*, defaults to 7):
-                Frames per second. The rate at which the generated images shall be exported to a video after generation.
-                Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
+                Frames per second. The rate at which the generated images shall be exported to a video after
+                generation. Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 Used for conditioning the amount of motion for the generation. The higher the number the more motion
                 will be in the video.
             noise_aug_strength (`float`, *optional*, defaults to 0.02):
-                The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
+                The amount of noise added to the init image, the higher it is the less the video will look like the
+                init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. Higher chunk size leads to better temporal consistency at the expense of more memory usage. By default, the decoder decodes all frames at once for maximal
-                quality. For lower memory usage, reduce `decode_chunk_size`.
+                The number of frames to decode at a time. Higher chunk size leads to better temporal consistency at the
+                expense of more memory usage. By default, the decoder decodes all frames at once for maximal quality.
+                For lower memory usage, reduce `decode_chunk_size`.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
@@ -398,7 +450,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 A function that is called at the end of each denoising step during inference. The function is called
                 with the following arguments:
                     `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`.
-                `callback_kwargs` will include a list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
+                `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
@@ -411,8 +464,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
-                otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.FloatTensor`) is returned.
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is
+                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`) is
+                returned.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -445,7 +499,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
+        image = self.video_processor.preprocess(image, height=height, width=width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
@@ -482,8 +536,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         added_time_ids = added_time_ids.to(device)
 
         # 6. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, None, sigmas)
 
         # 7. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -552,7 +605,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
             frames = self.decode_latents(latents, num_frames, decode_chunk_size)
-            frames = tensor2vid(frames, self.image_processor, output_type=output_type)
+            frames = self.video_processor.postprocess_video(video=frames, output_type=output_type)
         else:
             frames = latents
 
@@ -627,7 +680,7 @@ def _filter2d(input, kernel):
 
     height, width = tmp_kernel.shape[-2:]
 
-    padding_shape: list[int] = _compute_padding([height, width])
+    padding_shape: List[int] = _compute_padding([height, width])
     input = torch.nn.functional.pad(input, padding_shape, mode="reflect")
 
     # kernel and input tensor reshape to align element-wise or batch-wise params

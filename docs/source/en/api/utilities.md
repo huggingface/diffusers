@@ -37,3 +37,7 @@ Utility and helper functions for working with 🤗 Diffusers.
 ## make_image_grid
 
 [[autodoc]] utils.make_image_grid
+
+## randn_tensor
+
+[[autodoc]] utils.torch_utils.randn_tensor

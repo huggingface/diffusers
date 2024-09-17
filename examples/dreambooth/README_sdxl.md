@@ -4,7 +4,7 @@
 
 The `train_dreambooth_lora_sdxl.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
-> 💡 **Note**: For now, we only allow DreamBooth fine-tuning of the SDXL UNet via LoRA. LoRA is a parameter-efficient fine-tuning technique introduced in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*. 
+> 💡 **Note**: For now, we only allow DreamBooth fine-tuning of the SDXL UNet via LoRA. LoRA is a parameter-efficient fine-tuning technique introduced in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 ## Running locally with PyTorch
 
@@ -46,7 +46,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 ### Dog toy example
@@ -66,7 +66,7 @@ snapshot_download(
 )
 ```
 
-This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform. 
+This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform.
 
 Now, we can launch training using:
 
@@ -100,7 +100,7 @@ accelerate launch train_dreambooth_lora_sdxl.py \
 To better track our training experiments, we're using the following flags in the command above:
 
 * `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
-* `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
+* `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 40GB A100 GPU.
 
@@ -153,7 +153,7 @@ lora_model_id = <"lora-sdxl-dreambooth-id">
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-# Load the base pipeline and load the LoRA parameters into it. 
+# Load the base pipeline and load the LoRA parameters into it.
 pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
@@ -205,11 +205,11 @@ You can explore the results from a couple of our internal experiments by checkin
 
 ## Running on a free-tier Colab Notebook
 
-Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb). 
+Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb).
 
 ## Conducting EDM-style training
 
-It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364). 
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364).
 
 For the SDXL model, simple set:
 
@@ -244,30 +244,30 @@ accelerate launch train_dreambooth_lora_sdxl.py \
 > [!CAUTION]
 > Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
 
-### DoRA training 
+### DoRA training
 The script now supports DoRA training too!
-> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
-**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
-The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353),
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters.
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference.
 
 > [!NOTE]
-> 💡DoRA training is still _experimental_  
+> 💡DoRA training is still _experimental_
 > and is likely to require different hyperparameter values to perform best compared to a LoRA.
-> Specifically, we've noticed 2 differences to take into account your training: 
+> Specifically, we've noticed 2 differences to take into account your training:
 > 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
-> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
-> This is also aligned with some of the quantitative analysis shown in the paper. 
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.
+> This is also aligned with some of the quantitative analysis shown in the paper.
 
 **Usage**
-1. To use DoRA you need to upgrade the installation of `peft`: 
+1. To use DoRA you need to upgrade the installation of `peft`:
 ```bash
-pip install-U peft
+pip install -U peft
 ```
 2. Enable DoRA training by adding this flag
 ```bash
 --use_dora
 ```
-**Inference** 
+**Inference**
 The inference is the same as if you train a regular LoRA 🤗
 
 ## Format compatibility

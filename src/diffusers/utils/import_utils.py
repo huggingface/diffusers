@@ -131,7 +131,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _unidecode_available = False
 
-
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
@@ -295,6 +294,51 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_sentencepiece_available = importlib.util.find_spec("sentencepiece") is not None
+try:
+    _sentencepiece_version = importlib_metadata.version("sentencepiece")
+    logger.info(f"Successfully imported sentencepiece version {_sentencepiece_version}")
+except importlib_metadata.PackageNotFoundError:
+    _sentencepiece_available = False
+
+_matplotlib_available = importlib.util.find_spec("matplotlib") is not None
+try:
+    _matplotlib_version = importlib_metadata.version("matplotlib")
+    logger.debug(f"Successfully imported matplotlib version {_matplotlib_version}")
+except importlib_metadata.PackageNotFoundError:
+    _matplotlib_available = False
+
+_timm_available = importlib.util.find_spec("timm") is not None
+if _timm_available:
+    try:
+        _timm_version = importlib_metadata.version("timm")
+        logger.info(f"Timm version {_timm_version} available.")
+    except importlib_metadata.PackageNotFoundError:
+        _timm_available = False
+
+
+def is_timm_available():
+    return _timm_available
+
+
+_bitsandbytes_available = importlib.util.find_spec("bitsandbytes") is not None
+try:
+    _bitsandbytes_version = importlib_metadata.version("bitsandbytes")
+    logger.debug(f"Successfully imported bitsandbytes version {_bitsandbytes_version}")
+except importlib_metadata.PackageNotFoundError:
+    _bitsandbytes_available = False
+
+_is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
+
+_imageio_available = importlib.util.find_spec("imageio") is not None
+if _imageio_available:
+    try:
+        _imageio_version = importlib_metadata.version("imageio")
+        logger.debug(f"Successfully imported imageio version {_imageio_version}")
+
+    except importlib_metadata.PackageNotFoundError:
+        _imageio_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -390,6 +434,30 @@ def is_peft_available():
 
 def is_torchvision_available():
     return _torchvision_available
+
+
+def is_matplotlib_available():
+    return _matplotlib_available
+
+
+def is_safetensors_available():
+    return _safetensors_available
+
+
+def is_bitsandbytes_available():
+    return _bitsandbytes_available
+
+
+def is_google_colab():
+    return _is_google_colab
+
+
+def is_sentencepiece_available():
+    return _sentencepiece_available
+
+
+def is_imageio_available():
+    return _imageio_available
 
 
 # docstyle-ignore
@@ -499,6 +567,31 @@ INVISIBLE_WATERMARK_IMPORT_ERROR = """
 {0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install invisible-watermark>=0.2.0`
 """
 
+# docstyle-ignore
+PEFT_IMPORT_ERROR = """
+{0} requires the peft library but it was not found in your environment. You can install it with pip: `pip install peft`
+"""
+
+# docstyle-ignore
+SAFETENSORS_IMPORT_ERROR = """
+{0} requires the safetensors library but it was not found in your environment. You can install it with pip: `pip install safetensors`
+"""
+
+# docstyle-ignore
+SENTENCEPIECE_IMPORT_ERROR = """
+{0} requires the sentencepiece library but it was not found in your environment. You can install it with pip: `pip install sentencepiece`
+"""
+
+
+# docstyle-ignore
+BITSANDBYTES_IMPORT_ERROR = """
+{0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
+"""
+
+# docstyle-ignore
+IMAGEIO_IMPORT_ERROR = """
+{0} requires the imageio library and ffmpeg but it was not found in your environment. You can install it with pip: `pip install imageio imageio-ffmpeg`
+"""
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -520,6 +613,11 @@ BACKENDS_MAPPING = OrderedDict(
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
         ("torchsde", (is_torchsde_available, TORCHSDE_IMPORT_ERROR)),
         ("invisible_watermark", (is_invisible_watermark_available, INVISIBLE_WATERMARK_IMPORT_ERROR)),
+        ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
+        ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
+        ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
+        ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
+        ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
     ]
 )
 

@@ -23,6 +23,7 @@ import os
 import random
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -57,7 +58,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -77,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -179,6 +180,7 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
@@ -200,25 +202,19 @@ def log_validation(
 
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
-    enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
-        enable_autocast = False
-    if "playground" in args.pretrained_model_name_or_path:
-        enable_autocast = False
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
-    with torch.autocast(
-        accelerator.device.type,
-        enabled=enable_autocast,
-    ):
+    with autocast_ctx:
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
@@ -567,7 +563,7 @@ def parse_args(input_args=None):
         "--prodigy_beta3",
         type=float,
         default=None,
-        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
@@ -866,7 +862,7 @@ class DreamBoothDataset(Dataset):
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else:  # costum prompts were provided, but length does not match size of image dataset
+        else:  # custom prompts were provided, but length does not match size of image dataset
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -908,7 +904,7 @@ def collate_fn(examples, with_prior_preservation=False):
 
 
 class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+    """A simple dataset to prepare the prompts to generate class images on multiple GPUs."""
 
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
@@ -991,6 +987,10 @@ def main(args):
         project_config=accelerator_project_config,
         kwargs_handlers=[kwargs],
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -1261,7 +1261,7 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
 
         unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
@@ -1290,8 +1290,8 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
-                # only upcast trainable parameters (LoRA) into fp32
-                cast_training_params(models)
+            # only upcast trainable parameters (LoRA) into fp32
+            cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1489,7 +1489,7 @@ def main(args):
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                 unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
-        # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
+        # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
@@ -1891,6 +1891,7 @@ def main(args):
                     accelerator,
                     pipeline_args,
                     epoch,
+                    torch_dtype=weight_dtype,
                 )
 
     # Save the lora layers
@@ -1956,6 +1957,7 @@ def main(args):
                 pipeline_args,
                 epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:
