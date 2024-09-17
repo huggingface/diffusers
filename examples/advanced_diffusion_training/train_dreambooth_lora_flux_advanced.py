@@ -86,6 +86,7 @@ def save_model_card(
     base_model: str = None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
+    pure_textual_inversion=False,
     token_abstraction_dict=None,
     instance_prompt=None,
     validation_prompt=None,
@@ -100,8 +101,11 @@ def save_model_card(
             widget_dict.append(
                 {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
             )
+    diffusers_load_lora = ""
     diffusers_imports_pivotal = ""
     diffusers_example_pivotal = ""
+    if not pure_textual_inversion:
+        diffusers_load_lora = f"""pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')"""
     if train_text_encoder_ti:
         embeddings_filename = f"{repo_folder}_emb"
         ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -153,7 +157,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 {diffusers_imports_pivotal}
 pipeline = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
-pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
+{diffusers_load_lora}
 {diffusers_example_pivotal}
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
@@ -1659,6 +1663,10 @@ def main(args):
     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
 
+    # if --train_text_encoder_ti and train_transformer_frac == 0 where essntially performing textual inversion
+    # and not training transformer LoRA layers
+    freeze_transformer = args.train_text_encoder_ti and int(args.train_transformer_frac) == 0
+
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
     if not freeze_text_encoder:
@@ -1670,12 +1678,19 @@ def main(args):
             else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
+        if not freeze_transformer:
+            params_to_optimize = [
+                transformer_parameters_with_lr,
+                text_parameters_one_with_lr,
+            ]
+        else:
+            params_to_optimize = [
+                text_parameters_one_with_lr
+            ]
+    else:
         params_to_optimize = [
             transformer_parameters_with_lr,
-            text_parameters_one_with_lr,
         ]
-    else:
-        params_to_optimize = [transformer_parameters_with_lr]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
@@ -2241,11 +2256,12 @@ def main(args):
         else:
             text_encoder_lora_layers = None
 
-        FluxPipeline.save_lora_weights(
-            save_directory=args.output_dir,
-            transformer_lora_layers=transformer_lora_layers,
-            text_encoder_lora_layers=text_encoder_lora_layers,
-        )
+        if not freeze_transformer:
+            FluxPipeline.save_lora_weights(
+                save_directory=args.output_dir,
+                transformer_lora_layers=transformer_lora_layers,
+                text_encoder_lora_layers=text_encoder_lora_layers,
+            )
 
         if args.train_text_encoder_ti:
             embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
@@ -2259,8 +2275,13 @@ def main(args):
             variant=args.variant,
             torch_dtype=weight_dtype,
         )
-        # load attention processors
-        pipeline.load_lora_weights(args.output_dir)
+        if not freeze_transformer:
+            # load attention processors
+            pipeline.load_lora_weights(args.output_dir)
+        if args.train_text_encoder_ti:
+            # load embeddings
+            pass
+
 
         # run inference
         images = []
@@ -2281,6 +2302,7 @@ def main(args):
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
             train_text_encoder_ti=args.train_text_encoder_ti,
+            pure_textual_inversion=freeze_transformer,
             token_abstraction_dict=train_dataset.token_abstraction_dict,
             instance_prompt=args.instance_prompt,
             validation_prompt=args.validation_prompt,
