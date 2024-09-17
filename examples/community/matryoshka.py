@@ -245,7 +245,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],  # ????
+                    num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     upcast_attention=upcast_attention,
                     use_attention_ffn=use_attention_ffn,
@@ -406,7 +406,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],  # ????
+                    num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     upcast_attention=upcast_attention,
                     use_attention_ffn=use_attention_ffn,
@@ -551,7 +551,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],  # ????
+                    num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     upcast_attention=upcast_attention,
                     use_attention_ffn=use_attention_ffn,
