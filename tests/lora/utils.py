@@ -205,6 +205,9 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple inference and makes sure it works as expected
         """
+        # TODO(aryan): Some of the assumptions made here in many different tests are incorrect for CogVideoX.
+        # For example, we need to test with CogVideoXDDIMScheduler and CogVideoDPMScheduler instead of DDIMScheduler
+        # and LCMScheduler, which are not supported by it.
         scheduler_classes = (
             [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
@@ -218,7 +221,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs)[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-    def test_simple_inference_with_text_lora(self):
+    def test_simple_inference_with_text_lora(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         """
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
@@ -249,10 +252,11 @@ class PeftLoraLoaderMixinTests:
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+                not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                "Lora should change the output",
             )
 
-    def test_simple_inference_with_text_lora_and_scale(self):
+    def test_simple_inference_with_text_lora_and_scale(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         """
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
@@ -260,6 +264,13 @@ class PeftLoraLoaderMixinTests:
         scheduler_classes = (
             [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
+        call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
+        for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
+            if possible_attention_kwargs in call_signature_keys:
+                attention_kwargs_name = possible_attention_kwargs
+                break
+        assert attention_kwargs_name is not None
+
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
@@ -283,36 +294,27 @@ class PeftLoraLoaderMixinTests:
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+                not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                "Lora should change the output",
             )
 
-            if self.unet_kwargs is not None:
-                output_lora_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                )[0]
-            else:
-                output_lora_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                )[0]
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
+            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+
             self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+                not np.allclose(output_lora, output_lora_scale, atol=expected_atol, rtol=expected_rtol),
                 "Lora + scale should change the output",
             )
 
-            if self.unet_kwargs is not None:
-                output_lora_0_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                )[0]
-            else:
-                output_lora_0_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                )[0]
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
+            output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+
             self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+                np.allclose(output_no_lora, output_lora_0_scale, atol=expected_atol, rtol=expected_rtol),
                 "Lora + 0 scale should lead to same result as no LoRA",
             )
 
-    def test_simple_inference_with_text_lora_fused(self):
+    def test_simple_inference_with_text_lora_fused(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
@@ -352,7 +354,8 @@ class PeftLoraLoaderMixinTests:
 
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+                np.allclose(ouput_fused, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                "Fused lora should change the output",
             )
 
     def test_simple_inference_with_text_lora_unloaded(self):
@@ -606,9 +609,6 @@ class PeftLoraLoaderMixinTests:
         scheduler_classes = (
             [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
@@ -693,6 +693,13 @@ class PeftLoraLoaderMixinTests:
         scheduler_classes = (
             [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
         )
+        call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
+        for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
+            if possible_attention_kwargs in call_signature_keys:
+                attention_kwargs_name = possible_attention_kwargs
+                break
+        assert attention_kwargs_name is not None
+
         for scheduler_cls in scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
@@ -724,36 +731,32 @@ class PeftLoraLoaderMixinTests:
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
-            if self.unet_kwargs is not None:
-                output_lora_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-                )[0]
-            else:
-                output_lora_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.5}
-                )[0]
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
+            output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+
             self.assertTrue(
                 not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
             )
 
-            if self.unet_kwargs is not None:
-                output_lora_0_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-                )[0]
-            else:
-                output_lora_0_scale = pipe(
-                    **inputs, generator=torch.manual_seed(0), joint_attention_kwargs={"scale": 0.0}
-                )[0]
+            attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
+            output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
+
             self.assertTrue(
                 np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
             )
 
-            self.assertTrue(
-                pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
-                "The scaling parameter has not been correctly restored!",
-            )
+            if hasattr(pipe.text_encoder, "text_model"):
+                self.assertTrue(
+                    pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
+                    "The scaling parameter has not been correctly restored!",
+                )
+            else:
+                self.assertTrue(
+                    pipe.text_encoder.encoder.block[0].layer[0].SelfAttention.q.scaling["default"] == 1.0,
+                    "The scaling parameter has not been correctly restored!",
+                )
 
     def test_simple_inference_with_text_lora_denoiser_fused(self):
         """
@@ -802,9 +805,9 @@ class PeftLoraLoaderMixinTests:
                         check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                     )
 
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            output_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+                np.allclose(output_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
 
     def test_simple_inference_with_text_denoiser_lora_unloaded(self):
@@ -1002,7 +1005,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         one adapter and set differnt weights for different blocks (i.e. block lora)
         """
-        if self.pipeline_class.__name__ == "StableDiffusion3Pipeline":
+        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "CogVideoXPipeline"]:
             return
 
         scheduler_classes = (
