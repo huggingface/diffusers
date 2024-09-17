@@ -744,10 +744,13 @@ def parse_args(input_args=None):
             "For full LoRA text encoder training check --train_text_encoder, for textual "
             "inversion training check `--train_text_encoder_ti`"
         )
-    if args.train_transformer_frac == 0 and not (args.train_text_encoder or args.train_text_encoder_ti):
+    if args.train_transformer_frac < 1 and not args.train_text_encoder_ti:
         raise ValueError(
-            "--train_transformer_frac must be > 0 if text_encoder training / textual inversion is not enabled"
+            "--train_transformer_frac must be > 0 if text_encoder training / textual inversion is not enabled."
         )
+    if args.train_transformer_frac < 1 and args.train_text_encoder_ti_frac < 1:
+        raise ValueError("--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. This contradicts with --max_train_steps, please specify different values or set both to 1.")
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -1665,7 +1668,7 @@ def main(args):
 
     # if --train_text_encoder_ti and train_transformer_frac == 0 where essntially performing textual inversion
     # and not training transformer LoRA layers
-    freeze_transformer = args.train_text_encoder_ti and int(args.train_transformer_frac) == 0
+    pure_textual_inversion = args.train_text_encoder_ti and int(args.train_transformer_frac) == 0
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -1678,15 +1681,17 @@ def main(args):
             else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        if not freeze_transformer:
+        if not pure_textual_inversion:
             params_to_optimize = [
                 transformer_parameters_with_lr,
                 text_parameters_one_with_lr,
             ]
+            te_idx = 1
         else:
             params_to_optimize = [
                 text_parameters_one_with_lr
             ]
+            te_idx = 0
     else:
         params_to_optimize = [
             transformer_parameters_with_lr,
@@ -1994,19 +1999,17 @@ def main(args):
     pivoted_te = False
     pivoted_tr = False
     for epoch in range(first_epoch, args.num_train_epochs):
-        if epoch == num_train_epochs_transformer:
-            print("PIVOT TRANSFORMER", epoch)
-            # stopping optimization of transformer params
-            pivoted_tr = True
-        else:
-            transformer.train()
+        transformer.train()
         # if performing any kind of optimization of text_encoder params
         if args.train_text_encoder or args.train_text_encoder_ti:
             if epoch == num_train_epochs_text_encoder:
+                # flag to stop text encoder optimization
                 print("PIVOT TE", epoch)
-                # stopping optimization of text_encoder params
-                # this flag is used to reset the optimizer to optimize only on transformer params
                 pivoted_te = True
+            if epoch == num_train_epochs_transformer:
+                # flag to stop transformer optimization
+                print("PIVOT TRANSFORMER", epoch)
+                pivoted_tr = True
             else:
                 # still optimizing the text encoder
                 text_encoder_one.train()
@@ -2017,9 +2020,8 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             if pivoted_te:
                 # stopping optimization of text_encoder params
-                # re setting the optimizer to optimize only on transformer params
-                optimizer.param_groups[1]["lr"] = 0.0
-            elif pivoted_tr:
+                optimizer.param_groups[te_idx]["lr"] = 0.0
+            elif pivoted_tr and not pure_textual_inversion:
                 optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
@@ -2256,7 +2258,7 @@ def main(args):
         else:
             text_encoder_lora_layers = None
 
-        if not freeze_transformer:
+        if not pure_textual_inversion:
             FluxPipeline.save_lora_weights(
                 save_directory=args.output_dir,
                 transformer_lora_layers=transformer_lora_layers,
@@ -2275,7 +2277,7 @@ def main(args):
             variant=args.variant,
             torch_dtype=weight_dtype,
         )
-        if not freeze_transformer:
+        if not pure_textual_inversion:
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
         if args.train_text_encoder_ti:
@@ -2302,7 +2304,7 @@ def main(args):
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
             train_text_encoder_ti=args.train_text_encoder_ti,
-            pure_textual_inversion=freeze_transformer,
+            pure_textual_inversion=pure_textual_inversion,
             token_abstraction_dict=train_dataset.token_abstraction_dict,
             instance_prompt=args.instance_prompt,
             validation_prompt=args.validation_prompt,
