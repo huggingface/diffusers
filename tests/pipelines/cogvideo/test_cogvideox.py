@@ -57,6 +57,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -71,8 +72,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             time_embed_dim=2,
             text_embed_dim=32,  # Must match with tiny-random-t5
             num_layers=1,
-            sample_width=16,  # latent width: 2 -> final width: 16
-            sample_height=16,  # latent height: 2 -> final height: 16
+            sample_width=2,  # latent width: 2 -> final width: 16
+            sample_height=2,  # latent height: 2 -> final height: 16
             sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
             patch_size=2,
             temporal_compression_ratio=4,
@@ -279,10 +280,6 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
-
-    @unittest.skip("xformers attention processor does not exist for CogVideoX")
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
 
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
