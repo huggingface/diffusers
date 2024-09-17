@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5TokenizerFast
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.configuration_utils import ConfigMixin, FrozenDict, register_to_config, LegacyConfigMixin
+from diffusers.configuration_utils import ConfigMixin, FrozenDict, LegacyConfigMixin, register_to_config
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
@@ -47,7 +47,7 @@ from diffusers.models.embeddings import (
     Timesteps,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.models.modeling_utils import ModelMixin, LegacyModelMixin
+from diffusers.models.modeling_utils import LegacyModelMixin, ModelMixin
 from diffusers.models.resnet import ResnetBlock2D
 from diffusers.models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
 from diffusers.models.upsampling import Upsample2D
@@ -654,7 +654,6 @@ class CrossAttnUpBlock2D(nn.Module):
 
 
 class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
-
     _supports_gradient_checkpointing = True
     _no_split_modules = ["MatryoshkaTransformerBlock"]
 
@@ -944,6 +943,7 @@ def get_down_block(
             attention_pre_only=attention_pre_only,
         )
 
+
 def get_mid_block(
     mid_block_type: str,
     temb_channels: int,
@@ -989,6 +989,7 @@ def get_mid_block(
             attention_type=attention_type,
             attention_pre_only=attention_pre_only,
         )
+
 
 def get_up_block(
     up_block_type: str,
