@@ -666,6 +666,7 @@ class MatryoshkaTransformer2DModelOutput(BaseOutput):
 
     sample: "torch.Tensor"  # noqa: F821
 
+
 class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["MatryoshkaTransformerBlock"]
