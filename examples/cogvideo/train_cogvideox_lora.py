@@ -540,7 +540,7 @@ class VideoDataset(Dataset):
             import decord
         except ImportError:
             raise ImportError(
-                "The `decord` package is required for loading the video dataset. Install with `pip install dataset`"
+                "The `decord` package is required for loading the video dataset. Install with `pip install decord`"
             )
 
         decord.bridge.set_bridge("torch")
