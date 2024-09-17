@@ -174,6 +174,40 @@ class BnB8bitBasicTests(Base8bitTests):
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
         self.assertTrue(self.model_8bit.config["_pre_quantization_dtype"] == torch.float16)
 
+    def test_keep_modules_in_fp32(self):
+        r"""
+        A simple tests to check if the modules under `_keep_in_fp32_modules` are kept in fp32.
+        Also ensures if inference works.
+        """
+        fp32_modules = SD3Transformer2DModel._keep_in_fp32_modules
+        SD3Transformer2DModel._keep_in_fp32_modules = ["proj_out"]
+
+        mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
+        model = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
+        )
+
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                if name in model._keep_in_fp32_modules:
+                    self.assertTrue(module.weight.dtype == torch.float32)
+                else:
+                    if isinstance(module, torch.nn.Linear):
+                        if name not in self.model_fp16._keep_in_fp32_modules:
+                            # 8-bit parameters are packed in int8 variables
+                            self.assertTrue(module.weight.dtype == torch.int8)
+
+        # test if inference works.
+        with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
+            input_dict_for_transformer = self.get_dummy_inputs()
+            model_inputs = {
+                k: v.to(device=torch_device) for k, v in input_dict_for_transformer.items() if not isinstance(v, bool)
+            }
+            model_inputs.update({k: v for k, v in input_dict_for_transformer.items() if k not in model_inputs})
+            _ = model(**model_inputs)
+
+        SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
+
     def test_linear_are_8bit(self):
         r"""
         A simple test to check if the model conversion has been done correctly by checking on the

@@ -588,11 +588,11 @@ class ConfigMixin:
             return value
 
         # IFWatermarker, for example, doesn't have a `config`.
-        if hasattr(self, "config") and "quantization_config" in self.config:
+        if "quantization_config" in config_dict:
             config_dict["quantization_config"] = (
-                self.config.quantization_config.to_dict()
-                if not isinstance(self.config.quantization_config, dict)
-                else self.config.quantization_config
+                config_dict.quantization_config.to_dict()
+                if not isinstance(config_dict.quantization_config, dict)
+                else config_dict.quantization_config
             )
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}

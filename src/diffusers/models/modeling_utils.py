@@ -134,7 +134,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
     _no_split_modules = None
-    _keep_in_fp32_modules = []
+    _keep_in_fp32_modules = None
 
     def __init__(self):
         super().__init__()
@@ -318,13 +318,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
-        _hf_peft_config_loaded = getattr(self, "_hf_peft_config_loaded", False)
         hf_quantizer = getattr(self, "hf_quantizer", None)
         quantization_serializable = (
             hf_quantizer is not None and isinstance(hf_quantizer, DiffusersQuantizer) and hf_quantizer.is_serializable
         )
 
-        if hf_quantizer is not None and not _hf_peft_config_loaded and not quantization_serializable:
+        if hf_quantizer is not None and not quantization_serializable:
             raise ValueError(
                 f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
                 " the logger on the traceback to understand the reason why the quantized model is not serializable."
@@ -631,6 +630,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
                 raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
+        if (low_cpu_mem_usage is None or not low_cpu_mem_usage) and cls._keep_in_fp32_modules is not None:
+            low_cpu_mem_usage = True
+            logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
+
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -667,8 +670,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     config["quantization_config"], quantization_config
                 )
             else:
-                if "quantization_config" not in config:
-                    config["quantization_config"] = quantization_config
+                config["quantization_config"] = quantization_config
             hf_quantizer = DiffusersAutoQuantizer.from_config(
                 config["quantization_config"], pre_quantized=pre_quantized
             )
@@ -697,6 +699,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         )
         if use_keep_in_fp32_modules:
             keep_in_fp32_modules = cls._keep_in_fp32_modules
+            if not isinstance(keep_in_fp32_modules, list):
+                keep_in_fp32_modules = [keep_in_fp32_modules]
         else:
             keep_in_fp32_modules = []
         #######################################

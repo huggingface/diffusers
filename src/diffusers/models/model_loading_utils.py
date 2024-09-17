@@ -173,12 +173,13 @@ def load_model_dict_into_meta(
     hf_quantizer=None,
     keep_in_fp32_modules=None,
 ) -> List[str]:
-    device = device or torch.device("cpu") if hf_quantizer is None else device
+    if hf_quantizer is None:
+        device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
+    is_quant_method_bnb = getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
-
     empty_state_dict = model.state_dict()
     unexpected_keys = [param_name for param_name in state_dict if param_name not in empty_state_dict]
     is_torch_e4m3fn_available = hasattr(torch, "float8_e4m3fn")
@@ -190,7 +191,7 @@ def load_model_dict_into_meta(
         # We convert floating dtypes to the `dtype` passed except for float8_e4m3fn type. We also want to keep the buffers/params
         # in int/uint/bool and not cast them.
         is_param_float8_e4m3fn = is_torch_e4m3fn_available and param.dtype == torch.float8_e4m3fn
-        if dtype is not None and torch.is_floating_point(param) and not is_param_float8_e4m3fn:
+        if torch.is_floating_point(param) and not is_param_float8_e4m3fn:
             if (
                 keep_in_fp32_modules is not None
                 and any(
@@ -198,12 +199,13 @@ def load_model_dict_into_meta(
                 )
                 and dtype == torch.float16
             ):
-                param = param.to(torch.float32)
+                dtype = torch.float32
+                param = param.to(dtype)
             else:
                 param = param.to(dtype)
 
-        is_quant_method_bnb = getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-        if not is_quantized and not is_quant_method_bnb and empty_state_dict[param_name].shape != param.shape:
+        # bnb params are flattened.
+        if not is_quant_method_bnb and empty_state_dict[param_name].shape != param.shape:
             model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
             raise ValueError(
                 f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
