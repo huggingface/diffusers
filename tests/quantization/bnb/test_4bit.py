@@ -199,10 +199,8 @@ class BnB4BitBasicTests(Base4bitTests):
                 if name in model._keep_in_fp32_modules:
                     self.assertTrue(module.weight.dtype == torch.float32)
                 else:
-                    if isinstance(module, torch.nn.Linear):
-                        if name not in self.model_fp16._keep_in_fp32_modules:
-                            # 4-bit parameters are packed in uint8 variables
-                            self.assertTrue(module.weight.dtype == torch.uint8)
+                    # 4-bit parameters are packed in uint8 variables
+                    self.assertTrue(module.weight.dtype == torch.uint8)
 
         # test if inference works.
         with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
@@ -225,7 +223,7 @@ class BnB4BitBasicTests(Base4bitTests):
 
         for name, module in self.model_4bit.named_modules():
             if isinstance(module, torch.nn.Linear):
-                if name not in self.model_fp16._keep_in_fp32_modules:
+                if name not in ["proj_out"]:
                     # 4-bit parameters are packed in uint8 variables
                     self.assertTrue(module.weight.dtype == torch.uint8)
 

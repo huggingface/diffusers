@@ -192,10 +192,8 @@ class BnB8bitBasicTests(Base8bitTests):
                 if name in model._keep_in_fp32_modules:
                     self.assertTrue(module.weight.dtype == torch.float32)
                 else:
-                    if isinstance(module, torch.nn.Linear):
-                        if name not in self.model_fp16._keep_in_fp32_modules:
-                            # 8-bit parameters are packed in int8 variables
-                            self.assertTrue(module.weight.dtype == torch.int8)
+                    # 8-bit parameters are packed in int8 variables
+                    self.assertTrue(module.weight.dtype == torch.int8)
 
         # test if inference works.
         with torch.no_grad() and torch.amp.autocast("cuda", dtype=torch.float16):
@@ -218,7 +216,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
         for name, module in self.model_8bit.named_modules():
             if isinstance(module, torch.nn.Linear):
-                if name not in self.model_fp16._keep_in_fp32_modules:
+                if name not in ["proj_out"]:
                     # 8-bit parameters are packed in int8 variables
                     self.assertTrue(module.weight.dtype == torch.int8)
 
