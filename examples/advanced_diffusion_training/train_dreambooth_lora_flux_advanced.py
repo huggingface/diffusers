@@ -371,8 +371,6 @@ def parse_args(input_args=None):
         help="the token (or tokens) to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
         "Alternatively, you could specify a different token whos value will be used as the starting point for the new inserted tokens"
-        "to do so, please specify the initializer tokens in a comma seperated string - e.g. 'random,dog,illustration'."
-        " such that the order of the initializers matches the order of the identifiers specified in --token_abstraction."
     )
     parser.add_argument(
         "--class_prompt",
@@ -749,7 +747,8 @@ def parse_args(input_args=None):
             "--train_transformer_frac must be > 0 if text_encoder training / textual inversion is not enabled."
         )
     if args.train_transformer_frac < 1 and args.train_text_encoder_ti_frac < 1:
-        raise ValueError("--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. This contradicts with --max_train_steps, please specify different values or set both to 1.")
+        raise ValueError("--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. "
+                         "This contradicts with --max_train_steps, please specify different values or set both to 1.")
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -816,8 +815,9 @@ class TokenEmbeddingsHandler:
                 if len(token_ids) > 1:
                     raise ValueError("The initializer token must be a single token.")
                 initializer_token_id = token_ids[0]
-                text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
-                    text_encoder.text_model.embeddings.token_embedding.weight.data)[initializer_token_id].clone()
+                for token_id in self.train_ids:
+                    text_encoder.text_model.embeddings.token_embedding.weight.data[token_id] = (
+                        text_encoder.text_model.embeddings.token_embedding.weight.data)[initializer_token_id].clone()
 
             self.embeddings_settings[
                 f"original_embeddings_{idx}"
