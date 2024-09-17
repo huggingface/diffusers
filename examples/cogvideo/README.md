@@ -211,7 +211,7 @@ from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
 
 pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
-# pipe.load_lora_weights("/path/to/lora/weights") # Or,
+# pipe.load_lora_weights("/path/to/lora/weights", adapter_name="cogvideox-lora") # Or,
 pipe.load_lora_weights("my-awesome-hf-username/my-awesome-lora-name", adapter_name="cogvideox-lora") # If loading from the HF Hub
 pipe.to("cuda")
 
@@ -229,11 +229,3 @@ prompt = (
 frames = pipe(prompt, guidance_scale=6, use_dynamic_cfg=True).frames[0]
 export_to_video(frames, "output.mp4", fps=8)
 ```
-
-## Other notes
-
-Many thanks to:
-
-- [Fu-Yun Wang](https://github.com/g-u-n) for his help, reviews and incredible insights when debugging!
-- [Yuxuan Zhang](https://github.com/zRzRzRzRzRzRzR/) for all the help with converting the [SwissArmyTransformers](https://github.com/THUDM/CogVideo/tree/main/sat) inference/finetuning codebase to Diffusers and helping with the release of the best open-weights video generation model!
-- [YiYi Xu](https://github.com/yiyixuxu) for her insights, reviews and extremely sharp eyes that helped identify two major training bugs, among other things!
