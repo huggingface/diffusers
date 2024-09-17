@@ -103,10 +103,10 @@ python -m python_coreml_stable_diffusion.pipeline --prompt "a photo of an astron
 
 추론 스크립트에서는 Stable Diffusion 모델의 원래 버전인 `CompVis/stable-diffusion-v1-4`를 사용한다고 가정합니다. 다른 모델을 사용하는 경우 추론 명령줄에서 `--model-version` 옵션을 사용하여 해당 허브 ID를 *지정*해야 합니다. 이는 이미 지원되는 모델과 사용자가 직접 학습하거나 파인튜닝한 사용자 지정 모델에 적용됩니다.
 
-예를 들어, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)를 사용하려는 경우입니다:
+예를 들어, [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)를 사용하려는 경우입니다:
 
 ```shell
-python -m python_coreml_stable_diffusion.pipeline --prompt "a photo of an astronaut riding a horse on mars" --compute-unit ALL -o output --seed 93 -i models/coreml-stable-diffusion-v1-5_original_packages --model-version runwayml/stable-diffusion-v1-5
+python -m python_coreml_stable_diffusion.pipeline --prompt "a photo of an astronaut riding a horse on mars" --compute-unit ALL -o output --seed 93 -i models/coreml-stable-diffusion-v1-5_original_packages --model-version stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 
