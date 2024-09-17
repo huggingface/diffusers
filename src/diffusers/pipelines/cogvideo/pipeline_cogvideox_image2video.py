@@ -23,18 +23,11 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import CogVideoXLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import (
-    USE_PEFT_BACKEND,
-    logging,
-    replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import CogVideoXPipelineOutput
@@ -269,7 +262,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -296,19 +288,8 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 torch device
             dtype: (`torch.dtype`, *optional*):
                 torch dtype
-            lora_scale (`float`, *optional*):
-                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
         device = device or self._execution_device
-
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, CogVideoXLoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if self.text_encoder is not None and USE_PEFT_BACKEND:
-                scale_lora_layers(self.text_encoder, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         if prompt is not None:
@@ -348,11 +329,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                 device=device,
                 dtype=dtype,
             )
-
-        if self.text_encoder is not None:
-            if isinstance(self, CogVideoXLoraLoaderMixin) and USE_PEFT_BACKEND:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -730,7 +706,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        lora_scale = self.attention_kwargs.get("scale", None) if self.attention_kwargs is not None else None
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -740,7 +715,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
-            lora_scale=lora_scale,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)

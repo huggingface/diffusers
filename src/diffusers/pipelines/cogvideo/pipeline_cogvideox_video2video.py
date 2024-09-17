@@ -27,13 +27,7 @@ from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import (
-    USE_PEFT_BACKEND,
-    logging,
-    replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import CogVideoXPipelineOutput
@@ -274,7 +268,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -301,19 +294,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 torch device
             dtype: (`torch.dtype`, *optional*):
                 torch dtype
-            lora_scale (`float`, *optional*):
-                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
         device = device or self._execution_device
-
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, CogVideoXLoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if self.text_encoder is not None and USE_PEFT_BACKEND:
-                scale_lora_layers(self.text_encoder, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         if prompt is not None:
@@ -353,11 +335,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 device=device,
                 dtype=dtype,
             )
-
-        if self.text_encoder is not None:
-            if isinstance(self, CogVideoXLoraLoaderMixin) and USE_PEFT_BACKEND:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
