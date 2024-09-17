@@ -386,6 +386,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device = device or device_arg
 
+        def model_has_device_map(model):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
@@ -402,6 +407,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
+
+        # device-mapped modules should not go through any device placements.
+        pipeline_has_device_mapped_modules = any(model_has_device_map(module) for _, module in self.components.items())
+        if pipeline_has_device_mapped_modules:
+            raise ValueError(
+                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `to()`."
+            )
 
         # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
         pipeline_is_sequentially_offloaded = any(
@@ -975,6 +987,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+
+        def model_has_device_map(model):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+
+        # device-mapped modules should not go through any device placements.
+        pipeline_has_device_mapped_modules = any(model_has_device_map(module) for _, module in self.components.items())
+        if pipeline_has_device_mapped_modules:
+            raise ValueError(
+                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `to()`."
+            )
+
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
@@ -1068,6 +1093,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+
+        def model_has_device_map(model):
+            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                return False
+            return hasattr(model, "hf_device_map") and model.hf_device_map is not None
+
+        # device-mapped modules should not go through any device placements.
+        pipeline_has_device_mapped_modules = any(model_has_device_map(module) for _, module in self.components.items())
+        if pipeline_has_device_mapped_modules:
+            raise ValueError(
+                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `to()`."
+            )
+
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
