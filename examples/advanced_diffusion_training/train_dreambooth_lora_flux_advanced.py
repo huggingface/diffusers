@@ -1668,7 +1668,7 @@ def main(args):
 
     # if --train_text_encoder_ti and train_transformer_frac == 0 where essntially performing textual inversion
     # and not training transformer LoRA layers
-    pure_textual_inversion = args.train_text_encoder_ti and int(args.train_transformer_frac) == 0
+    pure_textual_inversion = args.train_text_encoder_ti and args.train_transformer_frac == 0
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -2022,6 +2022,7 @@ def main(args):
                 # stopping optimization of text_encoder params
                 optimizer.param_groups[te_idx]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
+                print("PIVOT TRANSFORMER HELOOOO")
                 optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
