@@ -221,7 +221,7 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs)[0]
             self.assertTrue(output_no_lora.shape == self.output_shape)
 
-    def test_simple_inference_with_text_lora(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
+    def test_simple_inference_with_text_lora(self):
         """
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
@@ -252,11 +252,11 @@ class PeftLoraLoaderMixinTests:
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Lora should change the output",
             )
 
-    def test_simple_inference_with_text_lora_and_scale(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
+    def test_simple_inference_with_text_lora_and_scale(self):
         """
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
@@ -294,7 +294,7 @@ class PeftLoraLoaderMixinTests:
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Lora should change the output",
             )
 
@@ -302,7 +302,7 @@ class PeftLoraLoaderMixinTests:
             output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
 
             self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=expected_atol, rtol=expected_rtol),
+                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
             )
 
@@ -310,11 +310,11 @@ class PeftLoraLoaderMixinTests:
             output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
 
             self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=expected_atol, rtol=expected_rtol),
+                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
                 "Lora + 0 scale should lead to same result as no LoRA",
             )
 
-    def test_simple_inference_with_text_lora_fused(self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3):
+    def test_simple_inference_with_text_lora_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
@@ -354,7 +354,7 @@ class PeftLoraLoaderMixinTests:
 
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=expected_atol, rtol=expected_rtol),
+                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should change the output",
             )
 

@@ -36,8 +36,7 @@ from diffusers.utils.testing_utils import (
 
 
 if is_peft_available():
-    from peft import LoraConfig
-    from peft.utils import get_peft_model_state_dict
+    pass
 
 sys.path.append(".")
 
@@ -135,12 +134,9 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
 
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
 
             # corrupt one LoRA weight with `inf` values
             with torch.no_grad():
@@ -159,67 +155,18 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             self.assertTrue(np.isnan(out).all())
 
+    @unittest.skip("Text encoder LoRA training is not supported in CogVideoX.")
     def test_simple_inference_with_partial_text_lora(self):
-        """
-        Tests a simple inference with lora attached on the text encoder
-        with different ranks and some adapters removed
-        and makes sure it works as expected
-        """
+        pass
 
-        scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
-        for scheduler_cls in scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
-            rank_pattern = dict(zip(self.text_encoder_target_modules, [1, 2, 3]))
-            text_lora_config = LoraConfig(
-                r=4,
-                rank_pattern=rank_pattern,
-                lora_alpha=4,
-                target_modules=self.text_encoder_target_modules,
-                init_lora_weights=False,
-                use_dora=False,
-            )
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
-
-            pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-            # Gather the state dict for the PEFT model, excluding `layers.4`, to ensure `load_lora_into_text_encoder`
-            # supports missing layers (PR#8324).
-            state_dict = {
-                f"text_encoder.{module_name}": param
-                for module_name, param in get_peft_model_state_dict(pipe.text_encoder).items()
-                if "block.4.layer" not in module_name
-            }
-
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-4, rtol=1e-4), "Lora should change the output"
-            )
-
-            # Unload lora and load it back using the pipe.load_lora_weights machinery
-            pipe.unload_lora_weights()
-
-            pipe.load_lora_weights(state_dict)
-
-            output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(
-                not np.allclose(output_partial_lora, output_lora, atol=1e-4, rtol=1e-4),
-                "Removing adapters should change the output",
-            )
-
+    @unittest.skip("Text encoder LoRA training is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora(self):
-        # We need a lower expected max diff than other lora pipelines apparently
-        super().test_simple_inference_with_text_lora(expected_atol=1e-4, expected_rtol=1e-4)
+        pass
 
+    @unittest.skip("Text encoder LoRA training is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_and_scale(self):
-        # We need a lower expected max diff than other lora pipelines apparently
-        super().test_simple_inference_with_text_lora_and_scale(expected_atol=1e-4, expected_rtol=1e-4)
+        pass
 
+    @unittest.skip("Text encoder LoRA training is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_fused(self):
-        # We need a lower expected max diff than other lora pipelines apparently
-        super().test_simple_inference_with_text_lora_fused(expected_atol=1e-4, expected_rtol=1e-4)
+        pass
