@@ -1118,8 +1118,9 @@ class MatryoshkaFeedForward(nn.Module):
 
     def forward(self, x):
         batch_size, channels, *spatial_dims = x.shape
+        x = self.group_norm(x)
         x = x.view(batch_size, channels, -1).permute(0, 2, 1)
-        x = self.linear_out(self.linear_gelu(self.group_norm(x)))
+        x = self.linear_out(self.linear_gelu(x))
         x = x.permute(0, 2, 1).view(batch_size, channels, *spatial_dims)
         return x
 
