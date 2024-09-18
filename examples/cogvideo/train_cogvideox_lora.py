@@ -864,7 +864,7 @@ def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
 
     # Optimizer creation
     supported_optimizers = ["adam", "adamw", "prodigy"]
-    if args.optimizer not in supported_optimizers:
+    if args.optimizer not in ["adam", "adamw", "prodigy"]:
         logger.warning(
             f"Unsupported choice of optimizer: {args.optimizer}. Supported optimizers include {supported_optimizers}. Defaulting to AdamW"
         )
@@ -1463,6 +1463,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
+        # transformer = transformer.to(torch.float32)
         dtype = (
             torch.float16
             if args.mixed_precision == "fp16"
