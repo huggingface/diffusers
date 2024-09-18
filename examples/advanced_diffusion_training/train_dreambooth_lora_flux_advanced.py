@@ -798,13 +798,15 @@ class TokenEmbeddingsHandler:
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx==0 else text_encoder.encoder.embed_tokens
+            std_token_embedding =embeds.weight.data.std()
 
             print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             if args.initializer_token.lower == "random":
-                text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
-                    torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+                hidden_size = text_encoder.text_model.config.hidden_size if idx ==0 else text_encoder.encoder.config.hidden_size
+                embeds.weight.data[self.train_ids] = (
+                    torch.randn(len(self.train_ids), hidden_size)
                     .to(device=self.device)
                     .to(dtype=self.dtype)
                     * std_token_embedding
@@ -817,12 +819,12 @@ class TokenEmbeddingsHandler:
                     raise ValueError("The initializer token must be a single token.")
                 initializer_token_id = token_ids[0]
                 for token_id in self.train_ids:
-                    text_encoder.text_model.embeddings.token_embedding.weight.data[token_id] = (
-                        text_encoder.text_model.embeddings.token_embedding.weight.data)[initializer_token_id].clone()
+                    embeds.weight.data[token_id] = (
+                        embeds.weight.data)[initializer_token_id].clone()
 
             self.embeddings_settings[
                 f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            ] = embeds.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             # makes sure we don't update any embedding weights besides the newly added token
@@ -841,10 +843,11 @@ class TokenEmbeddingsHandler:
         # text_encoder_one, idx==0 - CLIP ViT-L/14, text_encoder_two, idx==1 - T5 xxl
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
-            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
+            assert embeds.weight.data.shape[0] == len(
                 self.tokenizers[0]
             ), "Tokenizers should be the same."
-            new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
+            new_token_embeddings = embeds.weight.data[self.train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0),
             # Note: When loading with diffusers, any name can work - simply specify in inference
@@ -864,8 +867,9 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
+            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
-            text_encoder.text_model.embeddings.token_embedding.weight.data[index_no_updates] = (
+            embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
                 .to(device=text_encoder.device)
                 .to(dtype=text_encoder.dtype)
@@ -876,11 +880,11 @@ class TokenEmbeddingsHandler:
             std_token_embedding = self.embeddings_settings[f"std_token_embedding_{idx}"]
 
             index_updates = ~index_no_updates
-            new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
+            new_embeddings = embeds.weight.data[index_updates]
             off_ratio = std_token_embedding / new_embeddings.std()
 
             new_embeddings = new_embeddings * (off_ratio**0.1)
-            text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
+            embeds.weight.data[index_updates] = new_embeddings
 
 
 class DreamBoothDataset(Dataset):
