@@ -1598,7 +1598,7 @@ class PeftLoraLoaderMixinTests:
             # 2.
             dicts_to_be_checked = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+                pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
                 dicts_to_be_checked = {"text_encoder": ["adapter-1", "adapter-2"]}
 
             if self.unet_kwargs is not None:
