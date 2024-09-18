@@ -823,7 +823,8 @@ class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
         # 3. Output
         # TODO: Do we need reshape here?
-        output = hidden_states + residual
+        # output = hidden_states + residual
+        output = hidden_states
 
         if not return_dict:
             return (output,)
