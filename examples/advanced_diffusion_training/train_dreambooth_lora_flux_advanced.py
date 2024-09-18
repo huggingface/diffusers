@@ -119,6 +119,7 @@ def save_model_card(
         diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors', repo_type="model")
     state_dict = load_file(embedding_path)
     pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+    pipeline.load_textual_inversion(state_dict["t5"], token=[{ti_keys}], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
             """
         if token_abstraction_dict:
             for key, value in token_abstraction_dict.items():
@@ -837,8 +838,8 @@ class TokenEmbeddingsHandler:
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
-        # text_encoder_0 - CLIP ViT-L/14, for now only optimizing and saving embeddings for CLIP (text_encoder_two - T5, remains untouched)
-        idx_to_text_encoder_name = {0: "clip_l"}
+        # text_encoder_one, idx==0 - CLIP ViT-L/14, text_encoder_two, idx==1 - T5 xxl
+        idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
             assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
                 self.tokenizers[0]
@@ -1496,7 +1497,7 @@ def main(args):
                 args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
 
         # initialize the new tokens for textual inversion
-        embedding_handler = TokenEmbeddingsHandler([text_encoder_one], [tokenizer_one])
+        embedding_handler = TokenEmbeddingsHandler([text_encoder_one,text_encoder_two], [tokenizer_one, tokenizer_two])
         inserting_toks = []
         for new_tok in token_abstraction_dict.values():
             inserting_toks.extend(new_tok)
@@ -1662,6 +1663,15 @@ def main(args):
                 text_lora_parameters_one.append(param)
             else:
                 param.requires_grad = False
+        text_lora_parameters_two = []  # for now only for CLIP
+        for name, param in text_encoder_two.named_parameters():
+            if "token_embedding" in name:
+                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+                param.data = param.to(dtype=torch.float32)
+                param.requires_grad = True
+                text_lora_parameters_two.append(param)
+            else:
+                param.requires_grad = False
 
     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
@@ -1681,17 +1691,33 @@ def main(args):
             else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        if not pure_textual_inversion:
+        if args.train_text_encoder:
             params_to_optimize = [
-                transformer_parameters_with_lr,
-                text_parameters_one_with_lr,
-            ]
+                    transformer_parameters_with_lr,
+                    text_parameters_one_with_lr,
+                ]
             te_idx = 1
-        else:
-            params_to_optimize = [
-                text_parameters_one_with_lr
-            ]
-            te_idx = 0
+        elif args.train_text_encoder_ti:
+            text_parameters_two_with_lr = {
+                "params": text_lora_parameters_two,
+                "weight_decay": args.adam_weight_decay_text_encoder
+                if args.adam_weight_decay_text_encoder
+                else args.adam_weight_decay,
+                "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+            }
+            if pure_textual_inversion:
+                params_to_optimize = [
+                    text_parameters_one_with_lr,
+                    text_parameters_two_with_lr
+                ]
+                te_idx = 0
+            else:
+                params_to_optimize = [
+                    transformer_parameters_with_lr,
+                    text_parameters_one_with_lr,
+                    text_parameters_two_with_lr
+                ]
+                te_idx = 1
     else:
         params_to_optimize = [
             transformer_parameters_with_lr,
@@ -1899,12 +1925,14 @@ def main(args):
         (
             transformer,
             text_encoder_one,
+            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
         ) = accelerator.prepare(
             transformer,
             text_encoder_one,
+            text_encoder_two,
             optimizer,
             train_dataloader,
             lr_scheduler,
@@ -2012,15 +2040,21 @@ def main(args):
                 pivoted_tr = True
             else:
                 # still optimizing the text encoder
-                text_encoder_one.train()
-                # set top parameter requires_grad = True for gradient checkpointing works
                 if args.train_text_encoder:
+                    text_encoder_one.train()
+                    # set top parameter requires_grad = True for gradient checkpointing works
                     accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+                else: # textual inversion / pivotal tuning
+                    text_encoder_one.train()
+                    text_encoder_two.train()
+
 
         for step, batch in enumerate(train_dataloader):
             if pivoted_te:
                 # stopping optimization of text_encoder params
                 optimizer.param_groups[te_idx]["lr"] = 0.0
+                if args.train_text_encoder_ti:
+                    optimizer.param_groups[te_idx+1]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
                 print("PIVOT TRANSFORMER HELOOOO")
                 optimizer.param_groups[0]["lr"] = 0.0
@@ -2162,11 +2196,14 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     if not freeze_text_encoder:
-                        if pure_textual_inversion:
-                            params_to_clip = (text_encoder_one.parameters())
-                        else:
+                        if args.train_text_encoder:
                             params_to_clip = (
                                 itertools.chain(transformer.parameters(), text_encoder_one.parameters()))
+                        elif pure_textual_inversion:
+                            params_to_clip = (text_encoder_one.parameters(), text_encoder_two.parameters())
+                        else:
+                            params_to_clip = (
+                                itertools.chain(transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()))
                     else:
                         params_to_clip = (transformer.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
@@ -2244,7 +2281,7 @@ def main(args):
                     del text_encoder_one, text_encoder_two
                     torch.cuda.empty_cache()
                     gc.collect()
-                else:
+                elif args.train_text_encoder:
                     del text_encoder_two
                     torch.cuda.empty_cache()
                     gc.collect()
