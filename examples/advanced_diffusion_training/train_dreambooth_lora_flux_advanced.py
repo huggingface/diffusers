@@ -845,7 +845,7 @@ class TokenEmbeddingsHandler:
         for idx, text_encoder in enumerate(self.text_encoders):
             embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
             assert embeds.weight.data.shape[0] == len(
-                self.tokenizers[0]
+                self.tokenizers[idx]
             ), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[self.train_ids]
 
