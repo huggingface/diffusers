@@ -18,6 +18,7 @@ import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import AuraFlowLoraLoaderMixin
 from ...models import AuraFlowTransformer2DModel, AutoencoderKL
 from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -104,7 +105,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class AuraFlowPipeline(DiffusionPipeline):
+class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     r"""
     Args:
         tokenizer (`T5TokenizerFast`):

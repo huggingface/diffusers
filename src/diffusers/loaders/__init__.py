@@ -64,6 +64,7 @@ if is_torch_available():
             "AmusedLoraLoaderMixin",
             "StableDiffusionLoraLoaderMixin",
             "SD3LoraLoaderMixin",
+            "AuraFlowLoraLoaderMixin",
             "StableDiffusionXLLoraLoaderMixin",
             "LoraLoaderMixin",
             "FluxLoraLoaderMixin",
@@ -84,6 +85,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .ip_adapter import IPAdapterMixin
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
+                AuraFlowLoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 LoraLoaderMixin,
                 SD3LoraLoaderMixin,
