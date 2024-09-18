@@ -661,9 +661,11 @@ class PeftLoraLoaderMixinTests:
 
                 saving_kwargs = {
                     "save_directory": tmpdirname,
-                    "text_encoder_lora_layers": text_encoder_state_dict,
                     "safe_serialization": False,
                 }
+
+                if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                    saving_kwargs.update({"text_encoder_lora_layers": text_encoder_state_dict})
 
                 if self.unet_kwargs is not None:
                     saving_kwargs.update({"unet_lora_layers": denoiser_state_dict})
