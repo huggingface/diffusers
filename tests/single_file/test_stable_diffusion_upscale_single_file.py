@@ -8,10 +8,12 @@ from diffusers import (
 )
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from .single_file_testing_utils import SDSingleFileTesterMixin
@@ -21,7 +23,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionUpscalePipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionUpscalePipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
@@ -31,12 +33,12 @@ class StableDiffusionUpscalePipelineSingleFileSlowTests(unittest.TestCase, SDSin
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_single_file_format_inference_is_same_as_pretrained(self):
         image = load_image(
