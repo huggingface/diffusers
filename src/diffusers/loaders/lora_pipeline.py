@@ -2283,7 +2283,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     [`CogVideoX`].
     """
 
-    _lora_loadable_modules = ["transformer", "text_encoder"]
+    _lora_loadable_modules = ["transformer"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
 

@@ -91,7 +91,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
-    test_text_encoder_lora = False
 
     @property
     def output_shape(self):
@@ -145,10 +144,10 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
             # with `safe_fusing=True` we should see an Error
             with self.assertRaises(ValueError):
-                pipe.fuse_lora(safe_fusing=True)
+                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
 
             # without we should not see an error, but every image will be black
-            pipe.fuse_lora(safe_fusing=False)
+            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
 
             out = pipe(
                 "test", num_inference_steps=2, max_sequence_length=inputs["max_sequence_length"], output_type="np"
@@ -158,6 +157,9 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
         super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=5e-3)
+
+    def test_simple_inference_with_text_denoiser_lora_unfused(self):
+        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=5e-3)
 
     @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_partial_text_lora(self):
@@ -177,8 +179,4 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_save_load(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
         pass
