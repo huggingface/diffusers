@@ -779,13 +779,7 @@ class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # 1. Input
-        batch_size, _, height, width = hidden_states.shape
-        # residual = hidden_states
-        # TODO: Do we need reshape here?
-        # hidden_states, inner_dim = self._operate_on_continuous_inputs(hidden_states)
-
-        # 2. Blocks
+        # Blocks
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
 
@@ -821,9 +815,7 @@ class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
                     class_labels=class_labels,
                 )
 
-        # 3. Output
-        # TODO: Do we need reshape here?
-        # output = hidden_states + residual
+        # Output
         output = hidden_states
 
         if not return_dict:
@@ -948,7 +940,7 @@ class MatryoshkaTransformerBlock(nn.Module):
         hidden_states = hidden_states + attn_output_cond
 
         if self.ff is not None:
-            # 4. Feed-forward
+            # 3. Feed-forward
             if self._chunk_size is not None:
                 # "feed_forward_chunk_size" can be used to save memory
                 ff_output = _chunked_feed_forward(self.ff, hidden_states, self._chunk_dim, self._chunk_size)
@@ -1055,12 +1047,6 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
             split_size = kv.shape[-1] // 2
             key, value = torch.split(kv, split_size, dim=-1)
 
-        # inner_dim = key.shape[-1]
-        # head_dim = inner_dim // attn.heads
-
-        # query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        # key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        # value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         if self_attention_output is None:
             query = query.permute(0, 2, 1)
         key = key.permute(0, 2, 1)
@@ -1078,10 +1064,9 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
             key,
             value,
             mask=attention_mask,
-            num_heads=attn.heads,  # , dropout_p=0.0, is_causal=False
+            num_heads=attn.heads,
         )
 
-        # hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
         if self_attention_output is not None:
