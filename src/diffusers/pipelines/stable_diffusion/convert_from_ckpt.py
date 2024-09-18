@@ -51,7 +51,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_accelerate_available, logging
+from ...utils import is_accelerate_available, is_torch_version, logging
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
 from ..pipeline_utils import DiffusionPipeline
@@ -1068,8 +1068,8 @@ def stable_unclip_image_noising_components(
         if "clip_stats_path" in noise_aug_config:
             if clip_stats_path is None:
                 raise ValueError("This stable unclip config requires a `clip_stats_path`")
-
-            clip_mean, clip_std = torch.load(clip_stats_path, map_location=device)
+            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
+            clip_mean, clip_std = torch.load(clip_stats_path, map_location=device, **weights_only_kwarg)
             clip_mean = clip_mean[None, :]
             clip_std = clip_std[None, :]
 
@@ -1264,11 +1264,12 @@ def download_from_original_stable_diffusion_ckpt(
 
             checkpoint = safe_load(checkpoint_path_or_dict, device="cpu")
         else:
+            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             if device is None:
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
+                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device, **weights_only_kwarg)
             else:
-                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
+                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device, **weights_only_kwarg)
     elif isinstance(checkpoint_path_or_dict, dict):
         checkpoint = checkpoint_path_or_dict
 
@@ -1834,11 +1835,12 @@ def download_controlnet_from_original_ckpt(
             for key in f.keys():
                 checkpoint[key] = f.get_tensor(key)
     else:
+        weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            checkpoint = torch.load(checkpoint_path, map_location=device, **weights_only_kwarg)
         else:
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            checkpoint = torch.load(checkpoint_path, map_location=device, **weights_only_kwarg)
 
     # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
     # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
