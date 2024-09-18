@@ -1345,8 +1345,8 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         if micro is not None:
             temb = self.add_time_proj(torch.tensor([micro], device=cond_emb.device, dtype=cond_emb.dtype))
             temb_micro_conditioning = self.add_timestep_embedder(temb.to(cond_emb.dtype))
+            cond_emb = cond_emb + temb_micro_conditioning
 
-        cond_emb = cond_emb if micro is None else cond_emb + temb_micro_conditioning
         return cond_emb, conditioning_mask
 
 
