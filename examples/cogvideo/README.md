@@ -172,9 +172,6 @@ accelerate launch --gpu_ids $GPU_IDS examples/cogvideo/train_cogvideox_lora.py \
   --report_to wandb
 ```
 
-> [!NOTE]
-> At the time of adding support for CogVideoX-LoRA training, the memory required by the training script, with VAE tiling and LoRA rank 64, is ~52 GB (as tested with the simplest `accelerate config` setting) and ~46 GB (as tested with the simplest `accelerate config` DeepSpeed ZeRO-2 training settings).
-
 To better track our training experiments, we're using the following flags in the command above:
 * `--report_to wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
