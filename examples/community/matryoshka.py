@@ -868,6 +868,9 @@ class MatryoshkaTransformerBlock(nn.Module):
             processor=FusedAttnProcessor2_0(),
         )
         self.attn1.fuse_projections()
+        del self.attn1.to_q
+        del self.attn1.to_k
+        del self.attn1.to_v
 
         # 2. Cross-Attn
         if cross_attention_dim is not None and cross_attention_dim > 0:
@@ -883,7 +886,9 @@ class MatryoshkaTransformerBlock(nn.Module):
                 processor=FusedAttnProcessor2_0(),
             )
             self.attn2.fuse_projections()
-            # self.attn2.to_q = None
+            del self.attn2.to_q
+            del self.attn2.to_k
+            del self.attn2.to_v
 
         self.proj_out = nn.Linear(dim, dim)
 
