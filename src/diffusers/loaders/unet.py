@@ -66,7 +66,12 @@ class UNet2DConditionLoadersMixin:
     unet_name = UNET_NAME
 
     @validate_hf_hub_args
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], hotswap: bool = False, **kwargs):
+    def load_attn_procs(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        hotswap: bool = False,
+        **kwargs,
+    ):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -270,7 +275,9 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, hotswap: bool = False):
+    def _process_lora(
+        self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, hotswap: bool = False
+    ):
         # This method does the following things:
         # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
         #    format. For legacy format no filtering is applied.
@@ -306,7 +313,9 @@ class UNet2DConditionLoadersMixin:
                     f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
                 )
             elif adapter_name not in getattr(self, "peft_config", {}) and hotswap:
-                raise ValueError(f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name.")
+                raise ValueError(
+                    f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name."
+                )
 
             state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
 
@@ -340,7 +349,6 @@ class UNet2DConditionLoadersMixin:
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
 
-
             def _check_hotswap_configs_compatible(config0, config1):
                 # To hot-swap two adapters, their configs must be compatible. Otherwise, the results could be false. E.g. if they
                 # use different alpha values, after hot-swapping, the alphas from the first adapter would still be used with the
@@ -351,9 +359,10 @@ class UNet2DConditionLoadersMixin:
                 config_keys_to_check = ["lora_alpha", "use_rslora", "lora_dropout", "alpha_pattern", "use_dora"]
                 config0 = config0.to_dict()
                 config1 = config1.to_dict()
+                sentinel = object()
                 for key in config_keys_to_check:
-                    val0 = config0[key]
-                    val1 = config1[key]
+                    val0 = config0.get(key, sentinel)
+                    val1 = config1.get(key, sentinel)
                     if val0 != val1:
                         raise ValueError(f"Configs are incompatible: for {key}, {val0} != {val1}")
 

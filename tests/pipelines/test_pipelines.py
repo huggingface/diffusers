@@ -76,6 +76,7 @@ from diffusers.utils.testing_utils import (
     require_compel,
     require_flax,
     require_onnxruntime,
+    require_peft_backend,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -2030,6 +2031,10 @@ class TestLoraHotSwapping:
         # TODO
         pass
 
+    @slow
+    @require_torch_2
+    @require_torch_gpu
+    @require_peft_backend
     def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
         # TODO: kinda slow, should it get a slow marker?
         env = {"TORCH_LOGS": "guards,recompiles"}
@@ -2037,10 +2042,7 @@ class TestLoraHotSwapping:
         file_name = os.path.join(here, "run_compiled_model_hotswap.py")
 
         process = subprocess.Popen(
-            [sys.executable, file_name],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            [sys.executable, file_name], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
 
         # Communicate will read the output and error streams, preventing deadlock

@@ -238,7 +238,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return state_dict, network_alphas
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, hotswap: bool = False):
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, hotswap: bool = False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
