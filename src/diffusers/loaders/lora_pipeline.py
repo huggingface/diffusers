@@ -2496,7 +2496,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             # Unsafe code />
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
+    # Adapted from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights without support for text encoder
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
