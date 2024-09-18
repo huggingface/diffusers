@@ -29,6 +29,7 @@ else:
     _import_structure["pipeline_pag_kolors"] = ["KolorsPAGPipeline"]
     _import_structure["pipeline_pag_pixart_sigma"] = ["PixArtSigmaPAGPipeline"]
     _import_structure["pipeline_pag_sd"] = ["StableDiffusionPAGPipeline"]
+    _import_structure["pipeline_pag_sd_img2img"] = ["StableDiffusionPAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_sd_3"] = ["StableDiffusion3PAGPipeline"]
     _import_structure["pipeline_pag_sd_animatediff"] = ["AnimateDiffPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl"] = ["StableDiffusionXLPAGPipeline"]
@@ -50,6 +51,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_pag_kolors import KolorsPAGPipeline
         from .pipeline_pag_pixart_sigma import PixArtSigmaPAGPipeline
         from .pipeline_pag_sd import StableDiffusionPAGPipeline
+        from .pipeline_pag_sd_img2img import StableDiffusionPAGImg2ImgPipeline
         from .pipeline_pag_sd_3 import StableDiffusion3PAGPipeline
         from .pipeline_pag_sd_animatediff import AnimateDiffPAGPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
