@@ -2161,11 +2161,14 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(transformer.parameters(), text_encoder_one.parameters())
-                        if not freeze_text_encoder
-                        else transformer.parameters()
-                    )
+                    if not freeze_text_encoder:
+                        if pure_textual_inversion:
+                            params_to_clip = (text_encoder_one.parameters())
+                        else:
+                            params_to_clip = (
+                                itertools.chain(transformer.parameters(), text_encoder_one.parameters()))
+                    else:
+                        params_to_clip = (transformer.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
@@ -2281,15 +2284,6 @@ def main(args):
         if not pure_textual_inversion:
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
-        if args.train_text_encoder_ti:
-            # load embeddings
-            tokens = list(itertools.chain.from_iterable(train_dataset.token_abstraction_dict.values()))
-            embedding_path = hf_hub_download(repo_id=repo_id,
-                                             filename=f"{args.output_dir}_emb.safetensors",
-                                             repo_type="model")
-            state_dict = load_file(embedding_path)
-            pipeline.load_textual_inversion(state_dict["clip_l"], token=tokens,
-                                            text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
 
         # run inference
         images = []
