@@ -781,7 +781,7 @@ class MatryoshkaTransformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
         # 1. Input
         batch_size, _, height, width = hidden_states.shape
-        residual = hidden_states
+        # residual = hidden_states
         # TODO: Do we need reshape here?
         # hidden_states, inner_dim = self._operate_on_continuous_inputs(hidden_states)
 
