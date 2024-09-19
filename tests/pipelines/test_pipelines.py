@@ -582,21 +582,15 @@ class DownloadTests(unittest.TestCase):
 
         for local in [True, False]:
             with CaptureLogger(logger) as cap_logger:
-                if not local:
-                    _ = DiffusionPipeline.download(
-                        repo_id,
-                        safety_checker=None,
-                        variant="fp16",
-                        use_safetensors=True,
-                    )
-                else:
+                if local:
                     download_dir = snapshot_download(repo_id)
-                    _ = DiffusionPipeline.from_pretrained(
-                        download_dir,
-                        safety_checker=None,
-                        variant="fp16",
-                        use_safetensors=True,
-                    )
+                    repo_id = download_dir
+                _ = DiffusionPipeline.from_pretrained(
+                    repo_id,
+                    safety_checker=None,
+                    variant="fp16",
+                    use_safetensors=True,
+                )
             string = "This serialization format is now deprecated to standardize the serialization"
             assert string in str(cap_logger)
 

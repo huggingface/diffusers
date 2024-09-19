@@ -316,12 +316,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         weights_name = _add_variant(weights_name, variant)
         weight_name_split = weights_name.split(".")
         if len(weight_name_split) in [2, 3]:
-            if variant is not None:
-                weights_name_pattern = (
-                    weight_name_split[0] + f".{variant}" + "{suffix}." + ".".join(weight_name_split[2:])
-                )
-            else:
-                weights_name_pattern = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
+            weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
+                ".safetensors", "{suffix}.safetensors"
+            )
         else:
             raise ValueError(f"Invalid {weights_name} provided.")
 

@@ -733,17 +733,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
         else:
             cached_folder = pretrained_model_name_or_path
-            filenames = []
-            for _, _, files in os.walk(cached_folder):
-                for file in files:
-                    filenames.append(os.path.basename(file))
 
-            _, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-            # The variant filenames can have the legacy sharding checkpoint format that we check and throw
-            # a warning if detected.
-            if len(variant_filenames) > 0 and _check_legacy_sharding_variant_format(filenames, variant):
-                warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                logger.warning(warn_msg)
+        # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+        # a warning if detected.
+        if variant is not None and _check_legacy_sharding_variant_format(cached_folder, variant):
+            warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+            logger.warning(warn_msg)
 
         config_dict = cls.load_config(cached_folder)
 
@@ -1266,11 +1261,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if not local_files_only:
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-            # The variant filenames can have the legacy sharding checkpoint format that we check and throw
-            # a warning if detected.
-            if len(variant_filenames) > 0 and _check_legacy_sharding_variant_format(filenames, variant):
-                warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
-                logger.warning(warn_msg)
 
             config_file = hf_hub_download(
                 pretrained_model_name,
