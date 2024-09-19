@@ -663,6 +663,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
             strength=strength,
             negative_prompt=negative_prompt,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            video=video,
+            latents=latents,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
