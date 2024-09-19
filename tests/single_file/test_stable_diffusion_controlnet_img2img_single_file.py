@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -29,11 +30,11 @@ enable_full_determinism()
 @require_torch_gpu
 class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetPipeline
-    ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+    ckpt_path = "https://huggingface.co/Jiali/stable-diffusion-1.5/blob/main/v1-5-pruned-emaonly.safetensors"
     original_config = (
         "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
     )
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "Jiali/stable-diffusion-1.5"
 
     def setUp(self):
         super().setUp()
@@ -108,8 +109,8 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path, controlnet=controlnet, safety_checker=None, local_files_only=True
@@ -136,8 +137,9 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
+
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
@@ -168,8 +170,9 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weights_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weights_name, tmpdir)
+
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
