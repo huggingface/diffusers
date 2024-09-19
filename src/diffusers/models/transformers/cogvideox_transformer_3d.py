@@ -427,7 +427,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         else:
             if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
                 logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
         batch_size, num_frames, channels, height, width = hidden_states.shape

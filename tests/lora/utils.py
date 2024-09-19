@@ -293,8 +293,7 @@ class PeftLoraLoaderMixinTests:
 
             output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3),
-                "Lora should change the output",
+                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
             attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
@@ -353,8 +352,7 @@ class PeftLoraLoaderMixinTests:
 
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
             self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3),
-                "Fused lora should change the output",
+                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
             )
 
     def test_simple_inference_with_text_lora_unloaded(self):
