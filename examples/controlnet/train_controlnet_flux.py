@@ -123,12 +123,10 @@ def log_validation(
         )
 
     image_logs = []
-    if is_final_validation or torch.backends.mps.is_available():
-        autocast_ctx = nullcontext()
-    else:
-        # t5 seems not support autocast and i don't know why
-        autocast_ctx = nullcontext()
-        # autocast_ctx = torch.autocast(accelerator.device.type)
+
+    # t5 seems not support autocast and i don't know why
+    autocast_ctx = nullcontext()
+    # autocast_ctx = torch.autocast(accelerator.device.type)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         from diffusers.utils import load_image
@@ -194,10 +192,7 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
-
+        clear_objs_and_retain_memory([pipeline])
         return image_logs
 
 
@@ -1048,9 +1043,6 @@ def main(args):
 
     vae.to(accelerator.device, dtype=weight_dtype)
     flux_transformer.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-    # flux_controlnet.to(accelerator.device, dtype=weight_dtype)
 
     def compute_embeddings(batch, proportion_empty_prompts, flux_controlnet_pipeline, weight_dtype, is_train=True):
         prompt_batch = batch[args.caption_column]
