@@ -607,7 +607,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--weighting_scheme",
         type=str,
-        default="none",
+        default="logit_normal",
         choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
         help=('We default to the "none" weighting scheme for uniform sampling and uniform loss'),
     )
