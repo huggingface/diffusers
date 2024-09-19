@@ -206,6 +206,9 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
+        self.latents_in_channels = (
+            self.transformer.config.in_channels if hasattr(self, "transformer") and self.transformer is not None else 16
+        )
         self.vae_scale_factor_spatial = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
@@ -711,7 +714,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=prompt_embeds.dtype)
 
-        latent_channels = self.transformer.config.in_channels
+        latent_channels = self.latents_in_channels
         latents = self.prepare_latents(
             video,
             batch_size * num_videos_per_prompt,
