@@ -438,8 +438,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
         width,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
-        video=None,
-        latents=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
@@ -493,9 +491,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-
-        if video is not None and latents is not None:
-            raise ValueError("Only one of `video` or `latents` should be provided")
 
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.fuse_qkv_projections
     def fuse_qkv_projections(self) -> None:
@@ -657,28 +652,26 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        if num_frames > 49:
+        if num_frames != 49:
             raise ValueError(
-                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
+                "The number of frames must be 49 for now due to static learned positional embeddings. This will be updated in the future to remove this limitation."
             )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
-        width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            image,
-            prompt,
-            height,
-            width,
-            negative_prompt,
-            callback_on_step_end_tensor_inputs,
-            prompt_embeds,
-            negative_prompt_embeds,
+            image=image,
+            prompt=prompt,
+            height=height,
+            width=width,
+            negative_prompt=negative_prompt,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
         self._interrupt = False
