@@ -22,6 +22,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from torch.profiler import record_function
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
@@ -362,41 +363,75 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        with record_function("get original prediction"):
+            with record_function("step 1"):
+                prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
-        # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+            # 2. compute alphas, betas
+            with record_function("step 2"):
+                print(self.alphas_cumprod.device, self.alphas_cumprod.dtype)
+                print(timestep.device, timestep.type)
+                print(prev_timestep.device, prev_timestep.dtype)
+                with record_function("step 2.1"):
+                    alpha_prod_t = self.alphas_cumprod[timestep]
 
-        beta_prod_t = 1 - alpha_prod_t
+                with record_function("step 2.2"):
+                    alpha_prod_t_prev = (
+                        self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+                    )
 
-        # 3. compute predicted original sample from predicted noise also called
-        # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        # To make style tests pass, commented out `pred_epsilon` as it is an unused variable
-        if self.config.prediction_type == "epsilon":
-            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-            # pred_epsilon = model_output
-        elif self.config.prediction_type == "sample":
-            pred_original_sample = model_output
-            # pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-        elif self.config.prediction_type == "v_prediction":
-            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-            # pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
-        else:
-            raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`"
+                with record_function("step 2.3"):
+                    beta_prod_t = 1 - alpha_prod_t
+                print(beta_prod_t.device, beta_prod_t.dtype)
+                print("======")
+
+            with record_function("step 3"):
+                # 3. compute predicted original sample from predicted noise also called
+                # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+                # To make style tests pass, commented out `pred_epsilon` as it is an unused variable
+                if self.config.prediction_type == "epsilon":
+                    pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+                    # pred_epsilon = model_output
+                elif self.config.prediction_type == "sample":
+                    pred_original_sample = model_output
+                    # pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+                elif self.config.prediction_type == "v_prediction":
+                    pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+                    print(
+                        "vpred:",
+                        sample.dtype,
+                        model_output.dtype,
+                        alpha_prod_t.dtype,
+                        beta_prod_t.dtype,
+                        pred_original_sample.dtype,
+                    )
+                    # pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+                else:
+                    raise ValueError(
+                        f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                        " `v_prediction`"
+                    )
+
+        with record_function("compute prev sample"):
+            a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
+            b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
+
+            prev_sample = a_t * sample + b_t * pred_original_sample
+            print(
+                "prevsample devices:",
+                a_t.device,
+                b_t.device,
+                sample.device,
+                pred_original_sample.device,
+                prev_sample.device,
             )
+            print("prevsample:", a_t.dtype, b_t.dtype, sample.dtype, pred_original_sample.dtype, prev_sample.dtype)
+            print("=== done ===")
 
-        a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
-        b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
+            if not return_dict:
+                return (prev_sample,)
 
-        prev_sample = a_t * sample + b_t * pred_original_sample
-
-        if not return_dict:
-            return (prev_sample,)
-
-        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+            return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(

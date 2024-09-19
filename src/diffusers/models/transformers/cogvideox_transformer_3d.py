@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
+from torch.profiler import record_function
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
@@ -433,49 +434,52 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
-        timesteps = timestep
-        t_emb = self.time_proj(timesteps)
+        with record_function("time embedding"):
+            timesteps = timestep
+            t_emb = self.time_proj(timesteps)
 
-        # timesteps does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=hidden_states.dtype)
-        emb = self.time_embedding(t_emb, timestep_cond)
+            # timesteps does not contain any weights and will always return f32 tensors
+            # but time_embedding might actually be running in fp16. so we need to cast here.
+            # there might be better ways to encapsulate this.
+            t_emb = t_emb.to(dtype=hidden_states.dtype)
+            emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
-        hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
-        hidden_states = self.embedding_dropout(hidden_states)
+        with record_function("patch embedding"):
+            hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+            hidden_states = self.embedding_dropout(hidden_states)
 
-        text_seq_length = encoder_hidden_states.shape[1]
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
+            text_seq_length = encoder_hidden_states.shape[1]
+            encoder_hidden_states = hidden_states[:, :text_seq_length]
+            hidden_states = hidden_states[:, text_seq_length:]
 
         # 3. Transformer blocks
-        for i, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+        with record_function("blocks"):
+            for i, block in enumerate(self.transformer_blocks):
+                if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
+                    def create_custom_forward(module):
+                        def custom_forward(*inputs):
+                            return module(*inputs)
 
-                    return custom_forward
+                        return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    emb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
-                )
-            else:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=emb,
-                    image_rotary_emb=image_rotary_emb,
-                )
+                    ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                    hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        emb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=emb,
+                        image_rotary_emb=image_rotary_emb,
+                    )
 
         if not self.config.use_rotary_positional_embeddings:
             # CogVideoX-2B
@@ -487,16 +491,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             hidden_states = hidden_states[:, text_seq_length:]
 
         # 4. Final block
-        hidden_states = self.norm_out(hidden_states, temb=emb)
-        hidden_states = self.proj_out(hidden_states)
+        with record_function("final output"):
+            hidden_states = self.norm_out(hidden_states, temb=emb)
+            hidden_states = self.proj_out(hidden_states)
 
-        # 5. Unpatchify
-        # Note: we use `-1` instead of `channels`:
-        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
-        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
-        p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
-        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+            # 5. Unpatchify
+            # Note: we use `-1` instead of `channels`:
+            #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
+            #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
+            p = self.config.patch_size
+            output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+            output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

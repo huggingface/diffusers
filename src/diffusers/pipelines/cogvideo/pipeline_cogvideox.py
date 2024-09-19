@@ -18,6 +18,7 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch.profiler import record_function
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -679,39 +680,73 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 timestep = t.expand(latent_model_input.shape[0])
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    image_rotary_emb=image_rotary_emb,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-                noise_pred = noise_pred.float()
+                with record_function(f"transformer_iteration_{i}"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=timestep,
+                        image_rotary_emb=image_rotary_emb,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    # noise_pred = noise_pred.float()
 
                 # perform guidance
-                if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                    )
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                with record_function(f"guidance_{i}"):
+                    if use_dynamic_cfg:
+                        self._guidance_scale = 1 + guidance_scale * (
+                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0))
+                            / 2
+                        )
+                    if do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-                else:
-                    latents, old_pred_original_sample = self.scheduler.step(
-                        noise_pred,
-                        old_pred_original_sample,
-                        t,
-                        timesteps[i - 1] if i > 0 else None,
-                        latents,
-                        **extra_step_kwargs,
-                        return_dict=False,
+                with record_function("1.1 scheduler"):
+                    prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+
+                with record_function("1.2 scheduler"):
+                    alpha_prod_t = self.scheduler.alphas_cumprod[t]
+
+                with record_function("1.3 scheduler"):
+                    alpha_prod_t_prev = (
+                        self.scheduler.alphas_cumprod[prev_timestep]
+                        if prev_timestep >= 0
+                        else self.scheduler.final_alpha_cumprod
                     )
-                latents = latents.to(prompt_embeds.dtype)
+
+                with record_function("1.4 scheduler"):
+                    beta_prod_t = 1 - alpha_prod_t
+
+                with record_function("1.5 scheduler"):
+                    pred_original_sample = (alpha_prod_t**0.5) * latents - (beta_prod_t**0.5) * noise_pred
+
+                with record_function("1.6 scheduler"):
+                    a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
+
+                with record_function("1.7 scheduler"):
+                    b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
+
+                with record_function("1.8 scheduler"):
+                    prev_sample = a_t * latents + b_t * pred_original_sample
+
+                latents = prev_sample
+
+                # # compute the previous noisy sample x_t -> x_t-1
+                # with record_function(f"scheduler_step_{i}"):
+                #     if not isinstance(self.scheduler, CogVideoXDPMScheduler):
+                #         latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                #     else:
+                #         latents, old_pred_original_sample = self.scheduler.step(
+                #             noise_pred,
+                #             old_pred_original_sample,
+                #             t,
+                #             timesteps[i - 1] if i > 0 else None,
+                #             latents,
+                #             **extra_step_kwargs,
+                #             return_dict=False,
+                #         )
+                #     # latents = latents.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
                 if callback_on_step_end is not None:
@@ -728,8 +763,9 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     progress_bar.update()
 
         if not output_type == "latent":
-            video = self.decode_latents(latents)
-            video = self.video_processor.postprocess_video(video=video, output_type=output_type)
+            with record_function("decode_latents"):
+                video = self.decode_latents(latents)
+                video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
 
