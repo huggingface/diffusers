@@ -428,10 +428,11 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
 
 
 def load_pt(url: str):
+    from ..models.model_loading_utils import load_state_dict
+
     response = requests.get(url)
     response.raise_for_status()
-    weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
-    arry = torch.load(BytesIO(response.content), **weights_only_kwarg)
+    arry = load_state_dict(BytesIO(response.content))
     return arry
 
 
