@@ -703,10 +703,14 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 with record_function("1.1 scheduler"):
-                    prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                    prev_timestep = (
+                        self.scheduler.timesteps_numpy[i]
+                        - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
+                    )
 
                 with record_function("1.2 scheduler"):
-                    alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                    # alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                    alpha_prod_t = self.scheduler.alphas_cumprod[self.scheduler.timesteps_numpy[i]]
 
                 with record_function("1.3 scheduler"):
                     alpha_prod_t_prev = (

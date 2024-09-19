@@ -106,11 +106,15 @@ def rescale_zero_terminal_snr(alphas_cumprod):
         `torch.Tensor`: rescaled betas with zero terminal SNR
     """
 
-    alphas_bar_sqrt = alphas_cumprod.sqrt()
+    # alphas_bar_sqrt = alphas_cumprod.sqrt()
+    alphas_bar_sqrt = np.sqrt(alphas_cumprod)
 
     # Store old values.
-    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
-    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+    # alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    # alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+    print("alphas_bar_sqrt", alphas_bar_sqrt[0])
+    alphas_bar_sqrt_0 = np.copy(alphas_bar_sqrt[0])
+    alphas_bar_sqrt_T = np.copy(alphas_bar_sqrt[-1])
 
     # Shift so the last timestep is zero.
     alphas_bar_sqrt -= alphas_bar_sqrt_T
@@ -208,8 +212,10 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
+        self.betas = self.betas.cpu().detach().numpy()
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        # self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
         # Modify: SNR shift following SD3
         self.alphas_cumprod = self.alphas_cumprod / (snr_shift_scale + (1 - snr_shift_scale) * self.alphas_cumprod)
@@ -222,14 +228,16 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        # self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = 1.0 if set_alpha_to_one else self.alphas_cumprod[0]
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+        # self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+        self.timesteps = np.arange(0, num_train_timesteps)[::-1]
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
@@ -302,6 +310,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.timesteps_numpy = timesteps
 
     def step(
         self,
