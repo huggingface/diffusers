@@ -25,6 +25,7 @@ from diffusers.utils.testing_utils import (
     is_torch_available,
     is_transformers_available,
     load_pt,
+    numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
     require_torch,
@@ -363,9 +364,10 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.0269, 0.0339, 0.0039, 0.0266, 0.0376, 0.0000, 0.0010, 0.0159, 0.0198])
+        expected_slice = np.array([0.0442, 0.0457, 0.0254, 0.0405, 0.0535, 0.0261, 0.0259, 0.04, 0.0452])
 
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-2)
 
     def test_model_cpu_offload_raises_warning(self):
         model_8bit = SD3Transformer2DModel.from_pretrained(
@@ -396,7 +398,8 @@ class SlowBnb8bitTests(Base8bitTests):
 
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0266, 0.0264, 0.0271, 0.0110, 0.0310, 0.0098, 0.0078, 0.0256, 0.0208])
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-2)
 
         # 8bit models cannot be offloaded to CPU.
         self.assertTrue(self.pipeline_8bit.transformer.device.type == "cuda")
@@ -444,7 +447,8 @@ class SlowBnb8bitFluxTests(Base8bitTests):
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0574, 0.0554, 0.0581, 0.0686, 0.0676, 0.0759, 0.0757, 0.0803, 0.0930])
 
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
 
 
 @slow

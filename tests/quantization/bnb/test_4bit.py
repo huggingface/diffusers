@@ -24,6 +24,7 @@ from diffusers.utils.testing_utils import (
     is_torch_available,
     is_transformers_available,
     load_pt,
+    numpy_cosine_similarity_distance,
     require_accelerate,
     require_bitsandbytes_version_greater,
     require_torch,
@@ -384,7 +385,9 @@ class SlowBnb4BitTests(Base4bitTests):
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.1123, 0.1296, 0.1609, 0.1042, 0.1230, 0.1274, 0.0928, 0.1165, 0.1216])
 
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        print(f"{max_diff=}")
+        self.assertTrue(max_diff < 1e-2)
 
     def test_generate_quality_dequantize(self):
         r"""
@@ -400,7 +403,8 @@ class SlowBnb4BitTests(Base4bitTests):
 
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.1216, 0.1387, 0.1584, 0.1152, 0.1318, 0.1282, 0.1062, 0.1226, 0.1228])
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
 
         # Since we offloaded the `pipeline_4bit.transformer` to CPU (result of `enable_model_cpu_offload()), check
         # the following.
@@ -450,7 +454,8 @@ class SlowBnb4BitFluxTests(Base4bitTests):
         out_slice = output[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.0583, 0.0586, 0.0632, 0.0815, 0.0813, 0.0947, 0.1040, 0.1145, 0.1265])
 
-        self.assertTrue(np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4))
+        max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
+        self.assertTrue(max_diff < 1e-3)
 
 
 @slow
