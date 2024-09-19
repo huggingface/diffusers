@@ -129,7 +129,7 @@ from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipe
 from diffusers.models.controlnet_flux import FluxControlNetModel
 
 base_model = 'black-forest-labs/FLUX.1-dev'
-controlnet_model = 'path to controlnet'
+controlnet_model = 'promeai/FLUX.1-controlnet-lineart-promeai'
 controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
 pipe = FluxControlNetPipeline.from_pretrained(
     base_model, 
