@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import copy
 import functools
 import gc
 import logging
@@ -23,7 +24,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
-import copy
+
 import accelerate
 import numpy as np
 import torch
@@ -54,11 +55,12 @@ from diffusers import (
 from diffusers.models.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
+from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
+
 
 if is_wandb_available():
     import wandb
@@ -597,7 +599,7 @@ def parse_args(input_args=None):
         default=3.5,
         help="the guidance scale used for transformer.",
     )
-    
+
     parser.add_argument(
         "--save_weight_dtype",
        type=str,
@@ -1214,7 +1216,7 @@ def main(args):
         while len(sigma.shape) < n_dim:
             sigma = sigma.unsqueeze(-1)
         return sigma
-    
+
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
