@@ -30,9 +30,9 @@ from .controlnet import (
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
-    FluxControlNetPipeline,
     FluxControlNetImg2ImgPipeline,
     FluxControlNetInpaintPipeline,
+    FluxControlNetPipeline,
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
     FluxPipeline
