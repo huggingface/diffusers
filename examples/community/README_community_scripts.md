@@ -209,7 +209,7 @@ def seamless_tiling(pipeline, x_axis, y_axis):
         layer._conv_forward = asymmetric_conv2d_convforward.__get__(layer, torch.nn.Conv2d)
     return pipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 prompt = ["texture of a red brick wall"]
 seed = 123456
