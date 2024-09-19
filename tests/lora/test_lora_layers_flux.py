@@ -158,6 +158,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @slow
 @require_torch_gpu
 @require_peft_backend
+@unittest.skip("We cannot run inference on this model with the current CI hardware")
+# TODO (DN6, sayakpaul): move these tests to a beefier GPU
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace."""
 
