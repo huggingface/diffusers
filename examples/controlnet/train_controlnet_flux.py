@@ -16,7 +16,6 @@
 import argparse
 import copy
 import functools
-import gc
 import logging
 import math
 import os
