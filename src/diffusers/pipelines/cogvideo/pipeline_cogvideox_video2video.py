@@ -213,6 +213,9 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
         )
+        self.vae_scaling_factor_image = (
+            self.vae.config.scaling_factor if hasattr(self, "vae") and self.vae is not None else 0.7
+        )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -385,7 +388,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
                 init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
 
             init_latents = torch.cat(init_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
-            init_latents = self.vae.config.scaling_factor * init_latents
+            init_latents = self.vae_scaling_factor_image * init_latents
 
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             latents = self.scheduler.add_noise(init_latents, noise, timestep)
@@ -399,7 +402,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.decode_latents
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
-        latents = 1 / self.vae.config.scaling_factor * latents
+        latents = 1 / self.vae_scaling_factor_image * latents
 
         frames = self.vae.decode(latents).sample
         return frames
