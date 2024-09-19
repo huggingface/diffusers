@@ -163,7 +163,7 @@ else:
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
             "StableDiffusionPAGPipeline",
-            "StableDiffusionPAGImg2ImgPipeline"
+            "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
