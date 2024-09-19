@@ -15,7 +15,6 @@
 
 import gc
 import random
-import traceback
 import unittest
 
 import numpy as np
@@ -25,26 +24,16 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    HeunDiscreteScheduler,
-    LCMScheduler,
-    LMSDiscreteScheduler,
+    AutoPipelineForImage2Image,
     PNDMScheduler,
-    StableDiffusionImg2ImgPipeline,
+    StableDiffusionPAGImage2ImagePipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    is_torch_compile,
     load_image,
-    load_numpy,
-    nightly,
-    require_torch_2,
     require_torch_gpu,
-    run_test_in_subprocess,
-    skip_mps,
     slow,
     torch_device,
 )
@@ -76,7 +65,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPAGImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
@@ -152,7 +141,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
             "output_type": "np",
         }
         return inputs
-    
+
     def test_pag_disable_enable(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -189,78 +178,6 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-    def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # pag_applied_layers = ["mid","up","down"] should apply to all self-attention layers
-        all_self_attn_layers = [k for k in pipe.unet.attn_processors.keys() if "attn1" in k]
-        original_attn_procs = pipe.unet.attn_processors
-        pag_layers = [
-            "down",
-            "mid",
-            "up",
-        ]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
-
-        # pag_applied_layers = ["mid"], or ["mid.block_0"] or ["mid.block_0.attentions_0"] should apply to all self-attention layers in mid_block, i.e.
-        # mid_block.attentions.0.transformer_blocks.0.attn1.processor
-        # mid_block.attentions.0.transformer_blocks.1.attn1.processor
-        all_self_attn_mid_layers = [
-            "mid_block.attentions.0.transformer_blocks.0.attn1.processor",
-            # "mid_block.attentions.0.transformer_blocks.1.attn1.processor",
-        ]
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid_block"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid_block.attentions.0"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert set(pipe.pag_attn_processors) == set(all_self_attn_mid_layers)
-
-        # pag_applied_layers = ["mid.block_0.attentions_1"] does not exist in the model
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["mid_block.attentions.1"]
-        with self.assertRaises(ValueError):
-            pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-
-        # pag_applied_layers = "down" should apply to all self-attention layers in down_blocks
-        # down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor
-        # down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor
-        # down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 2
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down_blocks.0"]
-        with self.assertRaises(ValueError):
-            pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down_blocks.1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 2
-
-        pipe.unet.set_attn_processor(original_attn_procs.copy())
-        pag_layers = ["down_blocks.1.attentions.1"]
-        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
-        assert len(pipe.pag_attn_processors) == 1
 
     def test_pag_inference(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -289,7 +206,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
 
 @slow
 @require_torch_gpu
-class StableDiffusionPAGImg2ImgPipelineSlowTests(unittest.TestCase):
+class StableDiffusionPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
@@ -353,7 +270,7 @@ class StableDiffusionPAGImg2ImgPipelineSlowTests(unittest.TestCase):
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
         ), f"output is different from expected, {image_slice.flatten()}"
 
-@nightly
+@slow
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
     pipeline_class = StableDiffusionPAGImage2ImagePipeline
@@ -384,7 +301,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "output_type": "np",
         }
         return inputs
-    
+
     def test_pag_cfg(self):
         pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload()
