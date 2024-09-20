@@ -1000,9 +1000,6 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         one adapter and set different weights for different blocks (i.e. block lora)
         """
-        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "CogVideoXPipeline"]:
-            return
-
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
@@ -1063,9 +1060,6 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set differnt weights for different blocks (i.e. block lora)
         """
-        if self.pipeline_class.__name__ == "StableDiffusion3Pipeline":
-            return
-
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
@@ -1142,8 +1136,6 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
-        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline", "CogVideoXPipeline"]:
-            return
 
         def updown_options(blocks_with_tf, layers_per_block, value):
             """
@@ -1718,9 +1710,6 @@ class PeftLoraLoaderMixinTests:
             _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     def test_modify_padding_mode(self):
-        if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "FluxPipeline", "CogVideoXPipeline"]:
-            return
-
         def set_pad_mode(network, mode="circular"):
             for _, module in network.named_modules():
                 if isinstance(module, torch.nn.Conv2d):
