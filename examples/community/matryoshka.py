@@ -3136,11 +3136,12 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
     Nested UNet model with condition for image denoising.
     """
+
     @register_to_config
     def __init__(self, input_channels=3, output_channels=3, *args, **kwargs):
         super().__init__(input_channels=3, output_channels=3, *args, **kwargs)
         self.register_to_config(inner_config_conditioning_feature_dim=self.config.conditioning_feature_dim)
-        #self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
+        # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
         if getattr(self.config.inner_config.inner_config, None) is None:
             self.inner_unet = MatryoshkaUNet2DConditionModel(input_channels, output_channels, self.config.inner_config)
@@ -3165,13 +3166,15 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
 
         self.register_to_config(is_temporal=[self.config.temporal_mode and (not self.config.temporal_spatial_ds)])
         if hasattr(self.inner_unet.config, "is_temporal"):
-            self.register_to_config(is_temporal = self.config.is_temporal + self.inner_unet.config.is_temporal)
+            self.register_to_config(is_temporal=self.config.is_temporal + self.inner_unet.config.is_temporal)
 
         nest_ratio = int(2 ** (len(self.config.resolution_channels) - 1))
         if self.is_temporal[0]:
             nest_ratio = int(np.sqrt(nest_ratio))
         if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
-            self.register_to_config(nest_ratio=[nest_ratio * self.inner_unet.config.nest_ratio[0]] + self.inner_unet.config.nest_ratio)
+            self.register_to_config(
+                nest_ratio=[nest_ratio * self.inner_unet.config.nest_ratio[0]] + self.inner_unet.config.nest_ratio
+            )
         else:
             self.register_to_config(nest_ratio=[nest_ratio])
 
