@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
+    print_tensor_test,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
     require_torch_accelerator_with_training,
@@ -45,7 +46,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_all_close,
     torch_device,
-    print_tensor_test,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -652,12 +652,12 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.1556,  0.9848, -0.0410, -0.0642, -0.2685,  0.8381, -0.2004, -0.0700],
+                [-0.1556, 0.9848, -0.0410, -0.0642, -0.2685, 0.8381, -0.2004, -0.0700],
                 [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
             ],
             [
                 47,
-                [-0.2376,  0.1200,  0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
+                [-0.2376, 0.1200, 0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
                 [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
             ],
             # fmt: on
@@ -888,7 +888,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.0336,  0.3011,  0.1764,  0.0087, -0.3401,  0.3645, -0.1247,  0.1205],
+                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
                 [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
             ],
             [
