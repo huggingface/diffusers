@@ -380,8 +380,6 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = rescale_zero_terminal_snr(self.betas)
 
         self.alphas = 1.0 - self.betas
-        log_alphas = torch.log(self.alphas)
-        self.gammas = torch.exp(torch.cumsum(log_alphas, dim=0))
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
@@ -574,8 +572,6 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-        gamma_t = self.gammas[timestep]
-        # gamma_last = self.gammas[prev_timestep]
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -588,10 +584,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output
             pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
         elif self.config.prediction_type == "v_prediction":
-            if self.config.timestep_spacing == "matryoshka_style":
-                pred_original_sample = (gamma_t**0.5) * sample - ((1 - gamma_t) ** 0.5) * model_output
-            else:
-                pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
             pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
