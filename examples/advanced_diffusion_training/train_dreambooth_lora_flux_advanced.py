@@ -2237,7 +2237,7 @@ def main(args):
                             params_to_clip = (
                                 itertools.chain(transformer.parameters(), text_encoder_one.parameters()))
                         elif pure_textual_inversion:
-                            params_to_clip = (text_encoder_one.parameters(), text_encoder_two.parameters())
+                            params_to_clip = (itertools.chain(text_encoder_one.parameters(), text_encoder_two.parameters()))
                         else:
                             params_to_clip = (
                                 itertools.chain(transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()))
