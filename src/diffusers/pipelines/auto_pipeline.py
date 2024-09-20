@@ -35,7 +35,7 @@ from .flux import (
     FluxControlNetPipeline,
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
-    FluxPipeline
+    FluxPipeline,
 )
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
