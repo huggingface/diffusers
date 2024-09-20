@@ -252,6 +252,8 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
+
+        # TODO(diffusers): Discuss a common naming convention across library for 1.0.0 release
         for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
             if possible_attention_kwargs in call_signature_keys:
                 attention_kwargs_name = possible_attention_kwargs
@@ -996,7 +998,7 @@ class PeftLoraLoaderMixinTests:
     def test_simple_inference_with_text_denoiser_block_scale(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
-        one adapter and set differnt weights for different blocks (i.e. block lora)
+        one adapter and set different weights for different blocks (i.e. block lora)
         """
         if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "CogVideoXPipeline"]:
             return
@@ -1082,11 +1084,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
 
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
@@ -1255,12 +1255,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-            if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
 
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
@@ -1321,11 +1318,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
@@ -1361,11 +1356,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
 
             denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
@@ -1414,7 +1407,6 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.disable_lora()
-
             output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(
@@ -1460,7 +1452,6 @@ class PeftLoraLoaderMixinTests:
 
             # without we should not see an error, but every image will be black
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-
             out = pipe("test", num_inference_steps=2, output_type="np")[0]
 
             self.assertTrue(np.isnan(out).all())
@@ -1517,12 +1508,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-            if self.unet_kwargs is not None:
                 dicts_to_be_checked.update({"unet": ["adapter-1"]})
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
                 dicts_to_be_checked.update({"transformer": ["adapter-1"]})
 
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
@@ -1535,12 +1523,9 @@ class PeftLoraLoaderMixinTests:
 
             if self.unet_kwargs is not None:
                 pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
-
-            if self.unet_kwargs is not None:
                 dicts_to_be_checked.update({"unet": ["adapter-1", "adapter-2"]})
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
                 dicts_to_be_checked.update({"transformer": ["adapter-1", "adapter-2"]})
 
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
@@ -1563,18 +1548,15 @@ class PeftLoraLoaderMixinTests:
             )
 
             # 4.
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-3")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-3")
-
             dicts_to_be_checked = {}
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 dicts_to_be_checked = {"text_encoder": ["adapter-1", "adapter-2"]}
 
             if self.unet_kwargs is not None:
+                pipe.unet.add_adapter(denoiser_lora_config, "adapter-3")
                 dicts_to_be_checked.update({"unet": ["adapter-1", "adapter-2", "adapter-3"]})
             else:
+                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-3")
                 dicts_to_be_checked.update({"transformer": ["adapter-1", "adapter-2", "adapter-3"]})
 
             self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
