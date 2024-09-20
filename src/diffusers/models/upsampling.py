@@ -17,13 +17,13 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from packaging import version
 
 from ..utils import deprecate
+from ..utils.import_utils import is_torch_version
 from .normalization import RMSNorm
 
 
-is_torch_less_than_2_1 = version.parse(version.parse(torch.__version__).base_version) < version.parse("2.1")
+is_torch_less_than_2_1 = is_torch_version("<", "2.1")
 
 
 class Upsample1D(nn.Module):
