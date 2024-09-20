@@ -895,7 +895,6 @@ class StableDiffusionPAGImg2ImgPipeline(
         self.check_inputs(
             prompt,
             strength,
-            callback_steps,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
