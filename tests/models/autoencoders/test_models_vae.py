@@ -37,7 +37,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
-    print_tensor_test,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
     require_torch_accelerator_with_training,
@@ -674,7 +673,6 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        print_tensor_test(output_slice)
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
@@ -910,7 +908,6 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        print_tensor_test(output_slice)
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
