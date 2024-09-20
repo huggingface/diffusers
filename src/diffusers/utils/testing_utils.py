@@ -256,9 +256,7 @@ def require_torch_version_greater_equal(torch_version):
     """Decorator marking a test that requires torch with a specific version or greater."""
 
     def decorator(test_case):
-        correct_torch_version = version.parse(
-            version.parse(torch.__version__).base_version
-        ) >= version.parse(torch_version)
+        correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
         return unittest.skipUnless(
             correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
         )(test_case)
