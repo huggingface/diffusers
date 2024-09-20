@@ -729,7 +729,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=dtype,
+                dtype=self.vae.dtype,
             )
             height, width = control_image.shape[-2:]
 
@@ -763,7 +763,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
-                    dtype=dtype,
+                    dtype=self.vae.dtype,
                 )
                 height, width = control_image_.shape[-2:]
 
@@ -840,12 +840,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                # handle guidance
-                if self.transformer.config.guidance_embeds:
-                    guidance = torch.tensor([guidance_scale], device=device)
-                    guidance = guidance.expand(latents.shape[0])
-                else:
-                    guidance = None
+                guidance = (
+                    torch.tensor([guidance_scale], device=device) if self.controlnet.config.guidance_embeds else None
+                )
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 # controlnet
                 controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
@@ -862,6 +860,11 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
+
+                guidance = (
+                    torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
+                )
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
