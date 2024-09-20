@@ -23,9 +23,6 @@ from ..utils.import_utils import is_torch_version
 from .normalization import RMSNorm
 
 
-is_torch_less_than_2_1 = is_torch_version("<", "2.1")
-
-
 class Upsample1D(nn.Module):
     """A 1D upsampling layer with an optional convolution.
 
@@ -158,7 +155,7 @@ class Upsample2D(nn.Module):
         # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16 until PyTorch 2.1
         # https://github.com/pytorch/pytorch/issues/86679#issuecomment-1783978767
         dtype = hidden_states.dtype
-        if dtype == torch.bfloat16 and is_torch_less_than_2_1:
+        if dtype == torch.bfloat16 and is_torch_version("<", "2.1"):
             hidden_states = hidden_states.to(torch.float32)
 
         # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -174,7 +171,7 @@ class Upsample2D(nn.Module):
                 hidden_states = F.interpolate(hidden_states, size=output_size, mode="nearest")
 
         # Cast back to original dtype
-        if dtype == torch.bfloat16 and is_torch_less_than_2_1:
+        if dtype == torch.bfloat16 and is_torch_version("<", "2.1"):
             hidden_states = hidden_states.to(dtype)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
