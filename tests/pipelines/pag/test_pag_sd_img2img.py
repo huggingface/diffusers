@@ -57,8 +57,6 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-
-
 class StableDiffusionPAGImg2ImgPipelineFastTests(
     IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
@@ -180,7 +178,6 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
         assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
         assert np.abs(out.flatten() - out_pag_enabled.flatten()).max() > 1e-3
 
-
     def test_pag_inference(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -205,6 +202,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
 
 @slow
 @require_torch_gpu
