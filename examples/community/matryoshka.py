@@ -2024,6 +2024,7 @@ class MatryoshkaUNet2DConditionModel(
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads: int = 64,
+        nesting: Optional[int] = False,
     ):
         super().__init__()
 
@@ -2289,6 +2290,8 @@ class MatryoshkaUNet2DConditionModel(
         )
 
         self._set_pos_net_if_use_gligen(attention_type=attention_type, cross_attention_dim=cross_attention_dim)
+
+        self.register_to_config(is_temporal=[])
 
     def _check_config(
         self,
@@ -3130,57 +3133,58 @@ class MatryoshkaUNet2DConditionModel(
 
 
 class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
-    def __init__(self, input_channels, output_channels, config):
-        super().__init__(input_channels, output_channels, config)
-        config.inner_config.conditioning_feature_dim = config.conditioning_feature_dim
-        if getattr(config.inner_config, "inner_config", None) is None:
-            self.inner_unet = MatryoshkaUNet2DConditionModel(input_channels, output_channels, config.inner_config)
-        else:
-            self.inner_unet = NestedUNet2DConditionModel(input_channels, output_channels, config.inner_config)
+    """
+    Nested UNet model with condition for image denoising.
+    """
+    @register_to_config
+    def __init__(self, input_channels=3, output_channels=3, *args, **kwargs):
+        super().__init__(input_channels=3, output_channels=3, *args, **kwargs)
+        self.register_to_config(inner_config_conditioning_feature_dim=self.config.conditioning_feature_dim)
+        #self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
-        if not config.skip_inner_unet_input:
+        if getattr(self.config.inner_config.inner_config, None) is None:
+            self.inner_unet = MatryoshkaUNet2DConditionModel(input_channels, output_channels, self.config.inner_config)
+        else:
+            self.inner_unet = NestedUNet2DConditionModel(input_channels, output_channels, self.config.inner_config)
+
+        if not self.config.skip_inner_unet_input:
             self.in_adapter = nn.Conv2d(
-                config.resolution_channels[-1],
-                config.inner_config.resolution_channels[0],
+                self.config.resolution_channels[-1],
+                self.config.inner_config.resolution_channels[0],
                 kernel_size=3,
                 padding=1,
-                bias=True,
             )
         else:
             self.in_adapter = None
         self.out_adapter = nn.Conv2d(
-            config.inner_config.resolution_channels[0],
-            config.resolution_channels[-1],
+            self.config.inner_config.resolution_channels[0],
+            self.config.resolution_channels[-1],
             kernel_size=3,
             padding=1,
-            bias=True,
         )
 
-        self.is_temporal = [config.temporal_mode and (not config.temporal_spatial_ds)]
-        if hasattr(self.inner_unet, "is_temporal"):
-            self.is_temporal += self.inner_unet.is_temporal
+        self.register_to_config(is_temporal=[self.config.temporal_mode and (not self.config.temporal_spatial_ds)])
+        if hasattr(self.inner_unet.config, "is_temporal"):
+            self.register_to_config(is_temporal = self.config.is_temporal + self.inner_unet.config.is_temporal)
 
-        nest_ratio = int(2 ** (len(config.resolution_channels) - 1))
+        nest_ratio = int(2 ** (len(self.config.resolution_channels) - 1))
         if self.is_temporal[0]:
             nest_ratio = int(np.sqrt(nest_ratio))
         if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
-            self.nest_ratio = [nest_ratio * self.inner_unet.nest_ratio[0]] + self.inner_unet.nest_ratio
+            self.register_to_config(nest_ratio=[nest_ratio * self.inner_unet.config.nest_ratio[0]] + self.inner_unet.config.nest_ratio)
         else:
-            self.nest_ratio = [nest_ratio]
+            self.register_to_config(nest_ratio=[nest_ratio])
 
-        if config.initialize_inner_with_pretrained is not None:
+        if self.config.initialize_inner_with_pretrained is not None:
             try:
-                self.inner_unet.load(config.initialize_inner_with_pretrained)
+                self.inner_unet.from_pretrained(self.config.initialize_inner_with_pretrained)
             except Exception as e:
                 print("<-- load pretrained checkpoint error -->")
                 print(f"{e}")
 
-        if config.freeze_inner_unet:
-            for p in self.inner_unet.parameters():
-                p.requires_grad = False
-        if config.interp_conditioning:
-            self.interp_layer1 = nn.Linear(self.temporal_dim // 4, self.temporal_dim)
-            self.interp_layer2 = nn.Linear(self.temporal_dim, self.temporal_dim)
+        # if self.config.interp_conditioning:  # Seems False for all cases
+        #     self.interp_layer1 = nn.Linear(self.temporal_dim // 4, self.temporal_dim)
+        #     self.interp_layer2 = nn.Linear(self.temporal_dim, self.temporal_dim)
 
     @property
     def model_type(self):
