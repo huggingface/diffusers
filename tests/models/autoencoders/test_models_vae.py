@@ -45,6 +45,7 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_all_close,
     torch_device,
+    print_tensor_test,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -675,6 +676,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        print_tensor_test(output_slice)
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
