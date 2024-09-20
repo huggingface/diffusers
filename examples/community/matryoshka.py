@@ -72,7 +72,7 @@ from diffusers.utils.torch_utils import apply_freeu, randn_tensor
 
 
 if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm
+    import torch_xla.core.xla_model as xm  # type: ignore
 
     XLA_AVAILABLE = True
 else:
@@ -3127,6 +3127,125 @@ class MatryoshkaUNet2DConditionModel(
             return (sample,)
 
         return MatryoshkaUNet2DConditionOutput(sample=sample)
+
+
+class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
+    def __init__(self, input_channels, output_channels, config):
+        super().__init__(input_channels, output_channels, config)
+        config.inner_config.conditioning_feature_dim = config.conditioning_feature_dim
+        if getattr(config.inner_config, "inner_config", None) is None:
+            self.inner_unet = MatryoshkaUNet2DConditionModel(input_channels, output_channels, config.inner_config)
+        else:
+            self.inner_unet = NestedUNet2DConditionModel(input_channels, output_channels, config.inner_config)
+
+        if not config.skip_inner_unet_input:
+            self.in_adapter = nn.Conv2d(
+                config.resolution_channels[-1],
+                config.inner_config.resolution_channels[0],
+                kernel_size=3,
+                padding=1,
+                bias=True,
+            )
+        else:
+            self.in_adapter = None
+        self.out_adapter = nn.Conv2d(
+            config.inner_config.resolution_channels[0],
+            config.resolution_channels[-1],
+            kernel_size=3,
+            padding=1,
+            bias=True,
+        )
+
+        self.is_temporal = [config.temporal_mode and (not config.temporal_spatial_ds)]
+        if hasattr(self.inner_unet, "is_temporal"):
+            self.is_temporal += self.inner_unet.is_temporal
+
+        nest_ratio = int(2 ** (len(config.resolution_channels) - 1))
+        if self.is_temporal[0]:
+            nest_ratio = int(np.sqrt(nest_ratio))
+        if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
+            self.nest_ratio = [nest_ratio * self.inner_unet.nest_ratio[0]] + self.inner_unet.nest_ratio
+        else:
+            self.nest_ratio = [nest_ratio]
+
+        if config.initialize_inner_with_pretrained is not None:
+            try:
+                self.inner_unet.load(config.initialize_inner_with_pretrained)
+            except Exception as e:
+                print("<-- load pretrained checkpoint error -->")
+                print(f"{e}")
+
+        if config.freeze_inner_unet:
+            for p in self.inner_unet.parameters():
+                p.requires_grad = False
+        if config.interp_conditioning:
+            self.interp_layer1 = nn.Linear(self.temporal_dim // 4, self.temporal_dim)
+            self.interp_layer2 = nn.Linear(self.temporal_dim, self.temporal_dim)
+
+    @property
+    def model_type(self):
+        return "nested_unet"
+
+    def forward_conditioning(self, *args, **kwargs):
+        return self.inner_unet.forward_conditioning(*args, **kwargs)
+
+    def forward_denoising(self, x_t, times, cond_emb=None, conditioning=None, cond_mask=None, micros={}):
+        # 1. time embedding
+        temb = self.create_temporal_embedding(times)
+        if cond_emb is not None:
+            temb = temb + cond_emb
+        if self.conditions is not None:
+            temb = temb + self.forward_micro_conditioning(times, micros)
+
+        # 2. input layer (normalize the input)
+        if self._config.nesting:
+            x_t, x_feat = x_t
+        bsz = [x.size(0) for x in x_t]
+        bh, bl = bsz[0], bsz[1]
+        x_t_low, x_t = x_t[1:], x_t[0]
+        x = self.forward_input_layer(x_t, normalize=(not self.config.skip_normalization))
+        if self._config.nesting:
+            x = x + x_feat
+
+        # 3. downsample blocks in the outer layers
+        x, skip_activations = self.forward_downsample(
+            x,
+            temb[:bh],
+            conditioning[:bh],
+            cond_mask[:bh] if cond_mask is not None else cond_mask,
+        )
+
+        # 4. run inner unet
+        x_inner = self.in_adapter(x) if self.in_adapter is not None else None
+        x_inner = (
+            torch.cat([x_inner, x_inner.new_zeros(bl - bh, *x_inner.size()[1:])], 0) if bh < bl else x_inner
+        )  # pad zeros for low-resolutions
+        x_low, x_inner = self.inner_unet.forward_denoising(
+            (x_t_low, x_inner), times, cond_emb, conditioning, cond_mask, micros
+        )
+        x_inner = self.out_adapter(x_inner)
+        x = x + x_inner[:bh] if bh < bl else x + x_inner
+
+        # 5. upsample blocks in the outer layers
+        x = self.forward_upsample(
+            x,
+            temb[:bh],
+            conditioning[:bh],
+            cond_mask[:bh] if cond_mask is not None else cond_mask,
+            skip_activations,
+        )
+
+        # 6. output layer
+        x_out = self.forward_output_layer(x)
+
+        # 7. outpupt both low and high-res output
+        if isinstance(x_low, list):
+            out = [x_out] + x_low
+        else:
+            out = [x_out, x_low]
+        if self._config.nesting:
+            return out, x
+        return out
 
 
 class MatryoshkaPipeline(
