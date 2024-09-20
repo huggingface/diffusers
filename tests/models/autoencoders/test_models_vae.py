@@ -665,8 +665,6 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     )
     def test_stable_diffusion(self, seed, expected_slice, expected_slice_mps):
         model = self.get_sd_vae_model()
-        if hasattr(model, "set_default_attn_processor"):
-            model.set_default_attn_processor()
         image = self.get_sd_image(seed)
         generator = self.get_generator(seed)
 
@@ -912,6 +910,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        print_tensor_test(output_slice)
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
