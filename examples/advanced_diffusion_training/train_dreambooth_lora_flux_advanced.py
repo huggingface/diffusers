@@ -2242,7 +2242,7 @@ def main(args):
                             params_to_clip = (
                                 itertools.chain(transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()))
                     else:
-                        params_to_clip = (transformer.parameters())
+                        params_to_clip = (itertools.chain(transformer.parameters()))
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
