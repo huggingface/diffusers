@@ -48,6 +48,7 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
     scheduler_kwargs = {"timestep_spacing": "trailing"}
+    scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
 
     transformer_kwargs = {
         "num_attention_heads": 4,
@@ -126,8 +127,7 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @skip_mps
     def test_lora_fuse_nan(self):
-        scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)

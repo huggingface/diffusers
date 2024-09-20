@@ -47,7 +47,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
-    uses_flow_matching = True
+    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,

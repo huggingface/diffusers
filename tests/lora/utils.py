@@ -24,7 +24,6 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    FlowMatchEulerDiscreteScheduler,
     LCMScheduler,
     UNet2DConditionModel,
 )
@@ -69,9 +68,10 @@ def check_if_lora_correctly_set(model) -> bool:
 @require_peft_backend
 class PeftLoraLoaderMixinTests:
     pipeline_class = None
+
     scheduler_cls = None
     scheduler_kwargs = None
-    uses_flow_matching = False
+    scheduler_classes = [DDIMScheduler, LCMScheduler]
 
     has_two_text_encoders = False
     has_three_text_encoders = False
@@ -205,13 +205,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple inference and makes sure it works as expected
         """
-        # TODO(aryan): Some of the assumptions made here in many different tests are incorrect for CogVideoX.
-        # For example, we need to test with CogVideoXDDIMScheduler and CogVideoDPMScheduler instead of DDIMScheduler
-        # and LCMScheduler, which are not supported by it.
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -226,10 +220,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -260,9 +251,6 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
         for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
             if possible_attention_kwargs in call_signature_keys:
@@ -270,7 +258,7 @@ class PeftLoraLoaderMixinTests:
                 break
         assert attention_kwargs_name is not None
 
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -317,10 +305,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -360,10 +345,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder, then unloads the lora weights
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -410,10 +392,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -490,10 +469,7 @@ class PeftLoraLoaderMixinTests:
         with different ranks and some adapters removed
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, _, _ = self.get_dummy_components(scheduler_cls)
             # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
             text_lora_config = LoraConfig(
@@ -555,10 +531,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -609,10 +582,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA for Unet + text encoder
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -708,9 +678,6 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder + Unet + scale argument
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
         call_signature_keys = inspect.signature(self.pipeline_class.__call__).parameters.keys()
         for possible_attention_kwargs in ["cross_attention_kwargs", "joint_attention_kwargs", "attention_kwargs"]:
             if possible_attention_kwargs in call_signature_keys:
@@ -718,7 +685,7 @@ class PeftLoraLoaderMixinTests:
                 break
         assert attention_kwargs_name is not None
 
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -781,10 +748,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected - with unet
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -842,10 +806,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -905,10 +866,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -966,10 +924,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set them
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1046,10 +1001,7 @@ class PeftLoraLoaderMixinTests:
         if self.pipeline_class.__name__ in ["StableDiffusion3Pipeline", "CogVideoXPipeline"]:
             return
 
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1112,10 +1064,7 @@ class PeftLoraLoaderMixinTests:
         if self.pipeline_class.__name__ == "StableDiffusion3Pipeline":
             return
 
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1288,10 +1237,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set/delete them
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1397,10 +1343,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set them
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1481,10 +1424,7 @@ class PeftLoraLoaderMixinTests:
 
     @skip_mps
     def test_lora_fuse_nan(self):
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1530,10 +1470,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where we attach multiple adapters and check if the results
         are the expected results
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1566,10 +1503,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where we attach multiple adapters and check if the results
         are the expected results
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1653,10 +1587,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected - with unet and multi-adapter case
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1729,10 +1660,7 @@ class PeftLoraLoaderMixinTests:
 
     @require_peft_version_greater(peft_version="0.9.0")
     def test_simple_inference_with_dora(self):
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(
                 scheduler_cls, use_dora=True
             )
@@ -1775,10 +1703,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
@@ -1819,10 +1744,7 @@ class PeftLoraLoaderMixinTests:
                 if isinstance(module, torch.nn.Conv2d):
                     module.padding_mode = mode
 
-        scheduler_classes = (
-            [FlowMatchEulerDiscreteScheduler] if self.uses_flow_matching else [DDIMScheduler, LCMScheduler]
-        )
-        for scheduler_cls in scheduler_classes:
+        for scheduler_cls in self.scheduler_classes:
             components, _, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device)
