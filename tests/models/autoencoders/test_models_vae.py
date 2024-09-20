@@ -664,6 +664,8 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     )
     def test_stable_diffusion(self, seed, expected_slice, expected_slice_mps):
         model = self.get_sd_vae_model()
+        if hasattr(model, "set_default_attn_processor"):
+            model.set_default_attn_processor()
         image = self.get_sd_image(seed)
         generator = self.get_generator(seed)
 
