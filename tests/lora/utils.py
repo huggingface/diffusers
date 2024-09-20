@@ -600,13 +600,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in Unet")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -624,10 +620,7 @@ class PeftLoraLoaderMixinTests:
                     else None
                 )
 
-                if self.unet_kwargs is not None:
-                    denoiser_state_dict = get_peft_model_state_dict(pipe.unet)
-                else:
-                    denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+                denoiser_state_dict = get_peft_model_state_dict(denoiser)
 
                 saving_kwargs = {
                     "save_directory": tmpdirname,
@@ -661,8 +654,7 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -703,13 +695,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -766,13 +754,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -789,8 +773,7 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -824,12 +807,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -843,10 +823,7 @@ class PeftLoraLoaderMixinTests:
             self.assertFalse(
                 check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
             )
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertFalse(
-                check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly unloaded in denoiser"
-            )
+            self.assertFalse(check_if_lora_correctly_set(denoiser), "Lora not correctly unloaded in denoiser")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -881,13 +858,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -906,8 +879,7 @@ class PeftLoraLoaderMixinTests:
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
 
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Unfuse should still keep LoRA layers")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Unfuse should still keep LoRA layers")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -942,17 +914,10 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -1010,14 +975,11 @@ class PeftLoraLoaderMixinTests:
             output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -1076,15 +1038,10 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
@@ -1207,10 +1164,9 @@ class PeftLoraLoaderMixinTests:
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-        if self.unet_kwargs is not None:
-            pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-        else:
-            pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
 
         if self.has_two_text_encoders or self.has_three_text_encoders:
             lora_loadable_components = self.pipeline_class._lora_loadable_modules
@@ -1245,15 +1201,10 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 lora_loadable_components = self.pipeline_class._lora_loadable_modules
@@ -1308,12 +1259,10 @@ class PeftLoraLoaderMixinTests:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
             pipe.delete_adapters(["adapter-1", "adapter-2"])
@@ -1346,15 +1295,10 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 lora_loadable_components = self.pipeline_class._lora_loadable_modules
@@ -1421,13 +1365,9 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             # corrupt one LoRA weight with `inf` values
             with torch.no_grad():
@@ -1461,19 +1401,15 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
 
             adapter_names = pipe.get_active_adapters()
             self.assertListEqual(adapter_names, ["adapter-1"])
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
 
             adapter_names = pipe.get_active_adapters()
             self.assertListEqual(adapter_names, ["adapter-2"])
@@ -1577,22 +1513,16 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
                 )
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-1")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
 
             # Attach a second adapter
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
 
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config, "adapter-2")
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config, "adapter-2")
+            denoiser.add_adapter(denoiser_lora_config, "adapter-2")
 
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 lora_loadable_components = self.pipeline_class._lora_loadable_modules
@@ -1647,14 +1577,11 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_dora_lora.shape == self.output_shape)
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 lora_loadable_components = self.pipeline_class._lora_loadable_modules
@@ -1685,14 +1612,11 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            if self.unet_kwargs is not None:
-                pipe.unet.add_adapter(denoiser_lora_config)
-            else:
-                pipe.transformer.add_adapter(denoiser_lora_config)
-
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-            denoiser_to_checked = pipe.unet if self.unet_kwargs is not None else pipe.transformer
-            self.assertTrue(check_if_lora_correctly_set(denoiser_to_checked), "Lora not correctly set in denoiser")
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            denoiser.add_adapter(denoiser_lora_config)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
             if self.has_two_text_encoders or self.has_three_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
