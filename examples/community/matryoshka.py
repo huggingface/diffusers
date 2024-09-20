@@ -1853,9 +1853,9 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
 
 
 @dataclass
-class NestedUNet2DConditionOutput(BaseOutput):
+class MatryoshkaUNet2DConditionOutput(BaseOutput):
     """
-    The output of [`NestedUNet2DConditionOutput`].
+    The output of [`MatryoshkaUNet2DConditionOutput`].
 
     Args:
         sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
@@ -1865,7 +1865,7 @@ class NestedUNet2DConditionOutput(BaseOutput):
     sample: torch.Tensor = None
 
 
-class NestedUNet2DConditionModel(
+class MatryoshkaUNet2DConditionModel(
     ModelMixin, ConfigMixin, FromOriginalModelMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin
 ):
     r"""
@@ -2865,7 +2865,7 @@ class NestedUNet2DConditionModel(
         down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[NestedUNet2DConditionOutput, Tuple]:
+    ) -> Union[MatryoshkaUNet2DConditionOutput, Tuple]:
         r"""
         The [`NestedUNet2DConditionModel`] forward method.
 
@@ -3126,7 +3126,7 @@ class NestedUNet2DConditionModel(
         if not return_dict:
             return (sample,)
 
-        return NestedUNet2DConditionOutput(sample=sample)
+        return MatryoshkaUNet2DConditionOutput(sample=sample)
 
 
 class MatryoshkaPipeline(
@@ -3151,14 +3151,12 @@ class MatryoshkaPipeline(
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer ([`~transformers.CLIPTokenizer`]):
             A `CLIPTokenizer` to tokenize text.
-        unet ([`NestedUNet2DConditionModel`]):
-            A `NestedUNet2DConditionModel` to denoise the encoded image latents.
+        unet ([`MatryoshkaUNet2DConditionModel`]):
+            A `MatryoshkaUNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -3179,7 +3177,7 @@ class MatryoshkaPipeline(
         self,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
-        unet: NestedUNet2DConditionModel,
+        unet: MatryoshkaUNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
