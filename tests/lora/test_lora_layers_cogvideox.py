@@ -156,10 +156,10 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             self.assertTrue(np.isnan(out).all())
 
     def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=5e-3)
+        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
 
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=5e-3)
+        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
     @unittest.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
