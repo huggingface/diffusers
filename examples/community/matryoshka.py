@@ -3132,6 +3132,14 @@ class MatryoshkaUNet2DConditionModel(
         return MatryoshkaUNet2DConditionOutput(sample=sample)
 
 
+class NestedUNet2DConditionOutput(BaseOutput):
+    """
+    Output type for the [`NestedUNet2DConditionModel`] model.
+    """
+
+    sample_and_x_low: list = []
+    x: torch.Tensor = None
+
 class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
     Nested UNet model with condition for image denoising.
@@ -3196,37 +3204,187 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     def forward_conditioning(self, *args, **kwargs):
         return self.inner_unet.forward_conditioning(*args, **kwargs)
 
-    def forward_denoising(self, x_t, times, cond_emb=None, conditioning=None, cond_mask=None, micros={}):
-        # 1. time embedding
-        temb = self.create_temporal_embedding(times)
-        if cond_emb is not None:
-            temb = temb + cond_emb
-        if self.conditions is not None:
-            temb = temb + self.forward_micro_conditioning(times, micros)
+    def forward(
+        self,
+        sample: torch.Tensor,
+        timestep: Union[torch.Tensor, float, int],
+        encoder_hidden_states: torch.Tensor,
+        class_labels: Optional[torch.Tensor] = None,
+        timestep_cond: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        mid_block_additional_residual: Optional[torch.Tensor] = None,
+        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
+    ) -> Union[MatryoshkaUNet2DConditionOutput, Tuple]:
+        r"""
+        The [`NestedUNet2DConditionModel`] forward method.
+
+        Args:
+            sample (`torch.Tensor`):
+                The noisy input tensor with the following shape `(batch, channel, height, width)`.
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the timestep embeddings.
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
+            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
+                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
+            encoder_attention_mask (`torch.Tensor`):
+                A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
+                `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
+                which adds large negative values to the attention scores corresponding to "discard" tokens.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~NestedUNet2DConditionOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~NestedUNet2DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~NestedUNet2DConditionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
+        """
+        # By default samples have to be AT least a multiple of the overall upsampling factor.
+        # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
+        # However, the upsampling interpolation output size can be forced to fit any upsampling size
+        # on the fly if necessary.
+        default_overall_up_factor = 2**self.num_upsamplers
+
+        # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
+        forward_upsample_size = False
+        upsample_size = None
+
+        for dim in sample.shape[-2:]:
+            if dim % default_overall_up_factor != 0:
+                # Forward upsample size to force interpolation output size.
+                forward_upsample_size = True
+                break
+
+        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
+        # expects mask of shape:
+        #   [batch, key_tokens]
+        # adds singleton query_tokens dimension:
+        #   [batch,                    1, key_tokens]
+        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
+        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
+        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
+        if attention_mask is not None:
+            # assume that mask is expressed as:
+            #   (1 = keep,      0 = discard)
+            # convert mask into a bias that can be added to attention scores:
+            #       (keep = +0,     discard = -10000.0)
+            attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
+            attention_mask = attention_mask.unsqueeze(1)
+
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        if encoder_attention_mask is not None:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
+
+        # 0. center input if necessary
+        if self.config.center_input_sample:
+            sample = 2 * sample - 1.0
+
+        # 1. time
+        t_emb = self.get_time_embed(sample=sample, timestep=timestep)
+        emb = self.time_embedding(t_emb, timestep_cond)
+
+        class_emb = self.get_class_embed(sample=sample, class_labels=class_labels)
+        if class_emb is not None:
+            if self.config.class_embeddings_concat:
+                emb = torch.cat([emb, class_emb], dim=-1)
+            else:
+                emb = emb + class_emb
+
+        added_cond_kwargs = added_cond_kwargs or {}
+        added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
+        added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
+
+        encoder_hidden_states = self.process_encoder_hidden_states(
+            encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+        )
+
+        aug_emb, cond_mask = self.get_aug_embed(
+            emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+        )
+        if self.config.addition_embed_type == "image_hint":
+            aug_emb, hint = aug_emb
+            sample = torch.cat([sample, hint], dim=1)
+
+        emb = emb + aug_emb if aug_emb is not None else emb
+
+        if self.time_embed_act is not None:
+            emb = self.time_embed_act(emb)
 
         # 2. input layer (normalize the input)
-        if self._config.nesting:
-            x_t, x_feat = x_t
+        # if self._config.nesting:
+        #     x_t, x_feat = x_t
         bsz = [x.size(0) for x in x_t]
         bh, bl = bsz[0], bsz[1]
         x_t_low, x_t = x_t[1:], x_t[0]
-        x = self.forward_input_layer(x_t, normalize=(not self.config.skip_normalization))
-        if self._config.nesting:
-            x = x + x_feat
+        if not self.config.skip_normalization:
+            x_t = x_t / x_t.std((1, 2, 3), keepdims=True)
+        x = self.conv_in(x_t)
+        # if self._config.nesting:
+        #     x = x + x_feat
 
         # 3. downsample blocks in the outer layers
         x, skip_activations = self.forward_downsample(
             x,
-            temb[:bh],
-            conditioning[:bh],
+            emb[:bh],
+            encoder_hidden_states[:bh],
             cond_mask[:bh] if cond_mask is not None else cond_mask,
         )
+        down_block_res_samples = (sample,)
+        for downsample_block in self.down_blocks:
+            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                # For t2i-adapter CrossAttnDownBlock2D
+                additional_residuals = {}
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
+
+                sample, res_samples = downsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_attention_mask=encoder_attention_mask,
+                    **additional_residuals,
+                )
+            else:
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    sample += down_intrablock_additional_residuals.pop(0)
+
+            down_block_res_samples += res_samples
 
         # 4. run inner unet
         x_inner = self.in_adapter(x) if self.in_adapter is not None else None
         x_inner = (
             torch.cat([x_inner, x_inner.new_zeros(bl - bh, *x_inner.size()[1:])], 0) if bh < bl else x_inner
         )  # pad zeros for low-resolutions
+        # TODO: Add support for innerability for the inner unet
         x_low, x_inner = self.inner_unet.forward_denoising(
             (x_t_low, x_inner), times, cond_emb, conditioning, cond_mask, micros
         )
@@ -3242,17 +3400,26 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             skip_activations,
         )
 
-        # 6. output layer
-        x_out = self.forward_output_layer(x)
+        # 6. post-process
+        if self.conv_norm_out:
+            sample = self.conv_norm_out(x_low)
+            sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
 
-        # 7. outpupt both low and high-res output
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
+
+        # 7. output both low and high-res output
         if isinstance(x_low, list):
-            out = [x_out] + x_low
+            out = [sample] + x_low
         else:
-            out = [x_out, x_low]
-        if self._config.nesting:
-            return out, x
-        return out
+            out = [sample, x_low]
+        if self.inner_unet.config.nesting:
+            return NestedUNet2DConditionOutput(sample_and_x_low=out, x=x)
+        if not return_dict:
+            return (out,)
+        return NestedUNet2DConditionOutput(sample_and_x_low=out)
 
 
 class MatryoshkaPipeline(
