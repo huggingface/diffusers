@@ -566,7 +566,10 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        if self.config.timestep_spacing != "matryoshka_style":
+            prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        else:
+            prev_timestep = self.timesteps[torch.nonzero(self.timesteps == timestep).item() + 1]
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
