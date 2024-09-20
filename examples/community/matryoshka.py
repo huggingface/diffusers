@@ -1355,7 +1355,7 @@ class MatryoshkaTransformerBlock(nn.Module):
             cross_attention_dim=None,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
-            norm_num_groups=32 or None,
+            norm_num_groups=32,
             bias=True,
             upcast_attention=upcast_attention,
             pre_only=True,
