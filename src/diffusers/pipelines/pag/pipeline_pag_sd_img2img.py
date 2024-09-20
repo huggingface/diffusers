@@ -573,7 +573,6 @@ class StableDiffusionPAGImg2ImgPipeline(
         self,
         prompt,
         strength,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -583,12 +582,6 @@ class StableDiffusionPAGImg2ImgPipeline(
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -884,7 +877,7 @@ class StableDiffusionPAGImg2ImgPipeline(
             pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
                 The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
                 used.
-                
+
         Examples:
 
         Returns:
