@@ -134,8 +134,8 @@ pipe = FluxControlNetPipeline.from_pretrained(
 # enable memory optimizations   
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./conditioning_image_1.png").resize((1024, 1024))
-prompt = "pale golden rod circle with old lace background"
+control_image = load_image("https://huggingface.co/promeai/FLUX.1-controlnet-lineart-promeai/resolve/main/images/example-control.jpg")resize((1024, 1024))
+prompt = "cute anime girl with massive fluffy fennec ears and a big fluffy tail blonde messy long hair blue eyes wearing a maid outfit with a long black gold leaf pattern dress and a white apron mouth open holding a fancy black forest cake with candles on top in the kitchen of an old dark Victorian mansion lit by candlelight with a bright window to the foggy forest and very expensive stuff everywhere"
 
 image = pipe(
     prompt, 
