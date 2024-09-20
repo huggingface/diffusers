@@ -34,7 +34,12 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import diffusers
-from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers import (
+    AutoencoderKLCogVideoX,
+    CogVideoXDPMScheduler,
+    CogVideoXImageToVideoPipeline,
+    CogVideoXTransformer3DModel,
+)
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
@@ -641,7 +646,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
 
 ## License
 
-Please adhere to the licensing terms as described [here](https://huggingface.co/THUDM/CogVideoX-5b/blob/main/LICENSE) and [here](https://huggingface.co/THUDM/CogVideoX-2b/blob/main/LICENSE).
+Please adhere to the licensing terms as described [here](https://huggingface.co/THUDM/CogVideoX-5b-I2V/blob/main/LICENSE).
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -653,7 +658,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         widget=widget_dict,
     )
     tags = [
-        "text-to-video",
+        "image-to-video",
         "diffusers-training",
         "diffusers",
         "lora",
@@ -1090,7 +1095,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            CogVideoXPipeline.save_lora_weights(
+            CogVideoXImageToVideoPipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
             )
@@ -1106,7 +1111,7 @@ def main(args):
             else:
                 raise ValueError(f"Unexpected save model: {model.__class__}")
 
-        lora_state_dict = CogVideoXPipeline.lora_state_dict(input_dir)
+        lora_state_dict = CogVideoXImageToVideoPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1184,13 +1189,28 @@ def main(args):
     def encode_video(video):
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
         video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
+        image = video[:, :, :1].clone()
         latent_dist = vae.encode(video).latent_dist
-        return latent_dist
+        image_latent_dist = vae.encode(image).latent_dist
+        return latent_dist, image_latent_dist
 
     train_dataset.instance_videos = [encode_video(video) for video in train_dataset.instance_videos]
 
     def collate_fn(examples):
-        videos = [example["instance_video"].sample() * vae.config.scaling_factor for example in examples]
+        videos = []
+        for example in examples:
+            latent_dist, image_latent_dist = example["instance_video"]
+
+            video_latents = latent_dist.sample() * vae.config.scaling_factor
+            image_latents = image_latent_dist.sample() * vae.config.scaling_factor
+
+            padding_shape = (video_latents.shape[0], video_latents.shape[1] - 1, *video_latents.shape[2:])
+            latent_padding = image_latents.zeros_like(padding_shape)
+            image_latents = torch.cat([image_latents, latent_padding], dim=1)
+
+            latents = torch.cat([video_latents, image_latents], dim=2)
+            videos.append(latents)
+
         prompts = [example["instance_prompt"] for example in examples]
 
         videos = torch.cat(videos)
@@ -1433,7 +1453,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 # Create pipeline
-                pipe = CogVideoXPipeline.from_pretrained(
+                pipe = CogVideoXImageToVideoPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     transformer=unwrap_model(transformer),
                     text_encoder=unwrap_model(text_encoder),
@@ -1475,7 +1495,7 @@ def main(args):
         transformer = transformer.to(dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
-        CogVideoXPipeline.save_lora_weights(
+        CogVideoXImageToVideoPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
         )
@@ -1484,7 +1504,7 @@ def main(args):
         clear_objs_and_retain_memory([transformer])
 
         # Final test inference
-        pipe = CogVideoXPipeline.from_pretrained(
+        pipe = CogVideoXImageToVideoPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             revision=args.revision,
             variant=args.variant,
