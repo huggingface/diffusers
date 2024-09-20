@@ -899,7 +899,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=dtype,
+                dtype=self.vae.dtype,
             )
             height, width = control_image.shape[-2:]
 
@@ -933,7 +933,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                     batch_size=batch_size * num_images_per_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
-                    dtype=dtype,
+                    dtype=self.vae.dtype,
                 )
                 height, width = control_image_.shape[-2:]
 
