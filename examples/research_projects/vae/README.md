@@ -5,7 +5,7 @@
 ```
 cd examples/research_projects/vae
 python vae_roundtrip.py \
-    --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+    --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
     --subfolder="vae" \
     --input_image="/path/to/your/input.png"
 ```

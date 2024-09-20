@@ -122,6 +122,7 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
@@ -141,7 +142,7 @@ def log_validation(
 
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-    pipeline = pipeline.to(accelerator.device)
+    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1360,6 +1361,7 @@ def main(args):
                     accelerator,
                     pipeline_args,
                     epoch,
+                    torch_dtype=weight_dtype,
                 )
 
     # Save the lora layers
@@ -1402,6 +1404,7 @@ def main(args):
                 pipeline_args,
                 epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:
