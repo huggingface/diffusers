@@ -19,6 +19,7 @@ import math
 import os
 import random
 import shutil
+from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -26,7 +27,7 @@ import torch
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
+from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
@@ -426,6 +427,7 @@ def get_args():
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
     )
+    parser.add_argument("--nccl_timeout", type=int, default=600, help="NCCL backend timeout in seconds.")
 
     return parser.parse_args()
 
@@ -976,13 +978,14 @@ def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
-    kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    init_kwargs = InitProcessGroupKwargs(backend="nccl", timeout=timedelta(seconds=args.nccl_timeout))
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        kwargs_handlers=[kwargs],
+        kwargs_handlers=[ddp_kwargs, init_kwargs],
     )
 
     # Disable AMP for MPS.
@@ -1391,21 +1394,26 @@ def main(args):
 
             with accelerator.accumulate(models_to_accumulate):
                 video_latents, image_latents = batch["videos"]
-                video_latents = video_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
-                image_latents = image_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
-                model_input = torch.cat([video_latents, image_latents], dim=2)
-
                 prompt_embeds = batch["prompts"]
 
-                # Sample noise that will be added to the latents
-                noise = torch.randn_like(model_input)
-                batch_size, num_frames, num_channels, height, width = model_input.shape
+                video_latents = video_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
+                image_latents = image_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
+
+                batch_size, num_frames, num_channels, height, width = video_latents.shape
 
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
-                    0, scheduler.config.num_train_timesteps, (batch_size,), device=model_input.device
+                    0, scheduler.config.num_train_timesteps, (batch_size,), device=video_latents.device
                 )
                 timesteps = timesteps.long()
+
+                # Sample noise that will be added to the latents
+                noise = torch.randn_like(video_latents)
+
+                # Add noise to the model input according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_video_latents = scheduler.add_noise(video_latents, noise, timesteps)
+                noisy_model_input = torch.cat([noisy_video_latents, image_latents], dim=2)
 
                 # Prepare rotary embeds
                 image_rotary_emb = (
@@ -1422,10 +1430,6 @@ def main(args):
                     else None
                 )
 
-                # Add noise to the model input according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_model_input = scheduler.add_noise(model_input, noise, timesteps)
-
                 # Predict the noise residual
                 model_output = transformer(
                     hidden_states=noisy_model_input,
@@ -1434,7 +1438,7 @@ def main(args):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
-                model_pred = scheduler.get_velocity(model_output, noisy_model_input.chunk(2, dim=2)[0], timesteps)
+                model_pred = scheduler.get_velocity(model_output, noisy_video_latents, timesteps)
 
                 alphas_cumprod = scheduler.alphas_cumprod[timesteps]
                 weights = 1 / (1 - alphas_cumprod)
