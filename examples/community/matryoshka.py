@@ -3141,8 +3141,9 @@ class NestedUNet2DConditionOutput(BaseOutput):
     Output type for the [`NestedUNet2DConditionModel`] model.
     """
 
-    sample_and_x_low: list = []
+    sample_out_x_low: list = []
     x: torch.Tensor = None
+
 
 class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
@@ -3364,7 +3365,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
-        is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
         is_adapter = down_intrablock_additional_residuals is not None
         # maintain backward compatibility for legacy usage, where
@@ -3413,25 +3413,52 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             torch.cat([x_inner, x_inner.new_zeros(bl - bh, *x_inner.size()[1:])], 0) if bh < bl else x_inner
         )  # pad zeros for low-resolutions
         x_low, x_inner = self.inner_unet(
-            (x_t_low, x_inner), timestep, aug_emb=cond_emb, encoder_hidden_states=encoder_hidden_states, encoder_attention_mask=cond_mask, from_nested=True
+            (x_t_low, x_inner),
+            timestep,
+            aug_emb=cond_emb,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=cond_mask,
+            from_nested=True,
         )
         x_inner = self.out_adapter(x_inner)
         sample = sample + x_inner[:bh] if bh < bl else sample + x_inner
 
         # 5. upsample blocks in the outer layers
-        sample = self.forward_upsample(
-            sample,
-            emb[:bh],
-            encoder_hidden_states[:bh],
-            cond_mask[:bh] if cond_mask is not None else cond_mask,
-            down_block_res_samples,
-        )
+        for i, upsample_block in enumerate(self.up_blocks):
+            is_final_block = i == len(self.up_blocks) - 1
+
+            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
+            down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+
+            # if we have not reached the final block and need to forward the
+            # upsample size, we do it here
+            if not is_final_block and forward_upsample_size:
+                upsample_size = down_block_res_samples[-1].shape[2:]
+
+            if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb[:bh],
+                    res_hidden_states_tuple=res_samples,
+                    encoder_hidden_states=encoder_hidden_states[:bh],
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    upsample_size=upsample_size,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=cond_mask[:bh] if cond_mask is not None else cond_mask,  # cond_mask?
+                )
+            else:
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                )
 
         # 6. post-process
         if self.conv_norm_out:
-            sample = self.conv_norm_out(x_low)
-            sample = self.conv_act(sample)
-        sample = self.conv_out(sample)
+            sample_out = self.conv_norm_out(sample)
+            sample_out = self.conv_act(sample_out)
+        sample_out = self.conv_out(sample_out)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -3439,14 +3466,14 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
 
         # 7. output both low and high-res output
         if isinstance(x_low, list):
-            out = [sample] + x_low
+            out = [sample_out] + x_low
         else:
-            out = [sample, x_low]
+            out = [sample_out, x_low]
         if self.inner_unet.config.nesting:
-            return NestedUNet2DConditionOutput(sample_and_x_low=out, x=sample)
+            return NestedUNet2DConditionOutput(sample_out_x_low=out, x=sample)
         if not return_dict:
             return (out,)
-        return NestedUNet2DConditionOutput(sample_and_x_low=out)
+        return NestedUNet2DConditionOutput(sample_out_x_low=out)
 
 
 class MatryoshkaPipeline(
