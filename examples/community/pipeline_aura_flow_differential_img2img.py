@@ -155,4 +155,86 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
+    def __init__(
+            self,
+            tokenizer: T5Tokenizer,
+            text_encoder: UMT5EncoderModel,
+            vae: AutoencoderKL,
+            transformer: AuraFlowTransformer2DModel,
+            scheduler: FlowMatchEulerDiscreteScheduler,
+    ):
+        super().__init__()
+
+        self.register_modules(
+            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+        )
+
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_convert_grayscale=True 
+        )
+
+    def check_inputs(
+            self,
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            prompt_attention_mask=None,
+            negative_prompt_attention_mask=None,
+    ):
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        
+        if prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+        
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+        
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+        
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
+                raise ValueError(
+                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
+                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
+                    f" {negative_prompt_attention_mask.shape}."
+                )
+            
+    
+
     
