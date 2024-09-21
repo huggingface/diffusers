@@ -1194,6 +1194,7 @@ def main(args):
         prompts = [example["instance_prompt"] for example in examples]
 
         videos = torch.cat(videos)
+        videos = videos.permute(0, 2, 1, 3, 4)
         videos = videos.to(memory_format=torch.contiguous_format).float()
 
         return {
@@ -1318,7 +1319,7 @@ def main(args):
             models_to_accumulate = [transformer]
 
             with accelerator.accumulate(models_to_accumulate):
-                model_input = batch["videos"].permute(0, 2, 1, 3, 4).to(dtype=weight_dtype)  # [B, F, C, H, W]
+                model_input = batch["videos"].to(dtype=weight_dtype)  # [B, F, C, H, W]
                 prompts = batch["prompts"]
 
                 # encode prompts
