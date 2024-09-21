@@ -2025,7 +2025,10 @@ class MatryoshkaUNet2DConditionModel(
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
         addition_embed_type_num_heads: int = 64,
+        temporal_mode: bool = False,
+        temporal_spatial_ds: bool = False,
         nesting: Optional[int] = False,
+        inner_config: Optional[Dict] = None,
     ):
         super().__init__()
 
@@ -3151,28 +3154,29 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
 
     @register_to_config
-    def __init__(self, input_channels=3, output_channels=3, *args, **kwargs):
-        super().__init__(input_channels=3, output_channels=3, *args, **kwargs)
-        self.register_to_config(inner_config_conditioning_feature_dim=self.config.conditioning_feature_dim)
+    def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        #self.skip_inner_unet_input = skip_inner_unet_input
+        #self.register_to_config(kwargs['inner_config']['cross_attention_dim']=self.config.cross_attention_dim)
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
-        if getattr(self.config.inner_config.inner_config, None) is None:
-            self.inner_unet = MatryoshkaUNet2DConditionModel(input_channels, output_channels, self.config.inner_config)
+        if getattr(self.config.inner_config, "inner_config", None) is None:
+            self.inner_unet = MatryoshkaUNet2DConditionModel(**self.config.inner_config)
         else:
-            self.inner_unet = NestedUNet2DConditionModel(input_channels, output_channels, self.config.inner_config)
+            self.inner_unet = NestedUNet2DConditionModel(**self.config.inner_config)
 
         if not self.config.skip_inner_unet_input:
             self.in_adapter = nn.Conv2d(
-                self.config.resolution_channels[-1],
-                self.config.inner_config.resolution_channels[0],
+                self.config.block_out_channels[-1],
+                self.config.inner_config['block_out_channels'][0],
                 kernel_size=3,
                 padding=1,
             )
         else:
             self.in_adapter = None
         self.out_adapter = nn.Conv2d(
-            self.config.inner_config.resolution_channels[0],
-            self.config.resolution_channels[-1],
+            self.config.inner_config['block_out_channels'][0],
+            self.config.block_out_channels[-1],
             kernel_size=3,
             padding=1,
         )
@@ -3181,8 +3185,8 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         if hasattr(self.inner_unet.config, "is_temporal"):
             self.register_to_config(is_temporal=self.config.is_temporal + self.inner_unet.config.is_temporal)
 
-        nest_ratio = int(2 ** (len(self.config.resolution_channels) - 1))
-        if self.is_temporal[0]:
+        nest_ratio = int(2 ** (len(self.config.block_out_channels) - 1))
+        if self.config.is_temporal[0]:
             nest_ratio = int(np.sqrt(nest_ratio))
         if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
             self.register_to_config(
