@@ -3156,8 +3156,8 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     @register_to_config
     def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        #self.skip_inner_unet_input = skip_inner_unet_input
-        #self.register_to_config(kwargs['inner_config']['cross_attention_dim']=self.config.cross_attention_dim)
+        # self.skip_inner_unet_input = skip_inner_unet_input
+        # self.register_to_config(kwargs['inner_config']['cross_attention_dim']=self.config.cross_attention_dim)
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
         if getattr(self.config.inner_config, "inner_config", None) is None:
@@ -3168,14 +3168,14 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         if not self.config.skip_inner_unet_input:
             self.in_adapter = nn.Conv2d(
                 self.config.block_out_channels[-1],
-                self.config.inner_config['block_out_channels'][0],
+                self.config.inner_config["block_out_channels"][0],
                 kernel_size=3,
                 padding=1,
             )
         else:
             self.in_adapter = None
         self.out_adapter = nn.Conv2d(
-            self.config.inner_config['block_out_channels'][0],
+            self.config.inner_config["block_out_channels"][0],
             self.config.block_out_channels[-1],
             kernel_size=3,
             padding=1,
