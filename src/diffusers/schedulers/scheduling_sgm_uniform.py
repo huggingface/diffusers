@@ -92,13 +92,10 @@ class SGMUniformScheduler(SchedulerMixin, ConfigMixin):
 
     def sgm_uniform(self, n: int) -> torch.Tensor:
         start = self.sigma_to_t(torch.tensor(self.sigma_max))
-        print("Start: ", start)
         end = self.sigma_to_t(torch.tensor(self.sigma_min))
-        print("End: ", end)
         steps = torch.linspace(start, end, n)
         sigs = [self.t_to_sigma(ts) for ts in steps[:-1]]
         sigs += [torch.tensor(0.0)]
-        print("Sigmas: ", sigs)
         return torch.stack(sigs)
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
