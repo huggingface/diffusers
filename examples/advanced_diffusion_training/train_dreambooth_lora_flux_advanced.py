@@ -757,7 +757,7 @@ def parse_args(input_args=None):
         )
     if args.train_transformer_frac < 1 and not args.train_text_encoder_ti:
         raise ValueError(
-            "--train_transformer_frac must be > 0 if text_encoder training / textual inversion is not enabled."
+            "--train_transformer_frac must be == 1 if text_encoder training / textual inversion is not enabled."
         )
     if args.train_transformer_frac < 1 and args.train_text_encoder_ti_frac < 1:
         raise ValueError("--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. "
