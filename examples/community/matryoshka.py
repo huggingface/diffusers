@@ -1824,31 +1824,39 @@ def get_up_block(
 
 
 class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
-    def __init__(self, addition_time_embed_dim, cross_attention_dim, time_embed_dim):
+    def __init__(self, addition_time_embed_dim, cross_attention_dim, time_embed_dim, type):
         super().__init__()
-        self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
+        if type == "unet":
+            self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
+        else:
+            self.cond_emb = None
         self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0)
         self.add_timestep_embedder = TimestepEmbedding(addition_time_embed_dim, time_embed_dim)
 
     def forward(self, emb, encoder_hidden_states, added_cond_kwargs):
         conditioning_mask = added_cond_kwargs.get("conditioning_mask", None)
         masked_cross_attention = added_cond_kwargs.get("masked_cross_attention", False)
-        if conditioning_mask is None or not masked_cross_attention:
-            y = encoder_hidden_states.mean(dim=1)
-        else:
-            y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / conditioning_mask.sum(
-                dim=1, keepdim=True
-            )
+        if self.cond_emb is not None:
+            if conditioning_mask is None or not masked_cross_attention:
+                y = encoder_hidden_states.mean(dim=1)
+            else:
+                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / conditioning_mask.sum(
+                    dim=1, keepdim=True
+                )
+            cond_emb = self.cond_emb(y)
+
         if not masked_cross_attention:
             conditioning_mask = None
-        cond_emb = self.cond_emb(y)
 
         micro = added_cond_kwargs.get("micro_conditioning_scale", None)
         if micro is not None:
             temb = self.add_time_proj(torch.tensor([micro], device=cond_emb.device, dtype=cond_emb.dtype))
             temb_micro_conditioning = self.add_timestep_embedder(temb.to(cond_emb.dtype))
-            cond_emb_micro = cond_emb + temb_micro_conditioning
-            return cond_emb_micro, conditioning_mask, cond_emb
+            if self.cond_emb is not None:
+                cond_emb_micro = cond_emb + temb_micro_conditioning
+                return cond_emb_micro, conditioning_mask, cond_emb
+            else:
+                return temb_micro_conditioning, conditioning_mask, None
 
         return cond_emb, conditioning_mask, cond_emb
 
@@ -2027,6 +2035,7 @@ class MatryoshkaUNet2DConditionModel(
         addition_embed_type_num_heads: int = 64,
         temporal_mode: bool = False,
         temporal_spatial_ds: bool = False,
+        skip_cond_emb: bool = False,
         nesting: Optional[int] = False,
         inner_config: Optional[Dict] = None,
     ):
@@ -2077,7 +2086,7 @@ class MatryoshkaUNet2DConditionModel(
         )
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
+            time_embedding_dim // 4 if time_embedding_dim is not None else timestep_input_dim,
             time_embed_dim,
             act_fn=act_fn,
             post_act_fn=timestep_post_act,
@@ -2477,7 +2486,8 @@ class MatryoshkaUNet2DConditionModel(
             )
         elif addition_embed_type == "matryoshka":
             self.add_embedding = MatryoshkaCombinedTimestepTextEmbedding(
-                addition_time_embed_dim, cross_attention_dim, time_embed_dim
+                self.config.time_embedding_dim // 4 if self.config.time_embedding_dim is not None else addition_time_embed_dim,
+                cross_attention_dim, time_embed_dim, self.model_type
             )
         elif addition_embed_type == "text_image":
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
@@ -2856,6 +2866,10 @@ class MatryoshkaUNet2DConditionModel(
             image_embeds = self.encoder_hid_proj(image_embeds)
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
         return encoder_hidden_states
+
+    @property
+    def model_type(self) -> str:
+        return "unet"
 
     def forward(
         self,
@@ -3329,13 +3343,23 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
         added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
 
-        encoder_hidden_states = self.process_encoder_hidden_states(
-            encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
+        if isinstance(self.inner_unet, MatryoshkaUNet2DConditionModel):
+            encoder_hidden_states = self.inner_unet.process_encoder_hidden_states(
+                encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
 
-        aug_emb, cond_mask, cond_emb = self.get_aug_embed(
-            emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
+            aug_emb, cond_mask, cond_emb = self.get_aug_embed(
+                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+        elif isinstance(self.inner_unet, NestedUNet2DConditionModel):
+            encoder_hidden_states = self.inner_unet.inner_unet.process_encoder_hidden_states(
+                encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+
+            aug_emb, cond_mask, cond_emb = self.inner_unet.inner_unet.get_aug_embed(
+                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
             sample = torch.cat([sample, hint], dim=1)
@@ -3346,16 +3370,16 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             emb = self.time_embed_act(emb)
 
         # 2. input layer (normalize the input)
-        # if self._config.nesting:
-        #     sample, x_feat = sample
+        if self.config.nesting:
+            sample, x_feat = sample
         bsz = [x.size(0) for x in sample]
         bh, bl = bsz[0], bsz[1]
         x_t_low, sample = sample[1:], sample[0]
         if not self.config.skip_normalization:
             sample = sample / sample.std((1, 2, 3), keepdims=True)
         sample = self.conv_in(sample)
-        # if self._config.nesting:
-        #     sample = sample + x_feat
+        if self.config.nesting:
+            sample = sample + x_feat
 
         # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
         # to the internal blocks and will raise deprecation warnings. this will be confusing for our users.
