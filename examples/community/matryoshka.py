@@ -2486,8 +2486,12 @@ class MatryoshkaUNet2DConditionModel(
             )
         elif addition_embed_type == "matryoshka":
             self.add_embedding = MatryoshkaCombinedTimestepTextEmbedding(
-                self.config.time_embedding_dim // 4 if self.config.time_embedding_dim is not None else addition_time_embed_dim,
-                cross_attention_dim, time_embed_dim, self.model_type
+                self.config.time_embedding_dim // 4
+                if self.config.time_embedding_dim is not None
+                else addition_time_embed_dim,
+                cross_attention_dim,
+                time_embed_dim,
+                self.model_type,
             )
         elif addition_embed_type == "text_image":
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
