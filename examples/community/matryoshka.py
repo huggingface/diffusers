@@ -7,9 +7,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.utils.checkpoint
 from packaging import version
+from torch import nn
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5TokenizerFast
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -3174,8 +3174,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     @register_to_config
     def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.skip_inner_unet_input = skip_inner_unet_input
-        # self.register_to_config(kwargs['inner_config']['cross_attention_dim']=self.config.cross_attention_dim)
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
         if getattr(self.config.inner_config, "inner_config", None) is None:
@@ -3219,6 +3217,8 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             except Exception as e:
                 print("<-- load pretrained checkpoint error -->")
                 print(f"{e}")
+
+        # self.register_modules(inner_unet=self.inner_unet)
 
         # if self.config.interp_conditioning:  # Seems False for all cases
         #     self.interp_layer1 = nn.Linear(self.temporal_dim // 4, self.temporal_dim)
