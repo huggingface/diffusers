@@ -235,6 +235,109 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
                     f" {negative_prompt_attention_mask.shape}."
                 )
             
-    
+    def encode_prompt(
+            self,
+            prompt: Union[str, List[str]],
+            negative_prompt: Union[str, List[str]] = None,
+            do_classifier_free_guidance: bool = True,
+            num_images_per_prompt: int = 1,
+            device: Optional[torch.device] = None,
+            prompt_embeds: Optional[torch.Tensor] = None,
+            negative_prompt_embeds: Optional[torch.Tensor] = None,
+            prompt_attention_mask: Optional[torch.Tensor] = None,
+            negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+            max_sequence_length: int = 256,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds`
+                instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                whether to use classifier free guidance or not
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                number of images that should be generated per prompt
+            device (`torch.device`, *optional*):
+                torch device to place the resulting embeddings on
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
+            max_sequence_length (`int`, defaults to 256): Maximum sequence length to use for the prompt.
+        """
+        if device is None:
+            device = self._execution_device
+        
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        max_length = max_sequence_length 
+        if prompt_embeds is None:
+            text_inputs = self.tokenizer(
+                prompt,
+                truncation=True,
+                max_length=max_length,
+                padding="max_length",
+                return_tensors="pt",
+            )
+            text_inputs = {k: v.to(device) for k, v in text_inputs.items()}
+            text_input_ids = text_inputs["input_ids"]
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
+                logger.warning(
+                    "The following part of your input was truncated because T5 can only handle sequences up to"
+                    f" {max_length} tokens: {removed_text}"
+                )
+
+            prompt_embeds = self.text_encoder(**text_inputs)[0]
+            prompt_attention_mask = text_inputs["attention_mask"].unsqueeze(-1).expand(prompt_embeds.shape)
+            prompt_embeds = prompt_embeds * prompt_attention_mask 
+
+        if self.text_encoder is not None:
+            dtype = self.text_encoder.dtype 
+        elif self.transformer is not None:
+            dtype = self.transformer.dtype 
+        else:
+            dtype = None 
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        bs_embed, seq_len, _ = prompt_embeds.shape 
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_attention_mask = prompt_attention_mask.reshape(bs_embed, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+
+        # get unconditional embeddings for classifier free guidance 
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
+            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt 
+            max_length = prompt_embeds.shape[1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                truncation=True,
+                max_length=max_length,
+                padding="max_length",
+                return_tensors="pt",
+            )
+            
 
     
