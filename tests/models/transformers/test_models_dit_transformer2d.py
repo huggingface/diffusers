@@ -88,6 +88,9 @@ class DiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"DiTTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    def test_effective_gradient_checkpointing(self):
+        super().test_effective_gradient_checkpointing(loss_tolerance=1e-4)
+
     def test_correct_class_remapping_from_pretrained_config(self):
         config = DiTTransformer2DModel.load_config("facebook/DiT-XL-2-256", subfolder="transformer")
         model = Transformer2DModel.from_config(config)

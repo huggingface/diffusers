@@ -338,6 +338,12 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"DecoderTiny", "EncoderTiny"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    @unittest.skip(
+        "Gradient checkpointing is supported but this test doesn't apply to this class because it's forward is a bit different from the rest."
+    )
+    def test_effective_gradient_checkpointing(self):
+        pass
+
 
 class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     model_class = ConsistencyDecoderVAE

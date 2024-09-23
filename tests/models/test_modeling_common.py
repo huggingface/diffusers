@@ -735,7 +735,7 @@ class ModelTesterMixin:
         self.assertFalse(model.is_gradient_checkpointing)
 
     @require_torch_accelerator_with_training
-    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5):
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
         if torch_device == "mps" and self.model_class.__name__ in [
@@ -780,10 +780,11 @@ class ModelTesterMixin:
         self.assertTrue((loss - loss_2).abs() < loss_tolerance)
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
+
         for name, param in named_params.items():
             if "post_quant_conv" in name:
                 continue
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
 
     def test_gradient_checkpointing_is_applied(
         self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
