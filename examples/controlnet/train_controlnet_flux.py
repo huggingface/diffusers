@@ -399,7 +399,13 @@ def parse_args(input_args=None):
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
-        "--use_adafactor", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_adafactor",
+        action="store_true",
+        help=(
+            "Adafactor is a stochastic optimization method based on Adam that reduces memory usage while retaining"
+             "the empirical benefits of adaptivity. This is achieved through maintaining a factored representation "
+             "of the squared gradient accumulator across training steps."
+        ),
     )
     parser.add_argument(
         "--dataloader_num_workers",
