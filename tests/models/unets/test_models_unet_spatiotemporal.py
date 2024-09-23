@@ -205,7 +205,10 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
             "CrossAttnUpBlockSpatioTemporal",
             "UNetMidBlockSpatioTemporal",
         }
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        num_attention_heads = (8, 16)
+        super().test_gradient_checkpointing_is_applied(
+            expected_set=expected_set, num_attention_heads=num_attention_heads
+        )
 
     def test_pickle(self):
         # enable deterministic behavior for gradient checkpointing

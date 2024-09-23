@@ -735,7 +735,7 @@ class ModelTesterMixin:
         self.assertFalse(model.is_gradient_checkpointing)
 
     @require_torch_accelerator_with_training
-    def test_effective_gradient_checkpointing(self):
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
         if torch_device == "mps" and self.model_class.__name__ in [
@@ -777,7 +777,7 @@ class ModelTesterMixin:
         loss_2.backward()
 
         # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
+        self.assertTrue((loss - loss_2).abs() < loss_tolerance)
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
         for name, param in named_params.items():
@@ -785,15 +785,25 @@ class ModelTesterMixin:
                 continue
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
-    def test_gradient_checkpointing_is_applied(self, expected_set=None):
+    def test_gradient_checkpointing_is_applied(
+        self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
+    ):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
-        if torch_device == "mps" and self.model_class.__name__ == "UNetSpatioTemporalConditionModel":
+        if torch_device == "mps" and self.model_class.__name__ in [
+            "UNetSpatioTemporalConditionModel",
+            "AutoencoderKLTemporalDecoder",
+        ]:
             return
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["num_attention_heads"] = (8, 16)
+        if attention_head_dim is not None:
+            init_dict["attention_head_dim"] = attention_head_dim
+        if num_attention_heads is not None:
+            init_dict["num_attention_heads"] = num_attention_heads
+        if block_out_channels is not None:
+            init_dict["block_out_channels"] = block_out_channels
 
         model_class_copy = copy.copy(self.model_class)
 

@@ -565,7 +565,11 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "Transformer2DModel",
             "DownBlock2D",
         }
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        attention_head_dim = (8, 16)
+        block_out_channels = (16, 32)
+        super().test_gradient_checkpointing_is_applied(
+            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
+        )
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):

@@ -177,6 +177,10 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_training(self):
         pass
 
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Decoder", "Encoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -330,6 +334,10 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
     def test_outputs_equivalence(self):
         pass
 
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"DecoderTiny", "EncoderTiny"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
 
 class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     model_class = ConsistencyDecoderVAE
@@ -413,6 +421,10 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
     @unittest.skip("Not tested.")
     def test_training(self):
         pass
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Encoder", "TemporalDecoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
