@@ -13,6 +13,7 @@
 # limitations under the License.
 import os
 from collections import defaultdict
+import collections
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Callable, Dict, Union
@@ -56,6 +57,56 @@ logger = logging.get_logger(__name__)
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
 
+def pad_lora_weights(state_dict, target_rank):
+    """
+    Pad LoRA weights in a state dict to a target rank while preserving the original behavior.
+    
+    Args:
+    state_dict (dict): The state dict containing LoRA weights
+    target_rank (int): The target rank to pad to
+    
+    Returns:
+    new_state_dict: A new state dict with padded LoRA weights
+    """
+    new_state_dict = {}
+
+    for key, weight in state_dict.items():
+        if "lora_A" in key or "lora_B" in key:
+            is_conv = weight.dim() == 4
+            
+            if "lora_A" in key:
+                original_rank = weight.size(0)
+                if original_rank >= target_rank:
+                    new_state_dict[key] = weight
+                    continue
+                
+                if is_conv:
+                    padded = torch.zeros(target_rank, weight.size(1), weight.size(2), weight.size(3),
+                                         device=weight.device, dtype=weight.dtype)
+                    padded[:original_rank, :, :, :] = weight
+                else:
+                    padded = torch.zeros(target_rank, weight.size(1), device=weight.device, dtype=weight.dtype)
+                    padded[:original_rank, :] = weight
+            
+            elif "lora_B" in key:
+                original_rank = weight.size(1)
+                if original_rank >= target_rank:
+                    new_state_dict[key] = weight
+                    continue
+                
+                if is_conv:
+                    padded = torch.zeros(weight.size(0), target_rank, weight.size(2), weight.size(3),
+                                         device=weight.device, dtype=weight.dtype)
+                    padded[:, :original_rank, :, :] = weight
+                else:
+                    padded = torch.zeros(weight.size(0), target_rank, device=weight.device, dtype=weight.dtype)
+                    padded[:, :original_rank] = weight
+            
+            new_state_dict[key] = padded
+        else:
+            new_state_dict[key] = weight
+
+    return new_state_dict
 
 class UNet2DConditionLoadersMixin:
     """
@@ -307,19 +358,32 @@ class UNet2DConditionLoadersMixin:
                 )
             elif adapter_name not in getattr(self, "peft_config", {}) and hotswap:
                 raise ValueError(f"Trying to hotswap LoRA adapter '{adapter_name}' but there is no existing adapter by that name.")
+            
+            def get_rank(state_dict):
+                rank = {}
+                for key, val in state_dict.items():
+                    if "lora_B" in key:
+                        rank[key] = val.shape[1]
+                return rank 
 
+            def get_r(rank_dict):
+                r = list(rank_dict.values())[0]
+                if len(set(rank_dict.values())) > 1:
+                    # get the rank occuring the most number of times
+                    r = collections.Counter(rank_dict.values()).most_common()[0][0]
+                return r
+            
             state_dict = convert_unet_state_dict_to_peft(state_dict_to_be_used)
+            r = get_r(get_rank(state_dict))
+
+            state_dict = pad_lora_weights(state_dict, 128)
 
             if network_alphas is not None:
                 # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
                 # `convert_unet_state_dict_to_peft` method.
                 network_alphas = convert_unet_state_dict_to_peft(network_alphas)
 
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
+            rank = get_rank(state_dict)
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
@@ -348,7 +412,7 @@ class UNet2DConditionLoadersMixin:
                 # values as well, but that's not implemented yet, and it would trigger a re-compilation if the model is compiled.
 
                 # TODO: This is a very rough check at the moment and there are probably better ways than to error out
-                config_keys_to_check = ["lora_alpha", "use_rslora", "lora_dropout", "alpha_pattern", "use_dora"]
+                config_keys_to_check = ["use_rslora", "lora_dropout", "alpha_pattern", "use_dora"]
                 config0 = config0.to_dict()
                 config1 = config1.to_dict()
                 for key in config_keys_to_check:
@@ -356,6 +420,15 @@ class UNet2DConditionLoadersMixin:
                     val1 = config1[key]
                     if val0 != val1:
                         raise ValueError(f"Configs are incompatible: for {key}, {val0} != {val1}")
+
+            def _update_scaling(model, adapter_name, scaling_factor=None):
+                target_modules = model.peft_config[adapter_name].target_modules
+                for name, lora_module in model.named_modules():
+                    if name in target_modules and hasattr(lora_module, "scaling"):
+                        if not isinstance(lora_module.scaling[adapter_name], torch.Tensor):
+                            lora_module.scaling[adapter_name] = torch.tensor(scaling_factor, device=lora_module.weight.device)
+                        else:  
+                            lora_module.scaling[adapter_name].fill_(scaling_factor)
 
             def _hotswap_adapter_from_state_dict(model, state_dict, adapter_name):
                 """
@@ -430,18 +503,29 @@ class UNet2DConditionLoadersMixin:
                 for key, new_val in state_dict.items():
                     # no need to account for potential _orig_mod in key here, as torch handles that
                     old_val = attrgetter(key)(model)
-                    old_val.data = new_val.data.to(device=old_val.device)
+                    # print(f" dtype: {old_val.data.dtype}/{new_val.data.dtype}, layout: {old_val.data.layout}/{new_val.data.layout}")
+                    old_val.data.copy_(new_val.data.to(device=old_val.device))
                     # TODO: wanted to use swap_tensors but this somehow does not work on nn.Parameter
                     # torch.utils.swap_tensors(old_val.data, new_val.data)
 
             if hotswap:
                 _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                self.peft_config[adapter_name] = lora_config
+                # update r & scaling
+                self.peft_config[adapter_name].r = r
+                new_scaling_factor = self.peft_config[adapter_name].lora_alpha/self.peft_config[adapter_name].r
+                _update_scaling(self, adapter_name, new_scaling_factor)
+
                 _hotswap_adapter_from_state_dict(self, state_dict, adapter_name)
                 # the hotswap function raises if there are incompatible keys, so if we reach this point we can set it to None
                 incompatible_keys = None
             else:
                 inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
                 incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+                # update r & scaling
+                self.peft_config[adapter_name].r = r
+                new_scaling_factor = self.peft_config[adapter_name].lora_alpha/r
+                _update_scaling(self, adapter_name, new_scaling_factor)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
