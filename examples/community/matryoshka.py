@@ -2377,7 +2377,10 @@ class MatryoshkaUNet2DConditionModel(
         elif time_embedding_type == "positional":
             time_embed_dim = time_embedding_dim or block_out_channels[0] * 4
 
-            self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+            if self.model_type == "unet":
+                self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+            elif self.model_type == "nested_unet":
+                self.time_proj = Timesteps(block_out_channels[0] * 4, flip_sin_to_cos, freq_shift)
             timestep_input_dim = block_out_channels[0]
         else:
             raise ValueError(
