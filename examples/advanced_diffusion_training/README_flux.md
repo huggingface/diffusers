@@ -213,6 +213,42 @@ image.save("llama.png")
 ```
 
 ### Inference - pure textual inversion
+In this case, we don't load transformer layers as before, since we only optimize the embeddings
+
+1. starting with loading the embeddings.
+💡note that here too, if you didn't enable `--enable_t5_ti`, you only load the embeddings to the CLIP encoder
+
+```python
+import torch
+from huggingface_hub import hf_hub_download, upload_file
+from diffusers import AutoPipelineForText2Image
+from safetensors.torch import load_file
+
+username = "linoyts"
+repo_id = f"{username}/3d-icon-Flux-LoRA"
+
+pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
+
+text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
+tokenizers = [pipe.tokenizer, pipe.tokenizer_2]
+
+embedding_path = hf_hub_download(repo_id=repo_id, filename="3d-icon-Flux-LoRA_emb.safetensors", repo_type="model")
+
+state_dict = load_file(embedding_path)
+# load embeddings of text_encoder 1 (CLIP ViT-L/14)
+pipe.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+# load embeddings of text_encoder 2 (T5 XXL) - ignore this line if you didn't enable `--enable_t5_ti`
+pipe.load_textual_inversion(state_dict["t5"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+```
+2. let's generate images
+
+```python
+instance_token = "<s0><s1>"
+prompt = f"a {instance_token} icon of an orange llama eating ramen, in the style of {instance_token}"
+
+image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"scale": 1.0}).images[0]
+image.save("llama.png")
+```
 
 ### Comfy UI / AUTOMATIC1111 Inference
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
