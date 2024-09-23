@@ -1299,6 +1299,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                         f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
                     )
 
+            if len(variant_filenames) == 0 and variant is not None:
+                error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                raise ValueError(error_message)
+
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
             variant_filenames = set(variant_filenames) - set(ignore_filenames)
