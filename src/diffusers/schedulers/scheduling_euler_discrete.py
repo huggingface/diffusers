@@ -338,6 +338,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Cannot set `timesteps` with `config.use_karras_sigmas = True`.")
         if timesteps is not None and self.config.use_exponential_sigmas:
             raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
+        if self.config.use_exponential_sigmas and self.config.use_karras_sigmas:
+           raise ValueErrror("Cannot set both `config.use_exponential_sigmas = True` and config.use_karras_sigmas = True`") 
         if (
             timesteps is not None
             and self.config.timestep_type == "continuous"
@@ -402,7 +404,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
                 timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-            if self.config.use_exponential_sigmas:
+            elif self.config.use_exponential_sigmas:
                 sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
                 timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
