@@ -137,7 +137,7 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --caption_column="prompt" \
   --mixed_precision="bf16" \
   --resolution=1024 \
-  --train_batch_size=3 \
+  --train_batch_size=1 \
   --repeats=1 \
   --report_to="wandb"\
   --gradient_accumulation_steps=1 \
@@ -147,7 +147,6 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --optimizer="prodigy"\
   --train_text_encoder_ti\
   --train_text_encoder_ti_frac=0.5\
-  --snr_gamma=5.0 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --rank=8 \
@@ -165,8 +164,44 @@ To better track our training experiments, we're using the following flags in the
 Our experiments were conducted on a single 40GB A100 GPU.
 
 ### Example #2: Pivotal tuning with T5
+Now let's try that with T5 as well, so instead of only optimizing the CLIP embeddings associated with newly inserted tokens, we'll optimize
+the T5 embeddings as well. We can do this by simply adding `--enable_t5_ti` to the previous configuration:
+```bash
+export MODEL_NAME="black-forest-labs/FLUX.1-dev"
+export DATASET_NAME="./3d_icon"
+export OUTPUT_DIR="3d-icon-Flux-LoRA"
+
+accelerate launch train_dreambooth_lora_flux_advanced.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$DATASET_NAME \
+  --instance_prompt="3d icon in the style of TOK" \
+  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
+  --output_dir=$OUTPUT_DIR \
+  --caption_column="prompt" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --repeats=1 \
+  --report_to="wandb"\
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --learning_rate=1.0 \
+  --text_encoder_lr=1.0 \
+  --optimizer="prodigy"\
+  --train_text_encoder_ti\
+  --enable_t5_ti\
+  --train_text_encoder_ti_frac=0.5\
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --rank=8 \
+  --max_train_steps=1000 \
+  --checkpointing_steps=2000 \
+  --seed="0" \
+  --push_to_hub
+```
 
 ### Example #3: Textual Inversion
+
 
 ### Inference - pivotal tuning
 
@@ -250,7 +285,7 @@ image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"sca
 image.save("llama.png")
 ```
 
-### Comfy UI / AUTOMATIC1111 Inference
+### Comfy UI / AUTOMATIC1111 Inference - **NEEDS TO BE UPDATED**
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
 
 **AUTOMATIC1111 / SD.Next** \
