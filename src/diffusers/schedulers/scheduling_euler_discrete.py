@@ -339,7 +339,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if timesteps is not None and self.config.use_exponential_sigmas:
             raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
         if self.config.use_exponential_sigmas and self.config.use_karras_sigmas:
-           raise ValueErrror("Cannot set both `config.use_exponential_sigmas = True` and config.use_karras_sigmas = True`") 
+            raise ValueError(
+                "Cannot set both `config.use_exponential_sigmas = True` and config.use_karras_sigmas = True`"
+            )
         if (
             timesteps is not None
             and self.config.timestep_type == "continuous"
