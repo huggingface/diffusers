@@ -54,6 +54,7 @@ from diffusers import (
 from diffusers.models.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
+from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
 from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -95,8 +96,7 @@ def log_validation(
             torch_dtype=torch.bfloat16,
         )
 
-    # pipeline.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-    pipeline = pipeline.to(accelerator.device)
+    pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     if args.enable_xformers_memory_efficient_attention:
@@ -623,6 +623,11 @@ def parse_args(input_args=None):
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
+    parser.add_argument(
+        "--enable_model_cpu_offload",
+        action="store_true",
+        help="Enable model cpu offload and save memory.",
+    )
 
 
     if input_args is not None:
@@ -912,7 +917,11 @@ def main(args):
         tokenizer_2=tokenizer_two,
         transformer=flux_transformer,
         controlnet=flux_controlnet,
-    ).to(accelerator.device)
+    )
+    if args.enable_model_cpu_offload:
+        flux_controlnet_pipeline.enable_model_cpu_offload()
+    else:
+        flux_controlnet_pipeline.to(accelerator.device)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1064,7 +1073,6 @@ def main(args):
 
         # text_ids [512,3] to [bs,512,3]
         text_ids = text_ids.unsqueeze(0).expand(prompt_embeds.shape[0], -1, -1)
-        # unet_added_cond_kwargs = {"pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
         return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
 
     train_dataset = get_train_dataset(args, accelerator)
@@ -1083,9 +1091,8 @@ def main(args):
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
         train_dataset = train_dataset.map(
-            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=100
+            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=50
         )
-
 
     clear_objs_and_retain_memory([text_encoders, tokenizers])
 
