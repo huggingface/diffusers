@@ -45,7 +45,7 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | N/A                 | [`DEISMultistepScheduler`]          |                                                                                                               |
 | N/A                 | [`UniPCMultistepScheduler`]         |                                                                                                               |
 
-## Noise Schedules/Schedule Type
+## Noise schedules and schedule types
 | A1111/k-diffusion   | 🤗 Diffusers                           |
 |---------------------|----------------------------------------|
 | Karras              | init with `use_karras_sigmas=True`     |
