@@ -109,7 +109,7 @@ Now, you can pass the callback function to the `callback_on_step_end` parameter 
 import torch
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -139,7 +139,7 @@ In this example, the diffusion process is stopped after 10 steps even though `nu
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 pipeline.enable_model_cpu_offload()
 num_inference_steps = 50
 
