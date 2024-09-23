@@ -77,13 +77,13 @@ We then optimize the newly-inserted token embeddings to represent the new concep
 To do so, just specify `--train_text_encoder_ti` while launching training (for regular text encoder optimizations, use `--train_text_encoder`).
 Please keep the following points in mind:
 
-* Flux uses two text encoders - [CLIP]() & [T5]() , by default `--train_text_encoder_ti` performs pivotal tuning for the **CLIP** encoder only.
+* Flux uses two text encoders - [CLIP](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux#diffusers.FluxPipeline.text_encoder) & [T5](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux#diffusers.FluxPipeline.text_encoder_2) , by default `--train_text_encoder_ti` performs pivotal tuning for the **CLIP** encoder only.
 To activate pivotal tuning for both encoders, add the flag `--enable_t5_ti`. 
 * When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
 * pure textual inversion
 * token initializer
 
-### 3D icon example
+## Training examples
 
 Now let's get our dataset. For this example we will use some cool images of 3d rendered icons: https://huggingface.co/datasets/linoyts/3d_icon.
 
@@ -120,6 +120,7 @@ Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-caption
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
 - **pivotal tuning**
 
+### Example #1: Pivotal tuning
 **Now, we can launch training:**
 
 ```bash
@@ -163,8 +164,11 @@ To better track our training experiments, we're using the following flags in the
 
 Our experiments were conducted on a single 40GB A100 GPU.
 
+### Example #2: Pivotal tuning with T5
 
-### Inference
+### Example #3: Textual Inversion
+
+### Inference - pivotal tuning
 
 Once training is done, we can perform inference like so:
 1. starting with loading the transformer lora weights
@@ -182,7 +186,8 @@ pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev",
 
 pipe.load_lora_weights(repo_id, weight_name="pytorch_lora_weights.safetensors")
 ```
-2. now we load the pivotal tuning embeddings
+2. now we load the pivotal tuning embeddings 
+💡note that if you didn't enable `--enable_t5_ti`, you only load the embeddings to the CLIP encoder
 
 ```python
 text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
@@ -193,7 +198,7 @@ embedding_path = hf_hub_download(repo_id=repo_id, filename="3d-icon-Flux-LoRA_em
 state_dict = load_file(embedding_path)
 # load embeddings of text_encoder 1 (CLIP ViT-L/14)
 pipe.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
-# load embeddings of text_encoder 2 (T5 XXL)
+# load embeddings of text_encoder 2 (T5 XXL) - ignore this line if you didn't enable `--enable_t5_ti`
 pipe.load_textual_inversion(state_dict["t5"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
 ```
 
@@ -207,7 +212,7 @@ image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"sca
 image.save("llama.png")
 ```
 
-
+### Inference - pure textual inversion
 
 ### Comfy UI / AUTOMATIC1111 Inference
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
@@ -223,4 +228,3 @@ You can then run inference by prompting `a y2k_emb webpage about the movie Mean 
 In ComfyUI we will load a LoRA and a textual embedding at the same time.
 - *LoRA*: Besides the diffusers format, the script will also train a ComfyUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory. Then you will load the LoRALoader node and hook that up with your model and CLIP. [Official guide for loading LoRAs](https://comfyanonymous.github.io/ComfyUI_examples/lora/)
 - *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `models/embeddings` directory and use it in your prompts like `embedding:y2k_emb`. [Official guide for loading embeddings](https://comfyanonymous.github.io/ComfyUI_examples/textual_inversion_embeddings/).
--
