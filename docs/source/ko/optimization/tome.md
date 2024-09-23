@@ -25,7 +25,7 @@ from diffusers import StableDiffusionPipeline
 import tomesd
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-      "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+      "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 + tomesd.apply_patch(pipeline, ratio=0.5)
 

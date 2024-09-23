@@ -250,10 +250,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_inference_ddim(self):
         ddim_scheduler = DDIMScheduler.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
+            "Jiali/stable-diffusion-1.5", subfolder="scheduler", revision="onnx"
         )
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "Jiali/stable-diffusion-1.5",
             revision="onnx",
             scheduler=ddim_scheduler,
             safety_checker=None,
@@ -276,10 +276,10 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_inference_k_lms(self):
         lms_scheduler = LMSDiscreteScheduler.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
+            "Jiali/stable-diffusion-1.5", subfolder="scheduler", revision="onnx"
         )
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "Jiali/stable-diffusion-1.5",
             revision="onnx",
             scheduler=lms_scheduler,
             safety_checker=None,
@@ -327,7 +327,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "Jiali/stable-diffusion-1.5",
             revision="onnx",
             safety_checker=None,
             feature_extractor=None,
@@ -352,7 +352,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "Jiali/stable-diffusion-1.5",
             revision="onnx",
             safety_checker=None,
             feature_extractor=None,
