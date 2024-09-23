@@ -68,6 +68,7 @@ from ..pipeline_params import (
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
+    OfficialCallbacksTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -116,6 +117,7 @@ class StableDiffusionPipelineFastTests(
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
     unittest.TestCase,
+    OfficialCallbacksTesterMixin,
 ):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS

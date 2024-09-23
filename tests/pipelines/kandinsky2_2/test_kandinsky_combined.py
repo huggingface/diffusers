@@ -404,3 +404,6 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
     def test_callback_cfg(self):
         pass
+
+    def test_official_callback(self):
+        pass

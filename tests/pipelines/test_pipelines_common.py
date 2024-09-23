@@ -28,6 +28,11 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
+from diffusers.callbacks import (
+    PipelineCallback,
+    SDCFGCutoffCallback,
+    SDXLCFGCutoffCallback,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
@@ -868,6 +873,50 @@ class PipelineKarrasSchedulerTesterMixin:
                 inputs["num_inference_steps"] = 2
 
         assert check_same_shape(outputs)
+
+
+class OfficialCallbacksTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for pipelines that support official callbacks.
+    """
+
+    @property
+    def original_pipeline_class(self):
+        if "xl" in self.pipeline_class.__name__.lower():
+            original_pipeline_class = StableDiffusionXLPipeline
+        else:
+            original_pipeline_class = StableDiffusionPipeline
+
+        return original_pipeline_class
+
+    def test_official_callback_cfg_cutoff(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        if self.original_pipeline_class == StableDiffusionPipeline:
+            official_callback = SDCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+        elif self.original_pipeline_class == StableDiffusionXLPipeline:
+            official_callback = SDXLCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # If the pipeline is image to image, set the strength and steps so we have 2 steps
+        if "strength" in inputs:
+            inputs["strength"] = 0.5
+            inputs["num_inference_steps"] = 4
+
+        inputs["callback_on_step_end"] = official_callback
+        _ = pipe(**inputs)[0]
+
+        assert pipe.guidance_scale == 0.0
 
 
 @require_torch
@@ -1823,6 +1872,92 @@ class PipelineTesterMixin:
         # check that the guidance scale is increased by the number of scheduler timesteps
         # accounts for models that modify the number of inference steps based on strength
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
+
+    def test_official_callback(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
+        has_mask_image = "has_mask_image" in sig.parameters
+        has_strength = "strength" in sig.parameters
+
+        if not (has_callback_step_end):
+            return
+
+        # create a dummy callback
+        class DummyCallback(PipelineCallback):
+            tensor_inputs = ["latents"]
+
+            def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs):
+                # iterate over callback args
+                for tensor_name, tensor_value in callback_kwargs.items():
+                    # check tensor inputs match callback args
+                    assert tensor_name in self.tensor_inputs
+                return callback_kwargs
+
+        test_callback = DummyCallback(cutoff_step_ratio=0.0)
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["callback_on_step_end"] = test_callback
+        inputs["output_type"] = "np"
+        inputs["num_inference_steps"] = 2  # because test_stable_diffusion_panorama sets it to 1
+
+        # create a change tensor callback
+        class ChangeTensorCallback(PipelineCallback):
+            tensor_inputs = ["latents"]
+
+            def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs):
+                cutoff_step_ratio = self.config.cutoff_step_ratio
+                cutoff_step_index = self.config.cutoff_step_index
+
+                # Use cutoff_step_index if it's not None, otherwise use cutoff_step_ratio
+                cutoff_step = (
+                    cutoff_step_index
+                    if cutoff_step_index is not None
+                    else int(pipeline.num_timesteps * cutoff_step_ratio)
+                )
+
+                # has to be >= because in stable_diffusion_img2img and stable_diffusion_inpaint there's one more timestep
+                if step_index >= cutoff_step:
+                    callback_kwargs[self.tensor_inputs[0]] = torch.zeros_like(callback_kwargs[self.tensor_inputs[0]])
+                return callback_kwargs
+
+        # check both args none
+        with self.assertRaises(ValueError):
+            _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=None, cutoff_step_index=None)
+
+        # check both args with values
+        with self.assertRaises(ValueError):
+            _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=0.5, cutoff_step_index=1)
+
+        # If the pipeline is image to image, set the strength and steps so we have 2 steps
+        if has_strength and not has_mask_image:
+            inputs["strength"] = 0.5
+            inputs["num_inference_steps"] = 4
+
+        # check with cutoff_step_ratio
+        callback_change_tensor_ratio = ChangeTensorCallback(cutoff_step_ratio=0.5)
+        inputs["callback_on_step_end"] = callback_change_tensor_ratio
+        inputs["output_type"] = "np"
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.95865655, 0.6730725, 0.6728563, 0.14412561, 0.589261, 0.824002, 0.48162833, 0.5256305, 0.5691491]
+        )
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-7)
+
+        # check with cutoff_step_index
+        callback_change_tensor_step = ChangeTensorCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+        inputs["callback_on_step_end"] = callback_change_tensor_step
+        inputs["output_type"] = "np"
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-7)
 
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""

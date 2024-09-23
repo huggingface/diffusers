@@ -23,6 +23,7 @@ from packaging import version
 from PIL import Image
 
 from ... import __version__
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import deprecate, logging
@@ -404,6 +405,9 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         self._guidance_scale = guidance_scale
 

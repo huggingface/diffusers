@@ -55,6 +55,7 @@ from ..pipeline_params import (
 )
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
+    OfficialCallbacksTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
@@ -65,7 +66,11 @@ enable_full_determinism()
 
 
 class StableDiffusionXLImg2ImgPipelineFastTests(
-    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
+    OfficialCallbacksTesterMixin,
 ):
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}

@@ -20,6 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
+from diffusers.callbacks import PipelineCallback
 from diffusers.pipelines.wuerstchen import WuerstchenPrior
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
@@ -223,6 +224,72 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         inputs["output_type"] = "latent"
 
+        output = pipe(**inputs)[0]
+        assert output.abs().sum() == 0
+
+    # override because we need to make sure latent_mean and latent_std to be 0
+    def test_official_callback(self):
+        # create a dummy callback
+        class DummyCallback(PipelineCallback):
+            tensor_inputs = ["latents"]
+
+            def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs):
+                # iterate over callback args
+                for tensor_name, tensor_value in callback_kwargs.items():
+                    # check tensor inputs match callback args
+                    assert tensor_name in self.tensor_inputs
+                return callback_kwargs
+
+        test_callback = DummyCallback(cutoff_step_ratio=0.0)
+
+        components = self.get_dummy_components()
+        components["latent_mean"] = 0
+        components["latent_std"] = 0
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["callback_on_step_end"] = test_callback
+        inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
+
+        # create a change tensor callback
+        class ChangeTensorCallback(PipelineCallback):
+            tensor_inputs = ["latents"]
+
+            def callback_fn(self, pipeline, step_index, timesteps, callback_kwargs):
+                cutoff_step_ratio = self.config.cutoff_step_ratio
+                cutoff_step_index = self.config.cutoff_step_index
+
+                # Use cutoff_step_index if it's not None, otherwise use cutoff_step_ratio
+                cutoff_step = (
+                    cutoff_step_index
+                    if cutoff_step_index is not None
+                    else int(pipeline.num_timesteps * cutoff_step_ratio)
+                )
+
+                if step_index == cutoff_step:
+                    callback_kwargs[self.tensor_inputs[0]] = torch.zeros_like(callback_kwargs[self.tensor_inputs[0]])
+                return callback_kwargs
+
+        # check both args none
+        with self.assertRaises(ValueError):
+            _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=None, cutoff_step_index=None)
+
+        # check both args with values
+        with self.assertRaises(ValueError):
+            _wrong_official_callback = ChangeTensorCallback(cutoff_step_ratio=0.5, cutoff_step_index=1)
+
+        # If the pipeline is image to image, set the strength and steps so we have 2 steps
+        if "strength" in inputs:
+            inputs["strength"] = 0.5
+            inputs["num_inference_steps"] = 4
+
+        # check with cutoff_step_ratio
+        callback_change_tensor_ratio = ChangeTensorCallback(cutoff_step_ratio=0.5)
+        inputs["callback_on_step_end"] = callback_change_tensor_ratio
+        inputs["output_type"] = "latent"
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
 
