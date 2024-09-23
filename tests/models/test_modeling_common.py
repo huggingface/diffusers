@@ -738,15 +738,11 @@ class ModelTesterMixin:
     def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
-        if torch_device == "mps" and self.model_class.__name__ in [
-            "UNetSpatioTemporalConditionModel",
-            "AutoencoderKLTemporalDecoder",
-        ]:
-            return
 
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         inputs_dict_copy = copy.deepcopy(inputs_dict)
+        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -762,6 +758,7 @@ class ModelTesterMixin:
         loss.backward()
 
         # re-instantiate the model now enabling gradient checkpointing
+        torch.manual_seed(0)
         model_2 = self.model_class(**init_dict)
         # clone model
         model_2.load_state_dict(model.state_dict())
