@@ -746,6 +746,7 @@ class ModelTesterMixin:
 
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        inputs_dict_copy = copy.deepcopy(inputs_dict)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
@@ -769,7 +770,7 @@ class ModelTesterMixin:
 
         assert model_2.is_gradient_checkpointing and model_2.training
 
-        out_2 = model_2(**inputs_dict).sample
+        out_2 = model_2(**inputs_dict_copy).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model_2.zero_grad()
