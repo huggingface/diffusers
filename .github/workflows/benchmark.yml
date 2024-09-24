@@ -7,6 +7,7 @@ on:
 
 env:
   DIFFUSERS_IS_CI: yes
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
