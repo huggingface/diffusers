@@ -115,12 +115,12 @@ class CogVideoXCausalConv3d(nn.Module):
             dilation=dilation,
         )
 
-    def fake_context_parallel_forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def fake_context_parallel_forward(
+        self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         kernel_size = self.time_kernel_size
         if kernel_size > 1:
-            cached_inputs = (
-                [conv_cache] if conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
-            )
+            cached_inputs = [conv_cache] if conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
             inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
@@ -162,7 +162,9 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self.conv_y = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
-    def forward(self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[List[torch.Tensor]] = None) -> torch.Tensor:
+    def forward(
+        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[List[torch.Tensor]] = None
+    ) -> torch.Tensor:
         if conv_cache is None:
             conv_cache = [None] * 2
 
@@ -175,12 +177,12 @@ class CogVideoXSpatialNorm3D(nn.Module):
             zq = torch.cat([z_first, z_rest], dim=2)
         else:
             zq = F.interpolate(zq, size=f.shape[-3:])
-        
+
         new_conv_cache = []
-        
+
         conv_y, conv_cache_result = self.conv_y(zq, conv_cache=conv_cache.pop(0))
         new_conv_cache.append(conv_cache_result)
-        
+
         conv_b, conv_cache_result = self.conv_b(zq, conv_cache=conv_cache.pop(0))
         new_conv_cache.append(conv_cache_result)
 
@@ -417,9 +419,9 @@ class CogVideoXDownBlock3D(nn.Module):
         r"""Forward method of the `CogVideoXDownBlock3D` class."""
         if conv_cache is None:
             conv_cache = [None] * len(self.resnets)
-        
+
         new_conv_cache = []
-        
+
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
@@ -430,11 +432,15 @@ class CogVideoXDownBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache=conv_cache.pop(0),
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    zq,
+                    conv_cache=conv_cache.pop(0),
                 )
             else:
                 hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-            
+
             new_conv_cache.append(conv_cache_result)
 
         if self.downsamplers is not None:
@@ -514,9 +520,9 @@ class CogVideoXMidBlock3D(nn.Module):
         r"""Forward method of the `CogVideoXMidBlock3D` class."""
         if conv_cache is None:
             conv_cache = [None] * len(self.resnets)
-        
+
         new_conv_cache = []
-        
+
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
@@ -531,7 +537,7 @@ class CogVideoXMidBlock3D(nn.Module):
                 )
             else:
                 hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-            
+
             new_conv_cache.append(conv_cache_result)
 
         return hidden_states, new_conv_cache
@@ -627,7 +633,7 @@ class CogVideoXUpBlock3D(nn.Module):
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
         if conv_cache is None:
             conv_cache = [None] * len(self.resnets)
-        
+
         new_conv_cache = []
 
         for resnet in self.resnets:
@@ -640,11 +646,15 @@ class CogVideoXUpBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache=conv_cache.pop(0),
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    zq,
+                    conv_cache=conv_cache.pop(0),
                 )
             else:
                 hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-            
+
             new_conv_cache.append(conv_cache_result)
 
         if self.upsamplers is not None:
@@ -751,14 +761,19 @@ class CogVideoXEncoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, conv_cache: Optional[List[torch.Tensor]] = None) -> torch.Tensor:
+    def forward(
+        self,
+        sample: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        conv_cache: Optional[List[torch.Tensor]] = None,
+    ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
         if conv_cache is None:
             total_causal_conv_blocks = 1 + len(self.down_blocks) + 1 + 1
             conv_cache = [None] * total_causal_conv_blocks
-        
+
         new_conv_cache = []
-        
+
         hidden_states, conv_cache_result = self.conv_in(sample, conv_cache=conv_cache.pop(0))
         new_conv_cache.append(conv_cache_result)
 
@@ -788,7 +803,6 @@ class CogVideoXEncoder3D(nn.Module):
                 hidden_states, conv_cache_result = down_block(hidden_states, temb, None, conv_cache=conv_cache.pop(0))
                 new_conv_cache.append(conv_cache_result)
 
-
             # 2. Mid
             hidden_states, conv_cache_result = self.mid_block(hidden_states, temb, None, conv_cache=conv_cache.pop(0))
             new_conv_cache.append(conv_cache_result)
@@ -796,10 +810,10 @@ class CogVideoXEncoder3D(nn.Module):
         # 3. Post-process
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.conv_act(hidden_states)
-        
+
         hidden_states, conv_cache_result = self.conv_out(hidden_states, conv_cache=conv_cache.pop(0))
         new_conv_cache.append(conv_cache_result)
-        
+
         return hidden_states, new_conv_cache
 
 
@@ -907,12 +921,17 @@ class CogVideoXDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.Tensor, temb: Optional[torch.Tensor] = None, conv_cache: Optional[List[torch.Tensor]] = None) -> torch.Tensor:
+    def forward(
+        self,
+        sample: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        conv_cache: Optional[List[torch.Tensor]] = None,
+    ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
         if conv_cache is None:
             total_causal_conv_blocks = 1 + 1 + len(self.up_blocks) + 1 + 1
             conv_cache = [None] * total_causal_conv_blocks
-        
+
         new_conv_cache = []
 
         hidden_states, conv_cache_result = self.conv_in(sample, conv_cache=conv_cache.pop(0))
@@ -940,7 +959,9 @@ class CogVideoXDecoder3D(nn.Module):
                 new_conv_cache.append(conv_cache_result)
         else:
             # 1. Mid
-            hidden_states, conv_cache_result = self.mid_block(hidden_states, temb, sample, conv_cache=conv_cache.pop(0))
+            hidden_states, conv_cache_result = self.mid_block(
+                hidden_states, temb, sample, conv_cache=conv_cache.pop(0)
+            )
             new_conv_cache.append(conv_cache_result)
 
             # 2. Up
@@ -953,10 +974,10 @@ class CogVideoXDecoder3D(nn.Module):
         new_conv_cache.append(conv_cache_result)
 
         hidden_states = self.conv_act(hidden_states)
-        
+
         hidden_states, conv_cache_result = self.conv_out(hidden_states, conv_cache=conv_cache.pop(0))
         new_conv_cache.append(conv_cache_result)
-        
+
         return hidden_states, new_conv_cache
 
 
@@ -1216,7 +1237,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         num_batches = num_frames // frame_batch_size
         conv_cache = None
         dec = []
-        
+
         for i in range(num_batches):
             remaining_frames = num_frames % frame_batch_size
             start_frame = frame_batch_size * i + (0 if i == 0 else remaining_frames)
@@ -1328,7 +1349,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     if self.quant_conv is not None:
                         tile = self.quant_conv(tile)
                     time.append(tile)
-                
+
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
 
@@ -1391,7 +1412,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 num_batches = num_frames // frame_batch_size
                 conv_cache = None
                 time = []
-                
+
                 for k in range(num_batches):
                     remaining_frames = num_frames % frame_batch_size
                     start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
@@ -1407,7 +1428,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                         tile = self.post_quant_conv(tile)
                     tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
                     time.append(tile)
-                
+
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
 
