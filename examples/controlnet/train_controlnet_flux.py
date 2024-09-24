@@ -54,7 +54,6 @@ from diffusers import (
 from diffusers.models.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
-from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
 from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
