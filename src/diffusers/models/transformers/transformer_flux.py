@@ -433,7 +433,6 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
         else:
-            joint_attention_kwargs = {}
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
