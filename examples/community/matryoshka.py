@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch.utils.checkpoint
 from packaging import version
 from torch import nn
@@ -504,6 +505,13 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
+    def get_schedule_shifted(self, gammas, scale_factor=None):
+        if (scale_factor is not None) and (scale_factor > 1):  # rescale noise schecule
+            snr = gammas / (1 - gammas)
+            scaled_snr = snr / scale_factor
+            gammas = 1 / (1 + 1 / scaled_snr)
+        return gammas
+
     def step(
         self,
         model_output: torch.Tensor,
@@ -513,6 +521,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         use_clipped_model_output: bool = False,
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
+        scales: Optional[list] = None,
         return_dict: bool = True,
     ) -> Union[MatryoshkaDDIMSchedulerOutput, Tuple]:
         """
@@ -573,6 +582,16 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
 
+        if self.config.timestep_spacing == "matryoshka_style" and len(sample) == 2:
+            alpha_prod_t = [self.get_schedule_shifted(alpha_prod_t, s) for s in scales]
+            alpha_prod_t_prev = [self.get_schedule_shifted(alpha_prod_t_prev, s) for s in scales]
+            if sample is not None and alpha_prod_t[0].size(-1) != 1:
+                alpha_prod_t = torch.tensor([F.interpolate(g, im.size(-1), mode="nearest")
+                                for g, im in zip(alpha_prod_t, sample)])
+                alpha_prod_t_prev = torch.tensor([F.interpolate(g, im.size(-1), mode="nearest")
+                                        for g, im in zip(alpha_prod_t_prev, sample)])
+
+
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
@@ -594,7 +613,10 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 4. Clip or threshold "predicted x_0"
         if self.config.thresholding:
-            pred_original_sample = self._threshold_sample(pred_original_sample)
+            if len(sample) == 2:
+                pred_original_sample = [self._threshold_sample(p_o_s) for p_o_s in pred_original_sample]
+            else:
+                pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
@@ -631,9 +653,9 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = prev_sample + variance
 
         if not return_dict:
-            return (prev_sample,)
+            return (list(prev_sample),)
 
-        return MatryoshkaDDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return MatryoshkaDDIMSchedulerOutput(prev_sample=list(prev_sample), pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
@@ -1484,7 +1506,7 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
             (k * scale).reshape(bs * num_heads, ch, -1),
         )  # More stable with f16 than dividing afterwards
         if mask is not None:
-            mask = mask.view(mask.size(0), 1, 1, mask.size(1)).repeat(1, num_heads, 1, 1).flatten(0, 1)
+            mask = mask.view(mask.size(0), 1, 1, mask.size(-1)).repeat(1, num_heads, 1, 1).flatten(0, 1)
             weight = weight.masked_fill(mask == 0, float("-inf"))
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = torch.einsum("bts,bcs->bct", weight, v.reshape(bs * num_heads, ch, -1))
@@ -1828,7 +1850,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         super().__init__()
         if type == "unet":
             self.cond_emb = nn.Linear(cross_attention_dim, time_embed_dim, bias=False)
-        else:
+        elif type in ("inner_unet", "nested_unet"):
             self.cond_emb = None
         self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0)
         self.add_timestep_embedder = TimestepEmbedding(addition_time_embed_dim, time_embed_dim)
@@ -1837,7 +1859,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         conditioning_mask = added_cond_kwargs.get("conditioning_mask", None)
         masked_cross_attention = added_cond_kwargs.get("masked_cross_attention", False)
         if self.cond_emb is not None:
-            if conditioning_mask is None or not masked_cross_attention:
+            if conditioning_mask is None:
                 y = encoder_hidden_states.mean(dim=1)
             else:
                 y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / conditioning_mask.sum(
@@ -1872,6 +1894,7 @@ class MatryoshkaUNet2DConditionOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
+    sample_inner: torch.Tensor = None
 
 
 class MatryoshkaUNet2DConditionModel(
@@ -2494,7 +2517,7 @@ class MatryoshkaUNet2DConditionModel(
                 else addition_time_embed_dim,
                 cross_attention_dim,
                 time_embed_dim,
-                self.model_type,
+                self.model_type if not self.config.nesting else "inner_" + self.model_type,
             )
         elif addition_embed_type == "text_image":
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
@@ -2883,7 +2906,7 @@ class MatryoshkaUNet2DConditionModel(
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        aug_emb: Optional[torch.Tensor] = None,
+        cond_emb: Optional[torch.Tensor] = None,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -2950,6 +2973,11 @@ class MatryoshkaUNet2DConditionModel(
         forward_upsample_size = False
         upsample_size = None
 
+        if self.config.nesting:
+            sample, sample_feat = sample
+        if isinstance(sample, list) and len(sample) == 1:
+            sample = sample[0]
+
         for dim in sample.shape[-2:]:
             if dim % default_overall_up_factor != 0:
                 # Forward upsample size to force interpolation output size.
@@ -2974,7 +3002,7 @@ class MatryoshkaUNet2DConditionModel(
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample[0][0].dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 0. center input if necessary
@@ -3001,20 +3029,22 @@ class MatryoshkaUNet2DConditionModel(
                 encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-            aug_emb, encoder_attention_mask, _ = self.get_aug_embed(
-                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-            )
+        aug_emb, encoder_attention_mask, _ = self.get_aug_embed(
+            emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+        )
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
             sample = torch.cat([sample, hint], dim=1)
 
-        emb = emb + aug_emb if aug_emb is not None else emb
+        emb = emb + aug_emb + cond_emb if aug_emb is not None else emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
         # 2. pre-process
         sample = self.conv_in(sample)
+        if self.config.nesting:
+            sample = sample + sample_feat
 
         # 2.5 GLIGEN position net
         if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
@@ -3144,9 +3174,11 @@ class MatryoshkaUNet2DConditionModel(
                     upsample_size=upsample_size,
                 )
 
+        sample_inner = sample
+
         # 6. post-process
         if self.conv_norm_out:
-            sample = self.conv_norm_out(sample)
+            sample = self.conv_norm_out(sample_inner)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
@@ -3157,6 +3189,9 @@ class MatryoshkaUNet2DConditionModel(
         if not return_dict:
             return (sample,)
 
+        if self.config.nesting:
+            return MatryoshkaUNet2DConditionOutput(sample=sample, sample_inner=sample_inner)
+
         return MatryoshkaUNet2DConditionOutput(sample=sample)
 
 
@@ -3165,8 +3200,9 @@ class NestedUNet2DConditionOutput(BaseOutput):
     Output type for the [`NestedUNet2DConditionModel`] model.
     """
 
-    sample_out_x_low: list = []
-    x: torch.Tensor = None
+    sample: list = []
+    sample_inner: torch.Tensor = None
+    scales: list = []
 
 
 class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
@@ -3175,7 +3211,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
 
     @register_to_config
-    def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, *args, **kwargs):
+    def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, skip_normalization, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
@@ -3346,16 +3382,16 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             else:
                 emb = emb + class_emb
 
-        added_cond_kwargs = added_cond_kwargs or {}
-        added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
-        added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
-
         if isinstance(self.inner_unet, MatryoshkaUNet2DConditionModel):
+            added_cond_kwargs = added_cond_kwargs or {}
+            added_cond_kwargs["masked_cross_attention"] = self.inner_unet.config.masked_cross_attention
+            added_cond_kwargs["micro_conditioning_scale"] = self.config.micro_conditioning_scale
+
             encoder_hidden_states = self.inner_unet.process_encoder_hidden_states(
                 encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-            aug_emb, cond_mask, cond_emb = self.get_aug_embed(
+            aug_emb, cond_mask, cond_emb = self.inner_unet.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
         elif isinstance(self.inner_unet, NestedUNet2DConditionModel):
@@ -3376,6 +3412,17 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
+        scales = self.config.nest_ratio + [1]
+        if isinstance(sample, torch.Tensor):
+            out = [sample]
+            for s in scales[1:]:
+                ratio = scales[0] // s
+                sample_low = F.avg_pool2d(sample, ratio) * ratio
+                torch.manual_seed(0)
+                sample_low = sample_low.normal_()
+                out += [sample_low]
+            sample = out
+
         # 2. input layer (normalize the input)
         if self.config.nesting:
             sample, x_feat = sample
@@ -3384,6 +3431,8 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         x_t_low, sample = sample[1:], sample[0]
         if not self.config.skip_normalization:
             sample = sample / sample.std((1, 2, 3), keepdims=True)
+        if isinstance(sample, list) and len(sample) == 1:
+            sample = sample[0]
         sample = self.conv_in(sample)
         if self.config.nesting:
             sample = sample + x_feat
@@ -3447,14 +3496,15 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         x_inner = (  # TODO: What if x_inner is None?
             torch.cat([x_inner, x_inner.new_zeros(bl - bh, *x_inner.size()[1:])], 0) if bh < bl else x_inner
         )  # pad zeros for low-resolutions
-        x_low, x_inner = self.inner_unet(
+        inner_unet_output = self.inner_unet(
             (x_t_low, x_inner),
             timestep,
-            aug_emb=cond_emb,
+            cond_emb=cond_emb,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=cond_mask,
             from_nested=True,
         )
+        x_low, x_inner = inner_unet_output.sample, inner_unet_output.sample_inner
         x_inner = self.out_adapter(x_inner)
         sample = sample + x_inner[:bh] if bh < bl else sample + x_inner
 
@@ -3504,11 +3554,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             out = [sample_out] + x_low
         else:
             out = [sample_out, x_low]
-        if self.inner_unet.config.nesting:
-            return NestedUNet2DConditionOutput(sample_out_x_low=out, x=sample)
+        if self.config.nesting:
+            return NestedUNet2DConditionOutput(sample=out, sample_inner=sample, scales=scales)
         if not return_dict:
-            return (out,)
-        return NestedUNet2DConditionOutput(sample_out_x_low=out)
+            return (out, scales)
+        return NestedUNet2DConditionOutput(sample=out, scales=scales)
 
 
 class MatryoshkaPipeline(
