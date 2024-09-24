@@ -83,11 +83,12 @@ class FluxSingleTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
+        joint_attention_kwargs=None,
     ):
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
-
+        joint_attention_kwargs = joint_attention_kwargs if joint_attention_kwargs is not None else {}
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
@@ -161,7 +162,7 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
-        joint_attention_kwargs=None,
+        joint_attention_kwargs={},
     ):
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
@@ -170,7 +171,6 @@ class FluxTransformerBlock(nn.Module):
         )
 
         # Attention.
-        joint_attention_kwargs = {} if joint_attention_kwargs is None else joint_attention_kwargs
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
