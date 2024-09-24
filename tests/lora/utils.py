@@ -457,13 +457,8 @@ class PeftLoraLoaderMixinTests:
                 pipe.unload_lora_weights()
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
-
-            if self.has_two_text_encoders or self.has_three_text_encoders:
-                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                    self.assertTrue(
-                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                    )
+            for module_name, module in modules_to_save.items():
+                self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
 
             images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
@@ -631,7 +626,6 @@ class PeftLoraLoaderMixinTests:
                 pipe.unload_lora_weights()
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            # Verify that LoRA layers are correctly set
             for module_name, module in modules_to_save.items():
                 self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
 
