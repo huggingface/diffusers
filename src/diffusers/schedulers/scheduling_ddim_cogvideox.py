@@ -229,12 +229,12 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
 
-         # TODO: discuss with YiYi why we have a .copy() here and if it's really needed. I've removed it for now
+        # TODO: discuss with YiYi why we have a .copy() here and if it's really needed. I've removed it for now
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].astype(np.int64))
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
-        
+
         safe_prev_timestep = torch.clamp(prev_timestep, min=0)
         safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
         alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)

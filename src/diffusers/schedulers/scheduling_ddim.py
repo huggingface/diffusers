@@ -27,8 +27,6 @@ from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
-from torch.profiler import record_function
-
 
 @dataclass
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
@@ -233,7 +231,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        
+
         # TODO: discuss with YiYi why we have a .copy() here and if it's really needed. I've removed it for now
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].astype(np.int64))
 
@@ -256,11 +254,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
-        
+
         safe_prev_timestep = torch.clamp(prev_timestep, min=0)
         safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
         alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
-        
+
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -409,79 +407,71 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        with record_function("1 scheduler"):
-            prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
-        with record_function("2 scheduler"):
-            alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
-        
-        with record_function("3 scheduler"):
-            safe_prev_timestep = torch.clamp(prev_timestep, min=0)
-            safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
-            alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
+        alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
 
-        with record_function("4 scheduler"):
-            beta_prod_t = 1 - alpha_prod_t
+        safe_prev_timestep = torch.clamp(prev_timestep, min=0)
+        safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
+        alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
+
+        beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        with record_function("5 scheduler"):
-            if self.config.prediction_type == "epsilon":
-                pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-                pred_epsilon = model_output
-            elif self.config.prediction_type == "sample":
-                pred_original_sample = model_output
-                pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-            elif self.config.prediction_type == "v_prediction":
-                pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-                pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
-            else:
-                raise ValueError(
-                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                    " `v_prediction`"
-                )
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            pred_epsilon = model_output
+        elif self.config.prediction_type == "sample":
+            pred_original_sample = model_output
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                " `v_prediction`"
+            )
 
         # 4. Clip or threshold "predicted x_0"
-        with record_function("6 scheduler"):
-            if self.config.thresholding:
-                pred_original_sample = self._threshold_sample(pred_original_sample)
-            elif self.config.clip_sample:
-                pred_original_sample = pred_original_sample.clamp(
-                    -self.config.clip_sample_range, self.config.clip_sample_range
-                )
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        with record_function("7 scheduler"):
-            variance = self._get_variance(timestep, prev_timestep)
-            std_dev_t = eta * variance ** (0.5)
+        variance = self._get_variance(timestep, prev_timestep)
+        std_dev_t = eta * variance ** (0.5)
 
-            if use_clipped_model_output:
-                # the pred_epsilon is always re-derived from the clipped x_0 in Glide
-                pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        if use_clipped_model_output:
+            # the pred_epsilon is always re-derived from the clipped x_0 in Glide
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
-            # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-            pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
+        # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
 
-            # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-            prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
-        with record_function("8 scheduler"):
-            if eta > 0:
-                if variance_noise is not None and generator is not None:
-                    raise ValueError(
-                        "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
-                        " `variance_noise` stays `None`."
-                    )
+        if eta > 0:
+            if variance_noise is not None and generator is not None:
+                raise ValueError(
+                    "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
+                    " `variance_noise` stays `None`."
+                )
 
-                if variance_noise is None:
-                    variance_noise = randn_tensor(
-                        model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
-                    )
-                variance = std_dev_t * variance_noise
+            if variance_noise is None:
+                variance_noise = randn_tensor(
+                    model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+                )
+            variance = std_dev_t * variance_noise
 
-                prev_sample = prev_sample + variance
+            prev_sample = prev_sample + variance
 
         if not return_dict:
             return (prev_sample,)
