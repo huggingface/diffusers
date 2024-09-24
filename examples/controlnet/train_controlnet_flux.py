@@ -259,7 +259,7 @@ def parse_args(input_args=None):
         help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
     )
     parser.add_argument(
-        "--flux_controlnet_model_name_or_path",
+        "--controlnet_model_name_or_path",
         type=str,
         default=None,
         help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
@@ -891,9 +891,9 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    if args.flux_controlnet_model_name_or_path:
+    if args.controlnet_model_name_or_path:
         logger.info("Loading existing controlnet weights")
-        flux_controlnet = FluxControlNetModel.from_pretrained(args.flux_controlnet_model_name_or_path)
+        flux_controlnet = FluxControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from transformer")
         # we can define the num_layers, num_single_layers,
