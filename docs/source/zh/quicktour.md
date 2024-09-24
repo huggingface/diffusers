@@ -60,7 +60,7 @@ pip install --upgrade diffusers accelerate transformers
 
 首先创建一个[`DiffusionPipeline`]的实例，并指定要下载的pipeline检查点。
 你可以使用存储在Hugging Face Hub上的任何[`DiffusionPipeline`][检查点](https://huggingface.co/models?library=diffusers&sort=downloads)。
-在教程中，你将加载[`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)检查点，用于文本到图像的生成。
+在教程中，你将加载[`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)检查点，用于文本到图像的生成。
 
 首先创建一个[DiffusionPipeline]实例，并指定要下载的管道检查点。
 您可以在Hugging Face Hub上使用[DiffusionPipeline]的任何检查点。
@@ -77,7 +77,7 @@ pip install --upgrade diffusers accelerate transformers
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 ```
 [`DiffusionPipeline`]会下载并缓存所有的建模、标记化和调度组件。你可以看到Stable Diffusion的pipeline是由[`UNet2DConditionModel`]和[`PNDMScheduler`]等组件组成的：
 
@@ -135,7 +135,7 @@ StableDiffusionPipeline {
 
 ```
 git lfs install
-git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 将下载好的权重加载到管道中:
@@ -153,7 +153,7 @@ git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 

@@ -31,7 +31,7 @@ PyTorch 모델을 불러오고 즉시 ONNX 형식으로 변환하려는 경우 `
 ```python
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = ORTStableDiffusionPipeline.from_pretrained(model_id, export=True)
 prompt = "a photo of an astronaut riding a horse on mars"
 images = pipe(prompt).images[0]
@@ -42,7 +42,7 @@ pipe.save_pretrained("./onnx-stable-diffusion-v1-5")
 [`optimum-cli export`](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) 명령어를 사용할 수 있습니다:
 
 ```bash
-optimum-cli export onnx --model runwayml/stable-diffusion-v1-5 sd_v15_onnx/
+optimum-cli export onnx --model stable-diffusion-v1-5/stable-diffusion-v1-5 sd_v15_onnx/
 ```
 
 그 다음 추론을 수행합니다:
