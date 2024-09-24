@@ -22,7 +22,6 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from torch.profiler import record_function
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
@@ -106,8 +105,7 @@ def rescale_zero_terminal_snr(alphas_cumprod):
         `torch.Tensor`: rescaled betas with zero terminal SNR
     """
 
-    # alphas_bar_sqrt = alphas_cumprod.sqrt()
-    alphas_bar_sqrt = np.sqrt(alphas_cumprod)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
 
     # Store old values.
     alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
@@ -209,10 +207,8 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
-        self.betas = self.betas.cpu().detach().numpy()
         self.alphas = 1.0 - self.betas
-        # self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         # Modify: SNR shift following SD3
         self.alphas_cumprod = self.alphas_cumprod / (snr_shift_scale + (1 - snr_shift_scale) * self.alphas_cumprod)
@@ -232,11 +228,17 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+
+         # TODO: discuss with YiYi why we have a .copy() here and if it's really needed. I've removed it for now
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].astype(np.int64))
 
     def _get_variance(self, timestep, prev_timestep):
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
+        
+        safe_prev_timestep = torch.clamp(prev_timestep, min=0)
+        safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
+        alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
+
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -305,7 +307,8 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps_numpy = timesteps
+        self.alphas_cumprod = self.alphas_cumprod.to(device)
+        self.final_alpha_cumprod = self.final_alpha_cumprod.to(device)
 
     def step(
         self,
@@ -367,75 +370,44 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        with record_function("get original prediction"):
-            with record_function("step 1"):
-                prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
-            # 2. compute alphas, betas
-            with record_function("step 2"):
-                print(self.alphas_cumprod.device, self.alphas_cumprod.dtype)
-                print(timestep.device, timestep.type)
-                print(prev_timestep.device, prev_timestep.dtype)
-                with record_function("step 2.1"):
-                    alpha_prod_t = self.alphas_cumprod[timestep]
+        # 2. compute alphas, betas
+        alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
 
-                with record_function("step 2.2"):
-                    alpha_prod_t_prev = (
-                        self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-                    )
+        safe_prev_timestep = torch.clamp(prev_timestep, min=0)
+        safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
+        alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
 
-                with record_function("step 2.3"):
-                    beta_prod_t = 1 - alpha_prod_t
-                print(beta_prod_t.device, beta_prod_t.dtype)
-                print("======")
+        beta_prod_t = 1 - alpha_prod_t
 
-            with record_function("step 3"):
-                # 3. compute predicted original sample from predicted noise also called
-                # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-                # To make style tests pass, commented out `pred_epsilon` as it is an unused variable
-                if self.config.prediction_type == "epsilon":
-                    pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-                    # pred_epsilon = model_output
-                elif self.config.prediction_type == "sample":
-                    pred_original_sample = model_output
-                    # pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-                elif self.config.prediction_type == "v_prediction":
-                    pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-                    print(
-                        "vpred:",
-                        sample.dtype,
-                        model_output.dtype,
-                        alpha_prod_t.dtype,
-                        beta_prod_t.dtype,
-                        pred_original_sample.dtype,
-                    )
-                    # pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
-                else:
-                    raise ValueError(
-                        f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                        " `v_prediction`"
-                    )
-
-        with record_function("compute prev sample"):
-            a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
-            b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
-
-            prev_sample = a_t * sample + b_t * pred_original_sample
-            print(
-                "prevsample devices:",
-                a_t.device,
-                b_t.device,
-                sample.device,
-                pred_original_sample.device,
-                prev_sample.device,
+        # 3. compute predicted original sample from predicted noise also called
+        # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # To make style tests pass, commented out `pred_epsilon` as it is an unused variable
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            # pred_epsilon = model_output
+        elif self.config.prediction_type == "sample":
+            pred_original_sample = model_output
+            # pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            # pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                " `v_prediction`"
             )
-            print("prevsample:", a_t.dtype, b_t.dtype, sample.dtype, pred_original_sample.dtype, prev_sample.dtype)
-            print("=== done ===")
 
-            if not return_dict:
-                return (prev_sample,)
+        a_t = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t)) ** 0.5
+        b_t = alpha_prod_t_prev**0.5 - alpha_prod_t**0.5 * a_t
 
-            return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        prev_sample = a_t * sample + b_t * pred_original_sample
+
+        if not return_dict:
+            return (prev_sample,)
+
+        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(

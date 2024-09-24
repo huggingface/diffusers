@@ -21,12 +21,13 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from torch.profiler import record_function
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+
+from torch.profiler import record_function
 
 
 @dataclass
@@ -232,10 +233,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-
+        
         # TODO: discuss with YiYi why we have a .copy() here and if it's really needed. I've removed it for now
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].astype(np.int64))
-        self.timesteps_cpu = np.arange(0, num_train_timesteps)[::-1].astype(np.int64)
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
@@ -256,10 +256,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
+        
         safe_prev_timestep = torch.clamp(prev_timestep, min=0)
-        gathered = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
-        alpha_prod_t_prev = torch.where(prev_timestep >= 0, gathered, self.final_alpha_cumprod)
-        # alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
+        alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
+        
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -345,12 +346,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps_cpu = timesteps
+        self.alphas_cumprod = self.alphas_cumprod.to(device)
+        self.final_alpha_cumprod = self.final_alpha_cumprod.to(device)
 
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[torch.Tensor, float],
+        timestep: int,
         sample: torch.Tensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -365,7 +367,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`torch.Tensor` or `float`):
+            timestep (`float`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
@@ -413,13 +415,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # 2. compute alphas, betas
         with record_function("2 scheduler"):
             alpha_prod_t = torch.gather(self.alphas_cumprod, 0, timestep)
-            # alpha_prod_t = self.alphas_cumprod[timestep]
-
+        
         with record_function("3 scheduler"):
             safe_prev_timestep = torch.clamp(prev_timestep, min=0)
-            gathered = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
-            alpha_prod_t_prev = torch.where(prev_timestep >= 0, gathered, self.final_alpha_cumprod)
-            # alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+            safe_alpha_prod_t_prev = torch.gather(self.alphas_cumprod, 0, safe_prev_timestep)
+            alpha_prod_t_prev = torch.where(prev_timestep >= 0, safe_alpha_prod_t_prev, self.final_alpha_cumprod)
 
         with record_function("4 scheduler"):
             beta_prod_t = 1 - alpha_prod_t
@@ -454,26 +454,20 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
         with record_function("7 scheduler"):
-            with record_function("7.1 scheduler"):
-                variance = self._get_variance(timestep, prev_timestep)
+            variance = self._get_variance(timestep, prev_timestep)
+            std_dev_t = eta * variance ** (0.5)
 
-            with record_function("7.2 scheduler"):
-                std_dev_t = eta * variance ** (0.5)
+            if use_clipped_model_output:
+                # the pred_epsilon is always re-derived from the clipped x_0 in Glide
+                pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
-            with record_function("7.3 scheduler"):
-                if use_clipped_model_output:
-                    # the pred_epsilon is always re-derived from the clipped x_0 in Glide
-                    pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-
-        # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        with record_function("8 scheduler"):
+            # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
             pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
 
-        # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        with record_function("9 scheduler"):
+            # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
             prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
-        with record_function("10 scheduler"):
+        with record_function("8 scheduler"):
             if eta > 0:
                 if variance_noise is not None and generator is not None:
                     raise ValueError(
