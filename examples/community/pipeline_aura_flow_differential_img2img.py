@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple, Union
 import torch 
 from transformers import T5Tokenizer, UMT5EncoderModel
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import VaeImageProcessor, PipelineImageInput
 from diffusers.models import AuraFlowTransformer2DModel, AutoencoderKL
 from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler 
@@ -338,6 +338,380 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
                 padding="max_length",
                 return_tensors="pt",
             )
-            
+            uncond_input = {k: v.to(device) for k, v in uncond_input.items()}
+            negative_prompt_embeds = self.text_encoder(**uncond_input)[0]
+            negative_prompt_attention_mask = (
+                uncond_input["attention_mask"].unsqueeze(-1).expand(negative_prompt_embeds.shape)
+            )
+            negative_prompt_embeds = negative_prompt_embeds * negative_prompt_attention_mask 
+
+        if do_classifier_free_guidance:
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method 
+            seq_len = negative_prompt_embeds.shape[1]
+
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
+
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+            negative_prompt_attention_mask = negative_prompt_attention_mask.reshape(bs_embed, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+        else:
+            negative_prompt_embeds = None 
+            negative_prompt_attention_mask = None 
+        
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+    
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.prepare_latents
+    def prepare_latents(
+            self, batch_size, num_channels_latents, height, width, image, timestep, dtype, device, generator=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
+
+        image = image.to(device=device, dtype=dtype)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        elif isinstance(generator, list):
+            init_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
+            ]
+            init_latents = torch.cat(init_latents, dim=0)
+        else:
+            init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+
+        init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor 
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size 
+            additional_image_per_prompt = batch_size // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents], dim=0)
+
+        shape = init_latents.shape 
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        init_latents = self.scheduler.scale_noise(init_latents, timestep, noise)
+        latents = init_latents.to(device=device, dtype=dtype)
+
+        return latents 
+    
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae 
+    def upcast_vae(self):
+        dtype = self.vae.dtype 
+        self.vae.to(dtype=torch.float32)
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                FusedAttnProcessor2_0,
+            ),
+        )
+        # if xformers or torch_2_0 is used attention block does not need 
+        # to be in float32 which can save lots of memory 
+        if use_torch_2_0_or_xformers:
+            self.vae.post_quant_conv.to(dtype)
+            self.vae.decoder.conv_in.to(dtype)
+            self.vae.decoder.mid_block.to(dtype)
+
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
+        self,
+        prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
+        strength: float = 0.8,
+        negative_prompt: Union[str, List[str]] = None,
+        num_inference_steps: int = 50,
+        timesteps: List[int] = None,
+        sigmas: List[float] = None,
+        guidance_scale: float = 3.5,
+        num_images_per_prompt: Optional[int] = 1,
+        height: Optional[int] = 1024,
+        width: Optional[int] = 1024,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        max_sequence_length: int = 256,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        map: PipelineImageInput = None,
+        denoising_start: Optional[float] = None,
+    ) -> Union[ImagePipelineOutput, Tuple]:
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
+                instead.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a list
+                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
+                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`. It can also accept image
+                latents as `image`, but if passing latents directly it is not encoded again.
+            strength (`float`, *optional*, defaults to 0.8):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1 
+                essentially ignores `image`.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is 
+                passed will be used. Must be in descending order.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+                `num_inference_steps` and `timesteps` must be `None`.
+            guidance_scale (`float`, *optional*, defaults to 3.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image. This is set to 1024 by default for best results.
+            width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image. This is set to 1024 by default for best results.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
+            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                of a plain tuple.
+            denoising_start (`float`, *optional*):
+                When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be 
+                bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
+                it is assumed that the passed `image` is a partly denoised image. Note that when this is specified,
+                strength will be ignored. The `denoising_start` parameter is particularly beneficial when this pipeline
+                is integrated into a "Mixture of Denoisers" multi-pipeline setup, as detailed in [**Refining the Image Output**]
+                (https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
+        
+        Examples:
+
+        Returns: [`pipelines.ImagePipelineOutput`] or `tuple`:
+            If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is returned 
+            where the first element is a list with the generated images.
+        """
+        # 1. Check inputs. Raise error if not correct 
+        height = height or self.transformer.config.sample_size * self.vae_scale_factor 
+        width = width or self.transformer.config.sample_size * self.vae_scale_factor
+
+        self.check_inputs(
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
+        )
+
+        # 2. Determine batch size.
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        device = self._execution_device
+
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2) 
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        # 3. Encode input prompt 
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            num_images_per_prompt=num_images_per_prompt,
+            device=device,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            max_sequence_length=max_sequence_length,
+        )
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+
+        # 4. Preprocess image 
+        init_image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        map = self.mask_processor.preprocess(
+            map,
+            height=height // self.vae_scale_factor,
+            width=width // self.vae_scale_factor,
+        ).to(device)
+
+        # 5. Prepare timesteps 
+        def denoising_value_valid(dnv):
+            return isinstance(dnv, float) and 0 < dnv < 1
+        
+        # sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps, sigmas)
+
+        # begin diff diff change
+        total_time_steps = num_inference_steps
+        # end diff diff change 
+
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps,
+            strength,
+            device,
+            denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
+        )
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+
+        add_noise = True if denoising_start is None else False 
+
+        # 6. Prepare latents
+        latent_channels = self.transformer.config.in_channels
+        latents = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            latent_channels,
+            height,
+            width,
+            init_image,
+            latent_timestep,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+        )
+
+        # 6. Denoising loop 
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        # preparations for diff diff 
+        original_with_noise = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            init_image,
+            timesteps,
+            prompt_embeds.dtype,
+            device,
+            generator,
+        )
+        thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps 
+        thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
+        masks = map.squeeze() > (thresholds + (denoising_start or 0))
+        # end diff diff preparations 
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
+                # diff diff 
+                if i == 0 and denoising_start is None:
+                    latents = original_with_noise[:1]
+                else:
+                    mask = masks[i].unsqueeze(0).to(latents.dtype)
+                    mask = mask.unsqueeze(1) # fit shape
+                    latents = original_with_noise[i] * mask + latents * (1 - mask)
+                # end diff diff 
+                 
+                # expand the latents if we are doing classifier free guidance 
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents 
+
+                # aura use timestep value between 0 and 1, with t=1 as noise and t=0 as the image 
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = torch.tensor([t / 1000]).expand(latent_model_input.shape[0])
+                timestep = timestep.to(latents.device, dtype=latents.dtype)
+
+                # predict noise model_output 
+                noise_pred = self.transformer(
+                    latent_model_input,
+                    encoder_hidden_states=prompt_embeds,
+                    timestep=timestep,
+                    return_dict=False,
+                )[0]
+
+                # perform guidance 
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1 
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                # call the callback, if provided 
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+        if output_type == "latent":
+            image = latents 
+        else:
+            # make sure the VAE is in float32 mode, as it overflows in float16 
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast 
+            if needs_upcasting:
+                self.upcast_vae()
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.image_processor.postprocess(image, output_type=output_type)
+
+        # Offload all models 
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (image,)
+        
+        return ImagePipelineOutput(images=image)                                       
 
     
