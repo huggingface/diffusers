@@ -98,7 +98,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         try:
             return next(parameter.buffers()).dtype
         except StopIteration:
-            # Forch.nn.DataParallel compatibility in PyTorch 1.5
+            # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
             def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
                 tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
