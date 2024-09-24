@@ -378,7 +378,6 @@ class FluxCFGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
         text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         if do_true_cfg and negative_prompt is not None:
-
             return (
                 prompt_embeds,
                 pooled_prompt_embeds,
