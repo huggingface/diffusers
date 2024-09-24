@@ -47,7 +47,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
-    uses_flow_matching = True
+    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -153,6 +153,14 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "Loading from saved checkpoints should give same results.",
         )
         self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
+
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_modify_padding_mode(self):
+        pass
 
 
 @slow
