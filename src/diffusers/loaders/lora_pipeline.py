@@ -88,9 +88,16 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`str`, *optional*): TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        if low_cpu_mem_usage and is_peft_version("<", "0.12.1.dev0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -109,6 +116,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=kwargs.pop("low_cpu_mem_usage", False),
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -232,7 +240,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return state_dict, network_alphas
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -250,9 +260,15 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*): TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        if low_cpu_mem_usage and is_peft_version("<", "0.12.1.dev0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
@@ -263,7 +279,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
@@ -276,6 +296,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -298,9 +319,15 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*): TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        if low_cpu_mem_usage and is_peft_version("<", "0.12.1.dev0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         from peft import LoraConfig
 

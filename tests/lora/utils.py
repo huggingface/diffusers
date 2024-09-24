@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
 
 
 if is_peft_available():
-    from peft import LoraConfig
+    from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
     from peft.tuners.tuners_utils import BaseTunerLayer
     from peft.utils import get_peft_model_state_dict
 
@@ -63,6 +63,12 @@ def check_if_lora_correctly_set(model) -> bool:
         if isinstance(module, BaseTunerLayer):
             return True
     return False
+
+
+def populate_meta_state_dict_with_dummy(state_dict):
+    if not all(v.device.type == "meta" for _, v in state_dict.items()):
+        raise ValueError("`state_dict` has non-meta values.")
+    return {k: torch.randn(v.shape, device=torch_device, dtype=v.dtype) for k, v in state_dict.items()}
 
 
 @require_peft_backend
@@ -200,6 +206,64 @@ class PeftLoraLoaderMixinTests:
         prepared_inputs = {}
         prepared_inputs["input_ids"] = inputs
         return prepared_inputs
+
+    @require_peft_version_greater("0.12.0")
+    def test_low_cpu_mem_usage(self):
+        for scheduler_cls in self.scheduler_classes:
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+                inject_adapter_in_model(text_lora_config, pipe.text_encoder, low_cpu_mem_usage=True)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder."
+                )
+                self.assertTrue(
+                    "meta" in {p.device.type for p in pipe.text_encoder.parameters()},
+                    "The LoRA params should be on 'meta' device.",
+                )
+
+                te_state_dict = populate_meta_state_dict_with_dummy(get_peft_model_state_dict(pipe.text_encoder))
+                set_peft_model_state_dict(pipe.text_encoder, te_state_dict, low_cpu_mem_usage=True)
+                self.assertTrue(
+                    "meta" not in {p.device.type for p in pipe.text_encoder.parameters()},
+                    "No param should be on 'meta' device.",
+                )
+
+            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+            inject_adapter_in_model(denoiser_lora_config, denoiser, low_cpu_mem_usage=True)
+            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+            self.assertTrue(
+                "meta" in {p.device.type for p in denoiser.parameters()}, "The LoRA params should be on 'meta' device."
+            )
+
+            denoiser_state_dict = populate_meta_state_dict_with_dummy(get_peft_model_state_dict(denoiser))
+            set_peft_model_state_dict(denoiser, denoiser_state_dict, low_cpu_mem_usage=True)
+            self.assertTrue(
+                "meta" not in {p.device.type for p in denoiser.parameters()}, "No param should be on 'meta' device."
+            )
+
+            if self.has_two_text_encoders or self.has_three_text_encoders:
+                if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                    inject_adapter_in_model(text_lora_config, pipe.text_encoder_2, low_cpu_mem_usage=True)
+                    self.assertTrue(
+                        check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                    )
+                    self.assertTrue(
+                        "meta" in {p.device.type for p in pipe.text_encoder.parameters()},
+                        "The LoRA params should be on 'meta' device.",
+                    )
+
+                    te2_state_dict = populate_meta_state_dict_with_dummy(
+                        get_peft_model_state_dict(pipe.text_encoder_2)
+                    )
+                    set_peft_model_state_dict(pipe.text_encoder, te2_state_dict, low_cpu_mem_usage=True)
+                    self.assertTrue(
+                        "meta" not in {p.device.type for p in pipe.text_encoder_2.parameters()},
+                        "No param should be on 'meta' device.",
+                    )
 
     def test_simple_inference(self):
         """
