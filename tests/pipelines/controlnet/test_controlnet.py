@@ -1081,7 +1081,9 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
         controlnet_pose = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=[controlnet_pose, controlnet_canny]
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            safety_checker=None,
+            controlnet=[controlnet_pose, controlnet_canny],
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)

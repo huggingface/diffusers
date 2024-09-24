@@ -1346,7 +1346,9 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        ckpt_filename = hf_hub_download("stable-diffusion-v1-5/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.safetensors")
+        ckpt_filename = hf_hub_download(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.safetensors"
+        )
         config_filename = hf_hub_download("stable-diffusion-v1-5/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
         pipe = StableDiffusionPipeline.from_single_file(
@@ -1402,7 +1404,9 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_stable_diffusion_1_5_pndm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5").to(torch_device)
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5").to(
+            torch_device
+        )
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
@@ -1483,9 +1487,9 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         return inputs
 
     def get_pipeline_output_without_device_map(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
-            torch_device
-        )
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to(torch_device)
         sd_pipe.set_progress_bar_config(disable=True)
         inputs = self.get_inputs()
         no_device_map_image = sd_pipe(**inputs).images

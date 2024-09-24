@@ -536,7 +536,9 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_guidance_fp16(self):
         torch_device = "cuda"
-        pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
