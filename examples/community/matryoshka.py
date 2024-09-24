@@ -586,11 +586,12 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
             alpha_prod_t = [self.get_schedule_shifted(alpha_prod_t, s) for s in scales]
             alpha_prod_t_prev = [self.get_schedule_shifted(alpha_prod_t_prev, s) for s in scales]
             if sample is not None and alpha_prod_t[0].size(-1) != 1:
-                alpha_prod_t = torch.tensor([F.interpolate(g, im.size(-1), mode="nearest")
-                                for g, im in zip(alpha_prod_t, sample)])
-                alpha_prod_t_prev = torch.tensor([F.interpolate(g, im.size(-1), mode="nearest")
-                                        for g, im in zip(alpha_prod_t_prev, sample)])
-
+                alpha_prod_t = torch.tensor(
+                    [F.interpolate(g, im.size(-1), mode="nearest") for g, im in zip(alpha_prod_t, sample)]
+                )
+                alpha_prod_t_prev = torch.tensor(
+                    [F.interpolate(g, im.size(-1), mode="nearest") for g, im in zip(alpha_prod_t_prev, sample)]
+                )
 
         beta_prod_t = 1 - alpha_prod_t
 
