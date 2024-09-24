@@ -504,7 +504,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint")
 
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "Jiali/stable-diffusion-1.5", safety_checker=None, controlnet=controlnet
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()

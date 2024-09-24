@@ -40,7 +40,7 @@ from diffusers.utils.testing_utils import slow
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
     [
-        ("stable-diffusion", "Jiali/stable-diffusion-1.5"),
+        ("stable-diffusion", "stable-diffusion-v1-5/stable-diffusion-v1-5"),
         ("if", "DeepFloyd/IF-I-XL-v1.0"),
         ("kandinsky", "kandinsky-community/kandinsky-2-1"),
         ("kandinsky22", "kandinsky-community/kandinsky-2-2-decoder"),
@@ -539,7 +539,7 @@ class AutoPipelineIntegrationTest(unittest.TestCase):
 
     def test_controlnet(self):
         # test from_pretrained
-        model_repo = "Jiali/stable-diffusion-1.5"
+        model_repo = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         controlnet_repo = "lllyasviel/sd-controlnet-canny"
 
         controlnet = ControlNetModel.from_pretrained(controlnet_repo, torch_dtype=torch.float16)

@@ -14,6 +14,7 @@
 # limitations under the License.
 """Conversion script for the Stable Diffusion checkpoints."""
 
+import copy
 import os
 import re
 from contextlib import nullcontext
@@ -91,11 +92,11 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
     "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
     "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
-    "inpainting": {"pretrained_model_name_or_path": "Lykon/dreamshaper-8-inpainting"},
+    "inpainting": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-inpainting"},
     "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
-    "v1": {"pretrained_model_name_or_path": "Lykon/dreamshaper-8"},
+    "v1": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5"},
     "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
     "stable_cascade_stage_b_lite": {
         "pretrained_model_name_or_path": "stabilityai/stable-cascade",
@@ -541,6 +542,7 @@ def infer_diffusers_model_type(checkpoint):
 def fetch_diffusers_config(checkpoint):
     model_type = infer_diffusers_model_type(checkpoint)
     model_path = DIFFUSERS_DEFAULT_PIPELINE_PATHS[model_type]
+    model_path = copy.deepcopy(model_path)
 
     return model_path
 
