@@ -734,23 +734,6 @@ class FluxCFGPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixi
             do_true_cfg=do_true_cfg,
         )
 
-        # perform "real" CFG as suggested for distilled Flux models in https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md
-        # do_true_cfg = true_cfg > 1 and negative_prompt is not None
-        # if do_true_cfg:
-        #     (
-        #         negative_prompt_embeds,
-        #         negative_pooled_prompt_embeds,
-        #         negative_text_ids,
-        #     ) = self.encode_prompt(
-        #         prompt=negative_prompt,
-        #         prompt_2=negative_prompt_2,
-        #         prompt_embeds=negative_prompt_embeds,
-        #         pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        #         device=device,
-        #         num_images_per_prompt=num_images_per_prompt,
-        #         max_sequence_length=max_sequence_length,
-        #         lora_scale=lora_scale,
-        #     )
         if do_true_cfg:
             # Concatenate embeddings
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
