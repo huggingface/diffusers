@@ -861,8 +861,16 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     return_dict=False,
                 )
                 # ensure dtype
-                processed_controlnet_block_samples = [sample.to(dtype=latents.dtype) for sample in controlnet_block_samples] if controlnet_block_samples is not None else None
-                processed_controlnet_single_block_samples = [sample.to(dtype=latents.dtype) for sample in controlnet_single_block_samples] if controlnet_single_block_samples is not None else None
+                processed_controlnet_block_samples = (
+                    [sample.to(dtype=latents.dtype) for sample in controlnet_block_samples]
+                    if controlnet_block_samples is not None
+                    else None
+                )
+                processed_controlnet_single_block_samples = (
+                    [sample.to(dtype=latents.dtype) for sample in controlnet_single_block_samples]
+                    if controlnet_single_block_samples is not None
+                    else None
+                )
 
                 guidance = (
                     torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None

@@ -162,5 +162,3 @@ class ControlNetflux(ExamplesTestsAccelerate):
             run_command(self._launch_args + test_args)
 
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
-
-

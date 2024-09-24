@@ -87,7 +87,9 @@ def log_validation(
             torch_dtype=torch.bfloat16,
         )
     else:
-        flux_controlnet = FluxControlNetModel.from_pretrained(args.output_dir, torch_dtype=torch.bfloat16, variant=args.save_weight_dtype)
+        flux_controlnet = FluxControlNetModel.from_pretrained(
+            args.output_dir, torch_dtype=torch.bfloat16, variant=args.save_weight_dtype
+        )
         pipeline = FluxControlNetPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             controlnet=flux_controlnet,
@@ -239,6 +241,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))
+
 
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
@@ -402,8 +405,8 @@ def parse_args(input_args=None):
         action="store_true",
         help=(
             "Adafactor is a stochastic optimization method based on Adam that reduces memory usage while retaining"
-             "the empirical benefits of adaptivity. This is achieved through maintaining a factored representation "
-             "of the squared gradient accumulator across training steps."
+            "the empirical benefits of adaptivity. This is achieved through maintaining a factored representation "
+            "of the squared gradient accumulator across training steps."
         ),
     )
     parser.add_argument(
@@ -601,12 +604,14 @@ def parse_args(input_args=None):
 
     parser.add_argument(
         "--save_weight_dtype",
-       type=str,
+        type=str,
         default="fp32",
-        choices=["fp16", "bf16", "fp32",],
-        help=(
-            "Preserve precision type according to selected weight"
-        ),
+        choices=[
+            "fp16",
+            "bf16",
+            "fp32",
+        ],
+        help=("Preserve precision type according to selected weight"),
     )
 
     parser.add_argument(
@@ -633,7 +638,6 @@ def parse_args(input_args=None):
         action="store_true",
         help="Enable model cpu offload and save memory.",
     )
-
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1275,13 +1279,16 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * pixel_latents + sigmas * noise
 
                 guidance_vec = torch.full(
-                    (noisy_model_input.shape[0],), args.guidance_scale, device=noisy_model_input.device, dtype=weight_dtype
+                    (noisy_model_input.shape[0],),
+                    args.guidance_scale,
+                    device=noisy_model_input.device,
+                    dtype=weight_dtype,
                 )
 
                 controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
                     hidden_states=noisy_model_input,
                     controlnet_cond=control_image,
-                    timestep=timesteps  / 1000,
+                    timestep=timesteps / 1000,
                     guidance=guidance_vec,
                     pooled_projections=batch["unet_added_conditions"]["pooled_prompt_embeds"].to(dtype=weight_dtype),
                     encoder_hidden_states=batch["prompt_ids"].to(dtype=weight_dtype),
@@ -1292,7 +1299,7 @@ def main(args):
 
                 noise_pred = flux_transformer(
                     hidden_states=noisy_model_input,
-                    timestep=timesteps  / 1000,
+                    timestep=timesteps / 1000,
                     guidance=guidance_vec,
                     pooled_projections=batch["unet_added_conditions"]["pooled_prompt_embeds"].to(dtype=weight_dtype),
                     encoder_hidden_states=batch["prompt_ids"].to(dtype=weight_dtype),
@@ -1381,7 +1388,7 @@ def main(args):
         elif args.save_weight_dtype == "bf16":
             save_weight_dtype = torch.bfloat16
         flux_controlnet.to(save_weight_dtype)
-        flux_controlnet.save_pretrained(args.output_dir,variant=args.save_weight_dtype)
+        flux_controlnet.save_pretrained(args.output_dir, variant=args.save_weight_dtype)
 
         # Run a final round of validation.
         # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
