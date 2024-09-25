@@ -65,7 +65,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPAGImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"}) - {"height", "width"}
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
@@ -138,6 +138,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
+            "pag_scale": 0.9,
             "output_type": "np",
         }
         return inputs
@@ -233,6 +234,7 @@ class StableDiffusionPAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
             "num_inference_steps": 3,
             "strength": 0.75,
             "guidance_scale": 7.5,
+            "pag_scale": 3.0,
             "output_type": "np",
         }
         return inputs
