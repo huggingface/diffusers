@@ -114,16 +114,16 @@ torchrun run_distributed.py --nproc_per_node=2
 
 Modern diffusion systems such as [Flux](../api/pipelines/flux) are very large and have multiple models. For example, [Flux.1-Dev](https://hf.co/black-forest-labs/FLUX.1-dev) is made up of two text encoders - [T5-XXL](https://hf.co/google/t5-v1_1-xxl) and [CLIP-L](https://hf.co/openai/clip-vit-large-patch14) - a [diffusion transformer](../api/models/flux_transformer), and a [VAE](../api/models/autoencoderkl). With a model this size, it can be challenging to run inference on consumer GPUs.
 
-Model sharding is a technique that distributes models across GPUs, making inference with large models possible. The example below assumes two 16GB GPUs are available for inference.
+Model sharding is a technique that distributes models across GPUs when the models don't fit on a single GPU. The example below assumes two 16GB GPUs are available for inference.
 
-Start by computing the text embeddings with the text encoders. Keep the text encoders on two GPUs by setting `device_map="balanced"`. The `balanced` strategy evenly distributes the model on all available GPUs. Assign each text encoder the maximum amount of memory available on each GPU with the `max_memory` parameter.
+Start by computing the text embeddings with the text encoders. Keep the text encoders on two GPUs by setting `device_map="balanced"`. The `balanced` strategy evenly distributes the model on all available GPUs. Use the `max_memory` parameter to allocate the maximum amount of memory for each text encoder on each GPU.
 
 > [!TIP]
 > **Only** load the text encoders for this step! The diffusion transformer and VAE are loaded in a later step to preserve memory.
 
 ```py
 from diffusers import FluxPipeline
-import torch 
+import torch
 
 prompt = "a photo of a dog with cat-like look"
 
@@ -162,9 +162,7 @@ del pipeline
 flush()
 ```
 
-Load the diffusion transformer next which has 12.5B parameters. This time, set `device_map="auto"` to automatically distribute the model across two 16GB GPUs. The `auto` strategy is backed by [Accelerate](https://hf.co/docs/accelerate/index) and available as a part of the [Big Model Inference](https://hf.co/docs/accelerate/concept_guides/big_model_inference) feature. It starts by distributing a model across the fastest device first (GPU) before moving to slower devices like the CPU and hard drive if needed.
-
-Assign the maximum amount of memory for each GPU to allocate with the `max_memory` parameter.
+Load the diffusion transformer next which has 12.5B parameters. This time, set `device_map="auto"` to automatically distribute the model across two 16GB GPUs. The `auto` strategy is backed by [Accelerate](https://hf.co/docs/accelerate/index) and available as a part of the [Big Model Inference](https://hf.co/docs/accelerate/concept_guides/big_model_inference) feature. It starts by distributing a model across the fastest device first (GPU) before moving to slower devices like the CPU and hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
 
 ```py
 from diffusers import FluxTransformer2DModel
@@ -174,13 +172,12 @@ transformer = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    max_memory={0: "16GB", 1: "16GB"},
     torch_dtype=torch.bfloat16
 )
 ```
 
 > [!TIP]
-> Try `print(transformer.hf_device_map)` to see how the model is distributed across devices.
+> At any point, you can try `print(pipeline.hf_device_map)` to see how the various models are distributed across devices. This is useful for tracking the device placement of the models.
 
 Add the transformer model to the pipeline for denoising, but set the other model-level components like the text encoders and VAE to `None` because you don't need them yet.
 
@@ -207,6 +204,15 @@ latents = pipeline(
     width=width,
     output_type="latent",
 ).images
+```
+
+Remove the pipeline and transformer from memory as they're no longer needed.
+
+```py
+del pipeline.transformer
+del pipeline
+
+flush()
 ```
 
 Finally, decode the latents with the VAE into an image. The VAE is typically small enough to be loaded on a single GPU.
