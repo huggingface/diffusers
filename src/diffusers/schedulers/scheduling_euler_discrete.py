@@ -197,6 +197,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         rescale_betas_zero_snr: bool = False,
         final_sigmas_type: str = "zero",  # can be "zero" or "sigma_min"
     ):
+        if sum([self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError("Only one of `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used.")
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -338,10 +340,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Cannot set `timesteps` with `config.use_karras_sigmas = True`.")
         if timesteps is not None and self.config.use_exponential_sigmas:
             raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
-        if self.config.use_exponential_sigmas and self.config.use_karras_sigmas:
-            raise ValueError(
-                "Cannot set both `config.use_exponential_sigmas = True` and config.use_karras_sigmas = True`"
-            )
         if (
             timesteps is not None
             and self.config.timestep_type == "continuous"
