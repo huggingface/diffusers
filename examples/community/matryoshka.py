@@ -627,7 +627,10 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
                 pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
             if len(model_output) == 2:
-                pred_original_sample = [p_o_s.clamp(-self.config.clip_sample_range, self.config.clip_sample_range) for p_o_s in pred_original_sample]
+                pred_original_sample = [
+                    p_o_s.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
+                    for p_o_s in pred_original_sample
+                ]
             else:
                 pred_original_sample = pred_original_sample.clamp(
                     -self.config.clip_sample_range, self.config.clip_sample_range
@@ -2545,7 +2548,7 @@ class MatryoshkaUNet2DConditionModel(
                 else addition_time_embed_dim,
                 cross_attention_dim,
                 time_embed_dim,
-                self.model_type# if not self.config.nesting else "inner_" + self.model_type,
+                self.model_type,  # if not self.config.nesting else "inner_" + self.model_type,
             )
         elif addition_embed_type == "text_image":
             # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
