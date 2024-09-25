@@ -45,6 +45,7 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         scipy \
         tensorboard \
         transformers \
-        xformers
+        xformers  \
+        hf_transfer
 
 CMD ["/bin/bash"]
