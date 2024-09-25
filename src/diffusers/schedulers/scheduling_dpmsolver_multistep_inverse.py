@@ -124,6 +124,8 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
         lambda_min_clipped (`float`, defaults to `-inf`):
             Clipping threshold for the minimum value of `lambda(t)` for numerical stability. This is critical for the
             cosine (`squaredcos_cap_v2`) noise schedule.
@@ -158,11 +160,14 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if sum([self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError("Only one of `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used.")
         if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
             deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
             deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
@@ -213,6 +218,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.use_karras_sigmas = use_karras_sigmas
+        self.use_exponential_sigmas = use_exponential_sigmas
 
     @property
     def step_index(self):
@@ -267,6 +273,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
             sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+        elif self.config.use_exponential_sigmas:
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             sigma_max = (
@@ -383,6 +392,28 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
+        return sigmas
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
+    def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
+        """Constructs an exponential noise schedule."""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = torch.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps).exp()
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.convert_model_output
