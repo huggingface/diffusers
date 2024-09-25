@@ -860,17 +860,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
-                # ensure dtype
-                processed_controlnet_block_samples = (
-                    [sample.to(dtype=latents.dtype) for sample in controlnet_block_samples]
-                    if controlnet_block_samples is not None
-                    else None
-                )
-                processed_controlnet_single_block_samples = (
-                    [sample.to(dtype=latents.dtype) for sample in controlnet_single_block_samples]
-                    if controlnet_single_block_samples is not None
-                    else None
-                )
 
                 guidance = (
                     torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
@@ -883,8 +872,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
-                    controlnet_block_samples=processed_controlnet_block_samples,
-                    controlnet_single_block_samples=processed_controlnet_single_block_samples,
+                    controlnet_block_samples=controlnet_block_samples,
+                    controlnet_single_block_samples=controlnet_single_block_samples,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
