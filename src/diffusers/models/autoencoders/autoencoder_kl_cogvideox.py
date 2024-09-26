@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -163,10 +163,10 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
     def forward(
-        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[List[torch.Tensor]] = None
+        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
-        if conv_cache is None:
-            conv_cache = [None] * 2
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
         if f.shape[2] > 1 and f.shape[2] % 2 == 1:
             f_first, f_rest = f[:, :, :1], f[:, :, 1:]
@@ -178,13 +178,8 @@ class CogVideoXSpatialNorm3D(nn.Module):
         else:
             zq = F.interpolate(zq, size=f.shape[-3:])
 
-        new_conv_cache = []
-
-        conv_y, conv_cache_result = self.conv_y(zq, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
-
-        conv_b, conv_cache_result = self.conv_b(zq, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        conv_y, new_conv_cache["conv_y"] = self.conv_y(zq, conv_cache=conv_cache.get("conv_y"))
+        conv_b, new_conv_cache["conv_b"] = self.conv_b(zq, conv_cache=conv_cache.get("conv_b"))
 
         norm_f = self.norm_layer(f)
         new_f = norm_f * conv_y + conv_b
@@ -283,47 +278,38 @@ class CogVideoXResnetBlock3D(nn.Module):
         inputs: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        if conv_cache is None:
-            conv_cache = []
-            if self.spatial_norm_dim is not None:
-                conv_cache.extend([None] * 2)
-            conv_cache.extend([None] * 2)
-            if self.in_channels != self.out_channels and self.use_conv_shortcut:
-                conv_cache.extend([None] * 1)
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        new_conv_cache = []
         hidden_states = inputs
 
         if zq is not None:
-            hidden_states, conv_cache_result = self.norm1(hidden_states, zq, conv_cache=conv_cache.pop(0))
-            new_conv_cache.append(conv_cache_result)
+            hidden_states, new_conv_cache["norm1"] = self.norm1(hidden_states, zq, conv_cache=conv_cache.get("norm1"))
         else:
             hidden_states = self.norm1(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
-        hidden_states, conv_cache_result = self.conv1(hidden_states, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv1"] = self.conv1(hidden_states, conv_cache=conv_cache.get("conv1"))
 
         if temb is not None:
             hidden_states = hidden_states + self.temb_proj(self.nonlinearity(temb))[:, :, None, None, None]
 
         if zq is not None:
-            hidden_states, conv_cache_result = self.norm2(hidden_states, zq, conv_cache=conv_cache.pop(0))
-            new_conv_cache.append(conv_cache_result)
+            hidden_states, new_conv_cache["norm2"] = self.norm2(hidden_states, zq, conv_cache=conv_cache.get("norm2"))
         else:
             hidden_states = self.norm2(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
-        hidden_states, conv_cache_result = self.conv2(hidden_states, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv2"] = self.conv2(hidden_states, conv_cache=conv_cache.get("conv2"))
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
-                inputs, conv_cache_result = self.conv_shortcut(inputs, conv_cache=conv_cache.pop(0))
-                new_conv_cache.append(conv_cache_result)
+                inputs, new_conv_cache["conv_shortcut"] = self.conv_shortcut(
+                    inputs, conv_cache=conv_cache.get("conv_shortcut")
+                )
             else:
                 inputs = self.conv_shortcut(inputs)
 
@@ -414,15 +400,16 @@ class CogVideoXDownBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXDownBlock3D` class."""
-        if conv_cache is None:
-            conv_cache = [None] * len(self.resnets)
 
-        new_conv_cache = []
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        for resnet in self.resnets:
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -431,17 +418,17 @@ class CogVideoXDownBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
                     zq,
-                    conv_cache=conv_cache.pop(0),
+                    conv_cache=conv_cache.get(conv_cache_key),
                 )
             else:
-                hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-
-            new_conv_cache.append(conv_cache_result)
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, temb, zq, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -515,15 +502,16 @@ class CogVideoXMidBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXMidBlock3D` class."""
-        if conv_cache is None:
-            conv_cache = [None] * len(self.resnets)
 
-        new_conv_cache = []
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        for resnet in self.resnets:
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -532,13 +520,13 @@ class CogVideoXMidBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache=conv_cache.pop(0)
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache=conv_cache.get(conv_cache_key)
                 )
             else:
-                hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-
-            new_conv_cache.append(conv_cache_result)
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, temb, zq, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
         return hidden_states, new_conv_cache
 
@@ -628,15 +616,16 @@ class CogVideoXUpBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
-        if conv_cache is None:
-            conv_cache = [None] * len(self.resnets)
 
-        new_conv_cache = []
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        for resnet in self.resnets:
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -645,17 +634,17 @@ class CogVideoXUpBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
                     zq,
-                    conv_cache=conv_cache.pop(0),
+                    conv_cache=conv_cache.get(conv_cache_key),
                 )
             else:
-                hidden_states, conv_cache_result = resnet(hidden_states, temb, zq, conv_cache=conv_cache.pop(0))
-
-            new_conv_cache.append(conv_cache_result)
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, temb, zq, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -765,17 +754,14 @@ class CogVideoXEncoder3D(nn.Module):
         self,
         sample: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
-        if conv_cache is None:
-            total_causal_conv_blocks = 1 + len(self.down_blocks) + 1 + 1
-            conv_cache = [None] * total_causal_conv_blocks
 
-        new_conv_cache = []
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        hidden_states, conv_cache_result = self.conv_in(sample, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
         if self.training and self.gradient_checkpointing:
 
@@ -786,33 +772,42 @@ class CogVideoXEncoder3D(nn.Module):
                 return custom_forward
 
             # 1. Down
-            for down_block in self.down_blocks:
-                hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(down_block), hidden_states, temb, None, conv_cache=conv_cache.pop(0)
+            for i, down_block in enumerate(self.down_blocks):
+                conv_cache_key = f"down_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(down_block),
+                    hidden_states,
+                    temb,
+                    None,
+                    conv_cache=conv_cache.get(conv_cache_key),
                 )
-                new_conv_cache.append(conv_cache_result)
 
             # 2. Mid
-            hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block), hidden_states, temb, None, conv_cache=conv_cache.pop(0)
+            hidden_states, new_conv_cache["mid_block"] = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.mid_block),
+                hidden_states,
+                temb,
+                None,
+                conv_cache=conv_cache.get("mid_block"),
             )
-            new_conv_cache.append(conv_cache_result)
         else:
             # 1. Down
-            for down_block in self.down_blocks:
-                hidden_states, conv_cache_result = down_block(hidden_states, temb, None, conv_cache=conv_cache.pop(0))
-                new_conv_cache.append(conv_cache_result)
+            for i, down_block in enumerate(self.down_blocks):
+                conv_cache_key = f"down_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = down_block(
+                    hidden_states, temb, None, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
             # 2. Mid
-            hidden_states, conv_cache_result = self.mid_block(hidden_states, temb, None, conv_cache=conv_cache.pop(0))
-            new_conv_cache.append(conv_cache_result)
+            hidden_states, new_conv_cache["mid_block"] = self.mid_block(
+                hidden_states, temb, None, conv_cache=conv_cache.get("mid_block")
+            )
 
         # 3. Post-process
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.conv_act(hidden_states)
 
-        hidden_states, conv_cache_result = self.conv_out(hidden_states, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv_out"] = self.conv_out(hidden_states, conv_cache=conv_cache.get("conv_out"))
 
         return hidden_states, new_conv_cache
 
@@ -925,17 +920,14 @@ class CogVideoXDecoder3D(nn.Module):
         self,
         sample: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[List[torch.Tensor]] = None,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
-        if conv_cache is None:
-            total_causal_conv_blocks = 1 + 1 + len(self.up_blocks) + 1 + 1
-            conv_cache = [None] * total_causal_conv_blocks
 
-        new_conv_cache = []
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
-        hidden_states, conv_cache_result = self.conv_in(sample, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
         if self.training and self.gradient_checkpointing:
 
@@ -946,37 +938,43 @@ class CogVideoXDecoder3D(nn.Module):
                 return custom_forward
 
             # 1. Mid
-            hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block), hidden_states, temb, sample, conv_cache=conv_cache.pop(0)
+            hidden_states, new_conv_cache["mid_block"] = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.mid_block),
+                hidden_states,
+                temb,
+                sample,
+                conv_cache=conv_cache.get("mid_block"),
             )
-            new_conv_cache.append(conv_cache_result)
 
             # 2. Up
-            for up_block in self.up_blocks:
-                hidden_states, conv_cache_result = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block), hidden_states, temb, sample, conv_cache=conv_cache.pop(0)
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"up_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(up_block),
+                    hidden_states,
+                    temb,
+                    sample,
+                    conv_cache=conv_cache.get(conv_cache_key),
                 )
-                new_conv_cache.append(conv_cache_result)
         else:
             # 1. Mid
-            hidden_states, conv_cache_result = self.mid_block(
-                hidden_states, temb, sample, conv_cache=conv_cache.pop(0)
+            hidden_states, new_conv_cache["mid_block"] = self.mid_block(
+                hidden_states, temb, sample, conv_cache=conv_cache.get("mid_block")
             )
-            new_conv_cache.append(conv_cache_result)
 
             # 2. Up
-            for up_block in self.up_blocks:
-                hidden_states, conv_cache_result = up_block(hidden_states, temb, sample, conv_cache=conv_cache.pop(0))
-                new_conv_cache.append(conv_cache_result)
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"up_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = up_block(
+                    hidden_states, temb, sample, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
         # 3. Post-process
-        hidden_states, conv_cache_result = self.norm_out(hidden_states, sample, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
-
+        hidden_states, new_conv_cache["norm_out"] = self.norm_out(
+            hidden_states, sample, conv_cache=conv_cache.get("norm_out")
+        )
         hidden_states = self.conv_act(hidden_states)
-
-        hidden_states, conv_cache_result = self.conv_out(hidden_states, conv_cache=conv_cache.pop(0))
-        new_conv_cache.append(conv_cache_result)
+        hidden_states, new_conv_cache["conv_out"] = self.conv_out(hidden_states, conv_cache=conv_cache.get("conv_out"))
 
         return hidden_states, new_conv_cache
 
