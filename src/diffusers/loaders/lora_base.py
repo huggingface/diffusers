@@ -532,6 +532,13 @@ class LoraBaseMixin:
             )
 
         list_adapters = self.get_list_adapters()  # eg {"unet": ["adapter1", "adapter2"], "text_encoder": ["adapter2"]}
+        current_adapter_names = {adapter for _, adapter_list in list_adapters.items() for adapter in adapter_list}
+        for input_adapter_name in adapter_names:
+            if input_adapter_name not in current_adapter_names:
+                raise ValueError(
+                    f"Adapter name {input_adapter_name} not in the list of present adapters: {current_adapter_names}."
+                )
+
         all_adapters = {
             adapter for adapters in list_adapters.values() for adapter in adapters
         }  # eg ["adapter1", "adapter2"]
