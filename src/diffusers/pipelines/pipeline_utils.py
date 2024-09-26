@@ -736,7 +736,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # The variant filenames can have the legacy sharding checkpoint format that we check and throw
         # a warning if detected.
-        if variant is not None and _check_legacy_sharding_variant_format(cached_folder, variant):
+        if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
             warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
             logger.warning(warn_msg)
 
@@ -1260,6 +1260,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if not local_files_only:
             filenames = {sibling.rfilename for sibling in info.siblings}
+            if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
+                warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+                logger.warning(warn_msg)
+
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
             config_file = hf_hub_download(
@@ -1371,7 +1375,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
-            is_sharded = any("index.json" in f and f != "model_index.json" for f in filenames)
 
             if (
                 use_safetensors
@@ -1396,13 +1399,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
                 safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
                 safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-                # `not is_sharded` because sharded checkpoints with a variant
-                # ("fp16") for example may have lesser shards actually. Consider
-                # https://huggingface.co/fal/AuraFlow/tree/main/transformer, for example.
                 if (
                     len(safetensors_variant_filenames) > 0
                     and safetensors_model_filenames != safetensors_variant_filenames
-                    and not is_sharded
                 ):
                     logger.warning(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."

@@ -501,11 +501,14 @@ def _get_checkpoint_shard_files(
     return cached_folder, sharded_metadata
 
 
-def _check_legacy_sharding_variant_format(folder: str, variant: str):
-    filenames = []
-    for _, _, files in os.walk(folder):
-        for file in files:
-            filenames.append(os.path.basename(file))
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+    if filenames and folder:
+        raise ValueError("Both `filenames` and `folder` cannot be provided.")
+    if not filenames:
+        filenames = []
+        for _, _, files in os.walk(folder):
+            for file in files:
+                filenames.append(os.path.basename(file))
     transformers_index_format = r"\d{5}-of-\d{5}"
     variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
     return any(variant_file_re.match(f) is not None for f in filenames)

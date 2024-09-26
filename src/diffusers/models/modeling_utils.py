@@ -310,13 +310,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
         weights_name = _add_variant(weights_name, variant)
-        weight_name_split = weights_name.split(".")
-        if len(weight_name_split) in [2, 3]:
-            weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
-                ".safetensors", "{suffix}.safetensors"
-            )
-        else:
-            raise ValueError(f"Invalid {weights_name} provided.")
+        weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
+            ".safetensors", "{suffix}.safetensors"
+        )
 
         os.makedirs(save_directory, exist_ok=True)
 
