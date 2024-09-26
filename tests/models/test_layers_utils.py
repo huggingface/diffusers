@@ -131,7 +131,9 @@ class Upsample2DBlockTests(unittest.TestCase):
 
         assert upsampled.shape == (1, 32, 64, 64)
         output_slice = upsampled[0, -1, -3:, -3:]
-        expected_slice = torch.tensor([-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254], dtype=torch.bfloat16)
+        expected_slice = torch.tensor(
+            [-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254], dtype=torch.bfloat16
+        )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_upsample_with_conv(self):
