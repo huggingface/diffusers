@@ -1513,7 +1513,7 @@ def _legacy_load_scheduler(
         )
         deprecate("prediction_type", "1.0.0", deprecation_message)
 
-    scheduler_config = SCHEDULER_DEFAULT_CONFIG
+    scheduler_config = copy.deepcopy(SCHEDULER_DEFAULT_CONFIG)
     model_type = infer_diffusers_model_type(checkpoint=checkpoint)
 
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
