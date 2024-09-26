@@ -152,7 +152,6 @@ def log_validation(
                     guidance_scale=3.5,
                     generator=generator,
                 ).images[0]
-                image.save("image.jpg")
             images.append(image)
         image_logs.append(
             {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
