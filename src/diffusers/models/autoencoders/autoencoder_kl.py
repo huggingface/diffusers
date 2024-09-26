@@ -358,12 +358,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
-        deprecation_message = (
-            "The tiled_encode implementation supporting the `return_dict` parameter is deprecated. In the future, the "
-            "implementation of this method will be replaced with that of `_tiled_encode` and you will no longer be able "
-            "to pass `return_dict`. You will also have to also create a `DiagonalGaussianDistribution()` from the returned value."
-        )
-        deprecate("tiled_encode", "1.0.0", deprecation_message, standard_warn=False)
 
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
