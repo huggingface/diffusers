@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
 from packaging import version
 from torch import nn
@@ -3578,7 +3577,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         if self.config.nesting:
             return NestedUNet2DConditionOutput(sample=out, sample_inner=sample)
         if not return_dict:
-            return (out, )
+            return (out,)
         else:
             return NestedUNet2DConditionOutput(sample=out)
 
