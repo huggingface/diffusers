@@ -79,7 +79,6 @@ def log_validation(
 
     if not is_final_validation:
         flux_controlnet = accelerator.unwrap_model(flux_controlnet)
-
         pipeline = FluxControlNetPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             controlnet=flux_controlnet,
@@ -123,27 +122,30 @@ def log_validation(
         )
 
     image_logs = []
-
-    # t5 seems not support autocast and i don't know why
-    autocast_ctx = nullcontext()
-    # autocast_ctx = torch.autocast(accelerator.device.type)
+    if is_final_validation or torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         from diffusers.utils import load_image
 
         validation_image = load_image(validation_image)
-        # need to inference on 1024 to get a good image
-        validation_image = validation_image.resize((1024, 1024))
-        # validation_image = validation_image.resize((args.resolution, args.resolution))
+        # maybe need to inference on 1024 to get a good image
+        validation_image = validation_image.resize((args.resolution, args.resolution))
 
         images = []
 
+        # pre calculate  prompt embeds, pooled prompt embeds, text ids because t5 does not support autocast
+        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+            validation_prompt, prompt_2=validation_prompt
+        )
         for _ in range(args.num_validation_images):
             with autocast_ctx:
                 # need to fix in pipeline_flux_controlnet
-
                 image = pipeline(
-                    prompt=validation_prompt,
+                    prompt_embeds=prompt_embeds,
+                    pooled_prompt_embeds=pooled_prompt_embeds,
                     control_image=validation_image,
                     num_inference_steps=28,
                     controlnet_conditioning_scale=0.7,
