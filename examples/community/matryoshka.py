@@ -3238,7 +3238,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         super().__init__(*args, **kwargs)
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
-        if getattr(self.config.inner_config, "inner_config", None) is None:
+        if "inner_config" not in self.config.inner_config:
             self.inner_unet = MatryoshkaUNet2DConditionModel(**self.config.inner_config)
         else:
             self.inner_unet = NestedUNet2DConditionModel(**self.config.inner_config)
