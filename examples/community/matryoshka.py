@@ -3379,6 +3379,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             sample = sample[0]
 
         scales = self.config.nest_ratio + [1]
+        is_sample_low = False
         if isinstance(sample, torch.Tensor):
             out = [sample]
             for s in scales[1:]:
@@ -3387,6 +3388,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                 torch.manual_seed(0)
                 sample_low = sample_low.normal_()
                 out += [sample_low]
+                is_sample_low = True
             sample = out
 
         # 2. input layer (normalize the input)
@@ -3599,7 +3601,10 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             return NestedUNet2DConditionOutput(sample=out, sample_inner=sample, scales=scales)
         if not return_dict:
             return (out, sample_low, scales)
-        return NestedUNet2DConditionOutput(sample=out, sample_low=sample_low, scales=scales)
+        if is_sample_low:
+            return NestedUNet2DConditionOutput(sample=out, sample_low=sample_low, scales=scales)
+        else:
+            return NestedUNet2DConditionOutput(sample=out, sample_low=None, scales=scales)
 
 
 class MatryoshkaPipeline(
