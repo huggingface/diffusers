@@ -56,7 +56,7 @@
   - local: using-diffusers/overview_techniques
     title: Overview
   - local: training/distributed_inference
-    title: Distributed inference with multiple GPUs
+    title: Distributed inference
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
   - local: using-diffusers/scheduler_features
