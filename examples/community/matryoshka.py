@@ -505,12 +505,12 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def get_schedule_shifted(self, gammas, scale_factor=None):
-        if (scale_factor is not None) and (scale_factor > 1):  # rescale noise schecule
-            snr = gammas / (1 - gammas)
+    def get_schedule_shifted(self, alpha_prod, scale_factor=None):
+        if (scale_factor is not None) and (scale_factor > 1):  # rescale noise schedule
+            snr = alpha_prod / (1 - alpha_prod)
             scaled_snr = snr / scale_factor
-            gammas = 1 / (1 + 1 / scaled_snr)
-        return gammas
+            alpha_prod = 1 / (1 + 1 / scaled_snr)
+        return alpha_prod
 
     def step(
         self,
