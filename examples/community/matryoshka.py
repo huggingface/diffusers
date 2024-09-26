@@ -583,15 +583,8 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
 
         if self.config.timestep_spacing == "matryoshka_style" and len(model_output) == 2:
-            alpha_prod_t = torch.tensor([self.get_schedule_shifted(alpha_prod_t.item(), s) for s in scales])
-            alpha_prod_t_prev = torch.tensor([self.get_schedule_shifted(alpha_prod_t_prev.item(), s) for s in scales])
-            # if sample is not None:# and alpha_prod_t[0].size(-1) != 1:
-            #     alpha_prod_t = torch.stack(
-            #         [F.interpolate(g * torch.ones_like(im), im.size(-1), mode="nearest") for g, im in zip(alpha_prod_t, sample)]
-            #     )
-            #     alpha_prod_t_prev = torch.stack(
-            #         [F.interpolate(g, im.size(-1), mode="nearest") for g, im in zip(alpha_prod_t_prev, sample)]
-            #     )
+            alpha_prod_t = torch.tensor([self.get_schedule_shifted(alpha_prod_t, s) for s in scales])
+            alpha_prod_t_prev = torch.tensor([self.get_schedule_shifted(alpha_prod_t_prev, s) for s in scales])
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -3232,10 +3225,8 @@ class NestedUNet2DConditionOutput(BaseOutput):
     Output type for the [`NestedUNet2DConditionModel`] model.
     """
 
-    sample: list = []
-    sample_low: torch.Tensor = None
+    sample: list = None
     sample_inner: torch.Tensor = None
-    scales: list = []
 
 
 class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
@@ -3377,19 +3368,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             sample, sample_feat = sample
         if isinstance(sample, list) and len(sample) == 1:
             sample = sample[0]
-
-        scales = self.config.nest_ratio + [1]
-        is_sample_low = False
-        if isinstance(sample, torch.Tensor):
-            out = [sample]
-            for s in scales[1:]:
-                ratio = scales[0] // s
-                sample_low = F.avg_pool2d(sample, ratio) * ratio
-                torch.manual_seed(0)
-                sample_low = sample_low.normal_()
-                out += [sample_low]
-                is_sample_low = True
-            sample = out
 
         # 2. input layer (normalize the input)
         bsz = [x.size(0) for x in sample]
@@ -3598,13 +3576,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         else:
             out = [sample_out, x_low]
         if self.config.nesting:
-            return NestedUNet2DConditionOutput(sample=out, sample_inner=sample, scales=scales)
+            return NestedUNet2DConditionOutput(sample=out, sample_inner=sample)
         if not return_dict:
-            return (out, sample_low, scales)
-        if is_sample_low:
-            return NestedUNet2DConditionOutput(sample=out, sample_low=sample_low, scales=scales)
+            return (out, )
         else:
-            return NestedUNet2DConditionOutput(sample=out, sample_low=None, scales=scales)
+            return NestedUNet2DConditionOutput(sample=out)
 
 
 class MatryoshkaPipeline(
