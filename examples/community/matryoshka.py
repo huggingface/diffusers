@@ -2425,8 +2425,10 @@ class MatryoshkaUNet2DConditionModel(
 
             if self.model_type == "unet":
                 self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
-            elif self.model_type == "nested_unet":
+            elif self.model_type == "nested_unet" and self.config.micro_conditioning_scale == 256:
                 self.time_proj = Timesteps(block_out_channels[0] * 4, flip_sin_to_cos, freq_shift)
+            elif self.model_type == "nested_unet" and self.config.micro_conditioning_scale == 1024:
+                self.time_proj = Timesteps(block_out_channels[0] * 4 * 2, flip_sin_to_cos, freq_shift)
             timestep_input_dim = block_out_channels[0]
         else:
             raise ValueError(
@@ -3432,13 +3434,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
         elif isinstance(self.inner_unet, NestedUNet2DConditionModel):
-            encoder_hidden_states = self.inner_unet.inner_unet.process_encoder_hidden_states(
-                encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-            )
-
-            aug_emb, cond_mask, cond_emb = self.inner_unet.inner_unet.get_aug_embed(
-                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-            )
+            # TODO: Implement for nesting_level=2
 
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
