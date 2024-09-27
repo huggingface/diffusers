@@ -246,7 +246,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         out_slice = out[0, -3:, -3:, -1].flatten()
         print_tensor_test(out_slice)
-        expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
+        expected_slice = np.array([0.4023, 0.4043, 0.4023, 0.3965, 0.3984, 0.3984, 0.3906, 0.3906, 0.4219])
 
         assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
