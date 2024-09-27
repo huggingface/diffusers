@@ -535,7 +535,7 @@ class LoraBaseMixin:
         # eg ["adapter1", "adapter2"]
         all_adapters = {adapter for adapters in list_adapters.values() for adapter in adapters}
         missing_adapters = set(adapter_names) - all_adapters
-        if missing_adapters:
+        if len(missing_adapters) > 0:
             raise ValueError(
                 f"Adapter name(s) {missing_adapters} not in the list of present adapters: {all_adapters}."
             )
