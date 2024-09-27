@@ -1392,10 +1392,10 @@ def main(args):
         elif args.save_weight_dtype == "bf16":
             save_weight_dtype = torch.bfloat16
         flux_controlnet.to(save_weight_dtype)
-    if args.save_weight_dtype != "fp32":
-        flux_controlnet.save_pretrained(args.output_dir, variant=args.save_weight_dtype)
-    else:
-        flux_controlnet.save_pretrained(args.output_dir)
+        if args.save_weight_dtype != "fp32":
+            flux_controlnet.save_pretrained(args.output_dir, variant=args.save_weight_dtype)
+        else:
+            flux_controlnet.save_pretrained(args.output_dir)
         # Run a final round of validation.
         # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
         image_logs = None
