@@ -265,6 +265,10 @@ class PeftLoraLoaderMixinTests:
                         "No param should be on 'meta' device.",
                     )
 
+            _, _, inputs = self.get_dummy_inputs()
+            output_lora = pipe(**inputs)[0]
+            self.assertTrue(output_lora.shape == self.output_shape)
+
     def test_simple_inference(self):
         """
         Tests a simple inference and makes sure it works as expected
