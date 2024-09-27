@@ -929,12 +929,24 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters("adapter-1")
             output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertFalse(
+                np.allclose(output_no_lora, output_adapter_1, atol=1e-3, rtol=1e-3),
+                "Adapter outputs should be different.",
+            )
 
             pipe.set_adapters("adapter-2")
             output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertFalse(
+                np.allclose(output_no_lora, output_adapter_2, atol=1e-3, rtol=1e-3),
+                "Adapter outputs should be different.",
+            )
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
             output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertFalse(
+                np.allclose(output_no_lora, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+                "Adapter outputs should be different.",
+            )
 
             # Fuse and unfuse should lead to the same results
             self.assertFalse(
@@ -959,6 +971,38 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
                 "output with no lora and output with lora disabled should give same results",
             )
+
+    def test_wrong_adapter_name_raises_error(self):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+        with self.assertRaises(ValueError) as err_context:
+            pipe.set_adapters("test")
+
+        self.assertTrue("not in the list of present adapters" in str(err_context.exception))
+
+        # test this works.
+        pipe.set_adapters("adapter-1")
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
     def test_simple_inference_with_text_denoiser_block_scale(self):
         """
