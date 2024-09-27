@@ -29,6 +29,7 @@ The abstract of the paper is the following:
 | [AnimateDiffSparseControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sparsectrl.py) | *Controlled Video-to-Video Generation with AnimateDiff using SparseCtrl* |
 | [AnimateDiffSDXLPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_sdxl.py) | *Video-to-Video Generation with AnimateDiff* |
 | [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
+| [AnimateDiffVideoToVideoControlNetPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video_controlnet.py) | *Video-to-Video Generation with AnimateDiff using ControlNet* |
 
 ## Available checkpoints
 
@@ -518,6 +519,97 @@ Here are some sample outputs:
     </tr>
 </table>
 
+
+
+### AnimateDiffVideoToVideoControlNetPipeline
+
+AnimateDiff can be used together with ControlNets to enhance video-to-video generation by allowing for precise control over the output. ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala, and allows you to condition Stable Diffusion with an additional control image to ensure that the spatial information is preserved throughout the video. 
+
+This pipeline allows you to condition your generation both on the original video and on a sequence of control images.
+
+```python
+import torch
+from PIL import Image
+from tqdm.auto import tqdm
+
+from controlnet_aux.processor import OpenposeDetector
+from diffusers import AnimateDiffVideoToVideoControlNetPipeline
+from diffusers.utils import export_to_gif, load_video
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
+
+# Load the ControlNet
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
+# Load the motion adapter
+motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+# Load SD 1.5 based finetuned model
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+pipe = AnimateDiffVideoToVideoControlNetPipeline.from_pretrained(
+    "SG161222/Realistic_Vision_V5.1_noVAE",
+    motion_adapter=motion_adapter,
+    controlnet=controlnet,
+    vae=vae,
+).to(device="cuda", dtype=torch.float16)
+
+# Enable LCM to speed up inference
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm-lora")
+pipe.set_adapters(["lcm-lora"], [0.8])
+
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif")
+video = [frame.convert("RGB") for frame in video]
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+
+# Create controlnet preprocessor
+open_pose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to("cuda")
+
+# Preprocess controlnet images
+conditioning_frames = []
+for frame in tqdm(video):
+    conditioning_frames.append(open_pose(frame))
+
+strength = 0.8
+with torch.inference_mode():
+    video = pipe(
+        video=video,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        num_inference_steps=10,
+        guidance_scale=2.0,
+        controlnet_conditioning_scale=0.75,
+        conditioning_frames=conditioning_frames,
+        strength=strength,
+        generator=torch.Generator().manual_seed(42),
+    ).frames[0]
+
+video = [frame.resize(conditioning_frames[0].size) for frame in video]
+export_to_gif(video, f"animatediff_vid2vid_controlnet.gif", fps=8)
+```
+
+Here are some sample outputs:
+
+<table align="center">
+    <tr>
+      <th align="center">Source Video</th>
+      <th align="center">Output Video</th>
+    </tr>
+    <tr>
+        <td align="center">
+          anime girl, dancing
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/dance.gif" alt="anime girl, dancing" />
+        </td>
+        <td align="center">
+          astronaut in space, dancing
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff_vid2vid_controlnet.gif" alt="astronaut in space, dancing" />
+        </td>
+    </tr>
+</table>
+
+**The lights and composition were transferred from the Source Video.**
+
 ## Using Motion LoRAs
 
 Motion LoRAs are a collection of LoRAs that work with the `guoyww/animatediff-motion-adapter-v1-5-2` checkpoint. These LoRAs are responsible for adding specific types of motion to the animations.
@@ -822,6 +914,89 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
     </tr>
 </table>
 
+## Using FreeNoise
+
+[FreeNoise: Tuning-Free Longer Video Diffusion via Noise Rescheduling](https://arxiv.org/abs/2310.15169) by Haonan Qiu, Menghan Xia, Yong Zhang, Yingqing He, Xintao Wang, Ying Shan, Ziwei Liu.
+
+FreeNoise is a sampling mechanism that can generate longer videos with short-video generation models by employing noise-rescheduling, temporal attention over sliding windows, and weighted averaging of latent frames. It also can be used with multiple prompts to allow for interpolated video generations. More details are available in the paper.
+
+The currently supported AnimateDiff pipelines that can be used with FreeNoise are:
+- [`AnimateDiffPipeline`]
+- [`AnimateDiffControlNetPipeline`]
+- [`AnimateDiffVideoToVideoPipeline`]
+- [`AnimateDiffVideoToVideoControlNetPipeline`]
+
+In order to use FreeNoise, a single line needs to be added to the inference code after loading your pipelines.
+
+```diff
++ pipe.enable_free_noise()
+```
+
+After this, either a single prompt could be used, or multiple prompts can be passed as a dictionary of integer-string pairs. The integer keys of the dictionary correspond to the frame index at which the influence of that prompt would be maximum. Each frame index should map to a single string prompt. The prompts for intermediate frame indices, that are not passed in the dictionary, are created by interpolating between the frame prompts that are passed. By default, simple linear interpolation is used. However, you can customize this behaviour with a callback to the `prompt_interpolation_callback` parameter when enabling FreeNoise.
+
+Full example:
+
+```python
+import torch
+from diffusers import AutoencoderKL, AnimateDiffPipeline, LCMScheduler, MotionAdapter
+from diffusers.utils import export_to_video, load_image
+
+# Load pipeline
+dtype = torch.float16
+motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM", torch_dtype=dtype)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=dtype)
+
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=motion_adapter, vae=vae, torch_dtype=dtype)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+
+pipe.load_lora_weights(
+    "wangfuyun/AnimateLCM", weight_name="AnimateLCM_sd15_t2v_lora.safetensors", adapter_name="lcm_lora"
+)
+pipe.set_adapters(["lcm_lora"], [0.8])
+
+# Enable FreeNoise for long prompt generation
+pipe.enable_free_noise(context_length=16, context_stride=4)
+pipe.to("cuda")
+
+# Can be a single prompt, or a dictionary with frame timesteps
+prompt = {
+    0: "A caterpillar on a leaf, high quality, photorealistic",
+    40: "A caterpillar transforming into a cocoon, on a leaf, near flowers, photorealistic",
+    80: "A cocoon on a leaf, flowers in the backgrond, photorealistic",
+    120: "A cocoon maturing and a butterfly being born, flowers and leaves visible in the background, photorealistic",
+    160: "A beautiful butterfly, vibrant colors, sitting on a leaf, flowers in the background, photorealistic",
+    200: "A beautiful butterfly, flying away in a forest, photorealistic",
+    240: "A cyberpunk butterfly, neon lights, glowing",
+}
+negative_prompt = "bad quality, worst quality, jpeg artifacts"
+
+# Run inference
+output = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=256,
+    guidance_scale=2.5,
+    num_inference_steps=10,
+    generator=torch.Generator("cpu").manual_seed(0),
+)
+
+# Save video
+frames = output.frames[0]
+export_to_video(frames, "output.mp4", fps=16)
+```
+
+### FreeNoise memory savings
+
+Since FreeNoise processes multiple frames together, there are parts in the modeling where the memory required exceeds that available on normal consumer GPUs. The main memory bottlenecks that we identified are spatial and temporal attention blocks, upsampling and downsampling blocks, resnet blocks and feed-forward layers. Since most of these blocks operate effectively only on the channel/embedding dimension, one can perform chunked inference across the batch dimensions. The batch dimension in AnimateDiff are either spatial (`[B x F, H x W, C]`) or temporal (`B x H x W, F, C`) in nature (note that it may seem counter-intuitive, but the batch dimension here are correct, because spatial blocks process across the `B x F` dimension while the temporal blocks process across the `B x H x W` dimension). We introduce a `SplitInferenceModule` that makes it easier to chunk across any dimension and perform inference. This saves a lot of memory but comes at the cost of requiring more time for inference.
+
+```diff
+# Load pipeline and adapters
+# ...
++ pipe.enable_free_noise_split_inference()
++ pipe.unet.enable_forward_chunking(16)
+```
+
+The call to `pipe.enable_free_noise_split_inference` method accepts two parameters: `spatial_split_size` (defaults to `256`) and `temporal_split_size` (defaults to `16`). These can be configured based on how much VRAM you have available. A lower split size results in lower memory usage but slower inference, whereas a larger split size results in faster inference at the cost of more memory.
 
 ## Using `from_single_file` with the MotionAdapter
 
@@ -863,6 +1038,12 @@ pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapt
 ## AnimateDiffVideoToVideoPipeline
 
 [[autodoc]] AnimateDiffVideoToVideoPipeline
+  - all
+  - __call__
+
+## AnimateDiffVideoToVideoControlNetPipeline
+
+[[autodoc]] AnimateDiffVideoToVideoControlNetPipeline
   - all
   - __call__
 
