@@ -27,6 +27,7 @@ from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransfo
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
+    print_tensor_test,
     require_peft_backend,
     require_torch_gpu,
     slow,
@@ -166,7 +167,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @slow
 @require_torch_gpu
 @require_peft_backend
-@unittest.skip("We cannot run inference on this model with the current CI hardware")
+# @unittest.skip("We cannot run inference on this model with the current CI hardware")
 # TODO (DN6, sayakpaul): move these tests to a beefier GPU
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace."""
@@ -224,6 +225,27 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         ).images
 
         out_slice = out[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
+
+        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_flux_kohya_with_text_encoder(self):
+        self.pipeline.load_lora_weights("cocktailpeanut/optimus", weight_name="optimus.safetensors")
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "optimus is cleaning the house with broomstick"
+        out = self.pipeline(
+            prompt,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=4.5,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+
+        out_slice = out[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
 
         assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
