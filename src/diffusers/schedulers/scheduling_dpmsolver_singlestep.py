@@ -123,6 +123,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
         final_sigmas_type (`str`, *optional*, defaults to `"zero"`):
             The final `sigma` value for the noise schedule during the sampling process. If `"sigma_min"`, the final
             sigma is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
@@ -154,10 +156,13 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         solver_type: str = "midpoint",
         lower_order_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
     ):
+        if sum([self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError("Only one of `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used.")
         if algorithm_type == "dpmsolver":
             deprecation_message = "algorithm_type `dpmsolver` is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
             deprecate("algorithm_types=dpmsolver", "1.0.0", deprecation_message)
@@ -300,6 +305,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Must pass exactly one of  `num_inference_steps` or `timesteps`.")
         if timesteps is not None and self.config.use_karras_sigmas:
             raise ValueError("Cannot use `timesteps` when `config.use_karras_sigmas=True`.")
+        if timesteps is not None and self.config.use_exponential_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
 
         num_inference_steps = num_inference_steps or len(timesteps)
         self.num_inference_steps = num_inference_steps
@@ -323,6 +330,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+        elif self.config.use_exponential_sigmas:
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
@@ -450,6 +460,28 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
+        return sigmas
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
+    def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
+        """Constructs an exponential noise schedule."""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = torch.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps).exp()
         return sigmas
 
     def convert_model_output(
