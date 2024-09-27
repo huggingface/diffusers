@@ -22,6 +22,7 @@ concurrency:
 
 env:
   DIFFUSERS_IS_CI: yes
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
@@ -168,9 +169,9 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: pr_${{ matrix.config.report }}_test_reports
+        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
 
   run_staging_tests:
@@ -229,7 +230,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
