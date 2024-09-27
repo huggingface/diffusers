@@ -862,14 +862,12 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
-        use_fast=False,
     )
     # load t5 tokenizer
     tokenizer_two = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
         revision=args.revision,
-        use_fast=False,
     )
     # load clip text encoder
     text_encoder_one = CLIPTextModel.from_pretrained(
@@ -898,9 +896,10 @@ def main(args):
     else:
         logger.info("Initializing controlnet weights from transformer")
         # we can define the num_layers, num_single_layers,
-        # default values are num_layers=4, num_single_layers=10
         flux_controlnet = FluxControlNetModel.from_transformer(
             flux_transformer,
+            attention_head_dim=flux_transformer.config["attention_head_dim"],
+            num_attention_heads=flux_transformer.config["num_attention_heads"],
             num_layers=args.num_double_layers,
             num_single_layers=args.num_single_layers,
         )
@@ -1279,12 +1278,16 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=pixel_latents.ndim, dtype=pixel_latents.dtype)
                 noisy_model_input = (1.0 - sigmas) * pixel_latents + sigmas * noise
 
-                guidance_vec = torch.full(
-                    (noisy_model_input.shape[0],),
-                    args.guidance_scale,
-                    device=noisy_model_input.device,
-                    dtype=weight_dtype,
-                )
+                # handle guidance
+                if flux_transformer.config.guidance_embeds:
+                    guidance_vec = torch.full(
+                        (noisy_model_input.shape[0],),
+                        args.guidance_scale,
+                        device=noisy_model_input.device,
+                        dtype=weight_dtype,
+                    )
+                else:
+                    guidance_vec = None
 
                 controlnet_block_samples, controlnet_single_block_samples = flux_controlnet(
                     hidden_states=noisy_model_input,

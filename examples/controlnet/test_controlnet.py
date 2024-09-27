@@ -145,7 +145,6 @@ class ControlNetflux(ExamplesTestsAccelerate):
             examples/controlnet/train_controlnet_flux.py
             --pretrained_model_name_or_path=hf-internal-testing/tiny-flux-pipe
             --output_dir={tmpdir}
-            --controlnet_model_name_or_path=promeai/FLUX.1-controlnet-lineart-promeai
             --dataset_name=hf-internal-testing/fill10
             --conditioning_image_column=conditioning_image
             --image_column=image
@@ -155,8 +154,8 @@ class ControlNetflux(ExamplesTestsAccelerate):
             --gradient_accumulation_steps=1
             --max_train_steps=4
             --checkpointing_steps=2
-            --num_double_layers=4
-            --num_single_layers=0
+            --num_double_layers=1
+            --num_single_layers=1
             """.split()
 
             run_command(self._launch_args + test_args)
