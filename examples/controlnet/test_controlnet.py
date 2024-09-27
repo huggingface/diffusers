@@ -143,7 +143,7 @@ class ControlNetflux(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet_flux.py
-            --pretrained_model_name_or_path=black-forest-labs/FLUX.1-dev
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-flux-pipe
             --output_dir={tmpdir}
             --controlnet_model_name_or_path=promeai/FLUX.1-controlnet-lineart-promeai
             --dataset_name=hf-internal-testing/fill10
