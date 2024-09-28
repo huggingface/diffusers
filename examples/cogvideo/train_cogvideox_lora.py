@@ -38,10 +38,7 @@ from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPi
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
-from diffusers.training_utils import (
-    cast_training_params,
-    clear_objs_and_retain_memory,
-)
+from diffusers.training_utils import cast_training_params, free_memory
 from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft, export_to_video, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -726,7 +723,8 @@ def log_validation(
                 }
             )
 
-    clear_objs_and_retain_memory([pipe])
+    del pipe
+    free_memory()
 
     return videos
 

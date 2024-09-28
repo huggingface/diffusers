@@ -55,9 +55,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
-    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    free_memory,
 )
 from diffusers.utils import (
     check_min_version,
@@ -1437,7 +1437,8 @@ def main(args):
 
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
-        clear_objs_and_retain_memory([tokenizers, text_encoders, text_encoder_one, text_encoder_two])
+        del text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+        free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1480,7 +1481,8 @@ def main(args):
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
 
         if args.validation_prompt is None:
-            clear_objs_and_retain_memory([vae])
+            del vae
+            free_memory()
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1817,7 +1819,8 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
-                    clear_objs_and_retain_memory([text_encoder_one, text_encoder_two])
+                    del text_encoder_one, text_encoder_two
+                    free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()

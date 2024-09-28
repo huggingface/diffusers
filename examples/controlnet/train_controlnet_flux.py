@@ -54,7 +54,7 @@ from diffusers import (
 from diffusers.models.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
-from diffusers.training_utils import clear_objs_and_retain_memory, compute_density_for_timestep_sampling
+from diffusers.training_utils import compute_density_for_timestep_sampling, free_memory
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
@@ -193,7 +193,8 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        clear_objs_and_retain_memory([pipeline])
+        del pipeline
+        free_memory()
         return image_logs
 
 
@@ -1103,7 +1104,8 @@ def main(args):
             compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=50
         )
 
-    clear_objs_and_retain_memory([text_encoders, tokenizers])
+    del text_encoders, tokenizers, text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+    free_memory()
 
     # Then get the training dataset ready to be passed to the dataloader.
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
