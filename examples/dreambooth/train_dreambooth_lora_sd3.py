@@ -1455,7 +1455,9 @@ def main(args):
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        retain_memory(objs=[tokenizers, text_encoders, text_encoder_one, text_encoder_two, text_encoder_three])
+        del tokenizers, text_encoders 
+        del text_encoder_one, text_encoder_two, text_encoder_three
+        retain_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
