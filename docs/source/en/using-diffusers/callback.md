@@ -109,7 +109,7 @@ Now, you can pass the callback function to the `callback_on_step_end` parameter 
 import torch
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -139,7 +139,7 @@ In this example, the diffusion process is stopped after 10 steps even though `nu
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 pipeline.enable_model_cpu_offload()
 num_inference_steps = 50
 
@@ -171,14 +171,13 @@ def latents_to_rgb(latents):
     weights = (
         (60, -60, 25, -70),
         (60,  -5, 15, -50),
-        (60,  10, -5, -35)
+        (60,  10, -5, -35),
     )
 
     weights_tensor = torch.t(torch.tensor(weights, dtype=latents.dtype).to(latents.device))
     biases_tensor = torch.tensor((150, 140, 130), dtype=latents.dtype).to(latents.device)
     rgb_tensor = torch.einsum("...lxy,lr -> ...rxy", latents, weights_tensor) + biases_tensor.unsqueeze(-1).unsqueeze(-1)
-    image_array = rgb_tensor.clamp(0, 255)[0].byte().cpu().numpy()
-    image_array = image_array.transpose(1, 2, 0)
+    image_array = rgb_tensor.clamp(0, 255).byte().cpu().numpy().transpose(1, 2, 0)
 
     return Image.fromarray(image_array)
 ```
@@ -189,7 +188,7 @@ def latents_to_rgb(latents):
 def decode_tensors(pipe, step, timestep, callback_kwargs):
     latents = callback_kwargs["latents"]
 
-    image = latents_to_rgb(latents)
+    image = latents_to_rgb(latents[0])
     image.save(f"{step}.png")
 
     return callback_kwargs

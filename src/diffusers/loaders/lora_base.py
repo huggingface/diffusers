@@ -532,13 +532,19 @@ class LoraBaseMixin:
             )
 
         list_adapters = self.get_list_adapters()  # eg {"unet": ["adapter1", "adapter2"], "text_encoder": ["adapter2"]}
-        all_adapters = {
-            adapter for adapters in list_adapters.values() for adapter in adapters
-        }  # eg ["adapter1", "adapter2"]
+        # eg ["adapter1", "adapter2"]
+        all_adapters = {adapter for adapters in list_adapters.values() for adapter in adapters}
+        missing_adapters = set(adapter_names) - all_adapters
+        if len(missing_adapters) > 0:
+            raise ValueError(
+                f"Adapter name(s) {missing_adapters} not in the list of present adapters: {all_adapters}."
+            )
+
+        # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
         invert_list_adapters = {
             adapter: [part for part, adapters in list_adapters.items() if adapter in adapters]
             for adapter in all_adapters
-        }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
+        }
 
         # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
@@ -699,9 +705,10 @@ class LoraBaseMixin:
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
                             if hasattr(module, "lora_magnitude_vector") and module.lora_magnitude_vector is not None:
-                                module.lora_magnitude_vector[adapter_name] = module.lora_magnitude_vector[
-                                    adapter_name
-                                ].to(device)
+                                if adapter_name in module.lora_magnitude_vector:
+                                    module.lora_magnitude_vector[adapter_name] = module.lora_magnitude_vector[
+                                        adapter_name
+                                    ].to(device)
 
     @staticmethod
     def pack_weights(layers, prefix):
