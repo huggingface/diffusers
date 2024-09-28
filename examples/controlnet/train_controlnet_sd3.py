@@ -49,11 +49,7 @@ from diffusers import (
     StableDiffusion3ControlNetPipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import (
-    compute_density_for_timestep_sampling,
-    compute_loss_weighting_for_sd3,
-    retain_memory,
-)
+from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -175,7 +171,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
             logger.warning(f"image logging not implemented for {tracker.name}")
 
         del pipeline
-        retain_memory()
+        free_memory()
 
         if not is_final_validation:
             controlnet.to(accelerator.device)
@@ -1134,7 +1130,7 @@ def main(args):
 
     del text_encoder_one, text_encoder_two, text_encoder_three
     del tokenizer_one, tokenizer_two, tokenizer_three
-    retain_memory()
+    free_memory()
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,

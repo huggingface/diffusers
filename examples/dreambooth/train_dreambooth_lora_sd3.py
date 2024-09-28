@@ -57,7 +57,7 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
-    retain_memory,
+    free_memory,
 )
 from diffusers.utils import (
     check_min_version,
@@ -212,7 +212,7 @@ def log_validation(
             )
 
     del pipeline
-    retain_memory()
+    free_memory()
 
     return images
 
@@ -1108,7 +1108,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            retain_memory()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1457,7 +1457,7 @@ def main(args):
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
         del tokenizers, text_encoders
         del text_encoder_one, text_encoder_two, text_encoder_three
-        retain_memory()
+        free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1795,7 +1795,7 @@ def main(args):
                 )
 
                 del text_encoder_one, text_encoder_two, text_encoder_three
-                retain_memory()
+                free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()

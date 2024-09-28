@@ -260,7 +260,7 @@ def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
     return weighting
 
 
-def retain_memory():
+def free_memory():
     """Runs garbage collection. Then clears the cache of the available accelerator."""
     gc.collect()
 
