@@ -3367,9 +3367,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     def model_type(self):
         return "nested_unet"
 
-    def forward_conditioning(self, *args, **kwargs):
-        return self.inner_unet.forward_conditioning(*args, **kwargs)
-
     def forward(
         self,
         sample: torch.Tensor,
