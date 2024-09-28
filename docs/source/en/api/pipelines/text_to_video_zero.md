@@ -40,6 +40,7 @@ To generate a video from prompt, run the following Python code:
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
+import imageio
 
 model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")

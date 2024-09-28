@@ -63,7 +63,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
     def test_single_file_loading_4_channel_unet(self):
         # Test loading single file inpaint with a 4 channel UNet
-        ckpt_path = "https://huggingface.co/Jiali/stable-diffusion-1.5/blob/main/v1-5-pruned-emaonly.safetensors"
+        ckpt_path = "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
         pipe = self.pipeline_class.from_single_file(ckpt_path)
 
         assert pipe.unet.config.in_channels == 4

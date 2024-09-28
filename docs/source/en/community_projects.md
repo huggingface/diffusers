@@ -75,4 +75,8 @@ Happy exploring, and thank you for being part of the Diffusers community!
     <td><a href="https://github.com/cumulo-autumn/StreamDiffusion"> StreamDiffusion </a></td>
     <td>A Pipeline-Level Solution for Real-Time Interactive Generation</td>
   </tr>
+  <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/Netwrck/stable-diffusion-server"> Stable Diffusion Server </a></td>
+    <td>A server configured for Inpainting/Generation/img2img with one stable diffusion model</td>
+  </tr>
 </table>

@@ -33,6 +33,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "UNetMotionModel": _maybe_expand_lora_scales,
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
+    "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
 }
 
 
