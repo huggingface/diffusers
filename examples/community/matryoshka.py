@@ -3259,7 +3259,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         temporal_spatial_ds=False,
         initialize_inner_with_pretrained=None,
         use_attention_ffn=False,
-        inner_config={},
         act_fn="silu",
         addition_embed_type_num_heads=64,
         addition_time_embed_dim=None,
@@ -3300,7 +3299,8 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         use_linear_projection=False,
         is_temporal=None,
         nest_ratio=None,
-        ):
+        inner_config={},
+    ):
         super().__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -3353,15 +3353,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         if self.is_temporal[0]:
             nest_ratio = int(np.sqrt(nest_ratio))
         if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
-            self.nest_ratio=[nest_ratio * self.inner_unet.nest_ratio[0]] + self.inner_unet.nest_ratio
+            self.nest_ratio = [nest_ratio * self.inner_unet.nest_ratio[0]] + self.inner_unet.nest_ratio
         else:
-            self.nest_ratio=[nest_ratio]
+            self.nest_ratio = [nest_ratio]
 
         # self.register_modules(inner_unet=self.inner_unet)
-
-        # if self.config.interp_conditioning:  # Seems False for all cases
-        #     self.interp_layer1 = nn.Linear(self.temporal_dim // 4, self.temporal_dim)
-        #     self.interp_layer2 = nn.Linear(self.temporal_dim, self.temporal_dim)
 
     @property
     def model_type(self):
