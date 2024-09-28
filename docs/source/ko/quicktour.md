@@ -53,7 +53,7 @@ Diffusion 모델은 이미지나 오디오와 같은 관심 샘플들을 생성�
 
 먼저 [`DiffusionPipeline`]의 인스턴스를 생성하고 다운로드할 파이프라인 체크포인트를 지정합니다.
 허깅페이스 허브에 저장된 모든 [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads)에 대해 [`DiffusionPipeline`]을 사용할 수 있습니다.
-이 훑어보기에서는 text-to-image 생성을 위한 [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 체크포인트를 로드합니다.
+이 훑어보기에서는 text-to-image 생성을 위한 [`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 체크포인트를 로드합니다.
 
 <Tip warning={true}>
 
@@ -66,7 +66,7 @@ Diffusion 모델은 이미지나 오디오와 같은 관심 샘플들을 생성�
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 ```
 
 The [`DiffusionPipeline`]은 모든 모델링, 토큰화, 스케줄링 컴포넌트를 다운로드하고 캐시합니다. Stable Diffusion Pipeline은 무엇보다도 [`UNet2DConditionModel`]과 [`PNDMScheduler`]로 구성되어 있음을 알 수 있습니다:
@@ -123,7 +123,7 @@ PyTorch에서와 마찬가지로 제너레이터 객체를 GPU로 이동할 수 
 
 ```bash
 !git lfs install
-!git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+!git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 그런 다음 저장된 가중치를 파이프라인에 로드합니다:
@@ -141,7 +141,7 @@ PyTorch에서와 마찬가지로 제너레이터 객체를 GPU로 이동할 수 
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 

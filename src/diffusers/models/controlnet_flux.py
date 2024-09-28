@@ -502,16 +502,17 @@ class FluxMultiControlNetModel(ModelMixin):
                     control_block_samples = block_samples
                     control_single_block_samples = single_block_samples
                 else:
-                    control_block_samples = [
-                        control_block_sample + block_sample
-                        for control_block_sample, block_sample in zip(control_block_samples, block_samples)
-                    ]
-
-                    control_single_block_samples = [
-                        control_single_block_sample + block_sample
-                        for control_single_block_sample, block_sample in zip(
-                            control_single_block_samples, single_block_samples
-                        )
-                    ]
+                    if block_samples is not None and control_block_samples is not None:
+                        control_block_samples = [
+                            control_block_sample + block_sample
+                            for control_block_sample, block_sample in zip(control_block_samples, block_samples)
+                        ]
+                    if single_block_samples is not None and control_single_block_samples is not None:
+                        control_single_block_samples = [
+                            control_single_block_sample + block_sample
+                            for control_single_block_sample, block_sample in zip(
+                                control_single_block_samples, single_block_samples
+                            )
+                        ]
 
         return control_block_samples, control_single_block_samples
