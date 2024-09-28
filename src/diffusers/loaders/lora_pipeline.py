@@ -570,10 +570,13 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        print(f"{is_dora_scale_present=}")
         if is_dora_scale_present:
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+            is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+            print(f"{is_dora_scale_present=}")
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
