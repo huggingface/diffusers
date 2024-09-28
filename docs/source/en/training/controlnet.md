@@ -276,7 +276,7 @@ That's it! You don't need to add any additional parameters to your training comm
 <hfoption id="PyTorch">
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/save/model"
 
 accelerate launch train_controlnet.py \

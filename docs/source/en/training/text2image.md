@@ -167,7 +167,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 </Tip>
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export dataset_name="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
@@ -201,7 +201,7 @@ To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment va
 </Tip>
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export dataset_name="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \

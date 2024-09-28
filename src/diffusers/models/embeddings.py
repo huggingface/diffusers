@@ -342,14 +342,60 @@ class CogVideoXPatchEmbed(nn.Module):
         embed_dim: int = 1920,
         text_embed_dim: int = 4096,
         bias: bool = True,
+        sample_width: int = 90,
+        sample_height: int = 60,
+        sample_frames: int = 49,
+        temporal_compression_ratio: int = 4,
+        max_text_seq_length: int = 226,
+        spatial_interpolation_scale: float = 1.875,
+        temporal_interpolation_scale: float = 1.0,
+        use_positional_embeddings: bool = True,
+        use_learned_positional_embeddings: bool = True,
     ) -> None:
         super().__init__()
+
         self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.sample_height = sample_height
+        self.sample_width = sample_width
+        self.sample_frames = sample_frames
+        self.temporal_compression_ratio = temporal_compression_ratio
+        self.max_text_seq_length = max_text_seq_length
+        self.spatial_interpolation_scale = spatial_interpolation_scale
+        self.temporal_interpolation_scale = temporal_interpolation_scale
+        self.use_positional_embeddings = use_positional_embeddings
+        self.use_learned_positional_embeddings = use_learned_positional_embeddings
 
         self.proj = nn.Conv2d(
             in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
         )
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
+
+        if use_positional_embeddings or use_learned_positional_embeddings:
+            persistent = use_learned_positional_embeddings
+            pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
+            self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
+
+    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+        post_patch_height = sample_height // self.patch_size
+        post_patch_width = sample_width // self.patch_size
+        post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
+        num_patches = post_patch_height * post_patch_width * post_time_compression_frames
+
+        pos_embedding = get_3d_sincos_pos_embed(
+            self.embed_dim,
+            (post_patch_width, post_patch_height),
+            post_time_compression_frames,
+            self.spatial_interpolation_scale,
+            self.temporal_interpolation_scale,
+        )
+        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
+        joint_pos_embedding = torch.zeros(
+            1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
+        )
+        joint_pos_embedding.data[:, self.max_text_seq_length :].copy_(pos_embedding)
+
+        return joint_pos_embedding
 
     def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
         r"""
@@ -371,6 +417,28 @@ class CogVideoXPatchEmbed(nn.Module):
         embeds = torch.cat(
             [text_embeds, image_embeds], dim=1
         ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
+
+        if self.use_positional_embeddings or self.use_learned_positional_embeddings:
+            if self.use_learned_positional_embeddings and (self.sample_width != width or self.sample_height != height):
+                raise ValueError(
+                    "It is currently not possible to generate videos at a different resolution that the defaults. This should only be the case with 'THUDM/CogVideoX-5b-I2V'."
+                    "If you think this is incorrect, please open an issue at https://github.com/huggingface/diffusers/issues."
+                )
+
+            pre_time_compression_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
+
+            if (
+                self.sample_height != height
+                or self.sample_width != width
+                or self.sample_frames != pre_time_compression_frames
+            ):
+                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
+                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+            else:
+                pos_embedding = self.pos_embedding
+
+            embeds = embeds + pos_embedding
+
         return embeds
 
 
@@ -514,7 +582,7 @@ def get_1d_rotary_pos_embed(
     linear_factor=1.0,
     ntk_factor=1.0,
     repeat_interleave_real=True,
-    freqs_dtype=torch.float32,  # torch.float32 (hunyuan, stable audio), torch.float64 (flux)
+    freqs_dtype=torch.float32,  #  torch.float32, torch.float64 (flux)
 ):
     """
     Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
@@ -545,21 +613,30 @@ def get_1d_rotary_pos_embed(
     assert dim % 2 == 0
 
     if isinstance(pos, int):
-        pos = np.arange(pos)
+        pos = torch.arange(pos)
+    if isinstance(pos, np.ndarray):
+        pos = torch.from_numpy(pos)  # type: ignore  # [S]
+
     theta = theta * ntk_factor
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype)[: (dim // 2)] / dim)) / linear_factor  # [D/2]
-    t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
-    freqs = torch.outer(t, freqs)  # type: ignore   # [S, D/2]
+    freqs = (
+        1.0
+        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype, device=pos.device)[: (dim // 2)] / dim))
+        / linear_factor
+    )  # [D/2]
+    freqs = torch.outer(pos, freqs)  # type: ignore   # [S, D/2]
     if use_real and repeat_interleave_real:
+        # flux, hunyuan-dit, cogvideox
         freqs_cos = freqs.cos().repeat_interleave(2, dim=1).float()  # [S, D]
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
+        # stable audio
         freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1).float()  # [S, D]
         freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1).float()  # [S, D]
         return freqs_cos, freqs_sin
     else:
-        freqs_cis = torch.polar(torch.ones_like(freqs), freqs).float()  # complex64     # [S, D/2]
+        # lumina
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
         return freqs_cis
 
 
@@ -590,11 +667,11 @@ def apply_rotary_emb(
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if use_real_unbind_dim == -1:
-            # Use for example in Lumina
+            # Used for flux, cogvideox, hunyuan-dit
             x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
             x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
         elif use_real_unbind_dim == -2:
-            # Use for example in Stable Audio
+            # Used for Stable Audio
             x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)  # [B, S, H, D//2]
             x_rotated = torch.cat([-x_imag, x_real], dim=-1)
         else:
@@ -604,6 +681,7 @@ def apply_rotary_emb(
 
         return out
     else:
+        # used for lumina
         x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
         freqs_cis = freqs_cis.unsqueeze(2)
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
@@ -622,7 +700,7 @@ class FluxPosEmbed(nn.Module):
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
-        pos = ids.squeeze().float().cpu().numpy()
+        pos = ids.float()
         is_mps = ids.device.type == "mps"
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
