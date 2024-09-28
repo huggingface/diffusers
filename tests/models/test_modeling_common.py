@@ -1033,8 +1033,6 @@ class ModelTesterMixin:
             extension = ".safetensors" if use_safe else ".bin"
             config, _ = self.prepare_init_args_and_inputs_for_common()
             model = self.model_class(**config).eval()
-            if model._no_split_modules is None:
-                return
 
             model_size = compute_module_sizes(model)[""]
             max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
