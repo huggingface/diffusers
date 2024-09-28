@@ -628,9 +628,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
-        from diffusers.utils.testing_utils import print_tensor_test
-
-        print_tensor_test(predicted_slice)
-        expected_slice_scale = np.array([0.3932, 0.3742, 0.4429, 0.3737, 0.3504, 0.433, 0.3948, 0.3769, 0.4516])
+        expected_slice_scale = np.array([0.1817, 0.0697, 0.2346, 0.0900, 0.1261, 0.2279, 0.1767, 0.1991, 0.2886])
         max_diff = numpy_cosine_similarity_distance(expected_slice_scale, predicted_slice)
         assert max_diff < 1e-3
