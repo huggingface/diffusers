@@ -55,7 +55,6 @@ from diffusers.models.upsampling import Upsample2D
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -4566,7 +4565,7 @@ class MatryoshkaPipeline(
                     xm.mark_step()
 
         if not output_type == "latent":
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(latents, device, prompt_embeds.dtype)
         else:
             image = latents
             has_nsfw_concept = None
