@@ -737,7 +737,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # The variant filenames can have the legacy sharding checkpoint format that we check and throw
         # a warning if detected.
         if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
-            warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
+            warn_msg = (
+                f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                "Please check your files carefully:\n\n"
+                "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                "If you find any files in the deprecated format:\n"
+                "1. Remove all existing checkpoint files for this variant.\n"
+                "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                "This will ensure you're using the most up-to-date and compatible checkpoint format."
+            )
             logger.warning(warn_msg)
 
         config_dict = cls.load_config(cached_folder)
@@ -1261,16 +1270,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if not local_files_only:
             filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
-warn_msg = (
-    f"Warning: The repository contains sharded checkpoints for variant '{variant}' that may use a deprecated format. "
-    "Please check your files carefully:\n\n"
-    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
-    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
-    "If you find any files in the deprecated format:\n"
-    "1. Remove all existing checkpoint files for this variant.\n"
-    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
-    "This will ensure you're using the most up-to-date and compatible checkpoint format."
-)
+                warn_msg = (
+                    f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                    "Please check your files carefully:\n\n"
+                    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                    "If you find any files in the deprecated format:\n"
+                    "1. Remove all existing checkpoint files for this variant.\n"
+                    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                    "This will ensure you're using the most up-to-date and compatible checkpoint format."
+                )
                 logger.warning(warn_msg)
 
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)

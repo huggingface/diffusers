@@ -136,13 +136,17 @@ class ModelUtilsTest(unittest.TestCase):
     # Local tests are already covered down below.
     @parameterized.expand(
         [
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None),
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolde", "unet"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None, "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "unet", "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants", None, None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants-subfolder", "unet", None),
         ]
     )
-    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder):
+    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder, variant=None):
         def load_model():
-            kwargs = {"variant": "fp16"}
+            kwargs = {}
+            if variant:
+                kwargs["variant"] = variant
             if subfolder:
                 kwargs["subfolder"] = subfolder
             return UNet2DConditionModel.from_pretrained(repo_id, **kwargs)

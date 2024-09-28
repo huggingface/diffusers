@@ -1,0 +1,176 @@
+diff --git a/src/diffusers/pipelines/pipeline_utils.py b/src/diffusers/pipelines/pipeline_utils.py
+index 53a5cc413..6721706b5 100644
+--- a/src/diffusers/pipelines/pipeline_utils.py
++++ b/src/diffusers/pipelines/pipeline_utils.py
+@@ -737,7 +737,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+         # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+         # a warning if detected.
+         if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
+-            warn_msg = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
++            warn_msg = (
++                f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
++                "Please check your files carefully:\n\n"
++                "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
++                "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
++                "If you find any files in the deprecated format:\n"
++                "1. Remove all existing checkpoint files for this variant.\n"
++                "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
++                "This will ensure you're using the most up-to-date and compatible checkpoint format."
++            )
+             logger.warning(warn_msg)
+ 
+         config_dict = cls.load_config(cached_folder)
+@@ -1261,16 +1270,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+         if not local_files_only:
+             filenames = {sibling.rfilename for sibling in info.siblings}
+             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
+-warn_msg = (
+-    f"Warning: The repository contains sharded checkpoints for variant '{variant}' that may use a deprecated format. "
+-    "Please check your files carefully:\n\n"
+-    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+-    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+-    "If you find any files in the deprecated format:\n"
+-    "1. Remove all existing checkpoint files for this variant.\n"
+-    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+-    "This will ensure you're using the most up-to-date and compatible checkpoint format."
+-)
++                warn_msg = (
++                    f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
++                    "Please check your files carefully:\n\n"
++                    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
++                    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
++                    "If you find any files in the deprecated format:\n"
++                    "1. Remove all existing checkpoint files for this variant.\n"
++                    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
++                    "This will ensure you're using the most up-to-date and compatible checkpoint format."
++                )
+                 logger.warning(warn_msg)
+ 
+             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+diff --git a/tests/models/test_modeling_common.py b/tests/models/test_modeling_common.py
+index f7341281d..5548fdd07 100644
+--- a/tests/models/test_modeling_common.py
++++ b/tests/models/test_modeling_common.py
+@@ -136,13 +136,17 @@ class ModelUtilsTest(unittest.TestCase):
+     # Local tests are already covered down below.
+     @parameterized.expand(
+         [
+-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None),
+-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolde", "unet"),
++            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None, "fp16"),
++            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "unet", "fp16"),
++            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants", None, None),
++            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants-subfolder", "unet", None),
+         ]
+     )
+-    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder):
++    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder, variant=None):
+         def load_model():
+-            kwargs = {"variant": "fp16"}
++            kwargs = {}
++            if variant:
++                kwargs["variant"] = variant
+             if subfolder:
+                 kwargs["subfolder"] = subfolder
+             return UNet2DConditionModel.from_pretrained(repo_id, **kwargs)
+diff --git a/tests/models/unets/test_models_unet_2d_condition.py b/tests/models/unets/test_models_unet_2d_condition.py
+index f354950b6..8bf258c19 100644
+--- a/tests/models/unets/test_models_unet_2d_condition.py
++++ b/tests/models/unets/test_models_unet_2d_condition.py
+@@ -1036,9 +1036,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
+         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
+ 
+     @require_torch_gpu
+-    def test_load_sharded_checkpoint_from_hub(self):
++    @parameterized.expand([
++        ("hf-internal-testing/unet2d-sharded-dummy", None),
++        ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16")
++    ])
++    def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
+         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+-        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy")
++        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
+         loaded_model = loaded_model.to(torch_device)
+         new_output = loaded_model(**inputs_dict)
+ 
+@@ -1046,10 +1050,14 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
+         assert new_output.sample.shape == (4, 4, 16, 16)
+ 
+     @require_torch_gpu
+-    def test_load_sharded_checkpoint_from_hub_subfolder(self):
++    @parameterized.expand([
++        ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
++        ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16")
++    ])
++    def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
+         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+         loaded_model = self.model_class.from_pretrained(
+-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet"
++            repo_id, subfolder="unet", variant=variant
+         )
+         loaded_model = loaded_model.to(torch_device)
+         new_output = loaded_model(**inputs_dict)
+@@ -1080,19 +1088,27 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
+         assert new_output.sample.shape == (4, 4, 16, 16)
+ 
+     @require_torch_gpu
+-    def test_load_sharded_checkpoint_device_map_from_hub(self):
++    @parameterized.expand([
++        ("hf-internal-testing/unet2d-sharded-dummy", None),
++        ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16")
++    ])
++    def test_load_sharded_checkpoint_device_map_from_hub(self, repo_id, variant):
+         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+-        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy", device_map="auto")
++        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, device_map="auto")
+         new_output = loaded_model(**inputs_dict)
+ 
+         assert loaded_model
+         assert new_output.sample.shape == (4, 4, 16, 16)
+ 
+     @require_torch_gpu
+-    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self):
++    @parameterized.expand([
++        ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
++        ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16")
++    ])
++    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self, repo_id, variant):
+         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+         loaded_model = self.model_class.from_pretrained(
+-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map="auto"
++            repo_id, variant=variant, subfolder="unet", device_map="auto"
+         )
+         new_output = loaded_model(**inputs_dict)
+ 
+@@ -1121,18 +1137,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
+         assert loaded_model
+         assert new_output.sample.shape == (4, 4, 16, 16)
+ 
+-    @require_torch_gpu
+-    def test_load_sharded_checkpoint_with_variant_from_hub(self):
+-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+-        loaded_model = self.model_class.from_pretrained(
+-            "hf-internal-testing/unet2d-sharded-with-variant-dummy", variant="fp16"
+-        )
+-        loaded_model = loaded_model.to(torch_device)
+-        new_output = loaded_model(**inputs_dict)
+-
+-        assert loaded_model
+-        assert new_output.sample.shape == (4, 4, 16, 16)
+-
+     @require_peft_backend
+     def test_lora(self):
+         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+diff --git a/tests/pipelines/test_pipelines.py b/tests/pipelines/test_pipelines.py
+index fba81837f..8b087db67 100644
+--- a/tests/pipelines/test_pipelines.py
++++ b/tests/pipelines/test_pipelines.py
+@@ -579,7 +579,7 @@ class DownloadTests(unittest.TestCase):
+     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
+         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
+         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+-        deprecated_warning_msg = "This serialization format is now deprecated to standardize the serialization"
++        deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
+ 
+         for is_local in [True, False]:
+             with CaptureLogger(logger) as cap_logger:
