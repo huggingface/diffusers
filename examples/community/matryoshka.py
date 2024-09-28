@@ -2081,7 +2081,6 @@ class MatryoshkaUNet2DConditionModel(
         temporal_spatial_ds: bool = False,
         skip_cond_emb: bool = False,
         nesting: Optional[int] = False,
-        inner_config: Optional[Dict] = None,
     ):
         super().__init__()
 
@@ -2350,7 +2349,7 @@ class MatryoshkaUNet2DConditionModel(
 
         self._set_pos_net_if_use_gligen(attention_type=attention_type, cross_attention_dim=cross_attention_dim)
 
-        self.register_to_config(is_temporal=[])
+        self.is_temporal = []
 
     def _check_config(
         self,
@@ -3236,8 +3235,93 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
     """
 
     @register_to_config
-    def __init__(self, skip_inner_unet_input, initialize_inner_with_pretrained, skip_normalization, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        in_channels=3,
+        out_channels=3,
+        block_out_channels=(64, 128, 256),
+        cross_attention_dim=2048,
+        resnet_time_scale_shift="scale_shift",
+        down_block_types=("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+        up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+        mid_block_type=None,
+        nesting=False,
+        flip_sin_to_cos=False,
+        transformer_layers_per_block=[0, 0, 0],
+        layers_per_block=[2, 2, 1],
+        masked_cross_attention=True,
+        micro_conditioning_scale=256,
+        addition_embed_type="matryoshka",
+        skip_normalization=True,
+        time_embedding_dim=1024,
+        skip_inner_unet_input=False,
+        temporal_mode=False,
+        temporal_spatial_ds=False,
+        initialize_inner_with_pretrained=None,
+        use_attention_ffn=False,
+        inner_config={},
+        act_fn="silu",
+        addition_embed_type_num_heads=64,
+        addition_time_embed_dim=None,
+        attention_head_dim=8,
+        attention_pre_only=False,
+        attention_type="default",
+        center_input_sample=False,
+        class_embed_type=None,
+        class_embeddings_concat=False,
+        conv_in_kernel=3,
+        conv_out_kernel=3,
+        cross_attention_norm=None,
+        downsample_padding=1,
+        dropout=0.0,
+        dual_cross_attention=False,
+        encoder_hid_dim=None,
+        encoder_hid_dim_type=None,
+        freq_shift=0,
+        mid_block_only_cross_attention=None,
+        mid_block_scale_factor=1,
+        norm_eps=1e-05,
+        norm_num_groups=32,
+        norm_type="layer_norm",
+        num_attention_heads=None,
+        num_class_embeds=None,
+        only_cross_attention=False,
+        projection_class_embeddings_input_dim=None,
+        resnet_out_scale_factor=1.0,
+        resnet_skip_time_act=False,
+        reverse_transformer_layers_per_block=None,
+        sample_size=None,
+        skip_cond_emb=False,
+        time_cond_proj_dim=None,
+        time_embedding_act_fn=None,
+        time_embedding_type="positional",
+        timestep_post_act=None,
+        upcast_attention=False,
+        use_linear_projection=False,
+        is_temporal=None,
+        nest_ratio=None,
+        ):
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            block_out_channels=block_out_channels,
+            cross_attention_dim=cross_attention_dim,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            down_block_types=down_block_types,
+            up_block_types=up_block_types,
+            mid_block_type=mid_block_type,
+            nesting=nesting,
+            flip_sin_to_cos=flip_sin_to_cos,
+            transformer_layers_per_block=transformer_layers_per_block,
+            layers_per_block=layers_per_block,
+            masked_cross_attention=masked_cross_attention,
+            micro_conditioning_scale=micro_conditioning_scale,
+            addition_embed_type=addition_embed_type,
+            time_embedding_dim=time_embedding_dim,
+            temporal_mode=temporal_mode,
+            temporal_spatial_ds=temporal_spatial_ds,
+            use_attention_ffn=use_attention_ffn,
+        )
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
         if "inner_config" not in self.config.inner_config:
@@ -3261,26 +3345,17 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             padding=1,
         )
 
-        self.register_to_config(is_temporal=[self.config.temporal_mode and (not self.config.temporal_spatial_ds)])
-        if hasattr(self.inner_unet.config, "is_temporal"):
-            self.register_to_config(is_temporal=self.config.is_temporal + self.inner_unet.config.is_temporal)
+        self.is_temporal = [self.config.temporal_mode and (not self.config.temporal_spatial_ds)]
+        if hasattr(self.inner_unet, "is_temporal"):
+            self.is_temporal = self.is_temporal + self.inner_unet.is_temporal
 
         nest_ratio = int(2 ** (len(self.config.block_out_channels) - 1))
-        if self.config.is_temporal[0]:
+        if self.is_temporal[0]:
             nest_ratio = int(np.sqrt(nest_ratio))
         if self.inner_unet.config.nesting and self.inner_unet.model_type == "nested_unet":
-            self.register_to_config(
-                nest_ratio=[nest_ratio * self.inner_unet.config.nest_ratio[0]] + self.inner_unet.config.nest_ratio
-            )
+            self.nest_ratio=[nest_ratio * self.inner_unet.nest_ratio[0]] + self.inner_unet.nest_ratio
         else:
-            self.register_to_config(nest_ratio=[nest_ratio])
-
-        if self.config.initialize_inner_with_pretrained is not None:
-            try:
-                self.inner_unet.from_pretrained(self.config.initialize_inner_with_pretrained)
-            except Exception as e:
-                print("<-- load pretrained checkpoint error -->")
-                print(f"{e}")
+            self.nest_ratio=[nest_ratio]
 
         # self.register_modules(inner_unet=self.inner_unet)
 
