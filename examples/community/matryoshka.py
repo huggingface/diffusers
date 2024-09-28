@@ -188,7 +188,6 @@ def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim:
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->MatryoshkaDDIM
 class MatryoshkaDDIMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
@@ -202,8 +201,8 @@ class MatryoshkaDDIMSchedulerOutput(BaseOutput):
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
-    prev_sample: list[torch.Tensor]
-    pred_original_sample: Optional[list[torch.Tensor]] = None
+    prev_sample: Union[torch.Tensor, List[torch.Tensor]]
+    pred_original_sample: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -251,6 +250,7 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
 def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
@@ -337,7 +337,6 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
     order = 1
 
     @register_to_config
