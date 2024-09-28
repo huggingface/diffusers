@@ -3707,7 +3707,7 @@ class MatryoshkaPipeline(
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet"
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
@@ -3717,13 +3717,13 @@ class MatryoshkaPipeline(
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         unet: MatryoshkaUNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: MatryoshkaDDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
-        super().__init__(..., in_channels=3, out_channels=3)
+        super().__init__()
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -3798,8 +3798,7 @@ class MatryoshkaPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VaeImageProcessor(do_resize=False)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def _encode_prompt(
@@ -4099,17 +4098,6 @@ class MatryoshkaPipeline(
             )
         return image, has_nsfw_concept
 
-    def decode_latents(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
-
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -4200,8 +4188,8 @@ class MatryoshkaPipeline(
         shape = (
             batch_size,
             num_channels_latents,
-            int(height) // self.vae_scale_factor,
-            int(width) // self.vae_scale_factor,
+            int(height),
+            int(width),
         )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -4321,9 +4309,9 @@ class MatryoshkaPipeline(
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size`):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -4421,8 +4409,8 @@ class MatryoshkaPipeline(
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height = height or self.unet.config.sample_size
+        width = width or self.unet.config.sample_size
         # to deal with lora scaling and other possible forward hooks
 
         # 1. Check inputs. Raise error if not correct
@@ -4579,9 +4567,6 @@ class MatryoshkaPipeline(
                     xm.mark_step()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
