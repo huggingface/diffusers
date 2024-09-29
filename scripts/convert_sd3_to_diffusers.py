@@ -16,10 +16,19 @@ CTX = init_empty_weights if is_accelerate_available else nullcontext
 parser = argparse.ArgumentParser()
 parser.add_argument("--checkpoint_path", type=str)
 parser.add_argument("--output_path", type=str)
-parser.add_argument("--dtype", type=str, default="fp16")
+parser.add_argument("--dtype", type=str)
 
 args = parser.parse_args()
-dtype = torch.float16 if args.dtype == "fp16" else torch.float32
+
+# if dtype is not specified, use the dtype of the original checkpoint(recommended)
+if args.dtype == "fp16":
+    dtype = torch.float16
+elif args.dtype == "bf16":
+    dtype = torch.bfloat16
+elif args.dtype == "fp32":
+    dtype = torch.float32
+else:
+    dtype = None
 
 
 def load_original_checkpoint(ckpt_path):
@@ -40,7 +49,9 @@ def swap_scale_shift(weight, dim):
     return new_weight
 
 
-def convert_sd3_transformer_checkpoint_to_diffusers(original_state_dict, num_layers, caption_projection_dim):
+def convert_sd3_transformer_checkpoint_to_diffusers(
+    original_state_dict, num_layers, caption_projection_dim, add_attn2_layers, has_qk_norm
+):
     converted_state_dict = {}
 
     # Positional and patch embeddings.
@@ -110,6 +121,21 @@ def convert_sd3_transformer_checkpoint_to_diffusers(original_state_dict, num_lay
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.weight"] = torch.cat([context_v])
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.bias"] = torch.cat([context_v_bias])
 
+        # qk norm
+        if has_qk_norm:
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_q.weight"] = original_state_dict.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_k.weight"] = original_state_dict.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_k.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_q.weight"] = original_state_dict.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_k.weight"] = original_state_dict.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_k.weight"
+            )
+
         # output projections.
         converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.weight"] = original_state_dict.pop(
             f"joint_blocks.{i}.x_block.attn.proj.weight"
@@ -123,6 +149,39 @@ def convert_sd3_transformer_checkpoint_to_diffusers(original_state_dict, num_lay
             )
             converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.bias"] = original_state_dict.pop(
                 f"joint_blocks.{i}.context_block.attn.proj.bias"
+            )
+
+        # attn2
+        if i in add_attn2_layers:
+            # Q, K, V
+            sample_q2, sample_k2, sample_v2 = torch.chunk(
+                original_state_dict.pop(f"joint_blocks.{i}.x_block.attn2.qkv.weight"), 3, dim=0
+            )
+            sample_q2_bias, sample_k2_bias, sample_v2_bias = torch.chunk(
+                original_state_dict.pop(f"joint_blocks.{i}.x_block.attn2.qkv.bias"), 3, dim=0
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.weight"] = torch.cat([sample_q2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.bias"] = torch.cat([sample_q2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.weight"] = torch.cat([sample_k2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.bias"] = torch.cat([sample_k2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.weight"] = torch.cat([sample_v2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.bias"] = torch.cat([sample_v2_bias])
+
+            # qk norm
+            if has_qk_norm:
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_q.weight"] = original_state_dict.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_q.weight"
+                )
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_k.weight"] = original_state_dict.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_k.weight"
+                )
+
+            # output projections.
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.weight"] = original_state_dict.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.bias"] = original_state_dict.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.bias"
             )
 
         # norms.
@@ -186,6 +245,9 @@ def convert_sd3_transformer_checkpoint_to_diffusers(original_state_dict, num_lay
         original_state_dict.pop("final_layer.adaLN_modulation.1.bias"), dim=caption_projection_dim
     )
 
+    if len(original_state_dict) > 0:
+        raise ValueError(f"{len(original_state_dict)} keys are not converted: {original_state_dict.keys()}")
+
     return converted_state_dict
 
 
@@ -195,13 +257,35 @@ def is_vae_in_checkpoint(original_state_dict):
     )
 
 
+def get_add_attn2_layers(state_dict):
+    add_attn2_layers = []
+    for key in state_dict.keys():
+        if "attn2.to_q.weight" in key:
+            # Extract the layer number from the key
+            layer_num = int(key.split(".")[1])
+            add_attn2_layers.append(layer_num)
+    return tuple(sorted(add_attn2_layers))
+
+
 def main(args):
     original_ckpt = load_original_checkpoint(args.checkpoint_path)
+    original_dtype = next(iter(original_ckpt.values())).dtype
+    if dtype is None:
+        dtype = original_dtype
+    elif dtype != original_dtype:
+        print(f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}")
+
     num_layers = list(set(int(k.split(".", 2)[1]) for k in original_ckpt if "joint_blocks" in k))[-1] + 1  # noqa: C401
     caption_projection_dim = 1536
+    # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
+    add_attn2_layers = get_add_attn2_layers(original_ckpt)
+    # sd3.5 use qk norm("rms_norm")
+    has_qk_norm = any("ln_q" in key for key in original_ckpt.keys())
+    # sd3.5 use pox_embed_max_size=384 and sd3.0 use 192
+    pos_embed_max_size = 384 if has_qk_norm else 192
 
     converted_transformer_state_dict = convert_sd3_transformer_checkpoint_to_diffusers(
-        original_ckpt, num_layers, caption_projection_dim
+        original_ckpt, num_layers, caption_projection_dim, add_attn2_layers, has_qk_norm
     )
 
     with CTX():
@@ -213,7 +297,9 @@ def main(args):
             num_layers=num_layers,
             caption_projection_dim=caption_projection_dim,
             num_attention_heads=24,
-            pos_embed_max_size=192,
+            pos_embed_max_size=pos_embed_max_size,
+            qk_norm="rms_norm" if has_qk_norm else None,
+            add_attn2_layers=add_attn2_layers,
         )
     if is_accelerate_available():
         load_model_dict_into_meta(transformer, converted_transformer_state_dict)
