@@ -68,6 +68,7 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import apply_freeu, randn_tensor
+from PIL import Image
 
 
 if is_torch_xla_available():
@@ -2018,8 +2019,8 @@ class MatryoshkaUNet2DConditionModel(
     def __init__(
         self,
         sample_size: Optional[int] = None,
-        in_channels: int = 4,
-        out_channels: int = 4,
+        in_channels: int = 3,
+        out_channels: int = 3,
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
@@ -3666,6 +3667,19 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             return NestedUNet2DConditionOutput(sample=out)
 
 
+@dataclass
+class MatryoshkaPipelineOutput(BaseOutput):
+    """
+    Output class for Matryoshka pipelines.
+
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+    """
+
+    images: Union[List[Image.Image], List[List[Image.Image]], np.ndarray, List[np.ndarray]]
+
 class MatryoshkaPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
@@ -3716,10 +3730,8 @@ class MatryoshkaPipeline(
         tokenizer: T5TokenizerFast,
         unet: MatryoshkaUNet2DConditionModel,
         scheduler: MatryoshkaDDIMScheduler,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
+        feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
-        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -3750,21 +3762,6 @@ class MatryoshkaPipeline(
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None and requires_safety_checker:
-            logger.warning(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
-
-        if safety_checker is not None and feature_extractor is None:
-            raise ValueError(
-                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
-                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
-            )
 
         is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
@@ -3792,12 +3789,10 @@ class MatryoshkaPipeline(
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
         self.image_processor = VaeImageProcessor(do_resize=False)
-        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def _encode_prompt(
         self,
@@ -4081,20 +4076,6 @@ class MatryoshkaPipeline(
             ip_adapter_image_embeds.append(single_image_embeds)
 
         return ip_adapter_image_embeds
-
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is None:
-            has_nsfw_concept = None
-        else:
-            if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
-            else:
-                feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        return image, has_nsfw_concept
 
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -4565,23 +4546,14 @@ class MatryoshkaPipeline(
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        if not output_type == "latent":
-            image, has_nsfw_concept = self.run_safety_checker(latents, device, prompt_embeds.dtype)
-        else:
-            image = latents
-            has_nsfw_concept = None
+        image = latents
 
-        if has_nsfw_concept is None:
-            do_denormalize = [True] * image.shape[0]
-        else:
-            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
-
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (image,)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return MatryoshkaPipelineOutput(images=image)
