@@ -3052,7 +3052,7 @@ class MatryoshkaUNet2DConditionModel(
                 encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-        aug_emb, encoder_attention_mask, _ = self.get_aug_embed(
+        aug_emb, encoder_attention_mask, cond_emb = self.get_aug_embed(
             emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
         )
         if self.config.addition_embed_type == "image_hint":
@@ -4477,6 +4477,7 @@ class MatryoshkaPipeline(
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
+        timesteps = timesteps[:-1]
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -4524,7 +4525,7 @@ class MatryoshkaPipeline(
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
-                    t,
+                    t - 1,
                     encoder_hidden_states=prompt_embeds,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
