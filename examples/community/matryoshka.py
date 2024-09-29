@@ -3318,6 +3318,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             temporal_mode=temporal_mode,
             temporal_spatial_ds=temporal_spatial_ds,
             use_attention_ffn=use_attention_ffn,
+            sample_size=sample_size,
         )
         # self.config.inner_config.conditioning_feature_dim = self.config.conditioning_feature_dim
 
