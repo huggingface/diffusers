@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 from packaging import version
+from PIL import Image
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5EncoderModel, T5TokenizerFast
 
@@ -53,8 +54,6 @@ from diffusers.models.resnet import ResnetBlock2D
 from diffusers.models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
 from diffusers.models.upsampling import Upsample2D
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -68,7 +67,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import apply_freeu, randn_tensor
-from PIL import Image
 
 
 if is_torch_xla_available():
@@ -3680,6 +3678,7 @@ class MatryoshkaPipelineOutput(BaseOutput):
 
     images: Union[List[Image.Image], List[List[Image.Image]], np.ndarray, List[np.ndarray]]
 
+
 class MatryoshkaPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
@@ -3761,7 +3760,6 @@ class MatryoshkaPipeline(
             new_config = dict(scheduler.config)
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
-
 
         is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
             version.parse(unet.config._diffusers_version).base_version
