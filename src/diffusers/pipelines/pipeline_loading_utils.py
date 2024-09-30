@@ -839,8 +839,12 @@ def _update_init_kwargs_with_connected_pipeline(
     return init_kwargs
 
 
-def _maybe_raise_warning_for_variant_checkpoint_format(folder: Optional[str] = None, filenames: Optional[List[str]] = None, variant: Optional[str] = None) -> None:
-    if variant is not None and _check_legacy_sharding_variant_format(folder=folder, filenames=filenames, variant=variant):
+def _maybe_raise_warning_for_variant_checkpoint_format(
+    folder: Optional[str] = None, filenames: Optional[List[str]] = None, variant: Optional[str] = None
+) -> None:
+    if variant is not None and _check_legacy_sharding_variant_format(
+        folder=folder, filenames=filenames, variant=variant
+    ):
         warn_msg = (
             f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
             "Please check your files carefully:\n\n"
@@ -854,7 +858,13 @@ def _maybe_raise_warning_for_variant_checkpoint_format(folder: Optional[str] = N
         logger.warning(warn_msg)
 
 
-def _get_custom_components_and_folders(pretrained_model_name: str, config_dict: Dict[str, Any], filenames: Optional[List[str]] = None, variant_filenames: Optional[List[str]] = None, variant: Optional[str] = None):
+def _get_custom_components_and_folders(
+    pretrained_model_name: str,
+    config_dict: Dict[str, Any],
+    filenames: Optional[List[str]] = None,
+    variant_filenames: Optional[List[str]] = None,
+    variant: Optional[str] = None,
+):
     config_dict = config_dict.copy()
 
     # retrieve all folder_names that contain relevant files
@@ -888,7 +898,18 @@ def _get_custom_components_and_folders(pretrained_model_name: str, config_dict: 
     return custom_components, folder_names
 
 
-def _get_ignore_patterns(passed_components, model_folder_names: List[str], model_filenames: List[str], variant_filenames: List[str], use_safetensors: bool, from_flax: bool, allow_pickle: bool, use_onnx: bool, is_onnx: bool, variant: Optional[str] = None) -> List[str]:
+def _get_ignore_patterns(
+    passed_components,
+    model_folder_names: List[str],
+    model_filenames: List[str],
+    variant_filenames: List[str],
+    use_safetensors: bool,
+    from_flax: bool,
+    allow_pickle: bool,
+    use_onnx: bool,
+    is_onnx: bool,
+    variant: Optional[str] = None,
+) -> List[str]:
     if (
         use_safetensors
         and not allow_pickle
@@ -899,10 +920,10 @@ def _get_ignore_patterns(passed_components, model_folder_names: List[str], model
         raise EnvironmentError(
             f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
         )
-    
+
     if from_flax:
         ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-    
+
     elif use_safetensors and is_safetensors_compatible(
         model_filenames, passed_components=passed_components, folder_names=model_folder_names
     ):
@@ -914,21 +935,18 @@ def _get_ignore_patterns(passed_components, model_folder_names: List[str], model
 
         safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
         safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-        if (
-            len(safetensors_variant_filenames) > 0
-            and safetensors_model_filenames != safetensors_variant_filenames
-        ):
+        if len(safetensors_variant_filenames) > 0 and safetensors_model_filenames != safetensors_variant_filenames:
             logger.warning(
                 f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
                 f"[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
                 f"[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not "
                 f"expected, please check your folder structure."
             )
-    
+
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
 
-        use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
+        use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
 
@@ -941,5 +959,5 @@ def _get_ignore_patterns(passed_components, model_folder_names: List[str], model
                 f"[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check "
                 f"your folder structure."
             )
-    
+
     return ignore_patterns

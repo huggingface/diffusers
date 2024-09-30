@@ -57,7 +57,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -71,8 +71,10 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
+    _get_custom_components_and_folders,
     _get_custom_pipeline_class,
     _get_final_device_map,
+    _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
     _maybe_raise_warning_for_inpainting,
@@ -80,13 +82,10 @@ from .pipeline_loading_utils import (
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
-    is_safetensors_compatible,
     load_sub_model,
     maybe_raise_or_warn,
     variant_compatible_siblings,
     warn_deprecated_model_variant,
-    _get_custom_components_and_folders,
-    _get_ignore_patterns,
 )
 
 
@@ -1287,7 +1286,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ) >= version.parse("0.22.0"):
                 warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, model_filenames)
 
-            custom_components, folder_names = _get_custom_components_and_folders(pretrained_model_name, config_dict, filenames, variant_filenames, variant)
+            custom_components, folder_names = _get_custom_components_and_folders(
+                pretrained_model_name, config_dict, filenames, variant_filenames, variant
+            )
             model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             custom_class_name = None
@@ -1348,7 +1349,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             passed_components = [k for k in expected_components if k in kwargs]
 
             # retrieve all patterns that should not be downloaded
-            ignore_patterns = _get_ignore_patterns(passed_components, model_folder_names,  model_filenames, variant_filenames, use_safetensors, from_flax, allow_pickle, use_onnx, pipeline_class._is_onnx, variant)
+            ignore_patterns = _get_ignore_patterns(
+                passed_components,
+                model_folder_names,
+                model_filenames,
+                variant_filenames,
+                use_safetensors,
+                from_flax,
+                allow_pickle,
+                use_onnx,
+                pipeline_class._is_onnx,
+                variant,
+            )
 
             # Don't download any objects that are passed
             allow_patterns = [
