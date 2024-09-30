@@ -228,6 +228,26 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
+    def test_flux_kohya_with_text_encoder(self):
+        self.pipeline.load_lora_weights("cocktailpeanut/optimus", weight_name="optimus.safetensors")
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "optimus is cleaning the house with broomstick"
+        out = self.pipeline(
+            prompt,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=4.5,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+
+        out_slice = out[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4023, 0.4043, 0.4023, 0.3965, 0.3984, 0.3984, 0.3906, 0.3906, 0.4219])
+
+        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
         self.pipeline.fuse_lora()
