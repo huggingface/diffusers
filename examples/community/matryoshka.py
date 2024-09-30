@@ -660,12 +660,24 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if variance_noise is None:
-                variance_noise = randn_tensor(
-                    model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
-                )
-            variance = std_dev_t * variance_noise
+                if len(model_output) > 1:
+                    variance_noise = []
+                    for m_o in model_output:
+                        variance_noise.append(
+                            randn_tensor(
+                                m_o.shape, generator=generator, device=m_o.device, dtype=m_o.dtype
+                            )
+                        )
+                else:
+                    variance_noise = randn_tensor(
+                        model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+                    )
+            if len(model_output) > 1:
+                prev_sample = [p_s + std_dev_t * v_n for v_n, p_s in zip(variance_noise, prev_sample)]
+            else:
+                variance = std_dev_t * variance_noise
 
-            prev_sample = prev_sample + variance
+                prev_sample = prev_sample + variance
 
         if not return_dict:
             return (prev_sample,)
