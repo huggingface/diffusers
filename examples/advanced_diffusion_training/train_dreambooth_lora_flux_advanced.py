@@ -26,7 +26,7 @@ import shutil
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 import torch
