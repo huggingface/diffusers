@@ -1134,7 +1134,7 @@ def tokenize_prompt(tokenizer, prompt, max_sequence_length, add_special_tokens=F
     return text_input_ids
 
 
-def _encode_prompt_with_t5(
+def _get_t5_prompt_embeds(
     text_encoder,
     tokenizer,
     max_sequence_length=512,
@@ -1175,7 +1175,7 @@ def _encode_prompt_with_t5(
     return prompt_embeds
 
 
-def _encode_prompt_with_clip(
+def _get_clip_prompt_embeds(
     text_encoder,
     tokenizer,
     prompt: str,
@@ -1228,7 +1228,7 @@ def encode_prompt(
     batch_size = len(prompt)
     dtype = text_encoders[0].dtype
 
-    pooled_prompt_embeds = _encode_prompt_with_clip(
+    pooled_prompt_embeds = _get_clip_prompt_embeds(
         text_encoder=text_encoders[0],
         tokenizer=tokenizers[0],
         prompt=prompt,
@@ -1237,7 +1237,7 @@ def encode_prompt(
         text_input_ids=text_input_ids_list[0] if text_input_ids_list is not None else None,
     )
 
-    prompt_embeds = _encode_prompt_with_t5(
+    prompt_embeds = _get_t5_prompt_embeds(
         text_encoder=text_encoders[1],
         tokenizer=tokenizers[1],
         max_sequence_length=max_sequence_length,
@@ -1704,7 +1704,7 @@ def main(args):
     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
 
-    # if --train_text_encoder_ti and train_transformer_frac == 0 where essntially performing textual inversion
+    # if --train_text_encoder_ti and train_transformer_frac == 0 where essentially performing textual inversion
     # and not training transformer LoRA layers
     pure_textual_inversion = args.train_text_encoder_ti and args.train_transformer_frac == 0
 

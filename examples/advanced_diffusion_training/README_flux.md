@@ -5,7 +5,7 @@
 > 💡 This example follows some of the techniques and recommended practices covered in the community derived guide we made for SDXL training: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script). 
 > As many of these are architecture agnostic & generally relevant to fine-tuning of diffusion models we suggest to take a look 🤗
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
+[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like flux, stable diffusion given just a few(3~5) images of a subject.
 
 LoRA - Low-Rank Adaption of Large Language Models, was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
@@ -65,10 +65,10 @@ write_basic_config()
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
-### Pivotal Tuning
+### Pivotal Tuning (and more)
 **Training with text encoder(s)**
 
-Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization
+Alongside the Transformer, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization
 available with `train_dreambooth_lora_flux_advanced.py`, in the advanced script **pivotal tuning** is also supported.
 [pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) combines Textual Inversion with regular diffusion fine-tuning -
 we insert new tokens into the text encoders of the model, instead of reusing existing ones.
@@ -80,8 +80,8 @@ Please keep the following points in mind:
 * Flux uses two text encoders - [CLIP](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux#diffusers.FluxPipeline.text_encoder) & [T5](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux#diffusers.FluxPipeline.text_encoder_2) , by default `--train_text_encoder_ti` performs pivotal tuning for the **CLIP** encoder only.
 To activate pivotal tuning for both encoders, add the flag `--enable_t5_ti`. 
 * When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
-* pure textual inversion
-* token initializer
+* **pure textual inversion** - to support the full range from pivotal tuning to textual inversion we introduce `--train_transformer_frac` which controls the amount of epochs the transformer LoRA layers are trained. By default, `--train_transformer_frac==1`, to trigger a textual inversion run set `--train_transformer_frac==0`. Values between 0 and 1 are supported as well, and we welcome the community to experiment w/ different settings and share the results!
+* **token initializer** - similar to the original textual inversion work, you can specify a token of your choosing as the starting point for training. By default, when enabling `--train_text_encoder_ti`, the new inserted tokens are initialized randomly. You can specify a token in `--initializer_token` such that the starting point for the trained embeddings will be the embeddings associated with your chosen `--initializer_token`.
 
 ## Training examples
 
@@ -201,8 +201,44 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
 ```
 
 ### Example #3: Textual Inversion
+To explore a pure textual inversion - i.e. only optimizing the text embeddings w/o training transformer LoRA layers, we 
+can set the value for `--train_transformer_frac` - which is responsible for the percent of epochs in which the transformer is 
+trained. By setting `--train_transformer_frac == 0` and enabling `--train_text_encoder_ti` we trigger a textual inversion train 
+run.
+```bash
+export MODEL_NAME="black-forest-labs/FLUX.1-dev"
+export DATASET_NAME="./3d_icon"
+export OUTPUT_DIR="3d-icon-Flux-LoRA"
 
-
+accelerate launch train_dreambooth_lora_flux_advanced.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$DATASET_NAME \
+  --instance_prompt="3d icon in the style of TOK" \
+  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
+  --output_dir=$OUTPUT_DIR \
+  --caption_column="prompt" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --repeats=1 \
+  --report_to="wandb"\
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --learning_rate=1.0 \
+  --text_encoder_lr=1.0 \
+  --optimizer="prodigy"\
+  --train_text_encoder_ti\
+  --enable_t5_ti\
+  --train_text_encoder_ti_frac=0.5\
+  --train_transformer_frac=0\
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --rank=8 \
+  --max_train_steps=1000 \
+  --checkpointing_steps=2000 \
+  --seed="0" \
+  --push_to_hub
+```
 ### Inference - pivotal tuning
 
 Once training is done, we can perform inference like so:
@@ -248,7 +284,8 @@ image.save("llama.png")
 ```
 
 ### Inference - pure textual inversion
-In this case, we don't load transformer layers as before, since we only optimize the embeddings
+In this case, we don't load transformer layers as before, since we only optimize the text embeddings. The output of a textual inversion train run is a
+`.safetensors` file containing the trained embeddings for the new tokens either for the CLIP encoder, or for both encoders (CLIP and T5) 
 
 1. starting with loading the embeddings.
 💡note that here too, if you didn't enable `--enable_t5_ti`, you only load the embeddings to the CLIP encoder
