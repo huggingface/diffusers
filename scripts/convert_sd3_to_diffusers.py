@@ -251,7 +251,7 @@ def get_add_attn2_layers(state_dict):
             # Extract the layer number from the key
             layer_num = int(key.split(".")[1])
             add_attn2_layers.append(layer_num)
-    return tuple(sorted(add_attn2_layers))
+    return tuple(sorted(set(add_attn2_layers)))
 
 
 def get_pos_embed_max_size(state_dict):
