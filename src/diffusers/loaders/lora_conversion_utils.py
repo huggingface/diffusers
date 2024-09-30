@@ -516,10 +516,47 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 f"transformer.single_transformer_blocks.{i}.norm.linear",
             )
 
-        if len(sds_sd) > 0:
-            logger.warning(f"Unsuppored keys for ai-toolkit: {sds_sd.keys()}")
+        remaining_keys = list(sds_sd.keys())
+        te_state_dict = {}
+        if remaining_keys:
+            if not all(k.startswith("lora_te1") for k in remaining_keys):
+                raise ValueError(f"Incompatible keys detected: \n\n {', '.join(remaining_keys)}")
+            for key in remaining_keys:
+                if not key.endswith("lora_down.weight"):
+                    continue
 
-        return ait_sd
+                lora_name = key.split(".")[0]
+                lora_name_up = f"{lora_name}.lora_up.weight"
+                lora_name_alpha = f"{lora_name}.alpha"
+                diffusers_name = _convert_text_encoder_lora_key(key, lora_name)
+
+                if lora_name.startswith(("lora_te_", "lora_te1_")):
+                    down_weight = sds_sd.pop(key)
+                    sd_lora_rank = down_weight.shape[0]
+                    te_state_dict[diffusers_name] = down_weight
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = sds_sd.pop(lora_name_up)
+
+                if lora_name_alpha in sds_sd:
+                    alpha = sds_sd.pop(lora_name_alpha).item()
+                    scale = alpha / sd_lora_rank
+
+                    scale_down = scale
+                    scale_up = 1.0
+                    while scale_down * 2 < scale_up:
+                        scale_down *= 2
+                        scale_up /= 2
+
+                    te_state_dict[diffusers_name] *= scale_down
+                    te_state_dict[diffusers_name.replace(".down.", ".up.")] *= scale_up
+
+        if len(sds_sd) > 0:
+            logger.warning(f"Unsupported keys for ai-toolkit: {sds_sd.keys()}")
+
+        if te_state_dict:
+            te_state_dict = {f"text_encoder.{module_name}": params for module_name, params in te_state_dict.items()}
+
+        new_state_dict = {**ait_sd, **te_state_dict}
+        return new_state_dict
 
     return _convert_sd_scripts_to_ai_toolkit(state_dict)
 
