@@ -578,7 +578,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
-        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger = logging.get_logger("diffusers.pipelines.pipeline_loading_utils")
         deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
 
         for is_local in [True, False]:
