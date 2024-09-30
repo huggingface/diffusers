@@ -4580,12 +4580,10 @@ class MatryoshkaPipeline(
 
         image = latents
 
-        # if self.scheduler.scales is not None:
-        #     image = image[0]
-        images = []
-        for img in image:
-            images.append(self.image_processor.postprocess(img, output_type=output_type))
-        # image = self.image_processor.postprocess(image, output_type=output_type)
+        if self.scheduler.scales is not None:
+            image = image[0]
+
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -4593,4 +4591,4 @@ class MatryoshkaPipeline(
         if not return_dict:
             return (image,)
 
-        return MatryoshkaPipelineOutput(images=images)
+        return MatryoshkaPipelineOutput(images=image)
