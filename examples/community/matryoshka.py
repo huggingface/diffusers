@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import torch.utils.checkpoint
 from packaging import version
 from PIL import Image
@@ -392,6 +393,8 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
+        self.scales = None
+
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -517,7 +520,6 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         use_clipped_model_output: bool = False,
         generator=None,
         variance_noise: Optional[torch.Tensor] = None,
-        scales: Optional[list] = None,
         return_dict: bool = True,
     ) -> Union[MatryoshkaDDIMSchedulerOutput, Tuple]:
         """
@@ -579,8 +581,8 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
 
         if self.config.timestep_spacing == "matryoshka_style" and len(model_output) > 1:
-            alpha_prod_t = torch.tensor([self.get_schedule_shifted(alpha_prod_t, s) for s in scales])
-            alpha_prod_t_prev = torch.tensor([self.get_schedule_shifted(alpha_prod_t_prev, s) for s in scales])
+            alpha_prod_t = torch.tensor([self.get_schedule_shifted(alpha_prod_t, s) for s in self.scales])
+            alpha_prod_t_prev = torch.tensor([self.get_schedule_shifted(alpha_prod_t_prev, s) for s in self.scales])
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -3051,9 +3053,14 @@ class MatryoshkaUNet2DConditionModel(
                 encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-        aug_emb, encoder_attention_mask, cond_emb = self.get_aug_embed(
-            emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-        )
+            aug_emb, encoder_attention_mask, cond_emb = self.get_aug_embed(
+                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+        else:
+            aug_emb, encoder_attention_mask, _ = self.get_aug_embed(
+                emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+            )
+
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
             sample = torch.cat([sample, hint], dim=1)
@@ -3295,7 +3302,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
         upcast_attention=False,
         use_linear_projection=False,
         is_temporal=None,
-        nest_ratio=None,
         inner_config={},
     ):
         super().__init__(
@@ -3791,6 +3797,8 @@ class MatryoshkaPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
+        if hasattr(unet, "nest_ratio"):
+            scheduler.scales = unet.nest_ratio + [1]
         self.image_processor = VaeImageProcessor(do_resize=False)
 
     def _encode_prompt(
@@ -4162,7 +4170,9 @@ class MatryoshkaPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self, batch_size, num_channels_latents, height, width, dtype, device, generator, scales, latents=None
+    ):
         shape = (
             batch_size,
             num_channels_latents,
@@ -4177,11 +4187,25 @@ class MatryoshkaPipeline(
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            if scales is not None:
+                out = [latents]
+                for s in scales[1:]:
+                    ratio = scales[0] // s
+                    sample_low = F.avg_pool2d(latents, ratio) * ratio
+                    sample_low = sample_low.normal_(generator=generator)
+                    out += [sample_low]
+                latents = out
         else:
-            latents = latents.to(device)
+            if scales is not None:
+                latents = [latent.to(device=device) for latent in latents]
+            else:
+                latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        if scales is not None:
+            latents = [latent * self.scheduler.init_noise_sigma for latent in latents]
+        else:
+            latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
@@ -4469,6 +4493,7 @@ class MatryoshkaPipeline(
             prompt_embeds.dtype,
             device,
             generator,
+            self.scheduler.scales,
             latents,
         )
 
@@ -4499,7 +4524,12 @@ class MatryoshkaPipeline(
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                if self.do_classifier_free_guidance and isinstance(latents, list):
+                    latent_model_input = [latent.repeat(2, 1, 1, 1) for latent in latents]
+                elif self.do_classifier_free_guidance:
+                    latent_model_input = latents.repeat(2, 1, 1, 1)
+                else:
+                    latent_model_input = latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
@@ -4514,7 +4544,10 @@ class MatryoshkaPipeline(
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if isinstance(noise_pred, list) and self.do_classifier_free_guidance:
+                    for i, (noise_pred_uncond, noise_pred_text) in enumerate(noise_pred):
+                        noise_pred[i] = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -4546,6 +4579,9 @@ class MatryoshkaPipeline(
                     xm.mark_step()
 
         image = latents
+
+        if self.scheduler.scales is not None:
+            image = image[0]
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
