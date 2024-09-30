@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
+import scipy.stats
 import torch
 from scipy import integrate
 
@@ -113,6 +114,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             the sigmas are determined according to a sequence of noise levels {σi}.
         use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
+        use_beta_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
+            Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
@@ -137,12 +141,15 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
+        use_beta_sigmas: Optional[bool] = False,
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
-        if sum([self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
-            raise ValueError("Only one of `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used.")
+        if sum([self.config.use_beta_sigmas, self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError(
+                "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
+            )
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -297,6 +304,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.use_exponential_sigmas:
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+        elif self.config.use_beta_sigmas:
+            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
@@ -390,6 +400,38 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         sigmas = torch.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps).exp()
+        return sigmas
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
+    def _convert_to_beta(
+        self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
+    ) -> torch.Tensor:
+        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = torch.Tensor(
+            [
+                sigma_min + (ppf * (sigma_max - sigma_min))
+                for ppf in [
+                    scipy.stats.beta.ppf(timestep, alpha, beta)
+                    for timestep in 1 - np.linspace(0, 1, num_inference_steps)
+                ]
+            ]
+        )
         return sigmas
 
     def step(
