@@ -86,7 +86,7 @@ def save_model_card(
     base_model: str = None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
-    enable_t5_ti = False,
+    enable_t5_ti=False,
     pure_textual_inversion=False,
     token_abstraction_dict=None,
     instance_prompt=None,
@@ -106,7 +106,9 @@ def save_model_card(
     diffusers_imports_pivotal = ""
     diffusers_example_pivotal = ""
     if not pure_textual_inversion:
-        diffusers_load_lora = f"""pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')"""
+        diffusers_load_lora = (
+            f"""pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')"""
+        )
     if train_text_encoder_ti:
         embeddings_filename = f"{repo_folder}_emb"
         ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -378,7 +380,7 @@ def parse_args(input_args=None):
         default="random",
         help="the token (or tokens) to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
-        "Alternatively, you could specify a different token whos value will be used as the starting point for the new inserted tokens"
+        "Alternatively, you could specify a different token whos value will be used as the starting point for the new inserted tokens",
     )
     parser.add_argument(
         "--class_prompt",
@@ -478,7 +480,9 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_t5_ti",
         action="store_true",
-        help=("Whether to use pivotal tuning / textual inversion for the T5 encoder as well (in addition to CLIP encoder)"),
+        help=(
+            "Whether to use pivotal tuning / textual inversion for the T5 encoder as well (in addition to CLIP encoder)"
+        ),
     )
 
     parser.add_argument(
@@ -760,8 +764,10 @@ def parse_args(input_args=None):
             "--train_transformer_frac must be == 1 if text_encoder training / textual inversion is not enabled."
         )
     if args.train_transformer_frac < 1 and args.train_text_encoder_ti_frac < 1:
-        raise ValueError("--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. "
-                         "This contradicts with --max_train_steps, please specify different values or set both to 1.")
+        raise ValueError(
+            "--train_transformer_frac and --train_text_encoder_ti_frac are identical and smaller than 1. "
+            "This contradicts with --max_train_steps, please specify different values or set both to 1."
+        )
     if args.enable_t5_ti and not args.train_text_encoder_ti:
         warnings.warn("You need not use --enable_t5_ti without --train_text_encoder_ti.")
 
@@ -812,17 +818,19 @@ class TokenEmbeddingsHandler:
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx==0 else text_encoder.encoder.embed_tokens
-            std_token_embedding =embeds.weight.data.std()
+            embeds = (
+                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
+            )
+            std_token_embedding = embeds.weight.data.std()
 
             print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             if args.initializer_token.lower == "random":
-                hidden_size = text_encoder.text_model.config.hidden_size if idx ==0 else text_encoder.encoder.config.hidden_size
+                hidden_size = (
+                    text_encoder.text_model.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
+                )
                 embeds.weight.data[self.train_ids] = (
-                    torch.randn(len(self.train_ids), hidden_size)
-                    .to(device=self.device)
-                    .to(dtype=self.dtype)
+                    torch.randn(len(self.train_ids), hidden_size).to(device=self.device).to(dtype=self.dtype)
                     * std_token_embedding
                 )
             else:
@@ -833,12 +841,9 @@ class TokenEmbeddingsHandler:
                     raise ValueError("The initializer token must be a single token.")
                 initializer_token_id = token_ids[0]
                 for token_id in self.train_ids:
-                    embeds.weight.data[token_id] = (
-                        embeds.weight.data)[initializer_token_id].clone()
+                    embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_id].clone()
 
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = embeds.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = embeds.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             # makes sure we don't update any embedding weights besides the newly added token
@@ -857,10 +862,10 @@ class TokenEmbeddingsHandler:
         # text_encoder_one, idx==0 - CLIP ViT-L/14, text_encoder_two, idx==1 - T5 xxl
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
-            assert embeds.weight.data.shape[0] == len(
-                self.tokenizers[idx]
-            ), "Tokenizers should be the same."
+            embeds = (
+                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
+            )
+            assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
             new_token_embeddings = embeds.weight.data[self.train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0),
@@ -881,7 +886,9 @@ class TokenEmbeddingsHandler:
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
-            embeds = text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
+            embeds = (
+                text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
+            )
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
             embeds.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
@@ -1571,7 +1578,6 @@ def main(args):
         )
         text_encoder_one.add_adapter(text_lora_config)
 
-
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
@@ -1683,7 +1689,7 @@ def main(args):
                 text_lora_parameters_one.append(param)
             else:
                 param.requires_grad = False
-        if args.enable_t5_ti: # whether to do pivotal tuning/textual inversion for T5 as well
+        if args.enable_t5_ti:  # whether to do pivotal tuning/textual inversion for T5 as well
             text_lora_parameters_two = []
             for name, param in text_encoder_two.named_parameters():
                 if "token_embedding" in name:
@@ -1716,10 +1722,10 @@ def main(args):
             # pure textual inversion - only clip
             if pure_textual_inversion:
                 params_to_optimize = [
-                        text_parameters_one_with_lr,
-                    ]
+                    text_parameters_one_with_lr,
+                ]
                 te_idx = 0
-            else: # regular te training or regular pivotal for clip
+            else:  # regular te training or regular pivotal for clip
                 params_to_optimize = [
                     transformer_parameters_with_lr,
                     text_parameters_one_with_lr,
@@ -1736,16 +1742,13 @@ def main(args):
             }
             # pure textual inversion - only clip & t5
             if pure_textual_inversion:
-                params_to_optimize = [
-                    text_parameters_one_with_lr,
-                    text_parameters_two_with_lr
-                ]
+                params_to_optimize = [text_parameters_one_with_lr, text_parameters_two_with_lr]
                 te_idx = 0
-            else: # regular pivotal tuning of clip & t5
+            else:  # regular pivotal tuning of clip & t5
                 params_to_optimize = [
                     transformer_parameters_with_lr,
                     text_parameters_one_with_lr,
-                    text_parameters_two_with_lr
+                    text_parameters_two_with_lr,
                 ]
                 te_idx = 1
     else:
@@ -1905,14 +1908,23 @@ def main(args):
                 tokenizer_one, args.instance_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens_clip
             )
             tokens_two = tokenize_prompt(
-                tokenizer_two, args.instance_prompt, max_sequence_length=args.max_sequence_length, add_special_tokens=add_special_tokens_t5
+                tokenizer_two,
+                args.instance_prompt,
+                max_sequence_length=args.max_sequence_length,
+                add_special_tokens=add_special_tokens_t5,
             )
             if args.with_prior_preservation:
                 class_tokens_one = tokenize_prompt(
-                    tokenizer_one, args.class_prompt, max_sequence_length=77, add_special_tokens=add_special_tokens_clip
+                    tokenizer_one,
+                    args.class_prompt,
+                    max_sequence_length=77,
+                    add_special_tokens=add_special_tokens_clip,
                 )
                 class_tokens_two = tokenize_prompt(
-                    tokenizer_two, args.class_prompt, max_sequence_length=args.max_sequence_length, add_special_tokens=add_special_tokens_t5
+                    tokenizer_two,
+                    args.class_prompt,
+                    max_sequence_length=args.max_sequence_length,
+                    add_special_tokens=add_special_tokens_t5,
                 )
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
@@ -2081,17 +2093,16 @@ def main(args):
                     text_encoder_one.train()
                     # set top parameter requires_grad = True for gradient checkpointing works
                     accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
-                else: # textual inversion / pivotal tuning
+                else:  # textual inversion / pivotal tuning
                     text_encoder_one.train()
                     text_encoder_two.train()
-
 
         for step, batch in enumerate(train_dataloader):
             if pivoted_te:
                 # stopping optimization of text_encoder params
                 optimizer.param_groups[te_idx]["lr"] = 0.0
                 if args.train_text_encoder_ti and args.enable_t5_ti:
-                    optimizer.param_groups[te_idx+1]["lr"] = 0.0
+                    optimizer.param_groups[te_idx + 1]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
                 print("PIVOT TRANSFORMER HELOOOO")
                 optimizer.param_groups[0]["lr"] = 0.0
@@ -2112,7 +2123,8 @@ def main(args):
                         tokens_two = tokenize_prompt(
                             tokenizer_two,
                             prompts,
-                            max_sequence_length=args.max_sequence_length, add_special_tokens=add_special_tokens_t5
+                            max_sequence_length=args.max_sequence_length,
+                            add_special_tokens=add_special_tokens_t5,
                         )
 
                 if not freeze_text_encoder:
@@ -2234,15 +2246,17 @@ def main(args):
                 if accelerator.sync_gradients:
                     if not freeze_text_encoder:
                         if args.train_text_encoder:
-                            params_to_clip = (
-                                itertools.chain(transformer.parameters(), text_encoder_one.parameters()))
+                            params_to_clip = itertools.chain(transformer.parameters(), text_encoder_one.parameters())
                         elif pure_textual_inversion:
-                            params_to_clip = (itertools.chain(text_encoder_one.parameters(), text_encoder_two.parameters()))
+                            params_to_clip = itertools.chain(
+                                text_encoder_one.parameters(), text_encoder_two.parameters()
+                            )
                         else:
-                            params_to_clip = (
-                                itertools.chain(transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()))
+                            params_to_clip = itertools.chain(
+                                transformer.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters()
+                            )
                     else:
-                        params_to_clip = (itertools.chain(transformer.parameters()))
+                        params_to_clip = itertools.chain(transformer.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
 
                 optimizer.step()
@@ -2378,7 +2392,7 @@ def main(args):
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
             train_text_encoder_ti=args.train_text_encoder_ti,
-            enable_t5_ti = args.enable_t5_ti,
+            enable_t5_ti=args.enable_t5_ti,
             pure_textual_inversion=pure_textual_inversion,
             token_abstraction_dict=train_dataset.token_abstraction_dict,
             instance_prompt=args.instance_prompt,
