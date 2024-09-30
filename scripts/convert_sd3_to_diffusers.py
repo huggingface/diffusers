@@ -20,16 +20,6 @@ parser.add_argument("--dtype", type=str)
 
 args = parser.parse_args()
 
-# if dtype is not specified, use the dtype of the original checkpoint(recommended)
-if args.dtype == "fp16":
-    dtype = torch.float16
-elif args.dtype == "bf16":
-    dtype = torch.bfloat16
-elif args.dtype == "fp32":
-    dtype = torch.float32
-else:
-    dtype = None
-
 
 def load_original_checkpoint(ckpt_path):
     original_state_dict = safetensors.torch.load_file(ckpt_path)
@@ -245,9 +235,6 @@ def convert_sd3_transformer_checkpoint_to_diffusers(
         original_state_dict.pop("final_layer.adaLN_modulation.1.bias"), dim=caption_projection_dim
     )
 
-    if len(original_state_dict) > 0:
-        raise ValueError(f"{len(original_state_dict)} keys are not converted: {original_state_dict.keys()}")
-
     return converted_state_dict
 
 
@@ -260,29 +247,57 @@ def is_vae_in_checkpoint(original_state_dict):
 def get_add_attn2_layers(state_dict):
     add_attn2_layers = []
     for key in state_dict.keys():
-        if "attn2.to_q.weight" in key:
+        if "attn2." in key:
             # Extract the layer number from the key
             layer_num = int(key.split(".")[1])
             add_attn2_layers.append(layer_num)
     return tuple(sorted(add_attn2_layers))
 
 
+def get_pos_embed_max_size(state_dict):
+    num_patches = state_dict["pos_embed"].shape[1]
+    pos_embed_max_size = int(num_patches**0.5)
+    return pos_embed_max_size
+
+
+def get_caption_projection_dim(state_dict):
+    caption_projection_dim = state_dict["context_embedder.weight"].shape[0]
+    return caption_projection_dim
+
+
 def main(args):
     original_ckpt = load_original_checkpoint(args.checkpoint_path)
     original_dtype = next(iter(original_ckpt.values())).dtype
-    if dtype is None:
+
+    # Initialize dtype with a default value
+    dtype = None
+
+    if args.dtype is None:
         dtype = original_dtype
-    elif dtype != original_dtype:
+    elif args.dtype == "fp16":
+        dtype = torch.float16
+    elif args.dtype == "bf16":
+        dtype = torch.bfloat16
+    elif args.dtype == "fp32":
+        dtype = torch.float32
+    else:
+        raise ValueError(f"Unsupported dtype: {args.dtype}")
+
+    if dtype != original_dtype:
         print(f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}")
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in original_ckpt if "joint_blocks" in k))[-1] + 1  # noqa: C401
-    caption_projection_dim = 1536
+
+    caption_projection_dim = get_caption_projection_dim(original_ckpt)
+
     # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
     add_attn2_layers = get_add_attn2_layers(original_ckpt)
+
     # sd3.5 use qk norm("rms_norm")
     has_qk_norm = any("ln_q" in key for key in original_ckpt.keys())
-    # sd3.5 use pox_embed_max_size=384 and sd3.0 use 192
-    pos_embed_max_size = 384 if has_qk_norm else 192
+
+    # sd3.5 2b use pox_embed_max_size=384 and sd3.0 and sd3.5 8b use 192
+    pos_embed_max_size = get_pos_embed_max_size(original_ckpt)
 
     converted_transformer_state_dict = convert_sd3_transformer_checkpoint_to_diffusers(
         original_ckpt, num_layers, caption_projection_dim, add_attn2_layers, has_qk_norm
@@ -290,13 +305,13 @@ def main(args):
 
     with CTX():
         transformer = SD3Transformer2DModel(
-            sample_size=64,
+            sample_size=128,
             patch_size=2,
             in_channels=16,
             joint_attention_dim=4096,
             num_layers=num_layers,
             caption_projection_dim=caption_projection_dim,
-            num_attention_heads=24,
+            num_attention_heads=num_layers,
             pos_embed_max_size=pos_embed_max_size,
             qk_norm="rms_norm" if has_qk_norm else None,
             add_attn2_layers=add_attn2_layers,
