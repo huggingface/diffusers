@@ -322,7 +322,7 @@ image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"sca
 image.save("llama.png")
 ```
 
-### Comfy UI / AUTOMATIC1111 Inference - **NEEDS TO BE UPDATED**
+### Comfy UI / AUTOMATIC1111 Inference
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
 
 **AUTOMATIC1111 / SD.Next** \
