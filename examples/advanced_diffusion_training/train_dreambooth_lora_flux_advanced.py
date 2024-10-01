@@ -1717,7 +1717,7 @@ def main(args):
             "weight_decay": args.adam_weight_decay_text_encoder
             if args.adam_weight_decay_text_encoder
             else args.adam_weight_decay,
-            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+            "lr": args.text_encoder_lr,
         }
         if not args.enable_t5_ti:
             # pure textual inversion - only clip
@@ -1739,7 +1739,7 @@ def main(args):
                 "weight_decay": args.adam_weight_decay_text_encoder
                 if args.adam_weight_decay_text_encoder
                 else args.adam_weight_decay,
-                "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+                "lr": args.text_encoder_lr,
             }
             # pure textual inversion - only clip & t5
             if pure_textual_inversion:
@@ -1783,7 +1783,6 @@ def main(args):
             optimizer_class = bnb.optim.AdamW8bit
         else:
             optimizer_class = torch.optim.AdamW
-
         optimizer = optimizer_class(
             params_to_optimize,
             betas=(args.adam_beta1, args.adam_beta2),
@@ -1803,16 +1802,17 @@ def main(args):
             logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
-        if args.train_text_encoder and args.text_encoder_lr:
+        if not freeze_text_encoder and args.text_encoder_lr:
             logger.warning(
                 f"Learning rates were provided both for the transformer and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
             )
-            # changes the learning rate of text_encoder_parameters_one to be
+            # changes the learning rate of text_encoder_parameters to be
             # --learning_rate
-            params_to_optimize[1]["lr"] = args.learning_rate
 
+            params_to_optimize[te_idx]["lr"] = args.learning_rate
+            params_to_optimize[-1]["lr"] = args.learning_rate
         optimizer = optimizer_class(
             params_to_optimize,
             lr=args.learning_rate,
