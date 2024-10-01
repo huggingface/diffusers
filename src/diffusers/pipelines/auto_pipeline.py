@@ -29,7 +29,14 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .flux import FluxControlNetPipeline, FluxImg2ImgPipeline, FluxInpaintPipeline, FluxPipeline
+from .flux import (
+    FluxControlNetImg2ImgPipeline,
+    FluxControlNetInpaintPipeline,
+    FluxControlNetPipeline,
+    FluxImg2ImgPipeline,
+    FluxInpaintPipeline,
+    FluxPipeline,
+)
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -54,6 +61,7 @@ from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
     StableDiffusion3PAGPipeline,
+    StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
@@ -128,6 +136,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
         ("flux", FluxImg2ImgPipeline),
+        ("flux-controlnet", FluxControlNetImg2ImgPipeline),
     ]
 )
 
@@ -140,9 +149,11 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
+        ("flux-controlnet", FluxControlNetInpaintPipeline),
     ]
 )
 

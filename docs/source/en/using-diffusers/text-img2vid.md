@@ -365,7 +365,7 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     model_id, controlnet=controlnet, torch_dtype=torch.float16
@@ -411,7 +411,7 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     model_id, controlnet=controlnet, torch_dtype=torch.float16
