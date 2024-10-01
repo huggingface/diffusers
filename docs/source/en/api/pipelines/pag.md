@@ -55,6 +55,9 @@ Since RegEx is supported as a way for matching layer identifiers, it is crucial 
 
 ## StableDiffusionControlNetPAGPipeline
 [[autodoc]] StableDiffusionControlNetPAGPipeline
+
+## StableDiffusionControlNetPAGInpaintPipeline
+[[autodoc]] StableDiffusionControlNetPAGInpaintPipeline
 	- all
 	- __call__
 
