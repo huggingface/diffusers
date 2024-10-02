@@ -1701,6 +1701,7 @@ def main(args):
         text_lora_parameters_one = []  # CLIP
         for name, param in text_encoder_one.named_parameters():
             if "token_embedding" in name:
+                print("YES 5")
                 # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
                 param.data = param.to(dtype=torch.float32)
                 param.requires_grad = True
@@ -1708,6 +1709,7 @@ def main(args):
             else:
                 param.requires_grad = False
         if args.enable_t5_ti:  # whether to do pivotal tuning/textual inversion for T5 as well
+            print("NO")
             text_lora_parameters_two = []
             for name, param in text_encoder_two.named_parameters():
                 if "token_embedding" in name:
@@ -1724,6 +1726,7 @@ def main(args):
     # if --train_text_encoder_ti and train_transformer_frac == 0 where essentially performing textual inversion
     # and not training transformer LoRA layers
     pure_textual_inversion = args.train_text_encoder_ti and args.train_transformer_frac == 0
+    print("NO 2:", pure_textual_inversion)
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -1744,6 +1747,7 @@ def main(args):
                 ]
                 te_idx = 0
             else:  # regular te training or regular pivotal for clip
+                print("YES1")
                 params_to_optimize = [
                     transformer_parameters_with_lr,
                     text_parameters_one_with_lr,
@@ -2101,28 +2105,29 @@ def main(args):
                 # flag to stop text encoder optimization
                 print("PIVOT TE", epoch)
                 pivoted_te = True
+            else:
+                # still optimizing the text encoder
+                if args.train_text_encoder:
+                    text_encoder_one.train()
+                    # set top parameter requires_grad = True for gradient checkpointing works
+                    accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
+                elif args.train_text_encoder_ti:  # textual inversion / pivotal tuning
+                    text_encoder_one.train()
+                if args.enable_t5_ti:
+                    text_encoder_two.train()
+
             if epoch == num_train_epochs_transformer:
                 # flag to stop transformer optimization
                 print("PIVOT TRANSFORMER", epoch)
                 pivoted_tr = True
-            else:
-                # still optimizing the text encoder
-                if args.train_text_encoder or not args.enable_t5_ti:
-                    text_encoder_one.train()
-                    # set top parameter requires_grad = True for gradient checkpointing works
-                    accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
-                else:  # textual inversion / pivotal tuning
-                    text_encoder_one.train()
-                    text_encoder_two.train()
 
         for step, batch in enumerate(train_dataloader):
             if pivoted_te:
                 # stopping optimization of text_encoder params
                 optimizer.param_groups[te_idx]["lr"] = 0.0
-                if args.train_text_encoder_ti and args.enable_t5_ti:
-                    optimizer.param_groups[te_idx + 1]["lr"] = 0.0
+                optimizer.param_groups[-1]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
-                print("PIVOT TRANSFORMER HELOOOO")
+                print("PIVOT TRANSFORMER")
                 optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
