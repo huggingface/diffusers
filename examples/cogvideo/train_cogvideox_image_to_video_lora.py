@@ -45,10 +45,7 @@ from diffusers import (
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
-from diffusers.training_utils import (
-    cast_training_params,
-    clear_objs_and_retain_memory,
-)
+from diffusers.training_utils import cast_training_params, free_memory
 from diffusers.utils import (
     check_min_version,
     convert_unet_state_dict_to_peft,
@@ -758,7 +755,8 @@ def log_validation(
                 }
             )
 
-    clear_objs_and_retain_memory([pipe])
+    del pipe
+    free_memory()
 
     return videos
 
@@ -1380,9 +1378,6 @@ def main(args):
     )
     vae_scale_factor_spatial = 2 ** (len(vae.config.block_out_channels) - 1)
 
-    # Delete VAE and Text Encoder to save memory
-    clear_objs_and_retain_memory([vae, text_encoder])
-
     # For DeepSpeed training
     model_config = transformer.module.config if hasattr(transformer, "module") else transformer.config
 
@@ -1552,7 +1547,8 @@ def main(args):
         )
 
         # Cleanup trained models to save memory
-        clear_objs_and_retain_memory([transformer])
+        del transformer
+        free_memory()
 
         # Final test inference
         pipe = CogVideoXImageToVideoPipeline.from_pretrained(

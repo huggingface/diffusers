@@ -1304,9 +1304,6 @@ def main(args):
     )
     vae_scale_factor_spatial = 2 ** (len(vae.config.block_out_channels) - 1)
 
-    # Delete VAE to save memory
-    clear_objs_and_retain_memory([vae])
-
     # For DeepSpeed training
     model_config = transformer.module.config if hasattr(transformer, "module") else transformer.config
 
@@ -1480,7 +1477,8 @@ def main(args):
         )
 
         # Cleanup trained models to save memory
-        clear_objs_and_retain_memory([transformer])
+        del transformer
+        free_memory()
 
         # Final test inference
         pipe = CogVideoXPipeline.from_pretrained(
