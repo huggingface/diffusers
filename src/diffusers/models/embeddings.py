@@ -714,6 +714,114 @@ class FluxPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+class CogView3PlusPosEmbed(nn.Module):
+    def __init__(
+        self,
+        max_height: int = 128,
+        max_width: int = 128,
+        hidden_size: int = 2560,
+        text_length: int = 0,
+        block_size: int = 16,
+    ):
+        super().__init__()
+        self.max_height = max_height
+        self.max_width = max_width
+        self.hidden_size = hidden_size
+        self.text_length = text_length
+        self.block_size = block_size
+
+        # Initialize the positional embedding as a non-trainable parameter
+        self.image_pos_embedding = nn.Parameter(
+            torch.zeros(self.max_height, self.max_width, hidden_size), requires_grad=False
+        )
+        # Reinitialize the positional embedding using a sin-cos function
+        self.reinit()
+
+    def forward(self, target_size: List[int]) -> torch.Tensor:
+        ret = []
+        for h, w in target_size:
+            # Scale height and width according to the block size
+            h, w = h // self.block_size, w // self.block_size
+
+            # Reshape the image positional embedding for the target size
+            image_pos_embed = self.image_pos_embedding[:h, :w].reshape(h * w, -1)
+
+            # Combine the text positional embedding and image positional embedding
+            pos_embed = torch.cat(
+                [
+                    torch.zeros(
+                        (self.text_length, self.hidden_size),
+                        dtype=image_pos_embed.dtype,
+                        device=image_pos_embed.device,
+                    ),
+                    image_pos_embed,
+                ],
+                dim=0,
+            )
+
+            ret.append(pos_embed[None, ...])  # Add a batch dimension
+
+        return torch.cat(ret, dim=0)  # Concatenate along the batch dimension
+
+    def reinit(self):
+        # Initialize the positional embedding using a 2D sin-cos function
+        pos_embed_np = self.get_2d_sincos_pos_embed(self.hidden_size, self.max_height, self.max_width)
+        self.image_pos_embedding.data.copy_(torch.from_numpy(pos_embed_np).float())
+
+
+class CogView3PlusImagePatchEmbedding(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 128,
+        hidden_size: int = 128,
+        patch_size: int = 2,
+        text_hidden_size: int = 4096,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.patch_size = patch_size
+        self.text_hidden_size = text_hidden_size
+
+        # Linear projection for image patches
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
+
+        # Linear projection for text embeddings
+        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
+
+    def forward(self, images: torch.Tensor, encoder_outputs: torch.Tensor = None) -> torch.Tensor:
+        # Rearrange the images
+        # patches_images = rearrange(images, "b c (h p1) (w p2) -> b (h w) (c p1 p2)", p1=self.patch_size, p2=self.patch_size)
+
+        b, c, h, w = images.shape
+        p1, p2 = self.patch_size, self.patch_size
+        assert h % p1 == 0 and w % p2 == 0, "Height and width must be divisible by patch size"
+
+        images = images.view(b, c, h // p1, p1, w // p2, p2)
+        patches_images = images.permute(0, 2, 4, 1, 3, 5).contiguous()
+        patches_images = patches_images.view(b, (h // p1) * (w // p2), c * p1 * p2)
+
+        # Project the patches
+        image_emb = self.proj(patches_images)
+
+        # If text embeddings are provided, project and concatenate them
+        if self.text_hidden_size is not None and encoder_outputs is not None:
+            text_emb = self.text_proj(encoder_outputs)
+            emb = torch.cat([text_emb, image_emb], dim=1)
+        else:
+            emb = image_emb
+
+        return emb
+
+    def reinit(self, parent_model=None):
+        # Reinitialize the projection weights
+        nn.init.xavier_uniform_(self.proj.weight)
+        nn.init.constant_(self.proj.bias, 0)
+        if self.text_hidden_size is not None:
+            nn.init.xavier_uniform_(self.text_proj.weight)
+            nn.init.constant_(self.text_proj.bias, 0)
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(
         self,

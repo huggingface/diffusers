@@ -88,7 +88,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
-
+from .cogview3 import CogView3PlusPipeline
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [
@@ -118,6 +118,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
         ("lumina", LuminaText2ImgPipeline),
+        ("cogview3plus", CogView3PlusPipeline),
     ]
 )
 

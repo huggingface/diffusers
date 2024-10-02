@@ -145,6 +145,9 @@ else:
         "CogVideoXImageToVideoPipeline",
         "CogVideoXVideoToVideoPipeline",
     ]
+    _import_structure["cogview3"] = [
+        "CogView3PlusPipeline",
+    ]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -516,6 +519,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxInpaintPipeline,
             FluxPipeline,
         )
+        from .cogview3 import CogView3PlusPipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
