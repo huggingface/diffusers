@@ -54,6 +54,7 @@ from ..utils.hub_utils import (
 from .model_loading_utils import (
     _determine_device_map,
     _fetch_index_file,
+    _fetch_index_file_legacy,
     _load_state_dict_into_model,
     load_model_dict_into_meta,
     load_state_dict,
@@ -93,24 +94,20 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
 
 def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     try:
-        params = tuple(parameter.parameters())
-        if len(params) > 0:
-            return params[0].dtype
-
-        buffers = tuple(parameter.buffers())
-        if len(buffers) > 0:
-            return buffers[0].dtype
-
+        return next(parameter.parameters()).dtype
     except StopIteration:
-        # For torch.nn.DataParallel compatibility in PyTorch 1.5
+        try:
+            return next(parameter.buffers()).dtype
+        except StopIteration:
+            # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
-        def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
-            tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
-            return tuples
+            def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
+                tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
+                return tuples
 
-        gen = parameter._named_members(get_members_fn=find_tensor_attributes)
-        first_tuple = next(gen)
-        return first_tuple[1].dtype
+            gen = parameter._named_members(get_members_fn=find_tensor_attributes)
+            first_tuple = next(gen)
+            return first_tuple[1].dtype
 
 
 class ModelMixin(torch.nn.Module, PushToHubMixin):
@@ -313,11 +310,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
         weights_name = _add_variant(weights_name, variant)
-        weight_name_split = weights_name.split(".")
-        if len(weight_name_split) in [2, 3]:
-            weights_name_pattern = weight_name_split[0] + "{suffix}." + ".".join(weight_name_split[1:])
-        else:
-            raise ValueError(f"Invalid {weights_name} provided.")
+        weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
+            ".safetensors", "{suffix}.safetensors"
+        )
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -628,21 +623,26 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         is_sharded = False
         index_file = None
         is_local = os.path.isdir(pretrained_model_name_or_path)
-        index_file = _fetch_index_file(
-            is_local=is_local,
-            pretrained_model_name_or_path=pretrained_model_name_or_path,
-            subfolder=subfolder or "",
-            use_safetensors=use_safetensors,
-            cache_dir=cache_dir,
-            variant=variant,
-            force_download=force_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            user_agent=user_agent,
-            commit_hash=commit_hash,
-        )
+        index_file_kwargs = {
+            "is_local": is_local,
+            "pretrained_model_name_or_path": pretrained_model_name_or_path,
+            "subfolder": subfolder or "",
+            "use_safetensors": use_safetensors,
+            "cache_dir": cache_dir,
+            "variant": variant,
+            "force_download": force_download,
+            "proxies": proxies,
+            "local_files_only": local_files_only,
+            "token": token,
+            "revision": revision,
+            "user_agent": user_agent,
+            "commit_hash": commit_hash,
+        }
+        index_file = _fetch_index_file(**index_file_kwargs)
+        # In case the index file was not found we still have to consider the legacy format.
+        # this becomes applicable when the variant is not None.
+        if variant is not None and (index_file is None or not os.path.exists(index_file)):
+            index_file = _fetch_index_file_legacy(**index_file_kwargs)
         if index_file is not None and index_file.is_file():
             is_sharded = True
 

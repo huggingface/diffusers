@@ -47,7 +47,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
-    uses_flow_matching = True
+    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -154,6 +154,14 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         )
         self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
 
+    @unittest.skip("Not supported in Flux.")
+    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
+        pass
+
+    @unittest.skip("Not supported in Flux.")
+    def test_modify_padding_mode(self):
+        pass
+
 
 @slow
 @require_torch_gpu
@@ -217,6 +225,26 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         out_slice = out[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
+
+        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_flux_kohya_with_text_encoder(self):
+        self.pipeline.load_lora_weights("cocktailpeanut/optimus", weight_name="optimus.safetensors")
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "optimus is cleaning the house with broomstick"
+        out = self.pipeline(
+            prompt,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=4.5,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+
+        out_slice = out[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4023, 0.4043, 0.4023, 0.3965, 0.3984, 0.3984, 0.3906, 0.3906, 0.4219])
 
         assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
