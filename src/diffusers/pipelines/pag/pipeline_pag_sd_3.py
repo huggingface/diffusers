@@ -212,6 +212,9 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
+        self.patch_size = (
+            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
+        )
 
         self.set_pag_applied_layers(
             pag_applied_layers, pag_attn_processors=(PAGCFGJointAttnProcessor2_0(), PAGJointAttnProcessor2_0())

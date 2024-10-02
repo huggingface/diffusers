@@ -251,6 +251,9 @@ class StableDiffusion3ControlNetInpaintingPipeline(DiffusionPipeline, SD3LoraLoa
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
         )
+        self.patch_size = (
+            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
