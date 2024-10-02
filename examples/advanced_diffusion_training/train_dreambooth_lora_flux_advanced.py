@@ -376,13 +376,13 @@ def parse_args(input_args=None):
         "tokens - <si><si+1> ",
     )
     parser.add_argument(
-        "--initializer_concept_tokens",
+        "--initializer_concept",
         type=str,
         default=None,
-        help="the token (or tokens) to use to initialize the new inserted tokens when training with "
+        help="the concept to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
-        "Alternatively, you could specify a different token whos value will be used as the starting point for the new inserted tokens. "
-        "--num_new_tokens_per_abstraction is ignored when initializer_concept_tokens are provided"
+        "Alternatively, you could specify a different word/words whos value will be used as the starting point for the new inserted tokens. "
+        "--num_new_tokens_per_abstraction is ignored when initializer_concept is provided"
     )
     parser.add_argument(
         "--class_prompt",
@@ -773,8 +773,8 @@ def parse_args(input_args=None):
     if args.enable_t5_ti and not args.train_text_encoder_ti:
         warnings.warn("You need not use --enable_t5_ti without --train_text_encoder_ti.")
 
-    if args.train_text_encoder_ti and args.initializer_concept_tokens and args.num_new_tokens_per_abstraction:
-        warnings.warn("When specifying --initializer_concept_tokens, the number of tokens per abstraction is detrimned "
+    if args.train_text_encoder_ti and args.initializer_concept and args.num_new_tokens_per_abstraction:
+        warnings.warn("When specifying --initializer_concept, the number of tokens per abstraction is detrimned "
                       "by the initializer token. --num_new_tokens_per_abstraction will be ignored")
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -831,8 +831,8 @@ class TokenEmbeddingsHandler:
 
             print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
-            # if initializer_concept_tokens are not provided, token embeddings are initialized randomly
-            if args.initializer_concept_tokens is None:
+            # if initializer_concept are not provided, token embeddings are initialized randomly
+            if args.initializer_concept is None:
                 hidden_size = (
                     text_encoder.text_model.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
                 )
@@ -842,7 +842,7 @@ class TokenEmbeddingsHandler:
                 )
             else:
                 # Convert the initializer_token, placeholder_token to ids
-                initializer_token_ids = tokenizer.encode(args.initializer_concept_tokens, add_special_tokens=False)
+                initializer_token_ids = tokenizer.encode(args.initializer_concept, add_special_tokens=False)
                 for token_idx, token_id in enumerate(self.train_ids):
                     embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_ids[token_idx]].clone()
 
@@ -1508,16 +1508,16 @@ def main(args):
         token_abstraction_list = "".join(args.token_abstraction.split()).split(",")
         logger.info(f"list of token identifiers: {token_abstraction_list}")
 
-        if args.initializer_concept_tokens is None:
+        if args.initializer_concept is None:
             num_new_tokens_per_abstraction = 2 if args.num_new_tokens_per_abstraction is None else args.num_new_tokens_per_abstraction
-        # if args.initializer_concept_tokens is provided, we ignore args.num_new_tokens_per_abstraction
+        # if args.initializer_concept is provided, we ignore args.num_new_tokens_per_abstraction
         else:
-            token_ids = tokenizer_one.encode(args.initializer_concept_tokens, add_special_tokens=False)
+            token_ids = tokenizer_one.encode(args.initializer_concept, add_special_tokens=False)
             num_new_tokens_per_abstraction = len(token_ids)
             if args.enable_t5_ti:
-                token_ids_t5 = tokenizer_two.encode(args.initializer_concept_tokens, add_special_tokens=False)
+                token_ids_t5 = tokenizer_two.encode(args.initializer_concept, add_special_tokens=False)
                 num_new_tokens_per_abstraction = max(len(token_ids), len(token_ids_t5))
-            print(f"initializer_concept_tokens: {args.initializer_concept_tokens}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}")
+            print(f"initializer_concept: {args.initializer_concept}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}")
 
         token_abstraction_dict = {}
         token_idx = 0
