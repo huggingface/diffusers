@@ -382,7 +382,7 @@ def parse_args(input_args=None):
         help="the concept to use to initialize the new inserted tokens when training with "
         "--train_text_encoder_ti = True. By default, new tokens (<si><si+1>) are initialized with random value. "
         "Alternatively, you could specify a different word/words whos value will be used as the starting point for the new inserted tokens. "
-        "--num_new_tokens_per_abstraction is ignored when initializer_concept is provided"
+        "--num_new_tokens_per_abstraction is ignored when initializer_concept is provided",
     )
     parser.add_argument(
         "--class_prompt",
@@ -774,8 +774,10 @@ def parse_args(input_args=None):
         warnings.warn("You need not use --enable_t5_ti without --train_text_encoder_ti.")
 
     if args.train_text_encoder_ti and args.initializer_concept and args.num_new_tokens_per_abstraction:
-        warnings.warn("When specifying --initializer_concept, the number of tokens per abstraction is detrimned "
-                      "by the initializer token. --num_new_tokens_per_abstraction will be ignored")
+        warnings.warn(
+            "When specifying --initializer_concept, the number of tokens per abstraction is detrimned "
+            "by the initializer token. --num_new_tokens_per_abstraction will be ignored"
+        )
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -1509,7 +1511,9 @@ def main(args):
         logger.info(f"list of token identifiers: {token_abstraction_list}")
 
         if args.initializer_concept is None:
-            num_new_tokens_per_abstraction = 2 if args.num_new_tokens_per_abstraction is None else args.num_new_tokens_per_abstraction
+            num_new_tokens_per_abstraction = (
+                2 if args.num_new_tokens_per_abstraction is None else args.num_new_tokens_per_abstraction
+            )
         # if args.initializer_concept is provided, we ignore args.num_new_tokens_per_abstraction
         else:
             token_ids = tokenizer_one.encode(args.initializer_concept, add_special_tokens=False)
@@ -1517,14 +1521,14 @@ def main(args):
             if args.enable_t5_ti:
                 token_ids_t5 = tokenizer_two.encode(args.initializer_concept, add_special_tokens=False)
                 num_new_tokens_per_abstraction = max(len(token_ids), len(token_ids_t5))
-            print(f"initializer_concept: {args.initializer_concept}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}")
+            print(
+                f"initializer_concept: {args.initializer_concept}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}"
+            )
 
         token_abstraction_dict = {}
         token_idx = 0
         for i, token in enumerate(token_abstraction_list):
-            token_abstraction_dict[token] = [
-                f"<s{token_idx + i + j}>" for j in range(num_new_tokens_per_abstraction)
-            ]
+            token_abstraction_dict[token] = [f"<s{token_idx + i + j}>" for j in range(num_new_tokens_per_abstraction)]
             token_idx += num_new_tokens_per_abstraction - 1
 
         # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
