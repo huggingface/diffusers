@@ -4282,10 +4282,6 @@ class MatryoshkaPipeline(
     def interrupt(self):
         return self._interrupt
 
-    @property
-    def model_type(self):
-        return "nested_unet"
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
