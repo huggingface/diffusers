@@ -55,9 +55,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
-    clear_objs_and_retain_memory,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    free_memory,
 )
 from diffusers.utils import (
     check_min_version,
@@ -211,7 +211,8 @@ def log_validation(
                 }
             )
 
-    clear_objs_and_retain_memory(objs=[pipeline])
+    del pipeline
+    free_memory()
 
     return images
 
@@ -1106,7 +1107,8 @@ def main(args):
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
-            clear_objs_and_retain_memory(objs=[pipeline])
+            del pipeline
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1453,9 +1455,9 @@ def main(args):
     # Clear the memory here
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        clear_objs_and_retain_memory(
-            objs=[tokenizers, text_encoders, text_encoder_one, text_encoder_two, text_encoder_three]
-        )
+        del tokenizers, text_encoders
+        del text_encoder_one, text_encoder_two, text_encoder_three
+        free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1791,11 +1793,9 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
-                objs = []
-                if not args.train_text_encoder:
-                    objs.extend([text_encoder_one, text_encoder_two, text_encoder_three])
 
-                clear_objs_and_retain_memory(objs=objs)
+                del text_encoder_one, text_encoder_two, text_encoder_three
+                free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
