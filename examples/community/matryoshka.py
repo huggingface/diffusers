@@ -664,9 +664,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
                     variance_noise = []
                     for m_o in model_output:
                         variance_noise.append(
-                            randn_tensor(
-                                m_o.shape, generator=generator, device=m_o.device, dtype=m_o.dtype
-                            )
+                            randn_tensor(m_o.shape, generator=generator, device=m_o.device, dtype=m_o.dtype)
                         )
                 else:
                     variance_noise = randn_tensor(
@@ -1893,9 +1891,9 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             if conditioning_mask is None:
                 y = encoder_hidden_states.mean(dim=1)
             else:
-                y = (conditioning_mask.unsqueeze(-1).squeeze(0) + encoder_hidden_states).sum(dim=1) / (conditioning_mask.squeeze(0)/10_000 + 1).sum(
-                    dim=1, keepdim=True
-                )
+                y = (conditioning_mask.unsqueeze(-1).squeeze(0) + encoder_hidden_states).sum(dim=1) / (
+                    conditioning_mask.squeeze(0) / 10_000 + 1
+                ).sum(dim=1, keepdim=True)
             cond_emb = self.cond_emb(y)
 
         if not masked_cross_attention:
