@@ -440,9 +440,11 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
 
 
 def load_pt(url: str):
+    from ..models.model_loading_utils import load_state_dict
+
     response = requests.get(url)
     response.raise_for_status()
-    arry = torch.load(BytesIO(response.content))
+    arry = load_state_dict(BytesIO(response.content))
     return arry
 
 
