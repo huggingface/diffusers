@@ -842,9 +842,9 @@ class TokenEmbeddingsHandler:
                 )
             else:
                 # Convert the initializer_token, placeholder_token to ids
-                initializer_token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
-                for idx, token_id in enumerate(self.train_ids):
-                    embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_ids[idx]].clone()
+                initializer_token_ids = tokenizer.encode(args.initializer_concept_tokens, add_special_tokens=False)
+                for token_idx, token_id in enumerate(self.train_ids):
+                    embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_ids[token_idx]].clone()
 
             self.embeddings_settings[f"original_embeddings_{idx}"] = embeds.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
@@ -1512,8 +1512,11 @@ def main(args):
             num_new_tokens_per_abstraction = 2 if args.num_new_tokens_per_abstraction is None else args.num_new_tokens_per_abstraction
         # if args.initializer_concept_tokens is provided, we ignore args.num_new_tokens_per_abstraction
         else:
-            token_ids = tokenizer.encode(args.initializer_concept_tokens, add_special_tokens=False)
+            token_ids = tokenizer_one.encode(args.initializer_concept_tokens, add_special_tokens=False)
             num_new_tokens_per_abstraction = len(token_ids)
+            if args.enable_t5_ti:
+                token_ids_t5 = tokenizer_two.encode(args.initializer_concept_tokens, add_special_tokens=False)
+                num_new_tokens_per_abstraction = max(len(token_ids), len(token_ids_t5))
             print(f"initializer_concept_tokens: {args.initializer_concept_tokens}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}")
 
         token_abstraction_dict = {}
