@@ -1142,7 +1142,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return self.tiled_decode(z, return_dict=return_dict)
 
         frame_batch_size = self.num_latent_frames_batch_size
-        num_batches = num_frames // frame_batch_size
+        num_batches = max(num_frames // frame_batch_size, 1)
         dec = []
         for i in range(num_batches):
             remaining_frames = num_frames % frame_batch_size
