@@ -397,8 +397,8 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
             init_latents = torch.cat(init_latents, dim=0)
         else:
             init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-        init_latents = (init_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        
+        init_latents = init_latents * self.vae.config.scaling_factor
 
         if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -621,12 +621,12 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
         total_time_steps = num_inference_steps
         # end diff diff change
 
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps,
-            strength,
-            device,
-            denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
-        )
+        # timesteps, num_inference_steps = self.get_timesteps(
+        #     num_inference_steps,
+        #     strength,
+        #     device,
+        #     denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
+        # )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latents
@@ -641,7 +641,7 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
             prompt_embeds.dtype,
             device,
             generator,
-            latents,
+            # latents,
         )
 
         # 6. Denoising loop
@@ -665,8 +665,6 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
         # end diff diff preparations
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
 
                 # diff diff
                 if i == 0 and denoising_start is None:
