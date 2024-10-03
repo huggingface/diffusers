@@ -477,7 +477,7 @@ class Attention(nn.Module):
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
 
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
-        quiet_attn_parameters = {"ip_adapter_masks", "image_rotary_emb"}
+        quiet_attn_parameters = {"ip_adapter_masks"}
         unused_kwargs = [
             k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters
         ]
