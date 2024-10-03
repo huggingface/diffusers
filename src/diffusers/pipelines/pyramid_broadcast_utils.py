@@ -38,7 +38,14 @@ class PyramidAttentionBroadcastAttentionProcessorWrapper:
         self._iteration = 0
 
         _original_processor_params = set(inspect.signature(self._original_processor).parameters.keys())
-        _supported_parameters = {"attn", "hidden_states", "encoder_hidden_states", "attention_mask", "temb", "image_rotary_emb"}
+        _supported_parameters = {
+            "attn",
+            "hidden_states",
+            "encoder_hidden_states",
+            "attention_mask",
+            "temb",
+            "image_rotary_emb",
+        }
         self._attn_processor_params = _supported_parameters.intersection(_original_processor_params)
 
     def __call__(
@@ -93,9 +100,11 @@ class PyramidAttentionBroadcastMixin:
                 if skip_range is None:
                     continue
 
-                module.set_processor(PyramidAttentionBroadcastAttentionProcessorWrapper(
-                    self, module.processor, skip_range, timestep_range
-                ))
+                module.set_processor(
+                    PyramidAttentionBroadcastAttentionProcessorWrapper(
+                        self, module.processor, skip_range, timestep_range
+                    )
+                )
 
     def _disable_pyramid_attention_broadcast(self) -> None:
         denoiser: nn.Module = self.transformer if hasattr(self, "transformer") else self.unet
