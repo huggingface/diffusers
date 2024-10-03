@@ -733,6 +733,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin, PyramidAtte
                     progress_bar.update()
 
         self._current_timestep = None
+
         if not output_type == "latent":
             video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
