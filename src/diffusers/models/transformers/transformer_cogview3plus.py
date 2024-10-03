@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2024 The CogView team, Tsinghua University & ZhipuAI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,13 +42,13 @@ class CogView3PlusTransformerBlock(nn.Module):
     """
 
     def __init__(
-        self,
-        dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        time_embed_dim: int = 512,
-        elementwise_affine: bool = False,
-        eps: float = 1e-6,
+            self,
+            dim: int,
+            num_attention_heads: int,
+            attention_head_dim: int,
+            time_embed_dim: int = 512,
+            elementwise_affine: bool = False,
+            eps: float = 1e-6,
     ):
         super().__init__()
 
@@ -60,8 +60,6 @@ class CogView3PlusTransformerBlock(nn.Module):
         self.eps = eps
         self.elementwise_affine = elementwise_affine
 
-        # Initialize adaln_module similar to AdalnAttentionMixin
-        self.adaln_module = nn.Sequential(nn.SiLU(), nn.Linear(time_embed_dim, 12 * dim))
 
         # Initialize LayerNorm for queries and keys
         self.query_layernorm = nn.LayerNorm(self.hidden_size_head, elementwise_affine=elementwise_affine, eps=eps)
@@ -89,14 +87,14 @@ class CogView3PlusTransformerBlock(nn.Module):
         self.mlp = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        emb: torch.Tensor,
-        text_length: int,
-        attention_mask: Optional[torch.Tensor] = None,
-        **kwargs,
+            self,
+            hidden_states: torch.Tensor,
+            emb: torch.Tensor,
+            text_length: int,
+            attention_mask: Optional[torch.Tensor] = None,
+            **kwargs,
     ) -> torch.Tensor:
-        # Get modulation parameters from adaln_module
+
         adaln_output = self.adaln_module(emb)
         (
             shift_msa_img,
@@ -218,13 +216,13 @@ class CogView3PlusFinalLayer(nn.Module):
     """
 
     def __init__(
-        self,
-        hidden_size: int,
-        time_embed_dim: int,
-        patch_size: int,
-        block_size: int,
-        out_channels: int,
-        eps: float = 1e-6,
+            self,
+            hidden_size: int,
+            time_embed_dim: int,
+            patch_size: int,
+            block_size: int,
+            out_channels: int,
+            eps: float = 1e-6,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -237,39 +235,12 @@ class CogView3PlusFinalLayer(nn.Module):
             nn.SiLU(),
             nn.Linear(time_embed_dim, 2 * hidden_size),
         )
-        self.linear = nn.Linear(hidden_size, out_channels * patch_size**2)
 
     def forward(self, logits, emb, text_length, target_size=None, **kwargs):
         # Process the logits and the embedding
         x = logits[:, text_length:]
         shift, scale = self.adaln(emb).chunk(2, dim=1)
         x = modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
-
-        # Unpatchify
-        target_height, target_width = target_size[0]
-        assert (
-            target_height % self.block_size == 0 and target_width % self.block_size == 0
-        ), "target size must be divisible by block size"
-
-        out_height = (target_height // self.block_size) * self.patch_size
-        out_width = (target_width // self.block_size) * self.patch_size
-
-        # Calculate the number of patches along height and width
-        num_patches_h = out_height // self.patch_size
-        num_patches_w = out_width // self.patch_size
-
-        # Step 1: Reshape x to split the patches and their respective dimensions
-        # Original shape is (b, (h*w), (c*p1*p2)), so we reshape to (b, h, w, c, p1, p2)
-        x = x.view(x.size(0), num_patches_h, num_patches_w, self.out_channels, self.patch_size, self.patch_size)
-
-        # Step 2: Permute to rearrange the dimensions to get the correct shape
-        # Moving the patch dimensions back into the spatial dimensions
-        x = x.permute(0, 3, 1, 4, 2, 5).contiguous()
-
-        # Step 3: Reshape back to (b, c, height, width)
-        # This merges the patches back into the original image format
-        x = x.view(x.size(0), self.out_channels, out_height, out_width)
 
         return x
 
@@ -289,33 +260,41 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
     @register_to_config
     def __init__(
-        self,
-        sample_size: int = 128,
-        patch_size: int = 2,
-        in_channels: int = 16,
-        num_layers: int = 30,
-        attention_head_dim: int = 40,
-        num_attention_heads: int = 64,
-        joint_attention_dim: int = 4096,
-        out_channels: int = 16,
-        pos_embed_max_size: int = 128,
+            self,
+            sample_size: int = 128,
+            patch_size: int = 2,
+            in_channels: int = 16,
+            num_layers: int = 30,
+            attention_head_dim: int = 40,
+            num_attention_heads: int = 64,
+            joint_attention_dim: int = 4096,
+            adm_in_channels: int = 1536,
+            pooled_projection_dim: int = 4096,
+            out_channels: int = 16,
+            time_embed_dim: int = 512,
+            pos_embed_max_size: int = 128,
     ):
         super().__init__()
         self.out_channels = out_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = CogView3PlusPosEmbed(
-            max_height=self.config.sample_size,
-            max_width=self.config.sample_size,
-            hidden_size=self.inner_dim,
-            text_length=224,
-            block_size=self.config.patch_size,
+        self.time_embed = nn.Sequential(
+            nn.Linear(self.inner_dim,  self.config.time_embed_dim),
+            nn.SiLU(),
+            nn.Linear(self.config.time_embed_dim,  self.config.time_embed_dim),
         )
 
-        self.time_text_embed = CombinedTimestepTextProjEmbeddings(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+        self.adaln_module = nn.ModuleList(
+            [nn.Sequential(nn.SiLU(), nn.Linear(time_embed_dim, 12 * self.inner_dim)) for _ in range(num_layers)]
         )
 
+        self.label_embed = nn.Sequential(
+            nn.Sequential(
+                nn.Linear(self.config.adm_in_channels, self.time_embed_dim),
+                nn.SiLU(),
+                nn.Linear(self.time_embed_dim, self.time_embed_dim),
+            )
+        )
         self.image_patch_embed = CogView3PlusImagePatchEmbedding(
             in_channels=self.config.in_channels,
             hidden_size=self.inner_dim,
@@ -344,23 +323,9 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             out_channels=self.out_channels,
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
-
-    def forward(self, hidden_states, emb, target_size, **kwargs):
-        # Transformer processing
-        for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, emb, **kwargs)
-
-        # Final normalization and projection
-        hidden_states = self.norm_out(hidden_states)
-        logits = self.proj_out(hidden_states)
-
-        # Pass through final layer to reconstruct the image
-        output = self.final_layer(logits, emb, text_length=224, target_size=target_size)
-        return output
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
@@ -509,40 +474,31 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             module.gradient_checkpointing = value
 
     def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        pooled_projections: torch.FloatTensor = None,
-        timestep: torch.LongTensor = None,
-        block_controlnet_hidden_states: List = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        return_dict: bool = True,
+            self,
+            hidden_states: torch.FloatTensor,
+            encoder_hidden_states: torch.FloatTensor = None,
+            pooled_projections: torch.FloatTensor = None,
+            timestep: torch.LongTensor = None,
+            y: torch.LongTensor = None,
+            block_controlnet_hidden_states: List = None,
+            joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+            return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`CogView3PlusTransformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
-                Input `hidden_states`.
-            encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
-                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
-                from the embeddings of input conditions.
-            timestep ( `torch.LongTensor`):
-                Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
-            joint_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
-                tuple.
+            hidden_states (`torch.FloatTensor`): Input `hidden_states`.
+            encoder_hidden_states (`torch.FloatTensor`, *optional*): Conditional embeddings.
+            pooled_projections (`torch.FloatTensor`, *optional*): Projected embeddings.
+            timestep (`torch.LongTensor`): Indicates denoising step.
+            y (`torch.LongTensor`, *optional*): 标签输入，用于获取标签嵌入。
+            block_controlnet_hidden_states: (`list` of `torch.Tensor`): A list of tensors for residuals.
+            joint_attention_kwargs (`dict`, *optional*): Additional kwargs for the attention processor.
+            return_dict (`bool`, *optional*, defaults to `True`): Whether to return a `Transformer2DModelOutput`.
 
         Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+            Output tensor or `Transformer2DModelOutput`.
         """
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
@@ -551,23 +507,21 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
 
         height, width = hidden_states.shape[-2:]
 
-        hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
-        temb = self.time_text_embed(timestep, pooled_projections)
+        hidden_states = self.pos_embed(hidden_states)
+        temb = self.time_embed(timestep)
+
+        if y is not None:
+            label_embeddings = self.label_embed(y)
+            hidden_states += label_embeddings.unsqueeze(-1).unsqueeze(-1)
+
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
-
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
                         if return_dict is not None:
@@ -585,18 +539,17 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     temb,
                     **ckpt_kwargs,
                 )
-
             else:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
 
-            # controlnet residual
+            # 控制网络残差
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
                 interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
                 hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
-        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.final_layer(hidden_states, temb, encoder_hidden_states, target_size=(height, width))
         hidden_states = self.proj_out(hidden_states)
 
         # unpatchify
@@ -613,7 +566,6 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         )
 
         if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:

@@ -764,8 +764,17 @@ class CogView3PlusPosEmbed(nn.Module):
         return torch.cat(ret, dim=0)  # Concatenate along the batch dimension
 
     def reinit(self):
-        # Initialize the positional embedding using a 2D sin-cos function
-        pos_embed_np = self.get_2d_sincos_pos_embed(self.hidden_size, self.max_height, self.max_width)
+        # Initialize the positional embedding using the updated 2D sin-cos function
+        grid_size = (self.max_height, self.max_width)
+        pos_embed_np = get_2d_sincos_pos_embed(
+            embed_dim=self.hidden_size,
+            grid_size=grid_size,
+        )
+
+        # Reshape the positional embedding to the desired shape
+        pos_embed_np = pos_embed_np.reshape(self.max_height, self.max_width, self.hidden_size)
+
+        # Copy the positional embedding data
         self.image_pos_embedding.data.copy_(torch.from_numpy(pos_embed_np).float())
 
 
