@@ -620,8 +620,8 @@ class VideoDataset(Dataset):
             assert (selected_num_frames - 1) % 4 == 0
 
             # Training transforms
-            tensor = frames.float() / 255.0
-            frames = tensor.permute(0, 3, 1, 2)
+            frames = (frames - 127.5) / 127.5
+            frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
             frames = self._resize_for_rectangle_crop(frames)
             videos.append(frames.contiguous())  # [F, C, H, W]
 
