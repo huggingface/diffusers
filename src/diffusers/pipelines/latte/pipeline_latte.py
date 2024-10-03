@@ -840,7 +840,7 @@ class LattePipeline(DiffusionPipeline, PyramidAttentionBroadcastMixin):
                     progress_bar.update()
 
         self._current_timestep = None
-        
+
         if not output_type == "latent":
             video = self.decode_latents(latents, video_length, decode_chunk_size=decode_chunk_size)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
