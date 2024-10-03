@@ -1532,7 +1532,7 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
         )  # More stable with f16 than dividing afterwards
         if mask is not None:
             mask = mask.view(mask.size(0), 1, 1, mask.size(-1)).repeat(1, num_heads, 1, 1).flatten(0, 1)
-            weight = weight.masked_fill(mask == -10_000, float("-inf"))
+            weight = weight.masked_fill(mask == 0, float("-inf"))
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = torch.einsum("bts,bcs->bct", weight, v.reshape(bs * num_heads, ch, -1))
         return a.reshape(bs, -1, length)
@@ -1891,10 +1891,12 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             if conditioning_mask is None:
                 y = encoder_hidden_states.mean(dim=1)
             else:
-                y = (conditioning_mask.unsqueeze(-1).squeeze(0) + encoder_hidden_states).sum(dim=1) / (
-                    conditioning_mask.squeeze(0) / 10_000 + 1
+                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / (
+                    conditioning_mask
                 ).sum(dim=1, keepdim=True)
             cond_emb = self.cond_emb(y)
+        else:
+            cond_emb = None
 
         if not masked_cross_attention:
             conditioning_mask = None
@@ -1904,10 +1906,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             temb = self.add_time_proj(torch.tensor([micro], device=emb.device, dtype=emb.dtype))
             temb_micro_conditioning = self.add_timestep_embedder(temb.to(emb.dtype))
             if self.cond_emb is not None and not added_cond_kwargs.get("from_nested", False):
-                cond_emb_micro = cond_emb + temb_micro_conditioning
-                return cond_emb_micro, conditioning_mask, cond_emb
-            else:
-                return temb_micro_conditioning, conditioning_mask, None
+                return temb_micro_conditioning, conditioning_mask, cond_emb
 
         return cond_emb, conditioning_mask, cond_emb
 
@@ -3033,11 +3032,6 @@ class MatryoshkaUNet2DConditionModel(
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # convert encoder_attention_mask to a bias the same way we do for attention_mask
-        if encoder_attention_mask is not None:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(sample[0][0].dtype)) * -10000.0
-            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -3071,6 +3065,11 @@ class MatryoshkaUNet2DConditionModel(
             aug_emb, encoder_attention_mask, _ = self.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
+
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        if encoder_attention_mask is not None:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample[0][0].dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
@@ -3932,16 +3931,16 @@ class MatryoshkaPipeline(
                 )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
+                prompt_attention_mask = text_inputs.attention_mask.to(device)
             else:
-                attention_mask = None
+                prompt_attention_mask = None
 
             if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -4002,13 +4001,13 @@ class MatryoshkaPipeline(
             )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
+                negative_prompt_attention_mask = uncond_input.attention_mask.to(device)
             else:
-                attention_mask = None
+                negative_prompt_attention_mask = None
 
             negative_prompt_embeds = self.text_encoder(
                 uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                attention_mask=negative_prompt_attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -4026,7 +4025,7 @@ class MatryoshkaPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
-        return prompt_embeds, negative_prompt_embeds, attention_mask
+        return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask
 
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -4459,7 +4458,7 @@ class MatryoshkaPipeline(
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        prompt_embeds, negative_prompt_embeds, encoder_attention_mask = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -4476,6 +4475,7 @@ class MatryoshkaPipeline(
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            attention_masks = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
@@ -4549,7 +4549,7 @@ class MatryoshkaPipeline(
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
-                    encoder_attention_mask=encoder_attention_mask,
+                    encoder_attention_mask=attention_masks,
                     return_dict=False,
                 )[0]
 
