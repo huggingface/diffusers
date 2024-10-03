@@ -1891,9 +1891,9 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             if conditioning_mask is None:
                 y = encoder_hidden_states.mean(dim=1)
             else:
-                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / (
-                    conditioning_mask
-                ).sum(dim=1, keepdim=True)
+                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / (conditioning_mask).sum(
+                    dim=1, keepdim=True
+                )
             cond_emb = self.cond_emb(y)
         else:
             cond_emb = None
@@ -4458,7 +4458,12 @@ class MatryoshkaPipeline(
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask = self.encode_prompt(
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
