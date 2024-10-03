@@ -667,7 +667,7 @@ class StableDiffusionPAGInpaintPipeline(
                     raise ValueError(
                         f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                     )
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -731,6 +731,7 @@ class StableDiffusionPAGInpaintPipeline(
 
         return outputs
     
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -745,6 +746,7 @@ class StableDiffusionPAGInpaintPipeline(
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents    
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -785,6 +787,9 @@ class StableDiffusionPAGInpaintPipeline(
         masked_image_latents = (
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
+
+# star
+
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
@@ -996,23 +1001,8 @@ class StableDiffusionPAGInpaintPipeline(
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
         # to deal with lora scaling and other possible forward hooks
-
+       
         # 1. Check inputs. Raise error if not correct
-        # prompt,
-        #     image,
-        #     mask_image,
-        #     height,
-        #     width,
-        #     strength,
-        #     callback_steps,
-        #     output_type,
-        #     negative_prompt=None,
-        #     prompt_embeds=None,
-        #     negative_prompt_embeds=None,
-        #     ip_adapter_image=None,
-        #     ip_adapter_image_embeds=None,
-        #     callback_on_step_end_tensor_inputs=None,
-        #     padding_mask_crop=None,
         self.check_inputs(
             prompt,
             image,
@@ -1066,7 +1056,7 @@ class StableDiffusionPAGInpaintPipeline(
             clip_skip=self.clip_skip,
         )
 
-                # 4. set timesteps
+        # 4. set timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
@@ -1098,7 +1088,7 @@ class StableDiffusionPAGInpaintPipeline(
         )
         init_image = init_image.to(dtype=torch.float32)
 
-                # 6. Prepare latent variables
+        # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
@@ -1171,7 +1161,7 @@ class StableDiffusionPAGInpaintPipeline(
             raise ValueError(
                 f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
             )
-        # 8.1 Prepare extra step kwargs.
+        # 9 Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # For classifier free guidance, we need to do two forward passes.
@@ -1210,14 +1200,14 @@ class StableDiffusionPAGInpaintPipeline(
 
 
         
-        # 6.1 Add image embeds for IP-Adapter
+        # 9.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
             {"image_embeds": ip_adapter_image_embeds}
             if (ip_adapter_image is not None or ip_adapter_image_embeds is not None)
             else None
         )
 
-        # 6.2 Optionally get Guidance Scale Embedding
+        # 9.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
@@ -1225,7 +1215,7 @@ class StableDiffusionPAGInpaintPipeline(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
-        # 7. Denoising loop
+        # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         
         
