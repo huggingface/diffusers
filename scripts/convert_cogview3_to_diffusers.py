@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
-from diffusers import AutoencoderKL, CogVideoXDDIMScheduler
+from diffusers import AutoencoderKL, DDPMScheduler
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 
 from diffusers import (
@@ -185,21 +185,17 @@ if __name__ == "__main__":
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
 
-    text_encoder_id = "/share/official_pretrains/hf_home/t5-v1_1-xxl"
+    text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
 
-    scheduler = CogVideoXDDIMScheduler.from_config(
+    scheduler = DDPMScheduler.from_config(
         {
-            "beta_end": 0.012,
-            "beta_schedule": "scaled_linear",
-            "beta_start": 0.00085,
-            "clip_sample": False,
-            "num_train_timesteps": 1000,
-            "prediction_type": "v_prediction",
-            "rescale_betas_zero_snr": True,
-            "set_alpha_to_one": True,
-            "timestep_spacing": "trailing",
+            "num_train_timesteps": 50,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "prediction_type": "v_prediction"
         }
     )
 
