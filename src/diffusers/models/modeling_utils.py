@@ -526,7 +526,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         allow_pickle = False
-        if use_safetensors is None or use_safetensors:
+        if use_safetensors is None:
             use_safetensors = True
             allow_pickle = True
 
