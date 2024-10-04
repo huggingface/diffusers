@@ -30,6 +30,7 @@ import requests_mock
 import safetensors.torch
 import torch
 import torch.nn as nn
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
@@ -551,6 +552,50 @@ class DownloadTests(unittest.TestCase):
                 assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
                 assert not any(f.endswith(other_format) for f in files)
 
+    def test_download_variants_with_sharded_checkpoints(self):
+        # Here we test for downloading of "variant" files belonging to the `unet` and
+        # the `text_encoder`. Their checkpoints can be sharded.
+        for use_safetensors in [True, False]:
+            for variant in ["fp16", None]:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    tmpdirname = DiffusionPipeline.download(
+                        "hf-internal-testing/tiny-stable-diffusion-pipe-variants-right-format",
+                        safety_checker=None,
+                        cache_dir=tmpdirname,
+                        variant=variant,
+                        use_safetensors=use_safetensors,
+                    )
+
+                    all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                    files = [item for sublist in all_root_files for item in sublist]
+
+                    # Check for `model_ext` and `variant`.
+                    model_ext = ".safetensors" if use_safetensors else ".bin"
+                    unexpected_ext = ".bin" if use_safetensors else ".safetensors"
+                    model_files = [f for f in files if f.endswith(model_ext)]
+                    assert not any(f.endswith(unexpected_ext) for f in files)
+                    assert all(variant in f for f in model_files if f.endswith(model_ext) and variant is not None)
+
+    def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
+        repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
+
+        for is_local in [True, False]:
+            with CaptureLogger(logger) as cap_logger:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    local_repo_id = repo_id
+                    if is_local:
+                        local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
+
+                    _ = DiffusionPipeline.from_pretrained(
+                        local_repo_id,
+                        safety_checker=None,
+                        variant="fp16",
+                        use_safetensors=True,
+                    )
+            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = True
@@ -655,7 +700,7 @@ class DownloadTests(unittest.TestCase):
                 out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
                 with tempfile.TemporaryDirectory() as tmpdirname:
-                    pipe.save_pretrained(tmpdirname)
+                    pipe.save_pretrained(tmpdirname, variant=variant, safe_serialization=use_safe)
                     pipe_2 = StableDiffusionPipeline.from_pretrained(
                         tmpdirname, safe_serialization=use_safe, variant=variant
                     )
@@ -1646,7 +1691,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_error_no_variant_available(self):
         variant = "fp16"
         with self.assertRaises(ValueError) as error_context:
-            _ = StableDiffusionPipeline.download(
+            _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
