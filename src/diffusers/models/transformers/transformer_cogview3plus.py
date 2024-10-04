@@ -47,19 +47,19 @@ class CogView3PlusTransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        # attn_mixin.adaln_modules + layer[i].input_layernorm
         self.norm1 = CogView3PlusAdaLayerNormZeroTextImage(embedding_dim=time_embed_dim, dim=dim)
 
         self.attn = Attention(
-            query_dim=self.dim,
+            query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
-            out_dim=self.dim,
+            out_dim=dim,
             bias=True,
             qk_norm="layer_norm",
             layrnorm_elementwise_affine=False,
             eps=1e-6,
         )
+
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
 
@@ -92,8 +92,6 @@ class CogView3PlusTransformerBlock(nn.Module):
         attn_output = self.attn(hidden_states=attn_input)
         context_attn_output, attn_output = attn_output[:, :text_length], attn_output[:, text_length:]
 
-        # Apply gate to attention output
-        # Process attention outputs for the `hidden_states`.
         attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = hidden_states + attn_output
 
@@ -109,7 +107,6 @@ class CogView3PlusTransformerBlock(nn.Module):
 
         ff_output = self.ff(norm_hidden_states)
 
-        # Apply gate to MLP output
         context_ff_output, ff_output = ff_output[:, :text_length], ff_output[:, text_length:]
 
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
@@ -164,6 +161,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         self.transformer_blocks = nn.ModuleList(
             [
                 CogView3PlusTransformerBlock(
+                    dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     time_embed_dim=self.config.time_embed_dim,
@@ -319,6 +317,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         for index_block, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
+
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
                         if return_dict is not None:

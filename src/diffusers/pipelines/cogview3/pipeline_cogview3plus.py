@@ -553,8 +553,8 @@ class CogView3PlusPipeline(DiffusionPipeline, PeftAdapterMixin, FromOriginalMode
 
         Returns:
             [`~pipelines.cogview3.CogView3PlusPipelineOutput`] or `tuple`:
-            [`~pipelines.cogview3.CogView3PlusPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.cogview3.CogView3PlusPipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is a list with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor
