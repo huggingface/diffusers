@@ -20,6 +20,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from ..configuration_utils import ConfigMixin
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
+from .cogview3 import CogView3PlusPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -88,7 +89,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
-from .cogview3 import CogView3PlusPipeline
+
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
     [

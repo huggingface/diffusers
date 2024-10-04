@@ -1,221 +1,183 @@
+"""
+Convert a CogView3 checkpoint to the Diffusers format.
+
+This script converts a CogView3 checkpoint to the Diffusers format, which can then be used
+with the Diffusers library.
+
+Example usage:
+    python scripts/convert_cogview3_to_diffusers.py \
+        --original_state_dict_repo_id "THUDM/cogview3" \
+        --filename "cogview3.pt" \
+        --transformer \
+        --output_path "./cogview3_diffusers" \
+        --dtype "bf16"
+
+Alternatively, if you have a local checkpoint:
+    python scripts/convert_cogview3_to_diffusers.py \
+        --checkpoint_path '/raid/.cache/huggingface/models--ZP2HF--CogView3-SAT/snapshots/ca86ce9ba94f9a7f2dd109e7a59e4c8ad04121be/cogview3plus_3b/1/mp_rank_00_model_states.pt' \
+        --transformer \
+        --output_path "/raid/yiyi/cogview3_diffusers" \
+        --dtype "bf16"
+
+Arguments:
+    --original_state_dict_repo_id: The Hugging Face repo ID containing the original checkpoint.
+    --filename: The filename of the checkpoint in the repo (default: "flux.safetensors").
+    --checkpoint_path: Path to a local checkpoint file (alternative to repo_id and filename).
+    --transformer: Flag to convert the transformer model.
+    --output_path: The path to save the converted model.
+    --dtype: The dtype to save the model in (default: "bf16", options: "fp16", "bf16", "fp32").
+
+Note: You must provide either --original_state_dict_repo_id or --checkpoint_path.
+"""
+
 import argparse
-from typing import Any, Dict
+from contextlib import nullcontext
 
 import torch
-from transformers import T5EncoderModel, T5Tokenizer
-from diffusers import AutoencoderKL, DDPMScheduler
-from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
+from accelerate import init_empty_weights
+from huggingface_hub import hf_hub_download
 
-from diffusers import (
-    CogView3PlusTransformer2DModel,
-    CogView3PlusPipeline,
-)
+from diffusers import CogView3PlusTransformer2DModel
+from diffusers.utils.import_utils import is_accelerate_available
 
 
-def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
-    to_q_key = key.replace("query_key_value", "to_q")
-    to_k_key = key.replace("query_key_value", "to_k")
-    to_v_key = key.replace("query_key_value", "to_v")
-    to_q, to_k, to_v = torch.chunk(state_dict[key], chunks=3, dim=0)
-    state_dict[to_q_key] = to_q
-    state_dict[to_k_key] = to_k
-    state_dict[to_v_key] = to_v
-    state_dict.pop(key)
+CTX = init_empty_weights if is_accelerate_available else nullcontext
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
+parser.add_argument("--filename", default="flux.safetensors", type=str)
+parser.add_argument("--checkpoint_path", default=None, type=str)
+parser.add_argument("--transformer", action="store_true")
+parser.add_argument("--output_path", type=str)
+parser.add_argument("--dtype", type=str, default="bf16")
+
+args = parser.parse_args()
 
 
-def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]):
-    layer_id, weight_or_bias = key.split(".")[-2:]
+def load_original_checkpoint(args):
+    if args.original_state_dict_repo_id is not None:
+        ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=args.filename)
+    elif args.checkpoint_path is not None:
+        ckpt_path = args.checkpoint_path
+    else:
+        raise ValueError("Please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
 
-    if "query" in key:
-        new_key = f"transformer_blocks.{layer_id}.attn.norm_q.{weight_or_bias}"
-    elif "key" in key:
-        new_key = f"transformer_blocks.{layer_id}.attn.norm_k.{weight_or_bias}"
-
-    state_dict[new_key] = state_dict.pop(key)
-
-
-def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]):
-    layer_id, _, weight_or_bias = key.split(".")[-3:]
-
-    weights_or_biases = state_dict[key]
-    norm1_key = f"transformer_blocks.{layer_id}.adaln_modules.1.{weight_or_bias}"
-    state_dict[norm1_key] = weights_or_biases
-    state_dict.pop(key)
-
-def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
-    state_dict = saved_dict
-    if "model" in saved_dict.keys():
-        state_dict = state_dict["model"]
-    if "module" in saved_dict.keys():
-        state_dict = state_dict["module"]
-    if "state_dict" in saved_dict.keys():
-        state_dict = state_dict["state_dict"]
-    return state_dict
+    original_state_dict = torch.load(ckpt_path, map_location="cpu")
+    return original_state_dict
 
 
-TRANSFORMER_KEYS_RENAME_DICT = {
-    "transformer": "transformer_blocks",
-    "attention": "attn",
-    "mlp": "mlp.net",
-    "dense_h_to_4h": "0.proj",
-    "dense_4h_to_h": "2",
-    ".layers": "",
-    "dense": "to_out.0",
-    "mixins.patch_embed": "pos_embed",
-    "time_embed.0": "emb.timestep_embedder.linear_1",
-    "time_embed.2": "emb.timestep_embedder.linear_2",
-    "label_emb.0": "emb.label_embedder",
-    "mixins.final_layer.adaln.1": "norm_out.linear",
-    "mixins.final_layer.linear": "proj_out",
-}
-
-TRANSFORMER_SPECIAL_KEYS_REMAP = {
-    "query_key_value": reassign_query_key_value_inplace,
-    "mixins.adaln.adaln_modules": reassign_adaln_norm_inplace,
-}
-
-TOKENIZER_MAX_LENGTH = 224
+# this is specific to `AdaLayerNormContinuous`:
+# diffusers imnplementation split the linear projection into the scale, shift while CogView3 split it tino shift, scale
+def swap_scale_shift(weight, dim):
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    return new_weight
 
 
-# VAE of CogView3Plus can be converted to diffusers without any changes
-def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
-    original_state_dict = torch.load(ckpt_path, map_location='cpu')["state_dict"]
+def convert_cogview3_transformer_checkpoint_to_diffusers(original_state_dict):
+    new_state_dict = {}
 
-    vae = AutoencoderKL(
-        in_channels=3,
-        out_channels=3,
-        down_block_types=("DownEncoderBlock2D",) * 4,
-        up_block_types=("UpDecoderBlock2D",) * 4,
-        block_out_channels=(128, 512, 1024, 1024),
-        layers_per_block=3,
-        act_fn="silu",
-        latent_channels=16,
-        norm_num_groups=32,
-        sample_size=1024,
-        scaling_factor=scaling_factor,
-        force_upcast=True,
-        use_quant_conv=False,
-        use_post_quant_conv=False,
-        mid_block_add_attention=False,
-    ).to(dtype=dtype)
+    # Convert pos_embed
+    new_state_dict["pos_embed.proj.weight"] = original_state_dict.pop("mixins.patch_embed.proj.weight")
+    new_state_dict["pos_embed.proj.bias"] = original_state_dict.pop("mixins.patch_embed.proj.bias")
+    new_state_dict["pos_embed.text_proj.weight"] = original_state_dict.pop("mixins.patch_embed.text_proj.weight")
+    new_state_dict["pos_embed.text_proj.bias"] = original_state_dict.pop("mixins.patch_embed.text_proj.bias")
 
-    # Convert the state dict to a format compatible with diffusers
-    converted_state_dict = convert_ldm_vae_checkpoint(original_state_dict, vae.config)
-
-    # Load the converted state dict into the VAE model
-    vae.load_state_dict(converted_state_dict, strict=False)
-
-    return vae
-
-
-def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
-    state_dict[new_key] = state_dict.pop(old_key)
-
-
-def convert_transformer(
-        ckpt_path: str,
-        num_layers: int,
-        num_attention_heads: int,
-        dtype: torch.dtype,
-):
-    PREFIX_KEY = "model.diffusion_model."
-
-    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    transformer = CogView3PlusTransformer2DModel(
-        in_channels=16,
-        num_layers=num_layers,
-        num_attention_heads=num_attention_heads
-    ).to(dtype=dtype)
-    for key in list(original_state_dict.keys()):
-        new_key = key[len(PREFIX_KEY):]
-        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
-            new_key = new_key.replace(replace_key, rename_key)
-        update_state_dict_inplace(original_state_dict, key, new_key)
-
-
-    for key in list(original_state_dict.keys()):
-        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
-            if special_key not in key:
-                continue
-            handler_fn_inplace(key, original_state_dict)
-    transformer.load_state_dict(original_state_dict, strict=True)
-
-    return transformer
-
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
+    # Convert time_text_embed
+    new_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
+        "time_embed.0.weight"
     )
-    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
-    parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--fp16", action="store_true", default=False, help="Whether to save the model weights in fp16")
-    parser.add_argument("--bf16", action="store_true", default=False, help="Whether to save the model weights in bf16")
-    parser.add_argument(
-        "--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving"
+    new_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_embed.0.bias")
+    new_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = original_state_dict.pop(
+        "time_embed.2.weight"
     )
-    parser.add_argument(
-        "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
+    new_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_embed.2.bias")
+    new_state_dict["time_text_embed.text_embedder.linear_1.weight"] = original_state_dict.pop("label_emb.0.0.weight")
+    new_state_dict["time_text_embed.text_embedder.linear_1.bias"] = original_state_dict.pop("label_emb.0.0.bias")
+    new_state_dict["time_text_embed.text_embedder.linear_2.weight"] = original_state_dict.pop("label_emb.0.2.weight")
+    new_state_dict["time_text_embed.text_embedder.linear_2.bias"] = original_state_dict.pop("label_emb.0.2.bias")
+
+    # Convert transformer blocks
+    for i in range(30):
+        block_prefix = f"transformer_blocks.{i}."
+        old_prefix = f"transformer.layers.{i}."
+        adaln_prefix = f"mixins.adaln.adaln_modules.{i}."
+
+        new_state_dict[block_prefix + "norm1.linear.weight"] = original_state_dict.pop(adaln_prefix + "1.weight")
+        new_state_dict[block_prefix + "norm1.linear.bias"] = original_state_dict.pop(adaln_prefix + "1.bias")
+
+        qkv_weight = original_state_dict.pop(old_prefix + "attention.query_key_value.weight")
+        qkv_bias = original_state_dict.pop(old_prefix + "attention.query_key_value.bias")
+        q, k, v = qkv_weight.chunk(3, dim=0)
+        q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+
+        new_state_dict[block_prefix + "attn.to_q.weight"] = q
+        new_state_dict[block_prefix + "attn.to_q.bias"] = q_bias
+        new_state_dict[block_prefix + "attn.to_k.weight"] = k
+        new_state_dict[block_prefix + "attn.to_k.bias"] = k_bias
+        new_state_dict[block_prefix + "attn.to_v.weight"] = v
+        new_state_dict[block_prefix + "attn.to_v.bias"] = v_bias
+
+        new_state_dict[block_prefix + "attn.to_out.0.weight"] = original_state_dict.pop(
+            old_prefix + "attention.dense.weight"
+        )
+        new_state_dict[block_prefix + "attn.to_out.0.bias"] = original_state_dict.pop(
+            old_prefix + "attention.dense.bias"
+        )
+
+        new_state_dict[block_prefix + "ff.net.0.proj.weight"] = original_state_dict.pop(
+            old_prefix + "mlp.dense_h_to_4h.weight"
+        )
+        new_state_dict[block_prefix + "ff.net.0.proj.bias"] = original_state_dict.pop(
+            old_prefix + "mlp.dense_h_to_4h.bias"
+        )
+        new_state_dict[block_prefix + "ff.net.2.weight"] = original_state_dict.pop(
+            old_prefix + "mlp.dense_4h_to_h.weight"
+        )
+        new_state_dict[block_prefix + "ff.net.2.bias"] = original_state_dict.pop(old_prefix + "mlp.dense_4h_to_h.bias")
+
+    # Convert final norm and projection
+    new_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+        original_state_dict.pop("mixins.final_layer.adaln.1.weight"), dim=0
     )
-    parser.add_argument("--num_layers", type=int, default=30, help="Number of transformer blocks")
-    parser.add_argument("--num_attention_heads", type=int, default=64, help="Number of transformer blocks")
-    parser.add_argument("--scaling_factor", type=float, default=0.18215, help="Scaling factor in the VAE")
-    return parser.parse_args()
+    new_state_dict["norm_out.linear.bias"] = swap_scale_shift(
+        original_state_dict.pop("mixins.final_layer.adaln.1.bias"), dim=0
+    )
+    new_state_dict["proj_out.weight"] = original_state_dict.pop("mixins.final_layer.linear.weight")
+    new_state_dict["proj_out.bias"] = original_state_dict.pop("mixins.final_layer.linear.bias")
+
+    return new_state_dict
+
+
+def main(args):
+    original_ckpt = load_original_checkpoint(args)
+    original_ckpt = original_ckpt["module"]
+    original_ckpt = {k.replace("model.diffusion_model.", ""): v for k, v in original_ckpt.items()}
+
+    original_dtype = next(iter(original_ckpt.values())).dtype
+    dtype = None
+    if args.dtype is None:
+        dtype = original_dtype
+    elif args.dtype == "fp16":
+        dtype = torch.float16
+    elif args.dtype == "bf16":
+        dtype = torch.bfloat16
+    elif args.dtype == "fp32":
+        dtype = torch.float32
+    else:
+        raise ValueError(f"Unsupported dtype: {args.dtype}")
+
+    if args.transformer:
+        converted_transformer_state_dict = convert_cogview3_transformer_checkpoint_to_diffusers(original_ckpt)
+        transformer = CogView3PlusTransformer2DModel()
+        transformer.load_state_dict(converted_transformer_state_dict, strict=True)
+
+        print(f"Saving CogView3 Transformer in Diffusers format in {args.output_path}/transformer")
+        transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
+
+    if len(original_ckpt) > 0:
+        print(f"Warning: {len(original_ckpt)} keys were not converted and will be saved as is: {original_ckpt.keys()}")
 
 
 if __name__ == "__main__":
-    args = get_args()
-
-    transformer = None
-    vae = None
-
-    if args.fp16 and args.bf16:
-        raise ValueError("You cannot pass both --fp16 and --bf16 at the same time.")
-
-    dtype = torch.float16 if args.fp16 else torch.bfloat16 if args.bf16 else torch.float32
-    if args.transformer_ckpt_path is not None:
-        transformer = convert_transformer(
-            args.transformer_ckpt_path,
-            args.num_layers,
-            args.num_attention_heads,
-            dtype
-        )
-
-    if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
-
-    text_encoder_id = "google/t5-v1_1-xxl"
-    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
-    text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
-
-    scheduler = DDPMScheduler.from_config(
-        {
-            "num_train_timesteps": 50,
-            "beta_start": 0.0001,
-            "beta_end": 0.02,
-            "beta_schedule": "linear",
-            "prediction_type": "v_prediction"
-        }
-    )
-
-    pipe = CogView3PlusPipeline(
-        tokenizer=tokenizer,
-        vae=vae,
-        text_encoder=text_encoder,
-        transformer=transformer,
-        scheduler=scheduler,
-    )
-
-    if args.fp16:
-        pipe = pipe.to(dtype=torch.float16)
-    if args.bf16:
-        pipe = pipe.to(dtype=torch.bfloat16)
-
-    # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
-    # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
-    # is either fp16/bf16 here).
-
-    # This is necessary This is necessary for users with insufficient memory,
-    # such as those using Colab and notebooks, as it can save some memory used for model loading.
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", push_to_hub=args.push_to_hub)
+    main(args)
