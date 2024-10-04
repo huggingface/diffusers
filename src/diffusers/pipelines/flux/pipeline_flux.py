@@ -134,7 +134,8 @@ def retrieve_timesteps(
     else:
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
+    timesteps_cpu = getattr(scheduler, "timesteps_cpu", None) # a copy of timesteps that's always on cpu for indexing and code that requires cuda sync
+    return timesteps, num_inference_steps, timesteps_cpu
 
 
 class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
@@ -689,7 +690,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
             self.scheduler.config.base_shift,
             self.scheduler.config.max_shift,
         )
-        timesteps, num_inference_steps = retrieve_timesteps(
+        timesteps, num_inference_steps, timesteps_cpu = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
@@ -710,6 +711,9 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                t_cpu = timesteps_cpu[i]
+                # t: the current timestep, in gpu, for model input
+                # t_cpu: the current timestep, in cpu, for indexing in scheduler
                 if self.interrupt:
                     continue
 
@@ -730,7 +734,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t_cpu, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
