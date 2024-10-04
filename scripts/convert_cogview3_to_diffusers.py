@@ -37,22 +37,10 @@ def reassign_query_key_layernorm_inplace(key: str, state_dict: Dict[str, Any]):
 def reassign_adaln_norm_inplace(key: str, state_dict: Dict[str, Any]):
     layer_id, _, weight_or_bias = key.split(".")[-3:]
 
-    weights_or_biases = state_dict[key].chunk(12, dim=0)
-    norm1_weights_or_biases = torch.cat(weights_or_biases[0:3] + weights_or_biases[6:9])
-    norm2_weights_or_biases = torch.cat(weights_or_biases[3:6] + weights_or_biases[9:12])
-
-    norm1_key = f"transformer_blocks.{layer_id}.norm1.linear.{weight_or_bias}"
-    state_dict[norm1_key] = norm1_weights_or_biases
-
-    norm2_key = f"transformer_blocks.{layer_id}.norm2.linear.{weight_or_bias}"
-    state_dict[norm2_key] = norm2_weights_or_biases
-
+    weights_or_biases = state_dict[key]
+    norm1_key = f"transformer_blocks.{layer_id}.adaln_modules.1.{weight_or_bias}"
+    state_dict[norm1_key] = weights_or_biases
     state_dict.pop(key)
-
-
-def remove_keys_inplace(key: str, state_dict: Dict[str, Any]):
-    state_dict.pop(key)
-
 
 def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     state_dict = saved_dict
@@ -73,16 +61,17 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "dense_4h_to_h": "2",
     ".layers": "",
     "dense": "to_out.0",
-    "mixins.patch_embed": "image_patch_embed",
-    "mixins.adaln.adaln_modules": "adaln_module",
-    "time_embed": "time_embed",
-    "label_emb": "label_embed",
-    "mixins.final_layer.adaln": "final_layer.adaln",
+    "mixins.patch_embed": "pos_embed",
+    "time_embed.0": "emb.timestep_embedder.linear_1",
+    "time_embed.2": "emb.timestep_embedder.linear_2",
+    "label_emb.0": "emb.label_embedder",
+    "mixins.final_layer.adaln.1": "norm_out.linear",
     "mixins.final_layer.linear": "proj_out",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "query_key_value": reassign_query_key_value_inplace,
+    "mixins.adaln.adaln_modules": reassign_adaln_norm_inplace,
 }
 
 TOKENIZER_MAX_LENGTH = 224
@@ -135,9 +124,8 @@ def convert_transformer(
     transformer = CogView3PlusTransformer2DModel(
         in_channels=16,
         num_layers=num_layers,
-        num_attention_heads=num_attention_heads,
+        num_attention_heads=num_attention_heads
     ).to(dtype=dtype)
-
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY):]
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
