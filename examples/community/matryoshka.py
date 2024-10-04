@@ -3481,11 +3481,6 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # convert encoder_attention_mask to a bias the same way we do for attention_mask
-        if encoder_attention_mask is not None:
-            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
-            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -3541,6 +3536,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             aug_emb, cond_mask, _ = self.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
+
+        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        if encoder_attention_mask is not None:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         if self.config.addition_embed_type == "image_hint":
             aug_emb, hint = aug_emb
@@ -4483,9 +4483,10 @@ class MatryoshkaPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             attention_masks = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
-            prompt_embeds = prompt_embeds * attention_masks.unsqueeze(-1)
         else:
             attention_masks = prompt_attention_mask
+
+        prompt_embeds = prompt_embeds * attention_masks.unsqueeze(-1)
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
