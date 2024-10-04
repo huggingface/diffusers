@@ -1905,8 +1905,8 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
         if micro is not None:
             temb = self.add_time_proj(torch.tensor([micro], device=emb.device, dtype=emb.dtype))
             temb_micro_conditioning = self.add_timestep_embedder(temb.to(emb.dtype))
-            if self.cond_emb is not None and not added_cond_kwargs.get("from_nested", False):
-                return temb_micro_conditioning, conditioning_mask, cond_emb
+            # if self.cond_emb is not None and not added_cond_kwargs.get("from_nested", False):
+            return temb_micro_conditioning, conditioning_mask, cond_emb
 
         return cond_emb, conditioning_mask, cond_emb
 
@@ -3507,11 +3507,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                     encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 )
 
-                aug_emb_inner_unet, cond_mask_inner_unet, cond_emb = self.inner_unet.get_aug_embed(
+                aug_emb_inner_unet, cond_mask, cond_emb = self.inner_unet.get_aug_embed(
                     emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 )
                 added_cond_kwargs["masked_cross_attention"] = self.config.masked_cross_attention
-                aug_emb, cond_mask, _ = self.get_aug_embed(
+                aug_emb, __, _ = self.get_aug_embed(
                     emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 )
             else:
@@ -3623,7 +3623,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
             timestep,
             cond_emb=cond_emb,
             encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=cond_mask_inner_unet,
+            encoder_attention_mask=cond_mask,
             from_nested=True,
         )
         x_low, x_inner = inner_unet_output.sample, inner_unet_output.sample_inner
