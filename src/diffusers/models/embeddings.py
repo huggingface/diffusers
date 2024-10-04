@@ -86,12 +86,21 @@ def get_3d_sincos_pos_embed(
     temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
+    3D version of `get_2d_sincos_pos_embed()`, this function returns a 3D sinusoidal position embed.
+
     Args:
         embed_dim (`int`):
+            The embedding dimension.
         spatial_size (`int` or `Tuple[int, int]`):
+            The spatial size of the embed.
         temporal_size (`int`):
+            The temporal size of the embed.
         spatial_interpolation_scale (`float`, defaults to 1.0):
+            The spatial interpolation scale of the embed.
         temporal_interpolation_scale (`float`, defaults to 1.0):
+            The temporal interpolation scale of the embed.
+    Returns:
+        np.ndarray: The 3D position embedding.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
@@ -129,8 +138,24 @@ def get_2d_sincos_pos_embed(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
     """
-    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
-    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal positional embeddings.
+
+    Args:
+    embed_dim: int
+        The embedding dimension.
+    grid_size: int
+        The size of the grid height and width.
+    cls_token: bool
+        Whether or not to add a classification token.
+    extra_tokens: int
+        The number of extra tokens to add.
+    interpolation_scale: float
+        The scale of the interpolation.
+
+    Returns:
+        pos_embed: np.ndarray
+            Shape is [grid_size*grid_size, embed_dim] or
+            [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
@@ -148,6 +173,15 @@ def get_2d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    """
+    This function generates 2D positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): output dimension for each position
+        grid (`np.ndarray`): grid of positions
+    Output:
+        `np.ndarray`: tensor in shape (grid_size*grid_size, embed_dim)
+    """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
@@ -161,7 +195,13 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
+    This function generates 1D positional embeddings from sin and cos values.
+
+    Args:
+        embed_dim(`int`): output dimension for each position
+        pos(`numpy.ndarray(dtype=float)`): tensor in shape (M, 1)
+    Output:
+        `numpy.ndarray(dtype=float)`: tensor in shape (M, D)
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
