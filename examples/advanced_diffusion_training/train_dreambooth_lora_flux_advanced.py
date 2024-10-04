@@ -1533,7 +1533,11 @@ def main(args):
 
         # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
         for token_abs, token_replacement in token_abstraction_dict.items():
-            args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
+            new_instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
+            if args.instance_prompt == new_instance_prompt:
+                logger.warning("Note! the instance prompt provided in --instance_prompt does not include the token abstraction specified "
+                               "--token_abstraction. This may lead to incorrect optimization of text embeddings during pivotal tuning")
+            args.instance_prompt = new_instance_prompt
             if args.with_prior_preservation:
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
             if args.validation_prompt:
