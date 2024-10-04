@@ -21,6 +21,7 @@ from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel, CogVideoXVideoToVideoPipeline, DDIMScheduler
+from diffusers.pipelines.pyramid_broadcast_utils import PyramidAttentionBroadcastAttentionProcessorWrapper
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -53,7 +54,7 @@ class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
     )
     test_xformers_attention = False
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
         transformer = CogVideoXTransformer3DModel(
             # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
@@ -65,7 +66,7 @@ class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             out_channels=4,
             time_embed_dim=2,
             text_embed_dim=32,  # Must match with tiny-random-t5
-            num_layers=1,
+            num_layers=num_layers,
             sample_width=2,  # latent width: 2 -> final width: 16
             sample_height=2,  # latent height: 2 -> final height: 16
             sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
@@ -323,3 +324,51 @@ class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         assert np.allclose(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
+
+    def test_pyramid_attention_broadcast(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 4
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        frames = pipe(**inputs).frames  # [B, F, C, H, W]
+        original_image_slice = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.enable_pyramid_attention_broadcast(spatial_attn_skip_range=2, spatial_attn_timestep_range=(100, 800))
+        assert pipe.pyramid_attention_broadcast_enabled
+
+        num_pab_processors = sum(
+            [
+                isinstance(processor, PyramidAttentionBroadcastAttentionProcessorWrapper)
+                for processor in pipe.transformer.attn_processors.values()
+            ]
+        )
+        assert num_pab_processors == num_layers
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        frames = pipe(**inputs).frames
+        image_slice_pab_enabled = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.disable_pyramid_attention_broadcast()
+        assert not pipe.pyramid_attention_broadcast_enabled
+
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_pab_disabled = frames[0, -2:, -1, -3:, -3:]
+
+        # We need to use higher tolerance because we are using a random model. With a converged/trained
+        # model, the tolerance can be lower.
+        assert np.allclose(
+            original_image_slice, image_slice_pab_enabled, atol=0.2
+        ), "PAB outputs should not differ much in specified timestep range."
+        assert np.allclose(
+            image_slice_pab_enabled, image_slice_pab_disabled, atol=0.2
+        ), "Outputs, with PAB enabled, shouldn't differ much when PAB is disabled in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=0.2
+        ), "Original outputs should match when PAB is disabled."
