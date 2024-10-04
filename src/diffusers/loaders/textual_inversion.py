@@ -561,6 +561,7 @@ class TextualInversionLoaderMixin:
                 tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
                 key_id += 1
         tokenizer._update_trie()
+        # set correct total vocab size after removing tokens
         tokenizer._update_total_vocab_size()
 
         # Delete from text encoder
