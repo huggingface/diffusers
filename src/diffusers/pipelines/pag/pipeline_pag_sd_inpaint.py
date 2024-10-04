@@ -46,15 +46,27 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import AutoPipelineForText2Image
+        >>> from diffusers import AutoPipelineForInpainting
 
-        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        >>> pipe = AutoPipelineForInpainting.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, enable_pag=True
         ... )
         >>> pipe = pipe.to("cuda")
-
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, pag_scale=0.3).images[0]
+        >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        >>> mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+        >>> init_image = load_image(img_url).convert("RGB")
+        >>> mask_image = load_image(mask_url).convert("RGB")
+        >>> prompt = "A majestic tiger sitting on a bench"
+        >>> image = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            strength=0.8,
+            num_inference_steps=50,
+            guidance_scale=guidance_scale,
+            generator=generator,
+            pag_scale=pag_scale,
+        ).images[0]
         ```
 """
 
