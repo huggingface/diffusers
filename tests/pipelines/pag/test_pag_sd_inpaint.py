@@ -14,29 +14,28 @@
 # limitations under the License.
 
 import gc
-import inspect
-import unittest
-from PIL import Image
 import random
+import unittest
+
 import numpy as np
 import torch
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     AutoPipelineForInpainting,
+    PNDMScheduler,
     StableDiffusionPAGInpaintPipeline,
-    StableDiffusionInpaintPipeline,
     UNet2DConditionModel,
-    PNDMScheduler
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
     require_torch_gpu,
     slow,
     torch_device,
-    floats_tensor,
-    load_image,
 )
 
 from ..pipeline_params import (
@@ -69,7 +68,9 @@ class StableDiffusionPAGInpaintPipelineFastTests(
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     image_params = frozenset([])
     image_latents_params = frozenset([])
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids","mask", "masked_image_latents"})
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
+        {"add_text_embeds", "add_time_ids", "mask", "masked_image_latents"}
+    )
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -120,7 +121,6 @@ class StableDiffusionPAGInpaintPipelineFastTests(
             "image_encoder": None,
         }
         return components
-    
 
     def get_dummy_inputs(self, device, seed=0):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched

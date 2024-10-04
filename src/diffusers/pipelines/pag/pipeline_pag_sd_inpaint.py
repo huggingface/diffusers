@@ -13,6 +13,7 @@
 # limitations under the License.
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
+
 import PIL.Image
 import torch
 from packaging import version
@@ -57,6 +58,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -69,6 +71,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -579,94 +582,95 @@ class StableDiffusionPAGInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
-            self,
-            prompt,
-            image,
-            mask_image,
-            height,
-            width,
-            strength,
-            callback_steps,
-            output_type,
-            negative_prompt=None,
-            prompt_embeds=None,
-            negative_prompt_embeds=None,
-            ip_adapter_image=None,
-            ip_adapter_image_embeds=None,
-            callback_on_step_end_tensor_inputs=None,
-            padding_mask_crop=None,
+        self,
+        prompt,
+        image,
+        mask_image,
+        height,
+        width,
+        strength,
+        callback_steps,
+        output_type,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
+    ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
+        if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
-            if strength < 0 or strength > 1:
-                raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
-            if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
-                raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-            if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
-                    f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                    f" {type(callback_steps)}."
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
+
+        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
+            raise ValueError(
+                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
+            )
+
+        if ip_adapter_image_embeds is not None:
+            if not isinstance(ip_adapter_image_embeds, list):
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
+                )
+            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-            if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-            ):
-                raise ValueError(
-                    f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-                )
-
-            if prompt is not None and prompt_embeds is not None:
-                raise ValueError(
-                    f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                    " only forward one of the two."
-                )
-            elif prompt is None and prompt_embeds is None:
-                raise ValueError(
-                    "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-                )
-            elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-                raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-            if negative_prompt is not None and negative_prompt_embeds is not None:
-                raise ValueError(
-                    f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                    f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-                )
-
-            if prompt_embeds is not None and negative_prompt_embeds is not None:
-                if prompt_embeds.shape != negative_prompt_embeds.shape:
-                    raise ValueError(
-                        "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
-                        f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
-                        f" {negative_prompt_embeds.shape}."
-                    )
-            if padding_mask_crop is not None:
-                if not isinstance(image, PIL.Image.Image):
-                    raise ValueError(
-                        f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
-                    )
-                if not isinstance(mask_image, PIL.Image.Image):
-                    raise ValueError(
-                        f"The mask image should be a PIL image when inpainting mask crop, but is of type"
-                        f" {type(mask_image)}."
-                    )
-                if output_type != "pil":
-                    raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
-
-            if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
-                raise ValueError(
-                    "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
-                )
-
-            if ip_adapter_image_embeds is not None:
-                if not isinstance(ip_adapter_image_embeds, list):
-                    raise ValueError(
-                        f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
-                    )
-                elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
-                    raise ValueError(
-                        f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
-                    )
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_latents
     def prepare_latents(
         self,
@@ -730,7 +734,7 @@ class StableDiffusionPAGInpaintPipeline(
             outputs += (image_latents,)
 
         return outputs
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -746,7 +750,7 @@ class StableDiffusionPAGInpaintPipeline(
 
         return image_latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents    
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -788,8 +792,7 @@ class StableDiffusionPAGInpaintPipeline(
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
-# star
-
+        # star
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
@@ -806,7 +809,6 @@ class StableDiffusionPAGInpaintPipeline(
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
-
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -1001,7 +1003,7 @@ class StableDiffusionPAGInpaintPipeline(
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
         # to deal with lora scaling and other possible forward hooks
-       
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -1069,7 +1071,7 @@ class StableDiffusionPAGInpaintPipeline(
                 f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
                 f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
-        
+
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
         is_strength_max = strength == 1.0
@@ -1198,8 +1200,6 @@ class StableDiffusionPAGInpaintPipeline(
                 image_embeds = image_embeds.to(device)
                 ip_adapter_image_embeds[i] = image_embeds
 
-
-        
         # 9.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
             {"image_embeds": ip_adapter_image_embeds}
@@ -1217,8 +1217,7 @@ class StableDiffusionPAGInpaintPipeline(
 
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        
-        
+
         if self.do_perturbed_attention_guidance:
             original_attn_proc = self.unet.attn_processors
             self._set_pag_attn_processor(
@@ -1281,7 +1280,6 @@ class StableDiffusionPAGInpaintPipeline(
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
-
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -1297,7 +1295,7 @@ class StableDiffusionPAGInpaintPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    
+
         if not output_type == "latent":
             condition_kwargs = {}
             if isinstance(self.vae, AsymmetricAutoencoderKL):
@@ -1329,7 +1327,6 @@ class StableDiffusionPAGInpaintPipeline(
 
         if self.do_perturbed_attention_guidance:
             self.unet.set_attn_processor(original_attn_proc)
-
 
         if not return_dict:
             return (image, has_nsfw_concept)

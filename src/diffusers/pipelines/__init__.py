@@ -570,13 +570,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
+            StableDiffusionPAGInpaintPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGImg2ImgPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,
             StableDiffusionXLPAGPipeline,
-            StableDiffusionPAGInpaintPipeline,
         )
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
