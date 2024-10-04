@@ -569,7 +569,15 @@ def parse_args(input_args=None):
         default=3.5,
         help="the FLUX.1 dev variant is a guidance distilled model",
     )
-
+    parser.add_argument(
+        "--lora_transformer_blocks",
+        type=str,
+        default=None,
+        help=(
+            "the transformer blocks to tune during training. please specify them in a comma separated string, e.g. `transformer.single_transformer_blocks.7.proj_out,transformer.single_transformer_blocks.20.proj_out` etc."
+            "NOTE: By default (if not specified) - regular LoRA training is performed. "
+        ),
+    )
     parser.add_argument(
         "--text_encoder_lr",
         type=float,
@@ -1582,12 +1590,49 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
 
+    # Taken (and slightly modified) from B-LoRA repo https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+    def is_belong_to_blocks(key, blocks):
+        try:
+            for g in blocks:
+                if g in key:
+                    return True
+            return False
+        except Exception as e:
+            raise type(e)(f"failed to is_belong_to_block, due to: {e}")
+
+    def get_transformer_lora_target_modules(transformer, target_blocks=None):
+        try:
+            blocks = [(".").join(blk.split(".")[1:]) for blk in target_blocks]
+
+            attns = [
+                attn_processor_name.rsplit(".", 1)[0]
+                for attn_processor_name, _ in transformer.attn_processors.items()
+                if is_belong_to_blocks(attn_processor_name, blocks)
+            ]
+
+            target_modules = [f"{attn}.{mat}" for mat in ["to_k", "to_q", "to_v", "to_out.0"] for attn in attns]
+            return target_modules
+        except Exception as e:
+            raise type(e)(
+                f"failed to get_target_modules, due to: {e}. "
+                f"Please check the modules specified in --lora_transformer_blocks are correct"
+            )
+
+
+    if args.lora_transformer_blocks:
+        # if training specific transformer blocks
+        target_blocks_list = "".join(args.lora_transformer_blocks.split()).split(",")
+        logger.info(f"list of unet blocks to train: {target_blocks_list}")
+        target_modules = get_transformer_lora_target_modules(unet, target_blocks=target_blocks_list)
+    else:
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=target_modules,
     )
     transformer.add_adapter(transformer_lora_config)
 
