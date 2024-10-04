@@ -232,10 +232,10 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device, non_blocking=True)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -274,11 +274,11 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
+        prompt_embeds = self.text_encoder(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds.pooler_output
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device, non_blocking=True)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt)
@@ -360,8 +360,9 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
-        text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
+        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer_dtype
+        #text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype, non_blocking=True)
+        text_ids = torch.zeros((prompt_embeds.shape[1], 3), device=device, dtype=dtype)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
 
@@ -425,7 +426,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
             latent_image_id_height * latent_image_id_width, latent_image_id_channels
         )
 
-        return latent_image_ids.to(device=device, dtype=dtype)
+        return latent_image_ids.to(device=device, dtype=dtype, non_blocking=True)
 
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
@@ -496,7 +497,7 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
 
         if latents is not None:
             latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+            return latents.to(device=device, dtype=dtype, non_blocking=True), latent_image_ids
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
