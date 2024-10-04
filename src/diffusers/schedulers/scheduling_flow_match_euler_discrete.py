@@ -214,7 +214,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps_cpu
-        
+
         indices = (schedule_timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
@@ -229,8 +229,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 if timestep.device != self.timesteps_cpu.device:
-                    raise Warning("timestep and self.timesteps_cpu are not on the same device, you should pass cpu timesteps to .step() to avoid syncing\n"
-                    f"{timestep.device=}, {self.timesteps_cpu.device=}")
+                    raise Warning(
+                        "timestep and self.timesteps_cpu are not on the same device, you should pass cpu timesteps to .step() to avoid device syncing\n"
+                        f"{timestep.device=}, {self.timesteps_cpu.device=}"
+                    )
                 timestep = timestep.to(self.timesteps_cpu.device)
             self._step_index = self.index_for_timestep(timestep)
         else:

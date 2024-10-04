@@ -134,7 +134,8 @@ def retrieve_timesteps(
     else:
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
-    timesteps_cpu = getattr(scheduler, "timesteps_cpu", None) # a copy of timesteps that's always on cpu for indexing and code that requires cuda sync
+    # a copy of timesteps that's always on cpu for indexing and code that requires cuda sync
+    timesteps_cpu = getattr(scheduler, "timesteps_cpu", None)
     return timesteps, num_inference_steps, timesteps_cpu
 
 
@@ -232,7 +233,9 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)[0]
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)[
+            0
+        ]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device, non_blocking=True)
@@ -361,7 +364,6 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer_dtype
-        #text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype, non_blocking=True)
         text_ids = torch.zeros((prompt_embeds.shape[1], 3), device=device, dtype=dtype)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
