@@ -4032,6 +4032,130 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+    
+
+class GeneralizedLinearAttnProcessor(torch.nn.Module):
+    r"""
+    Attention processor for LinFusion.
+    """
+
+    def __init__(self, 
+                 dim_n, 
+                 heads, 
+                 projection_mid_dim=None, 
+                 bias=False,
+                 out_bias=True, 
+                 dropout=0.0, 
+                 inner_dim=None, 
+                 out_dim=None):
+        super().__init__()
+        inner_dim = inner_dim or dim_n
+        out_dim = out_dim or dim_n
+        projection_mid_dim = projection_mid_dim or dim_n
+        self.to_q = nn.Linear(inner_dim, dim_n, bias=bias)
+        self.to_k = nn.Linear(inner_dim, dim_n, bias=bias)
+        self.to_v = nn.Linear(inner_dim, inner_dim, bias=bias)
+        self.to_q_ = nn.Sequential(
+            nn.Linear(dim_n, projection_mid_dim),
+            nn.LayerNorm(projection_mid_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(projection_mid_dim, dim_n)
+        ) if projection_mid_dim != -1 else nn.Identity()
+        self.to_k_ = nn.Sequential(
+            nn.Linear(dim_n, projection_mid_dim),
+            nn.LayerNorm(projection_mid_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(projection_mid_dim, dim_n)
+        ) if projection_mid_dim != -1 else nn.Identity()
+        self.to_out = nn.ModuleList([])
+        self.to_out.append(nn.Linear(inner_dim, out_dim, bias=out_bias))
+        self.to_out.append(nn.Dropout(dropout))
+        self.heads = heads
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        residual = hidden_states
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = self.to_q(hidden_states + self.to_q_(hidden_states))
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = self.to_k(encoder_hidden_states + self.to_k_(encoder_hidden_states))
+        value = self.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // self.heads
+
+        query = query.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        query = F.elu(query) + 1.0
+        key = F.elu(key) + 1.0
+
+        if attention_mask is not None:
+            key = key * attention_mask.unsqueeze(-1)
+            value = value * attention_mask.unsqueeze(-1)
+
+        z = query @ key.mean(dim=-2, keepdim=True).transpose(-2, -1) + 1e-4
+        kv = (key.transpose(-2, -1) * (sequence_length**-0.5)) @ (
+            value * (sequence_length**-0.5)
+        )
+        hidden_states = query @ kv / z
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, self.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = self.to_out[0](hidden_states)
+        # dropout
+        hidden_states = self.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
 
 
 class PAGIdentitySelfAttnProcessor2_0:
@@ -4286,6 +4410,7 @@ CROSS_ATTENTION_PROCESSORS = (
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
+    GeneralizedLinearAttnProcessor,
     FusedAttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,

@@ -71,6 +71,7 @@ if is_torch_available():
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
+        _import_structure["linfusion"] = ["LinFusion"]
 
 _import_structure["peft"] = ["PeftAdapterMixin"]
 
@@ -83,6 +84,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
         if is_transformers_available():
             from .ip_adapter import IPAdapterMixin
+            from .linfusion import LinFusion
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
