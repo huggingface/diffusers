@@ -4025,6 +4025,8 @@ class MatryoshkaPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
+        if not do_classifier_free_guidance:
+            return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, None
         return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask
 
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
@@ -4481,6 +4483,9 @@ class MatryoshkaPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             attention_masks = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
+            prompt_embeds = prompt_embeds * attention_masks.unsqueeze(-1)
+        else:
+            attention_masks = prompt_attention_mask
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
