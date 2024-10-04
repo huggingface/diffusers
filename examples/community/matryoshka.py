@@ -1891,7 +1891,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             if conditioning_mask is None:
                 y = encoder_hidden_states.mean(dim=1)
             else:
-                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / (conditioning_mask).sum(
+                y = (conditioning_mask.unsqueeze(-1) * encoder_hidden_states).sum(dim=1) / conditioning_mask.sum(
                     dim=1, keepdim=True
                 )
             cond_emb = self.cond_emb(y)
