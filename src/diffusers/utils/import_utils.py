@@ -669,7 +669,7 @@ class DummyObject(type):
 def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
     """
     Compares a library version to some requirement using a given operation.
-    
+
     Args:
         library_or_version (`str` or `packaging.version.Version`):
             A library name or a version to check.
@@ -702,8 +702,8 @@ def is_torch_version(operation: str, version: str):
 
 def is_transformers_version(operation: str, version: str):
     """
-    Compares the current Transformers version to a given reference with an operation.    
-    
+    Compares the current Transformers version to a given reference with an operation.
+
     Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
@@ -733,7 +733,7 @@ def is_accelerate_version(operation: str, version: str):
 def is_peft_version(operation: str, version: str):
     """
     Compares the current PEFT version to a given reference with an operation.
-    
+
     Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
@@ -748,7 +748,7 @@ def is_peft_version(operation: str, version: str):
 def is_k_diffusion_version(operation: str, version: str):
     """
     Compares the current k-diffusion version to a given reference with an operation.
-    
+
     Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
