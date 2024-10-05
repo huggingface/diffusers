@@ -66,8 +66,8 @@ class PyramidAttentionBroadcastAttentionProcessorWrapper:
         self._prev_hidden_states = None
         self._iteration = 0
 
-        _original_processor_params = set(inspect.signature(self._original_processor).parameters.keys())
-        _supported_parameters = {
+        original_processor_params = set(inspect.signature(self._original_processor.__call__).parameters.keys())
+        supported_parameters = {
             "attn",
             "hidden_states",
             "encoder_hidden_states",
@@ -75,7 +75,7 @@ class PyramidAttentionBroadcastAttentionProcessorWrapper:
             "temb",
             "image_rotary_emb",
         }
-        self._attn_processor_params = _supported_parameters.intersection(_original_processor_params)
+        self._attn_processor_params = supported_parameters.intersection(original_processor_params)
 
     def __call__(
         self,
