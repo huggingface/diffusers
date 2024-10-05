@@ -386,6 +386,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline):
             width // self.vae_scale_factor_spatial,
         )
         latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
+        print(f'HEYO : {image_latents.shape} : {latent_padding.shape}')
         image_latents = torch.cat([image_latents, latent_padding], dim=1)
 
         if latents is None:
