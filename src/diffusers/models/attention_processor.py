@@ -4032,21 +4032,21 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
+
 
 class GeneralizedLinearAttnProcessor(torch.nn.Module):
     r"""
     Attention processor for LinFusion.
     """
 
-    def __init__(self, 
-                 dim_n, 
-                 heads, 
-                 projection_mid_dim=None, 
+    def __init__(self,
+                 dim_n,
+                 heads,
+                 projection_mid_dim=None,
                  bias=False,
-                 out_bias=True, 
-                 dropout=0.0, 
-                 inner_dim=None, 
+                 out_bias=True,
+                 dropout=0.0,
+                 inner_dim=None,
                  out_dim=None):
         super().__init__()
         inner_dim = inner_dim or dim_n

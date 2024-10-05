@@ -15,24 +15,24 @@
 import functools
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..configuration_utils import ConfigMixin
+from ..models.attention_processor import (
+    Attention,
+    AttnProcessor,
+    AttnProcessor2_0,
+    GeneralizedLinearAttnProcessor,
+)
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..utils import (
     is_accelerate_available,
     is_torch_version,
     logging,
-)
-from ..models.attention_processor import (
-    Attention,
-    GeneralizedLinearAttnProcessor,
-    AttnProcessor,
-    AttnProcessor2_0,
 )
 
 
@@ -157,7 +157,9 @@ class LinFusion(ModelMixin, ConfigMixin):
                         f"LinFusion not found for pipeline [{pipeline_name_or_path}]. "
                         "Try specify `pretrained_model_name_or_path` explicitly."
                     )
-
+                else:
+                    logger.info(f"{pipeline_name_or_path} matches LinFusion checkpoint "
+                                f"{pretrained_model_name_or_path_or_dict}")
             if (
                 pretrained_model_name_or_path_or_dict == "Yuanshi/LinFusion-2-1"
                 and unet.dtype == torch.float16

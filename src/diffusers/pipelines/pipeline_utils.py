@@ -41,10 +41,10 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..loaders import LinFusion
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
-from ..loaders import LinFusion
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -953,7 +953,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         **kwargs,
     ):
         r"""
-        Load LinFusion modules into [`UNet2DConditionModel`]. 
+        Load LinFusion modules into [`UNet2DConditionModel`].
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -972,7 +972,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`ModelMixin.save_pretrained`].
-                Only useful when pretrained_model_name_or_path is not provided. 
+                Only useful when `pretrained_model_name_or_path` is not provided.
                 If not provided, it will be automatically inferred from _internal_dict._name_or_path
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
@@ -1019,10 +1019,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         LinFusion.load_linfusion(
-            self, 
-            pretrained_model_name_or_path, 
-            pipeline_name_or_path, 
-            load_pretrained, 
+            self,
+            pretrained_model_name_or_path,
+            pipeline_name_or_path,
+            load_pretrained,
             **kwargs
         )
 
