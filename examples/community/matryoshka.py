@@ -3911,9 +3911,6 @@ class MatryoshkaPipeline(
 
             text_inputs = self.tokenizer(
                 prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
@@ -3935,36 +3932,12 @@ class MatryoshkaPipeline(
             else:
                 prompt_attention_mask = None
 
-            if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
-                prompt_embeds = prompt_embeds[0]
-            else:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
-                )
-                # Access the `hidden_states` first, that contains a tuple of
-                # all the hidden states from the encoder layers. Then index into
-                # the tuple to access the hidden states from the desired layer.
-                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
-                # We also need to apply the final LayerNorm here to not mess with the
-                # representations. The `last_hidden_states` that we typically use for
-                # obtaining the final prompt representations passes through the LayerNorm
-                # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
-
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
         elif self.unet is not None:
             prompt_embeds_dtype = self.unet.dtype
         else:
             prompt_embeds_dtype = prompt_embeds.dtype
-
-        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -3991,34 +3964,70 @@ class MatryoshkaPipeline(
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
-            max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
                 uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
                 return_tensors="pt",
             )
+            uncond_input_ids = uncond_input.input_ids
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 negative_prompt_attention_mask = uncond_input.attention_mask.to(device)
             else:
                 negative_prompt_attention_mask = None
 
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=negative_prompt_attention_mask,
+        if not do_classifier_free_guidance:
+            if clip_skip is None:
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
+                prompt_embeds = prompt_embeds[0]
+            else:
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=prompt_attention_mask, output_hidden_states=True
+                )
+                # Access the `hidden_states` first, that contains a tuple of
+                # all the hidden states from the encoder layers. Then index into
+                # the tuple to access the hidden states from the desired layer.
+                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+                # We also need to apply the final LayerNorm here to not mess with the
+                # representations. The `last_hidden_states` that we typically use for
+                # obtaining the final prompt representations passes through the LayerNorm
+                # layer.
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+        else:
+            max_len = max(len(text_input_ids[0]), len(uncond_input_ids[0]))
+            if len(text_input_ids[0]) < max_len:
+                text_input_ids = torch.cat(
+                    [text_input_ids, torch.zeros(batch_size, max_len - len(text_input_ids[0]), dtype=torch.long)], dim=1
+                )
+                prompt_attention_mask = torch.cat(
+                    [
+                        prompt_attention_mask,
+                        torch.zeros(batch_size, max_len - len(prompt_attention_mask[0]), dtype=torch.long),
+                    ],
+                    dim=1,
+                )
+            elif len(uncond_input_ids[0]) < max_len:
+                uncond_input_ids = torch.cat(
+                    [uncond_input_ids, torch.zeros(batch_size, max_len - len(uncond_input_ids[0]), dtype=torch.long)],
+                    dim=1,
+                )
+                negative_prompt_attention_mask = torch.cat(
+                    [
+                        negative_prompt_attention_mask,
+                        torch.zeros(batch_size, max_len - len(negative_prompt_attention_mask[0]), dtype=torch.long),
+                    ],
+                    dim=1,
+                )
+            cfg_input_ids = torch.cat([uncond_input_ids, text_input_ids], dim=0)
+            cfg_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+            prompt_embeds = self.text_encoder(
+                cfg_input_ids.to(device),
+                attention_mask=cfg_attention_mask,
             )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+            prompt_embeds = prompt_embeds[0]
 
-        if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
+        seq_len = prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
@@ -4026,8 +4035,8 @@ class MatryoshkaPipeline(
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
         if not do_classifier_free_guidance:
-            return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, None
-        return prompt_embeds, negative_prompt_embeds, prompt_attention_mask, negative_prompt_attention_mask
+            return prompt_embeds, None, prompt_attention_mask, None
+        return prompt_embeds[1], prompt_embeds[0], prompt_attention_mask, negative_prompt_attention_mask
 
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -4481,7 +4490,7 @@ class MatryoshkaPipeline(
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            prompt_embeds = torch.cat([negative_prompt_embeds.unsqueeze(0), prompt_embeds.unsqueeze(0)])
             attention_masks = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
         else:
             attention_masks = prompt_attention_mask
