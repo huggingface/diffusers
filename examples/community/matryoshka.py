@@ -4498,10 +4498,13 @@ class MatryoshkaPipeline(
             )
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
-        timesteps = timesteps[:-1]
+        if isinstance(self.scheduler, MatryoshkaDDIMScheduler):
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, timesteps, sigmas
+            )
+            timesteps = timesteps[:-1]
+        else:
+            timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -4577,7 +4580,13 @@ class MatryoshkaPipeline(
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if self.scheduler.scales is not None and not isinstance(self.scheduler, MatryoshkaDDIMScheduler):
+                    latents[0] = self.scheduler.step(noise_pred[0], t, latents[0], **extra_step_kwargs, return_dict=False)[0]
+                    latents[1] = self.scheduler.inner_scheduler.step(noise_pred[1], t, latents[1], **extra_step_kwargs, return_dict=False)[0]
+                    if len(latents) > 2:
+                        latents[2] = self.scheduler.inner_scheduler.inner_scheduler.step(noise_pred[2], t, latents[2], **extra_step_kwargs, return_dict=False)[0]
+                else:
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
