@@ -6,7 +6,7 @@ with the Diffusers library.
 
 Example usage:
     python scripts/convert_cogview3_to_diffusers.py \
-        --original_state_dict_repo_id "THUDM/cogview3" \
+        --original_state_dict_repo_id "THUDM/cogview3-sat" \
         --filename "cogview3.pt" \
         --transformer \
         --output_path "./cogview3_diffusers" \
@@ -14,7 +14,7 @@ Example usage:
 
 Alternatively, if you have a local checkpoint:
     python scripts/convert_cogview3_to_diffusers.py \
-        --checkpoint_path '/raid/.cache/huggingface/models--ZP2HF--CogView3-SAT/snapshots/ca86ce9ba94f9a7f2dd109e7a59e4c8ad04121be/cogview3plus_3b/1/mp_rank_00_model_states.pt' \
+        --checkpoint_path 'your path/cogview3plus_3b/1/mp_rank_00_model_states.pt' \
         --transformer \
         --output_path "/raid/yiyi/cogview3_diffusers" \
         --dtype "bf16"
@@ -26,6 +26,7 @@ Arguments:
     --transformer: Flag to convert the transformer model.
     --output_path: The path to save the converted model.
     --dtype: The dtype to save the model in (default: "bf16", options: "fp16", "bf16", "fp32").
+    Default is "bf16" because CogView3 uses bfloat16 for Training.
 
 Note: You must provide either --original_state_dict_repo_id or --checkpoint_path.
 """
@@ -173,7 +174,7 @@ def main(args):
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
         print(f"Saving CogView3 Transformer in Diffusers format in {args.output_path}/transformer")
-        transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
+        transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer", max_shard_size="5GB")
 
     if len(original_ckpt) > 0:
         print(f"Warning: {len(original_ckpt)} keys were not converted and will be saved as is: {original_ckpt.keys()}")
