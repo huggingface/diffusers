@@ -3515,7 +3515,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                     emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 )
             else:
-                aug_emb, cond_mask_inner_unet, _ = self.get_aug_embed(
+                aug_emb, cond_mask, _ = self.get_aug_embed(
                     emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
                 )
 
@@ -3529,11 +3529,11 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                 encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-            aug_emb_inner_unet, cond_mask_inner_unet, cond_emb = self.inner_unet.inner_unet.get_aug_embed(
+            aug_emb_inner_unet, cond_mask, cond_emb = self.inner_unet.inner_unet.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
-            aug_emb, cond_mask, _ = self.get_aug_embed(
+            aug_emb, __, _ = self.get_aug_embed(
                 emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
             )
 
