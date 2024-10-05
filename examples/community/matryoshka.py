@@ -3996,7 +3996,8 @@ class MatryoshkaPipeline(
             max_len = max(len(text_input_ids[0]), len(uncond_input_ids[0]))
             if len(text_input_ids[0]) < max_len:
                 text_input_ids = torch.cat(
-                    [text_input_ids, torch.zeros(batch_size, max_len - len(text_input_ids[0]), dtype=torch.long)], dim=1
+                    [text_input_ids, torch.zeros(batch_size, max_len - len(text_input_ids[0]), dtype=torch.long)],
+                    dim=1,
                 )
                 prompt_attention_mask = torch.cat(
                     [
@@ -4024,8 +4025,6 @@ class MatryoshkaPipeline(
                 attention_mask=cfg_attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-
-        seq_len = prompt_embeds.shape[1]
 
         prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
@@ -4590,10 +4589,16 @@ class MatryoshkaPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 if self.scheduler.scales is not None and not isinstance(self.scheduler, MatryoshkaDDIMScheduler):
-                    latents[0] = self.scheduler.step(noise_pred[0], t, latents[0], **extra_step_kwargs, return_dict=False)[0]
-                    latents[1] = self.scheduler.inner_scheduler.step(noise_pred[1], t, latents[1], **extra_step_kwargs, return_dict=False)[0]
+                    latents[0] = self.scheduler.step(
+                        noise_pred[0], t, latents[0], **extra_step_kwargs, return_dict=False
+                    )[0]
+                    latents[1] = self.scheduler.inner_scheduler.step(
+                        noise_pred[1], t, latents[1], **extra_step_kwargs, return_dict=False
+                    )[0]
                     if len(latents) > 2:
-                        latents[2] = self.scheduler.inner_scheduler.inner_scheduler.step(noise_pred[2], t, latents[2], **extra_step_kwargs, return_dict=False)[0]
+                        latents[2] = self.scheduler.inner_scheduler.inner_scheduler.step(
+                            noise_pred[2], t, latents[2], **extra_step_kwargs, return_dict=False
+                        )[0]
                 else:
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
