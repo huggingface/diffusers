@@ -29,8 +29,8 @@ from ..utils import (
     logging,
 )
 from ..models.attention_processor import (
-    Attention, 
-    GeneralizedLinearAttnProcessor, 
+    Attention,
+    GeneralizedLinearAttnProcessor,
     AttnProcessor,
     AttnProcessor2_0,
 )
@@ -38,11 +38,16 @@ from ..models.attention_processor import (
 
 logger = logging.get_logger(__name__)
 
-model_dict = {
+model_dict = model_dict = {
     "CompVis/stable-diffusion-v1-4": "Yuanshi/LinFusion-1-5",
     "runwayml/stable-diffusion-v1-5": "Yuanshi/LinFusion-1-5",
+    "SG161222/Realistic_Vision_V5.1_noVAE": "Yuanshi/LinFusion-1-5",
+    "Lykon/dreamshaper-8": "Yuanshi/LinFusion-1-5",
+    "timbrooks/instruct-pix2pix": "Yuanshi/LinFusion-1-5",
     "stabilityai/stable-diffusion-2-1": "Yuanshi/LinFusion-2-1",
     "stabilityai/stable-diffusion-xl-base-1.0": "Yuanshi/LinFusion-XL",
+    "stabilityai/sdxl-turbo": "Yuanshi/LinFusion-XL",
+    "diffusers/sdxl-instructpix2pix-768": "Yuanshi/LinFusion-XL",
 }
 
 
@@ -84,11 +89,9 @@ class LinFusion(ModelMixin, ConfigMixin):
 
             with init_context():
                 processor = GeneralizedLinearAttnProcessor(
-                    dim_n=dim_n, 
-                    heads=heads,
-                    projection_mid_dim=projection_mid_dim
+                    dim_n=dim_n, heads=heads, projection_mid_dim=projection_mid_dim
                 )
-            
+
             self.add_module(f"{i}", processor)
             self.modules_dict[attention_config["module_name"]] = processor
 
@@ -134,25 +137,40 @@ class LinFusion(ModelMixin, ConfigMixin):
         """
         Load the LinFusion weights
         """
-        unet = getattr(pipeline, pipeline.unet_name) if not hasattr(pipeline, "unet") else pipeline.unet
-        if load_pretrained or not isinstance(pretrained_model_name_or_path_or_dict, dict):
+        unet = (
+            getattr(pipeline, pipeline.unet_name)
+            if not hasattr(pipeline, "unet")
+            else pipeline.unet
+        )
+        if load_pretrained or not isinstance(
+            pretrained_model_name_or_path_or_dict, dict
+        ):
             if not pretrained_model_name_or_path_or_dict:
-                pipeline_name_or_path = pipeline_name_or_path or pipeline._internal_dict._name_or_path
-                pretrained_model_name_or_path_or_dict = model_dict.get(pipeline_name_or_path, None)
+                pipeline_name_or_path = (
+                    pipeline_name_or_path or pipeline._internal_dict._name_or_path
+                )
+                pretrained_model_name_or_path_or_dict = model_dict.get(
+                    pipeline_name_or_path, None
+                )
                 if not pretrained_model_name_or_path_or_dict:
                     raise ValueError(
                         f"LinFusion not found for pipeline [{pipeline_name_or_path}]. "
                         "Try specify `pretrained_model_name_or_path` explicitly."
                     )
-                
-            if pretrained_model_name_or_path_or_dict == "Yuanshi/LinFusion-2-1" and unet.dtype == torch.float16:
+
+            if (
+                pretrained_model_name_or_path_or_dict == "Yuanshi/LinFusion-2-1"
+                and unet.dtype == torch.float16
+            ):
                 logger.warning(
                     "`Yuanshi/LinFusion-2-1` may cause numerical instability under fp16. "
                     "torch.bfloat16 or torch.float32 is recommended for this pipeline."
                 )
-        
+
             linfusion = (
-                LinFusion.from_pretrained(pretrained_model_name_or_path_or_dict, **kwargs)
+                LinFusion.from_pretrained(
+                    pretrained_model_name_or_path_or_dict, **kwargs
+                )
                 .to(unet.device)
                 .to(unet.dtype)
             )
@@ -160,10 +178,12 @@ class LinFusion(ModelMixin, ConfigMixin):
             default_config = LinFusion.get_default_config(unet=unet)
             linfusion = LinFusion(**default_config).to(unet.device).to(unet.dtype)
         linfusion.mount_to(
-            unet, 
-            modules_dict=pretrained_model_name_or_path_or_dict 
-            if isinstance(pretrained_model_name_or_path_or_dict, dict) 
-            else None
+            unet,
+            modules_dict=(
+                pretrained_model_name_or_path_or_dict
+                if isinstance(pretrained_model_name_or_path_or_dict, dict)
+                else None
+            ),
         )
 
     def mount_to(self, unet, modules_dict=None):
@@ -182,11 +202,17 @@ class LinFusion(ModelMixin, ConfigMixin):
         """
         Unload the LinFusion weights
         """
-        unet = getattr(pipeline, pipeline.unet_name) if not hasattr(pipeline, "unet") else pipeline.unet
+        unet = (
+            getattr(pipeline, pipeline.unet_name)
+            if not hasattr(pipeline, "unet")
+            else pipeline.unet
+        )
         attn_procs = {}
         for name, value in unet.attn_processors.items():
             attn_processor_class = (
-                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
+                AttnProcessor2_0()
+                if hasattr(F, "scaled_dot_product_attention")
+                else AttnProcessor()
             )
             attn_procs[name] = (
                 attn_processor_class
