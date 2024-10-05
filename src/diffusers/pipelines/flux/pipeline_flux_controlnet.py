@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -25,9 +25,9 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnet_flux import FluxControlNetModel
+from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FluxControlNetPipeline
         >>> from diffusers import FluxControlNetModel
 
-        >>> controlnet_model = "InstantX/FLUX.1-dev-controlnet-canny-alpha"
+        >>> controlnet_model = "InstantX/FLUX.1-dev-controlnet-canny"
         >>> controlnet = FluxControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
         >>> pipe = FluxControlNetPipeline.from_pretrained(
         ...     base_model, controlnet=controlnet, torch_dtype=torch.bfloat16
@@ -155,7 +155,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The Flux pipeline for text-to-image generation.
 
@@ -195,7 +195,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
-        controlnet: FluxControlNetModel,
+        controlnet: Union[
+            FluxControlNetModel, List[FluxControlNetModel], Tuple[FluxControlNetModel], FluxMultiControlNetModel
+        ],
     ):
         super().__init__()
 
@@ -300,7 +302,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds
@@ -571,6 +573,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         timesteps: List[int] = None,
         guidance_scale: float = 7.0,
         control_image: PipelineImageInput = None,
+        control_mode: Optional[Union[int, List[int]]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -611,6 +614,20 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet.
+            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
+                the corresponding scale as a list.
+            control_mode (`int` or `List[int]`,, *optional*, defaults to None):
+                The control mode when applying ControlNet-Union.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -712,7 +729,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=dtype,
+                dtype=self.vae.dtype,
             )
             height, width = control_image.shape[-2:]
 
@@ -729,6 +746,63 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 height_control_image,
                 width_control_image,
             )
+
+            # Here we ensure that `control_mode` has the same length as the control_image.
+            if control_mode is not None:
+                if not isinstance(control_mode, int):
+                    raise ValueError(" For `FluxControlNet`, `control_mode` should be an `int` or `None`")
+                control_mode = torch.tensor(control_mode).to(device, dtype=torch.long)
+                control_mode = control_mode.view(-1, 1).expand(control_image.shape[0], 1)
+
+        elif isinstance(self.controlnet, FluxMultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self.prepare_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=self.vae.dtype,
+                )
+                height, width = control_image_.shape[-2:]
+
+                # vae encode
+                control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+                # pack
+                height_control_image, width_control_image = control_image_.shape[2:]
+                control_image_ = self._pack_latents(
+                    control_image_,
+                    batch_size * num_images_per_prompt,
+                    num_channels_latents,
+                    height_control_image,
+                    width_control_image,
+                )
+
+                control_images.append(control_image_)
+
+            control_image = control_images
+
+            # Here we ensure that `control_mode` has the same length as the control_image.
+            if isinstance(control_mode, list) and len(control_mode) != len(control_image):
+                raise ValueError(
+                    "For Multi-ControlNet, `control_mode` must be a list of the same "
+                    + " length as the number of controlnets (control images) specified"
+                )
+            if not isinstance(control_mode, list):
+                control_mode = [control_mode] * len(control_image)
+            # set control mode
+            control_modes = []
+            for cmode in control_mode:
+                if cmode is None:
+                    cmode = -1
+                control_mode = torch.tensor(cmode).expand(control_images[0].shape[0]).to(device, dtype=torch.long)
+                control_modes.append(control_mode)
+            control_mode = control_modes
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -774,17 +848,19 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                # handle guidance
-                if self.transformer.config.guidance_embeds:
-                    guidance = torch.tensor([guidance_scale], device=device)
-                    guidance = guidance.expand(latents.shape[0])
+                if isinstance(self.controlnet, FluxMultiControlNetModel):
+                    use_guidance = self.controlnet.nets[0].config.guidance_embeds
                 else:
-                    guidance = None
+                    use_guidance = self.controlnet.config.guidance_embeds
+
+                guidance = torch.tensor([guidance_scale], device=device) if use_guidance else None
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 # controlnet
                 controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
                     hidden_states=latents,
                     controlnet_cond=control_image,
+                    controlnet_mode=control_mode,
                     conditioning_scale=controlnet_conditioning_scale,
                     timestep=timestep / 1000,
                     guidance=guidance,
@@ -795,6 +871,11 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )
+
+                guidance = (
+                    torch.tensor([guidance_scale], device=device) if self.transformer.config.guidance_embeds else None
+                )
+                guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 noise_pred = self.transformer(
                     hidden_states=latents,

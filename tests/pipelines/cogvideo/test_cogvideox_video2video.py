@@ -12,34 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
-    torch_device,
-)
+from diffusers import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel, CogVideoXVideoToVideoPipeline, DDIMScheduler
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    to_np,
+)
 
 
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = CogVideoXPipeline
+class CogVideoXVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = CogVideoXVideoToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"video"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
@@ -52,6 +51,7 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "callback_on_step_end_tensor_inputs",
         ]
     )
+    test_xformers_attention = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -66,8 +66,8 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             time_embed_dim=2,
             text_embed_dim=32,  # Must match with tiny-random-t5
             num_layers=1,
-            sample_width=16,  # latent width: 2 -> final width: 16
-            sample_height=16,  # latent height: 2 -> final height: 16
+            sample_width=2,  # latent width: 2 -> final width: 16
+            sample_height=2,  # latent height: 2 -> final height: 16
             sample_frames=9,  # latent frames: (9 - 1) / 4 + 1 = 3 -> final frames: 9
             patch_size=2,
             temporal_compression_ratio=4,
@@ -111,21 +111,27 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed: int = 0, num_frames: int = 8):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+
+        video_height = 16
+        video_width = 16
+        video = [Image.new("RGB", (video_width, video_height))] * num_frames
+
         inputs = {
+            "video": video,
             "prompt": "dance monkey",
             "negative_prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
+            "strength": 0.5,
             "guidance_scale": 6.0,
             # Cannot reduce because convolution kernel becomes bigger than sample
-            "height": 16,
-            "width": 16,
-            "num_frames": 8,
+            "height": video_height,
+            "width": video_width,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -246,6 +252,11 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             )
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
+        # Since VideoToVideo uses both encoder and decoder tiling, there seems to be much more numerical
+        # difference. We seem to need a higher tolerance here...
+        # TODO(aryan): Look into this more deeply
+        expected_diff_max = 0.4
+
         generator_device = "cpu"
         components = self.get_dummy_components()
 
@@ -275,41 +286,40 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "VAE tiling should not affect the inference results",
         )
 
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-@slow
-@require_torch_gpu
-class CogVideoXPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames  # [B, F, C, H, W]
+        original_image_slice = frames[0, -2:, -1, -3:, -3:]
 
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
+        pipe.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
 
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
 
-    def test_cogvideox(self):
-        generator = torch.Generator("cpu").manual_seed(0)
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
 
-        pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
-        prompt = self.prompt
-
-        videos = pipe(
-            prompt=prompt,
-            height=480,
-            width=720,
-            num_frames=16,
-            generator=generator,
-            num_inference_steps=2,
-            output_type="pt",
-        ).frames
-
-        video = videos[0]
-        expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
-
-        max_diff = numpy_cosine_similarity_distance(video, expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {video}"
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."

@@ -1036,9 +1036,15 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
     @require_torch_gpu
-    def test_load_sharded_checkpoint_from_hub(self):
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
         loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
@@ -1046,11 +1052,15 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert new_output.sample.shape == (4, 4, 16, 16)
 
     @require_torch_gpu
-    def test_load_sharded_checkpoint_from_hub_subfolder(self):
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(
-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet"
-        )
+        loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
         loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
@@ -1080,20 +1090,30 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert new_output.sample.shape == (4, 4, 16, 16)
 
     @require_torch_gpu
-    def test_load_sharded_checkpoint_device_map_from_hub(self):
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained("hf-internal-testing/unet2d-sharded-dummy", device_map="auto")
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, device_map="auto")
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
 
     @require_torch_gpu
-    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self):
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self, repo_id, variant):
         _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(
-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map="auto"
-        )
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, subfolder="unet", device_map="auto")
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
@@ -1116,18 +1136,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         loaded_model = self.model_class.from_pretrained(
             ckpt_path, local_files_only=True, subfolder="unet", device_map="auto"
         )
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_gpu
-    def test_load_sharded_checkpoint_with_variant_from_hub(self):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(
-            "hf-internal-testing/unet2d-sharded-with-variant-dummy", variant="fp16"
-        )
-        loaded_model = loaded_model.to(torch_device)
         new_output = loaded_model(**inputs_dict)
 
         assert loaded_model
@@ -1210,11 +1218,11 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
-        revision = "fp16" if fp16 else None
+        variant = "fp16" if fp16 else None
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision
+            model_id, subfolder="unet", torch_dtype=torch_dtype, variant=variant
         )
         model.to(torch_device).eval()
 
@@ -1376,7 +1384,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1404,7 +1412,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-v1-5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
@@ -1433,7 +1441,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1461,7 +1469,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 

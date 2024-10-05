@@ -56,7 +56,7 @@
   - local: using-diffusers/overview_techniques
     title: Overview
   - local: training/distributed_inference
-    title: Distributed inference with multiple GPUs
+    title: Distributed inference
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
   - local: using-diffusers/scheduler_features
@@ -161,6 +161,8 @@
     title: DeepCache
   - local: optimization/tgate
     title: TGATE
+  - local: optimization/xdit
+    title: xDiT
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -226,6 +228,8 @@
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
+      - local: api/models/controlnet_flux
+        title: FluxControlNetModel
       - local: api/models/controlnet_hunyuandit
         title: HunyuanDiT2DControlNetModel
       - local: api/models/controlnet_sd3
@@ -320,6 +324,8 @@
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_flux
+      title: ControlNet with Flux.1
     - local: api/pipelines/controlnet_hunyuandit
       title: ControlNet with Hunyuan-DiT
     - local: api/pipelines/controlnet_sd3
