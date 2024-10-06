@@ -1029,6 +1029,8 @@ class StableDiffusionPAGImg2ImgPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
