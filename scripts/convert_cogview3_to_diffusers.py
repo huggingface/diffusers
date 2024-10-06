@@ -36,46 +36,41 @@ from contextlib import nullcontext
 
 import torch
 from accelerate import init_empty_weights
-from huggingface_hub import hf_hub_download
+from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import CogView3PlusTransformer2DModel
+from diffusers import AutoencoderKL, CogView3PlusPipeline, CogView3PlusTransformer2DModel, DDIMScheduler
+from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
 
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
+TOKENIZER_MAX_LENGTH = 224
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
-parser.add_argument("--filename", default="flux.safetensors", type=str)
-parser.add_argument("--checkpoint_path", default=None, type=str)
-parser.add_argument("--transformer", action="store_true")
-parser.add_argument("--output_path", type=str)
+parser.add_argument("--transformer_checkpoint_path", default=None, type=str)
+parser.add_argument("--vae_checkpoint_path", default=None, type=str)
+parser.add_argument("--output_path", required=True, type=str)
+parser.add_argument("--push_to_hub", action="store_true", default=False, help="Whether to push to HF Hub after saving")
+parser.add_argument("--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory")
 parser.add_argument("--dtype", type=str, default="bf16")
 
 args = parser.parse_args()
 
 
-def load_original_checkpoint(args):
-    if args.original_state_dict_repo_id is not None:
-        ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=args.filename)
-    elif args.checkpoint_path is not None:
-        ckpt_path = args.checkpoint_path
-    else:
-        raise ValueError("Please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
-
-    original_state_dict = torch.load(ckpt_path, map_location="cpu")
-    return original_state_dict
-
-
 # this is specific to `AdaLayerNormContinuous`:
-# diffusers imnplementation split the linear projection into the scale, shift while CogView3 split it tino shift, scale
+# diffusers implementation split the linear projection into the scale, shift while CogView3 split it tino shift, scale
 def swap_scale_shift(weight, dim):
     shift, scale = weight.chunk(2, dim=0)
     new_weight = torch.cat([scale, shift], dim=0)
     return new_weight
 
 
-def convert_cogview3_transformer_checkpoint_to_diffusers(original_state_dict):
+def convert_cogview3_transformer_checkpoint_to_diffusers(ckpt_path):
+    original_state_dict = torch.load(ckpt_path, map_location="cpu")
+    original_state_dict = original_state_dict["module"]
+    original_state_dict = {k.replace("model.diffusion_model.", ""): v for k, v in original_state_dict.items()}
+
     new_state_dict = {}
 
     # Convert pos_embed
@@ -150,16 +145,13 @@ def convert_cogview3_transformer_checkpoint_to_diffusers(original_state_dict):
     return new_state_dict
 
 
-def main(args):
-    original_ckpt = load_original_checkpoint(args)
-    original_ckpt = original_ckpt["module"]
-    original_ckpt = {k.replace("model.diffusion_model.", ""): v for k, v in original_ckpt.items()}
+def convert_cogview3_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
+    original_state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+    return convert_ldm_vae_checkpoint(original_state_dict, vae_config)
 
-    original_dtype = next(iter(original_ckpt.values())).dtype
-    dtype = None
-    if args.dtype is None:
-        dtype = original_dtype
-    elif args.dtype == "fp16":
+
+def main(args):
+    if args.dtype == "fp16":
         dtype = torch.float16
     elif args.dtype == "bf16":
         dtype = torch.bfloat16
@@ -168,16 +160,75 @@ def main(args):
     else:
         raise ValueError(f"Unsupported dtype: {args.dtype}")
 
-    if args.transformer:
-        converted_transformer_state_dict = convert_cogview3_transformer_checkpoint_to_diffusers(original_ckpt)
+    transformer = None
+    vae = None
+
+    if args.transformer_checkpoint_path is not None:
+        converted_transformer_state_dict = convert_cogview3_transformer_checkpoint_to_diffusers(
+            args.transformer_checkpoint_path
+        )
         transformer = CogView3PlusTransformer2DModel()
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
+        transformer = transformer.to(dtype=dtype)
 
-        print(f"Saving CogView3 Transformer in Diffusers format in {args.output_path}/transformer")
-        transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer", max_shard_size="5GB")
+    if args.vae_checkpoint_path is not None:
+        vae_config = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ("DownEncoderBlock2D",) * 4,
+            "up_block_types": ("UpDecoderBlock2D",) * 4,
+            "block_out_channels": (128, 512, 1024, 1024),
+            "layers_per_block": 3,
+            "act_fn": "silu",
+            "latent_channels": 16,
+            "norm_num_groups": 32,
+            "sample_size": 1024,
+            "scaling_factor": 0.18215,
+            "force_upcast": True,
+            "use_quant_conv": False,
+            "use_post_quant_conv": False,
+            "mid_block_add_attention": False,
+        }
+        converted_vae_state_dict = convert_cogview3_vae_checkpoint_to_diffusers(args.vae_checkpoint_path, vae_config)
+        vae = AutoencoderKL(**vae_config)
+        vae.load_state_dict(converted_vae_state_dict, strict=True)
+        vae = vae.to(dtype=dtype)
 
-    if len(original_ckpt) > 0:
-        print(f"Warning: {len(original_ckpt)} keys were not converted and will be saved as is: {original_ckpt.keys()}")
+    text_encoder_id = "google/t5-v1_1-xxl"
+    tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
+    text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
+
+    # Apparently, the conversion does not work anymore without this :shrug:
+    for param in text_encoder.parameters():
+        param.data = param.data.contiguous()
+
+    # TODO: figure out the correct scheduler
+    scheduler = DDIMScheduler.from_config(
+        {
+            "snr_shift_scale": 4.0,  # This is different from default
+            "beta_end": 0.012,
+            "beta_schedule": "scaled_linear",
+            "beta_start": 0.00085,
+            "clip_sample": False,
+            "num_train_timesteps": 1000,
+            "prediction_type": "v_prediction",
+            "rescale_betas_zero_snr": True,
+            "set_alpha_to_one": True,
+            "timestep_spacing": "trailing",
+        }
+    )
+
+    pipe = CogView3PlusPipeline(
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        vae=vae,
+        transformer=transformer,
+        scheduler=scheduler,
+    )
+
+    # This is necessary for users with insufficient memory, such as those using Colab and notebooks, as it can
+    # save some memory used for model loading.
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", push_to_hub=args.push_to_hub)
 
 
 if __name__ == "__main__":
