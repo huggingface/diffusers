@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 # LinFusion
-[LinFusion](https://huggingface.co/papers/2409.02097) accelerates [`DiffusionPipeline`] by replacing all the self-attention layers in a diffusion UNet, which result in quadratic complexity, with distilled Generalized Linear Attention layers. The distilled model is linear-complexity and highly compatible with existing diffusion plugins like ControlNet, IP-Adapter, LoRA, etc. The acceleration can be dramatic at high resolution. Strategical pipelines for high-resolution generation can be found in the [original codebase](https://github.com/Huage001/LinFusion).
+[LinFusion](https://huggingface.co/papers/2409.02097) accelerates [`DiffusionPipeline`] by replacing all the self-attention layers in a diffusion UNet with distilled Generalized Linear Attention layers. The distilled model is linear-complexity and highly compatible with existing diffusion plugins like ControlNet, IP-Adapter, LoRA, etc. The acceleration can be dramatic at high resolution. Strategical pipelines for high-resolution generation can be found in the [original codebase](https://github.com/Huage001/LinFusion).
 
 You can use it with only 1 additional line:
 
