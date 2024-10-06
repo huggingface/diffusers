@@ -51,7 +51,7 @@ model_dict = model_dict = {
 }
 
 
-class LinFusion(ModelMixin, ConfigMixin):
+class LinFusionMixin(ModelMixin, ConfigMixin):
     """Mixin for handling LinFusion."""
 
     def __init__(self, modules_list, *args, **kwargs) -> None:
@@ -134,8 +134,8 @@ class LinFusion(ModelMixin, ConfigMixin):
         load_pretrained: Optional[bool] = True,
         **kwargs,
     ):
-        """
-        Load the LinFusion weights
+        r"""
+        Load LinFusion modules into [`UNet2DConditionModel`].
         """
         unet = (
             getattr(pipeline, pipeline.unet_name)
@@ -170,15 +170,15 @@ class LinFusion(ModelMixin, ConfigMixin):
                 )
 
             linfusion = (
-                LinFusion.from_pretrained(
+                LinFusionMixin.from_pretrained(
                     pretrained_model_name_or_path_or_dict, **kwargs
                 )
                 .to(unet.device)
                 .to(unet.dtype)
             )
         else:
-            default_config = LinFusion.get_default_config(unet=unet)
-            linfusion = LinFusion(**default_config).to(unet.device).to(unet.dtype)
+            default_config = LinFusionMixin.get_default_config(unet=unet)
+            linfusion = LinFusionMixin(**default_config).to(unet.device).to(unet.dtype)
         linfusion.mount_to(
             unet,
             modules_dict=(
@@ -189,7 +189,7 @@ class LinFusion(ModelMixin, ConfigMixin):
         )
 
     def mount_to(self, unet, modules_dict=None):
-        """
+        r"""
         Mounts the modules in the `modules_dict` to the given `unet`.
         """
         modules_dict = modules_dict or self.modules_dict
@@ -201,7 +201,7 @@ class LinFusion(ModelMixin, ConfigMixin):
 
     @classmethod
     def unload_linfusion(cls, pipeline):
-        """
+        r"""
         Unload the LinFusion weights
         """
         unet = (

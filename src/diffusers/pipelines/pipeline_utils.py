@@ -41,7 +41,7 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
-from ..loaders import LinFusion
+from ..loaders import LinFusionMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -1018,7 +1018,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline.load_linfusion()
         ```
         """
-        LinFusion.load_linfusion(
+        LinFusionMixin.load_linfusion(
             self,
             pretrained_model_name_or_path,
             pipeline_name_or_path,
@@ -1028,9 +1028,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def unload_linfusion(self):
         r"""
-        Load pretrained LinFusion modules
+        Unload pretrained LinFusion modules
         """
-        LinFusion.unload_linfusion(self)
+        LinFusionMixin.unload_linfusion(self)
 
     @property
     def name_or_path(self) -> str:
