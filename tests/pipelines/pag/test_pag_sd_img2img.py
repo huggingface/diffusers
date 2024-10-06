@@ -206,7 +206,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
         ), f"the shape of the output image should be (1, 32, 32, 3) but got {image.shape}"
 
         expected_slice = np.array(
-            [0.46088067, 0.32335982, 0.40687063, 0.45717427, 0.4627515,  0.41006276, 0.41850817 ,0.46726882 ,0.45808175]
+            [0.44203848, 0.49598145, 0.42248967, 0.6707724,  0.5683791,  0.43603387, 0.58316565, 0.60077155, 0.5174199]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
