@@ -74,6 +74,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 | HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffsuion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
+| AuraFlow Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [AuraFlow](https://github.com/huggingface/diffusers/pull/8796). | [AuraFlow with Differential Diffusion](#auraflow-with-differential-diffusion) | - | [Nikhil Satani](https://github.com/satani99) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -4323,6 +4324,36 @@ image = pipe(
 | Gradient                                                                                   | Input                                                                                   | Output                                                                                   |
 
 A colab notebook demonstrating all results can be found [here](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing). Depth Maps have also been added in the same colab.
+
+### AuraFlow with Differential Diffusion
+#### Usage
+
+```python
+import torch
+from diffusers.utils import load_image
+from pipeline_aura_flow_differential_img2img import AuraFlowDifferentialImg2ImgPipeline
+pipe = AuraFlowDifferentialImg2ImgPipeline.from_pretrained(
+    "fal/AuraFlow", torch_dtype=torch.float32
+)
+pipe.enable_sequential_cpu_offload()
+source_image = load_image(
+    "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/20240329211129_4024911930.png"
+)
+map = load_image(
+    "https://huggingface.co/datasets/OzzyGT/testing-resources/resolve/main/differential/gradient_mask_2.png"
+)
+prompt = "a green pear"
+negative_prompt = "blurry"
+image = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    image=source_image,
+    num_inference_steps=28,
+    guidance_scale=4.5,
+    strength=1.0,
+    map=map,
+).images[0]
+```
 
 # Perturbed-Attention Guidance
 
