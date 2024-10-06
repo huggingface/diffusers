@@ -594,8 +594,7 @@ class VideoDataset(Dataset):
         videos = []
 
         for filename in self.instance_video_paths:
-            progress_dataset_bar.update(1)
-            video_reader = decord.VideoReader(uri=filename.as_posix(), width=self.width, height=self.height)
+            video_reader = decord.VideoReader(uri=filename.as_posix())
             video_num_frames = len(video_reader)
 
             start_frame = min(self.skip_frames_start, video_num_frames)
@@ -623,8 +622,12 @@ class VideoDataset(Dataset):
             # Training transforms
             frames = (frames - 127.5) / 127.5
             frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
+            progress_dataset_bar.set_description(
+                f"Loading progress Resizing video from {frames.shape[2]}x{frames.shape[3]} to {self.height}x{self.width}"
+            )
             frames = self._resize_for_rectangle_crop(frames)
             videos.append(frames.contiguous())  # [F, C, H, W]
+            progress_dataset_bar.update(1)
 
         progress_dataset_bar.close()
         return videos
