@@ -3750,6 +3750,7 @@ class MatryoshkaPipeline(
         scheduler: MatryoshkaDDIMScheduler,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        trust_remote_code: bool = False,
     ):
         super().__init__()
 
@@ -4002,7 +4003,7 @@ class MatryoshkaPipeline(
                 prompt_attention_mask = torch.cat(
                     [
                         prompt_attention_mask,
-                        torch.zeros(batch_size, max_len - len(prompt_attention_mask[0]), dtype=torch.long),
+                        torch.zeros(batch_size, max_len - len(prompt_attention_mask[0]), dtype=torch.long, device=device),
                     ],
                     dim=1,
                 )
@@ -4014,7 +4015,7 @@ class MatryoshkaPipeline(
                 negative_prompt_attention_mask = torch.cat(
                     [
                         negative_prompt_attention_mask,
-                        torch.zeros(batch_size, max_len - len(negative_prompt_attention_mask[0]), dtype=torch.long),
+                        torch.zeros(batch_size, max_len - len(negative_prompt_attention_mask[0]), dtype=torch.long, device=device),
                     ],
                     dim=1,
                 )
