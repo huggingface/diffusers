@@ -26,7 +26,7 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
     AutoPipelineForImage2Image,
-    PNDMScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPAGImg2ImgPipeline,
     UNet2DConditionModel,
@@ -85,7 +85,13 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
         )
-        scheduler = PNDMScheduler(skip_prk_steps=True)
+        scheduler = EulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="scaled_linear",
+            timestep_spacing="leading",
+        )
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=[32, 64],
@@ -94,6 +100,7 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
+            sample_size=128,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
