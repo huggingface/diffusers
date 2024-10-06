@@ -949,8 +949,8 @@ class GaussianSmoothing(nn.Module):
         Apply gaussian filter to input.
 
         Args:
-        input (`torch.Tensor` of shape `(N, C, H, W)`):
-            Input to apply Gaussian filter on.
+            input (`torch.Tensor` of shape `(N, C, H, W)`):
+                Input to apply Gaussian filter on.
 
         Returns:
             `torch.Tensor`: 
