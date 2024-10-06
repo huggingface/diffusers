@@ -40,7 +40,7 @@ logger = logging.get_logger(__name__)
 
 model_dict = model_dict = {
     "CompVis/stable-diffusion-v1-4": "Yuanshi/LinFusion-1-5",
-    "runwayml/stable-diffusion-v1-5": "Yuanshi/LinFusion-1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5": "Yuanshi/LinFusion-1-5",
     "SG161222/Realistic_Vision_V5.1_noVAE": "Yuanshi/LinFusion-1-5",
     "Lykon/dreamshaper-8": "Yuanshi/LinFusion-1-5",
     "timbrooks/instruct-pix2pix": "Yuanshi/LinFusion-1-5",

@@ -159,6 +159,8 @@
     title: Token merging
   - local: optimization/deepcache
     title: DeepCache
+  - local: optimization/linfusion
+    title: LinFusion
   - local: optimization/tgate
     title: TGATE
   - local: optimization/xdit
