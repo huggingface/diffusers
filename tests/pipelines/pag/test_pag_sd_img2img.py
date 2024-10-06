@@ -102,7 +102,6 @@ class StableDiffusionPAGImg2ImgPipelineFastTests(
             latent_channels=4,
             sample_size=128,
         )
-        torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
