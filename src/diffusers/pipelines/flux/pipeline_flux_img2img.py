@@ -750,20 +750,22 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         # 4.Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
-        mu = calculate_shift(
-            image_seq_len,
-            self.scheduler.config.base_image_seq_len,
-            self.scheduler.config.max_image_seq_len,
-            self.scheduler.config.base_shift,
-            self.scheduler.config.max_shift,
-        )
+        retrieve_timesteps_kwargs = {}
+        if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
+            retrieve_timesteps_kwargs["mu"] = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.base_image_seq_len,
+                self.scheduler.config.max_image_seq_len,
+                self.scheduler.config.base_shift,
+                self.scheduler.config.max_shift,
+            )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
             timesteps,
             sigmas,
-            mu=mu,
+            **retrieve_timesteps_kwargs
         )
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,
