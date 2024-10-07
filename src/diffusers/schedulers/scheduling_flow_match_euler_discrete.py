@@ -114,11 +114,11 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_noise(
+    def add_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
         noise: Optional[torch.FloatTensor] = None,
+        timestep: Union[float, torch.FloatTensor],
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -161,6 +161,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample = sigma * noise + (1.0 - sigma) * sample
 
         return sample
+
+    def scale_model_input(self, latents: torch.FloatTensor, t: torch.Tensor):
+        return latents
 
     def _sigma_to_t(self, sigma):
         return sigma * self.config.num_train_timesteps

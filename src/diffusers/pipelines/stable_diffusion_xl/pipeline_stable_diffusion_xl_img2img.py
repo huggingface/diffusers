@@ -1264,7 +1264,11 @@ class StableDiffusionXLImg2ImgPipeline(
             return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
+            self.scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas
         )
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,
