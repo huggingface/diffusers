@@ -185,7 +185,7 @@ class MultiAdapter(ModelMixin):
             variant (`str`, *optional*):
                 If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will be
                 ignored when using `from_flax`.
-            use_safetensors (`bool`, optional, defaults=None):
+            use_safetensors (`bool`, *optional*, defaults to `None`):
                 If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is installed. 
                 If `True`, the model will be forcibly loaded from`safetensors` weights. 
                 If `False`, `safetensors` is not used.
