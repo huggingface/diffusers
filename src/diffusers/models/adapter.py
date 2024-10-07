@@ -177,7 +177,7 @@ class MultiAdapter(ModelMixin):
             max_memory (`Dict`, *optional*):
                 A dictionary mapping device identifiers to their maximum memory. Default to the maximum memory available for each
                 GPU and the available CPU RAM if unset.
-            low_cpu_mem_usage (`bool`, optional, defaults=True if torch version >= 1.9.0 else `False`):
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
