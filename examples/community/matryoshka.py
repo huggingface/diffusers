@@ -3726,7 +3726,7 @@ class MatryoshkaPipeline(
     FromSingleFileMixin,
 ):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-image generation using Matryoshka Diffusion Models.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -3739,21 +3739,17 @@ class MatryoshkaPipeline(
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
-        text_encoder ([`~transformers.CLIPTextModel`]):
-            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer ([`~transformers.CLIPTokenizer`]):
-            A `CLIPTokenizer` to tokenize text.
+        text_encoder ([`~transformers.T5EncoderModel`]):
+            Frozen text-encoder ([flan-t5-xl](https://huggingface.co/google/flan-t5-xl)).
+        tokenizer ([`~transformers.T5Tokenizer`]):
+            A `T5Tokenizer` to tokenize text.
         unet ([`MatryoshkaUNet2DConditionModel`]):
             A `MatryoshkaUNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
-        feature_extractor ([`~transformers.CLIPImageProcessor`]):
-            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+            [`MatryoshkaDDIMScheduler`] and other schedulers with proper modifications, see an example usage in README.md.
+        feature_extractor ([`~transformers.<AnImageProcessor>`]):
+            A `AnImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet"
@@ -3773,6 +3769,18 @@ class MatryoshkaPipeline(
         nesting_level: int = 0,
     ):
         super().__init__()
+
+        if nesting_level == 0:
+            unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                  subfolder="unet/nesting_level_0")
+        elif nesting_level == 1:
+            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                subfolder="unet/nesting_level_1")
+        elif nesting_level == 2:
+            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                subfolder="unet/nesting_level_2")
+        else:
+            raise ValueError("Currently, nesting levels 0, 1, and 2 are supported.")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -3801,10 +3809,10 @@ class MatryoshkaPipeline(
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        is_unet_version_less_0_9_0 = hasattr(unet[0].config, "_diffusers_version") and version.parse(
-            version.parse(unet[0].config._diffusers_version).base_version
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
         ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet[0].config, "sample_size") and unet[0].config.sample_size < 64
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -3821,18 +3829,6 @@ class MatryoshkaPipeline(
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
-
-        if nesting_level == 0:
-            unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                  subfolder="unet/nesting_level_0")
-        elif nesting_level == 1:
-            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                subfolder="unet/nesting_level_1")
-        elif nesting_level == 2:
-            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                subfolder="unet/nesting_level_2")
-        else:
-            raise ValueError("Nesting level should be 0, 1 or 2")
 
         self.register_modules(
             text_encoder=text_encoder,
@@ -3924,7 +3920,7 @@ class MatryoshkaPipeline(
                     untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
                 logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    "The following part of your input was truncated because FLAN-T5-XL for this pipeline can only handle sequences up to"
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
@@ -4403,8 +4399,8 @@ class MatryoshkaPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
+            [`~MatryoshkaPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~MatryoshkaPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list with the generated images and the
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
@@ -4511,9 +4507,10 @@ class MatryoshkaPipeline(
             timesteps, num_inference_steps = retrieve_timesteps(
                 self.scheduler, num_inference_steps, device, timesteps, sigmas
             )
-            timesteps = timesteps[:-1]
         else:
             timesteps = self.scheduler.timesteps
+
+        timesteps = timesteps[:-1]
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -4626,9 +4623,10 @@ class MatryoshkaPipeline(
         image = latents
 
         if self.scheduler.scales is not None:
-            image = image[0]
-
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            for i in range(len(image)):
+                image[i] = self.image_processor.postprocess(image[i], output_type=output_type)
+        else:
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
