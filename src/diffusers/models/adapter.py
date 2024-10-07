@@ -182,7 +182,7 @@ class MultiAdapter(ModelMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-            variant (`str`, optional):
+            variant (`str`, *optional*):
                 If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will be
                 ignored when using `from_flax`.
             use_safetensors (`bool`, optional, defaults=None):
