@@ -235,7 +235,7 @@ class T2IAdapter(ModelMixin, ConfigMixin):
             Number of ResNet blocks in each downsample block.
         downscale_factor (`int`, optional, defaults=8):
             A factor that determines the total downscale factor of the Adapter.
-        adapter_type (`str`, optional, defaults=`full_adapter`):
+        adapter_type (`str`, *optional*, defaults to `full_adapter`):
             Type of Adapter to use. Choose either `full_adapter` or `full_adapter_xl` or `light_adapter`.
     """
 
