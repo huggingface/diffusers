@@ -398,7 +398,7 @@ class AdapterBlock(nn.Module):
             Number of channels of AdapterBlock's output.
         num_res_blocks (`int`):
             Number of ResNet blocks in the AdapterBlock.
-        down (`bool`, optional, defaults=False):
+        down (`bool`, *optional*, defaults to `False`):
             If `True`, perform downsampling on AdapterBlock's input.
     """
 
