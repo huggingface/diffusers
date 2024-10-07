@@ -174,7 +174,7 @@ class MultiAdapter(ModelMixin):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
-            max_memory (`Dict`, optional):
+            max_memory (`Dict`, *optional*):
                 A dictionary mapping device identifiers to their maximum memory. Default to the maximum memory available for each
                 GPU and the available CPU RAM if unset.
             low_cpu_mem_usage (`bool`, optional, defaults=True if torch version >= 1.9.0 else `False`):
