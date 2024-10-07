@@ -3765,11 +3765,12 @@ class MatryoshkaPipeline(
         self,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
-        unet: MatryoshkaUNet2DConditionModel,
         scheduler: MatryoshkaDDIMScheduler,
+        unet: MatryoshkaUNet2DConditionModel = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
         trust_remote_code: bool = False,
+        nesting_level: int = 0,
     ):
         super().__init__()
 
@@ -3800,10 +3801,10 @@ class MatryoshkaPipeline(
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
+        is_unet_version_less_0_9_0 = hasattr(unet[0].config, "_diffusers_version") and version.parse(
+            version.parse(unet[0].config._diffusers_version).base_version
         ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        is_unet_sample_size_less_64 = hasattr(unet[0].config, "sample_size") and unet[0].config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
@@ -3820,6 +3821,18 @@ class MatryoshkaPipeline(
             new_config = dict(unet.config)
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
+
+        if nesting_level == 0:
+            unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                  subfolder="unet/nesting_level_0")
+        elif nesting_level == 1:
+            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                subfolder="unet/nesting_level_1")
+        elif nesting_level == 2:
+            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                subfolder="unet/nesting_level_2")
+        else:
+            raise ValueError("Nesting level should be 0, 1 or 2")
 
         self.register_modules(
             text_encoder=text_encoder,
