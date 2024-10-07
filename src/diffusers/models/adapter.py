@@ -34,7 +34,7 @@ class MultiAdapter(ModelMixin):
     downloading or saving.
 
     Args:
-        adapters (`List[T2IAdapter]`, optional, defaults=None):
+        adapters (`List[T2IAdapter]`, *optional*, defaults to None):
             A list of `T2IAdapter` model instances.
     """
 
