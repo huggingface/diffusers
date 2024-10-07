@@ -66,11 +66,11 @@ export_to_video(video, "output.mp4", fps=8)
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src="docs/source/en/imgs/cogvideox_rocket.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_rocket.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src="docs/source/en/imgs/cogvideox_outrocket.gif"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_outrocket.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
   </div>
 </div>
