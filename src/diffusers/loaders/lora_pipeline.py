@@ -27,6 +27,7 @@ from ..utils import (
     get_peft_kwargs,
     is_peft_version,
     is_transformers_available,
+    is_transformers_version,
     logging,
     scale_lora_layers,
 )
@@ -94,7 +95,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -266,7 +267,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -327,11 +328,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         peft_kwargs = {}
         if low_cpu_mem_usage:
-            if is_peft_version(">", "0.13.0"):
+            if not is_peft_version(">", "0.13.0"):
                 raise ValueError(
                     "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
                 )
-            if not is_transformers_available(">", "4.45.1"):
+            if not is_transformers_version(">", "4.45.1"):
                 # Note from sayakpaul: It's not in `transformers` stable yet.
                 # https://github.com/huggingface/transformers/pull/33725/
                 raise ValueError(
@@ -588,7 +589,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -783,7 +784,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -845,11 +846,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         peft_kwargs = {}
         if low_cpu_mem_usage:
-            if is_peft_version(">", "0.13.0"):
+            if not is_peft_version(">", "0.13.0"):
                 raise ValueError(
                     "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
                 )
-            if not is_transformers_available(">", "4.45.1"):
+            if not is_transformers_version(">", "4.45.1"):
                 # Note from sayakpaul: It's not in `transformers` stable yet.
                 # https://github.com/huggingface/transformers/pull/33725/
                 raise ValueError(
@@ -1382,11 +1383,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         peft_kwargs = {}
         if low_cpu_mem_usage:
-            if is_peft_version(">", "0.13.0"):
+            if not is_peft_version(">", "0.13.0"):
                 raise ValueError(
                     "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
                 )
-            if not is_transformers_available(">", "4.45.1"):
+            if not is_transformers_version(">", "4.45.1"):
                 # Note from sayakpaul: It's not in `transformers` stable yet.
                 # https://github.com/huggingface/transformers/pull/33725/
                 raise ValueError(
@@ -1772,7 +1773,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -1835,7 +1836,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 `default_{i}` where i is the total number of adapters being loaded.
             low_cpu_mem_usage (`bool`, *optional*): TODO
         """
-        if low_cpu_mem_usage and is_peft_version(">", "0.13.0"):
+        if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -1952,11 +1953,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         peft_kwargs = {}
         if low_cpu_mem_usage:
-            if is_peft_version(">", "0.13.0"):
+            if not is_peft_version(">", "0.13.0"):
                 raise ValueError(
                     "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
                 )
-            if not is_transformers_available(">", "4.45.1"):
+            if not is_transformers_version(">", "4.45.1"):
                 # Note from sayakpaul: It's not in `transformers` stable yet.
                 # https://github.com/huggingface/transformers/pull/33725/
                 raise ValueError(
@@ -2299,11 +2300,11 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
 
         peft_kwargs = {}
         if low_cpu_mem_usage:
-            if is_peft_version(">", "0.13.0"):
+            if not is_peft_version(">", "0.13.0"):
                 raise ValueError(
                     "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
                 )
-            if not is_transformers_available(">", "4.45.1"):
+            if not is_transformers_version(">", "4.45.1"):
                 # Note from sayakpaul: It's not in `transformers` stable yet.
                 # https://github.com/huggingface/transformers/pull/33725/
                 raise ValueError(
