@@ -922,7 +922,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
                 # inject LoRA layers and load the state dict
-                # in transformers we automatically check whether the adapter name is already in use or
+                # in transformers we automatically check whether the adapter name is already in use or not
                 text_encoder.load_adapter(
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
@@ -1459,7 +1459,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
                 # inject LoRA layers and load the state dict
-                # in transformers we automatically check whether the adapter name is already in use or
+                # in transformers we automatically check whether the adapter name is already in use or not
                 text_encoder.load_adapter(
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
@@ -2029,7 +2029,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
                 # inject LoRA layers and load the state dict
-                # in transformers we automatically check whether the adapter name is already in use or
+                # in transformers we automatically check whether the adapter name is already in use or not
                 text_encoder.load_adapter(
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
@@ -2376,7 +2376,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
                 # inject LoRA layers and load the state dict
-                # in transformers we automatically check whether the adapter name is already in use or
+                # in transformers we automatically check whether the adapter name is already in use or not
                 text_encoder.load_adapter(
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
