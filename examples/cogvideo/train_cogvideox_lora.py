@@ -21,7 +21,9 @@ import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import numpy as np
 import torch
+import torchvision.transforms as TT
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -29,12 +31,14 @@ from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from huggingface_hub import create_repo, upload_folder
 from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms.functional import resize
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import diffusers
 from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
@@ -42,11 +46,6 @@ from diffusers.training_utils import cast_training_params, free_memory
 from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft, export_to_video, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
-from torchvision.transforms.functional import center_crop, resize
-from torchvision.transforms import InterpolationMode
-import torchvision.transforms as TT
-import numpy as np
-from diffusers.image_processor import VaeImageProcessor
 
 
 if is_wandb_available():
