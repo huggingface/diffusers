@@ -632,7 +632,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
                 new_key += ".lora_B.weight"
 
         # Handle single_blocks
-        elif old_key.startswith("diffusion_model.single_blocks", "single_blocks"):
+        elif old_key.startswith(("diffusion_model.single_blocks", "single_blocks")):
             block_num = re.search(r"single_blocks\.(\d+)", old_key).group(1)
             new_key = f"transformer.single_transformer_blocks.{block_num}"
 
