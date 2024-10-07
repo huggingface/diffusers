@@ -128,7 +128,7 @@ class MultiAdapter(ModelMixin):
             safe_serialization (`bool`, optional, defaults=True):
                 If `True`, save the model using `safetensors`.
                 If `False`, save the model using the traditional PyTorch way (using `pickle`).
-            variant (`str`, optional):
+            variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
         """
         idx = 0
