@@ -38,10 +38,9 @@ import torch
 from accelerate import init_empty_weights
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKL, CogView3PlusPipeline, CogView3PlusTransformer2DModel, DDIMScheduler
+from diffusers import AutoencoderKL, CogView3PlusPipeline, CogView3PlusTransformer2DModel, CogVideoXDDIMScheduler
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
-
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
@@ -202,10 +201,10 @@ def main(args):
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
-    # TODO: figure out the correct scheduler
-    scheduler = DDIMScheduler.from_config(
+    # TODO: figure out the correct scheduler if it is same as CogVideoXDDIMScheduler
+    scheduler = CogVideoXDDIMScheduler.from_config(
         {
-            "snr_shift_scale": 4.0,  # This is different from default
+            "snr_shift_scale": 4.0,
             "beta_end": 0.012,
             "beta_schedule": "scaled_linear",
             "beta_start": 0.00085,
