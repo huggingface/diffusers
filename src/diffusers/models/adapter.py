@@ -523,7 +523,7 @@ class LightAdapterBlock(nn.Module):
             Number of channels of LightAdapterBlock's output.
         num_res_blocks (`int`):
             Number of LightAdapterResnetBlocks in the LightAdapterBlock.
-        down (`bool`, optional, defaults=False):
+        down (`bool`, *optional*, defaults to `False`):
             If `True`, perform downsampling on LightAdapterBlock's input.
     """
 
