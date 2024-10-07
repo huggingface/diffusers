@@ -81,7 +81,7 @@ class MultiAdapter(ModelMixin):
                 concatenated along dimension 1(channel dimension).
                 The `channel` dimension should be equal to `num_adapter` * number of channel per image.
             
-            adapter_weights (`List[float]`, optional, defaults=None):
+            adapter_weights (`List[float]`, *optional*, defaults to None):
                 A list of floats representing the weight which will be multiplied to each adapter's output before summing
                 them together.
                 If  `None`, equal weights will be used for all adapters.
