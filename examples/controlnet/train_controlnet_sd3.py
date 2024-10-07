@@ -1094,7 +1094,7 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move vae, transformer and text_encoder to device and cast to weight_dtype
-    vae.to(accelerator.device, dtype=torch.float32)
+    vae.to(accelerator.device, dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
