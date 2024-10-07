@@ -117,7 +117,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(
         self,
         sample: torch.FloatTensor,
-        noise: Optional[torch.FloatTensor] = None,
+        noise: Optional[torch.FloatTensor],
         timestep: Union[float, torch.FloatTensor],
     ) -> torch.FloatTensor:
         """
