@@ -231,7 +231,7 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         channels (`List[int]`, optional, defaults=[320, 640, 1280, 1280]):
             Number of channel of each downsample block's output hidden state. The `len(block_out_channels)` determines
             the number of downsample blocks in the Adapter.
-        num_res_blocks (`int`, optional, defaults=2):
+        num_res_blocks (`int`, *optional*, defaults to `2`):
             Number of ResNet blocks in each downsample block.
         downscale_factor (`int`, optional, defaults=8):
             A factor that determines the total downscale factor of the Adapter.
