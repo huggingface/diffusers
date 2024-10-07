@@ -166,7 +166,7 @@ class MultiAdapter(ModelMixin):
                 will be automatically derived from the model's weights.
             output_loading_info(`bool`, optional, defaults=False):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, optional):
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be refined to each
                 parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
                 same device.
