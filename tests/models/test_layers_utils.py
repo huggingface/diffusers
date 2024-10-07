@@ -27,6 +27,7 @@ from diffusers.models.transformers.transformer_2d import Transformer2DModel
 from diffusers.utils.testing_utils import (
     backend_manual_seed,
     require_torch_accelerator_with_fp64,
+    require_torch_version_greater_equal,
     torch_device,
 )
 
@@ -118,6 +119,21 @@ class Upsample2DBlockTests(unittest.TestCase):
         assert upsampled.shape == (1, 32, 64, 64)
         output_slice = upsampled[0, -1, -3:, -3:]
         expected_slice = torch.tensor([-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_upsample_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 32, 32).to(torch.bfloat16)
+        upsample = Upsample2D(channels=32, use_conv=False)
+        with torch.no_grad():
+            upsampled = upsample(sample)
+
+        assert upsampled.shape == (1, 32, 64, 64)
+        output_slice = upsampled[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254], dtype=torch.bfloat16
+        )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_upsample_with_conv(self):
