@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Based on [AnyText: Multilingual Visual Text Generation And Editing](https://huggingface.co/papers/2311.03054).
+# Authors: Yuxiang Tuo, Wangmeng Xiang, Jun-Yan He, Yifeng Geng, Xuansong Xie
+# Code: https://github.com/tyxsspa/AnyText with Apache-2.0 license
+#
+# Adapted to Diffusers by [M. Tolga Cangöz](https://github.com/tolgacangoz).
 
 
 import inspect
