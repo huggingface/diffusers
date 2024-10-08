@@ -199,13 +199,14 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    This function generates 1D positional embeddings from sin and cos values.
+    This function generates 1D positional embeddings from a grid.
 
     Args:
-        embed_dim(`int`): output dimension for each position
-        pos(`numpy.ndarray(dtype=float)`): tensor in shape (M, 1)
-    Output:
-        `numpy.ndarray(dtype=float)`: tensor in shape (M, D)
+        embed_dim (`int`): The embedding dimension `D`
+        pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
+    
+    Returns:
+        `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
