@@ -15,7 +15,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -23,7 +23,6 @@ from transformers import T5EncoderModel, T5Tokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, CogView3PlusTransformer2DModel
-from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from ...utils import logging, replace_example_docstring
@@ -459,7 +458,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 224,
-    ) -> Union[CogVideoXPipelineOutput, Tuple]:
+    ) -> Union[CogView3PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -558,17 +557,17 @@ class CogView3PlusPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] or `tuple`:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.cogvideo.pipeline_cogvideox.CogView3PipelineOutput`] or `tuple`:
+            [`~pipelines.cogvideo.pipeline_cogvideox.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
-        
+
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
-        
+
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
@@ -721,10 +720,12 @@ class CogView3PlusPipeline(DiffusionPipeline):
                     progress_bar.update()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
         else:
             image = latents
-        
+
         image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models

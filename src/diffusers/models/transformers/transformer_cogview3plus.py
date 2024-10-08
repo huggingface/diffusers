@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 import torch
 import torch.nn as nn
@@ -24,7 +24,7 @@ from ...models.attention_processor import Attention, AttentionProcessor, FusedJo
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
-from ..embeddings import CogView3PlusPatchEmbed, CogView3CombinedTimestepConditionEmbeddings
+from ..embeddings import CogView3CombinedTimestepConditionEmbeddings, CogView3PlusPatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 

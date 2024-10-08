@@ -38,9 +38,10 @@ import torch
 from accelerate import init_empty_weights
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKL, CogView3PlusPipeline, CogView3PlusTransformer2DModel, CogVideoXDDIMScheduler
+from diffusers import AutoencoderKL, CogVideoXDDIMScheduler, CogView3PlusPipeline, CogView3PlusTransformer2DModel
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
 from diffusers.utils.import_utils import is_accelerate_available
+
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
@@ -82,15 +83,27 @@ def convert_cogview3_transformer_checkpoint_to_diffusers(ckpt_path):
     new_state_dict["time_condition_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
         "time_embed.0.weight"
     )
-    new_state_dict["time_condition_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_embed.0.bias")
+    new_state_dict["time_condition_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop(
+        "time_embed.0.bias"
+    )
     new_state_dict["time_condition_embed.timestep_embedder.linear_2.weight"] = original_state_dict.pop(
         "time_embed.2.weight"
     )
-    new_state_dict["time_condition_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_embed.2.bias")
-    new_state_dict["time_condition_embed.condition_embedder.linear_1.weight"] = original_state_dict.pop("label_emb.0.0.weight")
-    new_state_dict["time_condition_embed.condition_embedder.linear_1.bias"] = original_state_dict.pop("label_emb.0.0.bias")
-    new_state_dict["time_condition_embed.condition_embedder.linear_2.weight"] = original_state_dict.pop("label_emb.0.2.weight")
-    new_state_dict["time_condition_embed.condition_embedder.linear_2.bias"] = original_state_dict.pop("label_emb.0.2.bias")
+    new_state_dict["time_condition_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop(
+        "time_embed.2.bias"
+    )
+    new_state_dict["time_condition_embed.condition_embedder.linear_1.weight"] = original_state_dict.pop(
+        "label_emb.0.0.weight"
+    )
+    new_state_dict["time_condition_embed.condition_embedder.linear_1.bias"] = original_state_dict.pop(
+        "label_emb.0.0.bias"
+    )
+    new_state_dict["time_condition_embed.condition_embedder.linear_2.weight"] = original_state_dict.pop(
+        "label_emb.0.2.weight"
+    )
+    new_state_dict["time_condition_embed.condition_embedder.linear_2.bias"] = original_state_dict.pop(
+        "label_emb.0.2.bias"
+    )
 
     # Convert transformer blocks
     for i in range(30):
