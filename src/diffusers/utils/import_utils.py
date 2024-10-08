@@ -668,14 +668,15 @@ class DummyObject(type):
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
 def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
     """
+    Compares a library version to a required version using a specified operation.
+
     Args:
-    Compares a library version to some requirement using a given operation.
-        library_or_version (`str` or `packaging.version.Version`):
-            A library name or a version to check.
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`.
-        requirement_version (`str`):
-            The version to compare the library version against
+        library_or_version (str or packaging.version.Version): The library name or version to check.
+        operation (str): The comparison operator as a string, such as ">" or "<=".
+        requirement_version (str): The version to compare against.
+
+    Returns:
+        bool: The result of the comparison.
     """
     if operation not in STR_OPERATION_TO_FUNC.keys():
         raise ValueError(f"`operation` must be one of {list(STR_OPERATION_TO_FUNC.keys())}, received {operation}")

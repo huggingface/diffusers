@@ -86,12 +86,18 @@ def get_3d_sincos_pos_embed(
     temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
+    Generate a 3D sine-cosine positional embedding.
+
     Args:
-        embed_dim (`int`):
-        spatial_size (`int` or `Tuple[int, int]`):
-        temporal_size (`int`):
-        spatial_interpolation_scale (`float`, defaults to 1.0):
-        temporal_interpolation_scale (`float`, defaults to 1.0):
+        embed_dim (int): The dimension of the embedding.
+        spatial_size (Union[int, Tuple[int, int]]): The spatial size of the embedding. 
+            If an integer is provided, it is assumed to be the same for both dimensions.
+        temporal_size (int): The temporal size of the embedding.
+        spatial_interpolation_scale (float, optional): Scale factor for spatial interpolation. Defaults to 1.0.
+        temporal_interpolation_scale (float, optional): Scale factor for temporal interpolation. Defaults to 1.0.
+
+    Returns:
+        np.ndarray: A numpy array containing the 3D sine-cosine positional embedding.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
@@ -512,21 +518,27 @@ def get_3d_rotary_pos_embed(
 
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
-    RoPE for image tokens with 2d structure.
+    Generate RoPE (Rotary Position Embedding) for image tokens with a 2D structure.
 
     Args:
-    embed_dim: (`int`):
-        The embedding dimension size
-    crops_coords (`Tuple[int]`)
-        The top-left and bottom-right coordinates of the crop.
-    grid_size (`Tuple[int]`):
-        The grid size of the positional embedding.
-    use_real (`bool`):
-        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+        embed_dim (int): The size of the embedding dimension.
+        crops_coords (Tuple[int, int, int, int]): The top-left and bottom-right coordinates of the crop.
+        grid_size (Tuple[int, int]): The grid size for the positional embedding.
+        use_real (bool): If True, return the real and imaginary parts separately. Otherwise, return complex numbers.
 
     Returns:
-        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
-    """
+        torch.Tensor: Positional embedding with shape (grid_size[0] * grid_size[1], embed_dim // 2).
+
+    Example:
+        >>> embed_dim = 128
+        >>> crops_coords = (0, 0, 32, 32)
+        >>> grid_size = (32, 32)
+        >>> use_real = True
+        >>> pos_embed = generate_rope(embed_dim, crops_coords, grid_size, use_real)
+        >>> print(pos_embed.shape)
+        torch.Size([1024, 64])
+"""
+
     start, stop = crops_coords
     grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
     grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
