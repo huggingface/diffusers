@@ -632,14 +632,14 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         # 4. Clip or threshold "predicted x_0"
         if self.config.thresholding:
             if len(model_output) > 1:
-                pred_original_sample = [self._threshold_sample(p_o_s) for p_o_s in pred_original_sample]
+                pred_original_sample = [self._threshold_sample(p_o_s * scale) / scale for p_o_s, scale in zip(pred_original_sample, self.scales)]
             else:
                 pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
             if len(model_output) > 1:
                 pred_original_sample = [
-                    p_o_s.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
-                    for p_o_s in pred_original_sample
+                    (p_o_s * scale).clamp(-self.config.clip_sample_range, self.config.clip_sample_range) / scale
+                    for p_o_s, scale in zip(pred_original_sample, self.scales)
                 ]
             else:
                 pred_original_sample = pred_original_sample.clamp(
@@ -4624,6 +4624,7 @@ class MatryoshkaPipeline(
 
         if self.scheduler.scales is not None:
             for i in range(len(image)):
+                image[i] = image[i] * self.scheduler.scales[i]
                 image[i] = self.image_processor.postprocess(image[i], output_type=output_type)
         else:
             image = self.image_processor.postprocess(image, output_type=output_type)
