@@ -358,6 +358,11 @@ def parse_args(input_args=None):
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
+        "--upcast_vae",
+        action="store_true",
+        help="Whether or not to upcast vae to fp32",
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=5e-6,
@@ -1094,7 +1099,10 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move vae, transformer and text_encoder to device and cast to weight_dtype
-    vae.to(accelerator.device, dtype=torch.float32)
+    if args.upcast_vae:
+        vae.to(accelerator.device, dtype=torch.float32)
+    else:
+        vae.to(accelerator.device, dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
