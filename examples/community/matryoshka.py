@@ -20,6 +20,7 @@
 
 
 import inspect
+import gc
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -3830,6 +3831,9 @@ class MatryoshkaPipeline(
             new_config["sample_size"] = 64
             unet._internal_dict = FrozenDict(new_config)
 
+        if hasattr(unet, "nest_ratio"):
+            scheduler.scales = unet.nest_ratio + [1]
+
         self.register_modules(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
@@ -3838,9 +3842,31 @@ class MatryoshkaPipeline(
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
-        if hasattr(unet, "nest_ratio"):
-            scheduler.scales = unet.nest_ratio + [1]
+        self.register_to_config(nesting_level=nesting_level)
         self.image_processor = VaeImageProcessor(do_resize=False)
+
+    def change_nesting_level(self, nesting_level: int):
+        if nesting_level == 0:
+            if hasattr(self.unet, "nest_ratio"):
+                self.scheduler.scales = None
+            self.unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                      subfolder="unet/nesting_level_0").to(self.device)
+            self.config.nesting_level = 0
+        elif nesting_level == 1:
+            self.unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                    subfolder="unet/nesting_level_1").to(self.device)
+            self.config.nesting_level = 1
+            self.scheduler.scales = self.unet.nest_ratio + [1]
+        elif nesting_level == 2:
+            self.unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                                                    subfolder="unet/nesting_level_2").to(self.device)
+            self.config.nesting_level = 2
+            self.scheduler.scales = self.unet.nest_ratio + [1]
+        else:
+            raise ValueError("Currently, nesting levels 0, 1, and 2 are supported.")
+
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def encode_prompt(
         self,
