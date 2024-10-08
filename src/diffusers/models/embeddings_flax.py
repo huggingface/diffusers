@@ -68,7 +68,6 @@ def get_sinusoidal_embeddings(
 class FlaxTimestepEmbedding(nn.Module):
     r"""
     Time step Embedding Module. Learns embeddings for input time steps.
- 
     Args:
         time_embed_dim (`int`, *optional*, defaults to `32`):
             Time step embedding dimension.
