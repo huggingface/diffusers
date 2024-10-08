@@ -90,8 +90,7 @@ def resolve_interpolation_mode(interpolation_type: str):
             in torchvision.
 
     Returns:
-        `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize`
-        transform.
+        `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize` transform.
     """
     if not is_torchvision_available():
         raise ImportError(
