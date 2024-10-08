@@ -180,6 +180,7 @@ Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimen
 
 > [!TIP]
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training.
+> You can pass `--video_reshape_mode` video cropping functionality, supporting options: ['center', 'random', 'none']. See [this](https://gist.github.com/glide-the/7658dbfd5f555be0a1a687a4139dba40) notebook for examples.
 
 > [!IMPORTANT]
 > The following settings have been tested at the time of adding CogVideoX LoRA training support:
