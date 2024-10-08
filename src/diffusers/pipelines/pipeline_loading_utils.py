@@ -601,6 +601,7 @@ def load_sub_model(
     variant: str,
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
+    use_safetensors: bool,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
@@ -670,6 +671,7 @@ def load_sub_model(
         loading_kwargs["offload_folder"] = offload_folder
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
+        loading_kwargs["use_safetensors"] = use_safetensors
 
         if from_flax:
             loading_kwargs["from_flax"] = True
