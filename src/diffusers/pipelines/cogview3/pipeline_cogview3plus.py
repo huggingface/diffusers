@@ -644,7 +644,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
             original_size = torch.cat([negative_original_size, original_size])
             target_size = torch.cat([negative_target_size, target_size])
             crops_coords_top_left = torch.cat([negative_crops_coords_top_left, crops_coords_top_left])
-        
+
         original_size = original_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
         target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
         crops_coords_top_left = crops_coords_top_left.to(device).repeat(batch_size * num_images_per_prompt, 1)

@@ -20,7 +20,12 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
-from ...models.attention_processor import Attention, AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
+from ...models.attention_processor import (
+    Attention,
+    AttentionProcessor,
+    CogVideoXAttnProcessor2_0,
+    FusedCogVideoXAttnProcessor2_0,
+)
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
@@ -88,7 +93,9 @@ class CogView3PlusTransformerBlock(nn.Module):
         ) = self.norm1(hidden_states, encoder_hidden_states, emb)
 
         # attention
-        attn_hidden_states, attn_encoder_hidden_states = self.attn1(hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states)
+        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
+            hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states
+        )
 
         hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
         encoder_hidden_states = encoder_hidden_states + c_gate_msa.unsqueeze(1) * attn_encoder_hidden_states
