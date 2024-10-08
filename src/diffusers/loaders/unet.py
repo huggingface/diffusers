@@ -115,7 +115,9 @@ class UNet2DConditionLoadersMixin:
                 `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
-            low_cpu_mem_usage (`str`, *optional*, defaults to False): TODO
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading only loading the pretrained LoRA weights and not initializing the random
+                weights.
 
         Example:
 
