@@ -385,7 +385,7 @@ class PeftLoraLoaderMixinTests:
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), low_cpu_mem_usage=False)
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
