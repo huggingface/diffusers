@@ -1461,7 +1461,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1494,7 +1494,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
+        if accelerator.is_main_process:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 # Create pipeline
                 pipe = CogVideoXImageToVideoPipeline.from_pretrained(
