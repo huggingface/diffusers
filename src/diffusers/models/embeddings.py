@@ -141,24 +141,24 @@ def get_2d_sincos_pos_embed(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
     """
-    This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal positional embeddings.
+    Creates 2D sinusoidal positional embeddings.
 
     Args:
-    embed_dim: int
-        The embedding dimension.
-    grid_size: int
-        The size of the grid height and width.
-    cls_token: bool
-        Whether or not to add a classification token.
-    extra_tokens: int
-        The number of extra tokens to add.
-    interpolation_scale: float
-        The scale of the interpolation.
+        embed_dim (`int`):
+            The embedding dimension.
+        grid_size (`int`):
+            The size of the grid height and width.
+        cls_token (`bool`, defaults to `False`):
+            Whether or not to add a classification token.
+        extra_tokens (`int`, defaults to `0`):
+            The number of extra tokens to add.
+        interpolation_scale (`float`, defaults to `1.0`):
+            The scale of the interpolation.
 
     Returns:
-        pos_embed: np.ndarray
-            Shape is [grid_size*grid_size, embed_dim] or
-            [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+        pos_embed (`np.ndarray`):
+            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or
+            `[1 + grid_size*grid_size, embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
