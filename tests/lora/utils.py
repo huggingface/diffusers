@@ -279,7 +279,7 @@ class PeftLoraLoaderMixinTests:
                 not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
             )
 
-    @require_peft_version_greater("0.13.0")
+    @require_peft_version_greater("0.13.1")
     def test_low_cpu_mem_usage_with_injection(self):
         """Tests if we can inject LoRA state dict with low_cpu_mem_usage."""
         for scheduler_cls in self.scheduler_classes:
@@ -342,7 +342,7 @@ class PeftLoraLoaderMixinTests:
             output_lora = pipe(**inputs)[0]
             self.assertTrue(output_lora.shape == self.output_shape)
 
-    @require_peft_version_greater("0.13.0")
+    @require_peft_version_greater("0.13.1")
     @require_transformers_version_greater("4.45.1")
     def test_low_cpu_mem_usage_with_loading(self):
         """Tests if we can load LoRA state dict with low_cpu_mem_usage."""
