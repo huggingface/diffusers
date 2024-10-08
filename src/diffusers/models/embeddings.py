@@ -86,21 +86,24 @@ def get_3d_sincos_pos_embed(
     temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
-    3D version of `get_2d_sincos_pos_embed()`, this function returns a 3D sinusoidal position embed.
+    Creates 3D sinusoidal positional embeddings.
 
     Args:
         embed_dim (`int`):
-            The embedding dimension.
+            The embedding dimension of inputs. It must be divisible by 16.
         spatial_size (`int` or `Tuple[int, int]`):
-            The spatial size of the embed.
+            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied
+            to both spatial dimensions (height and width).
         temporal_size (`int`):
-            The temporal size of the embed.
+            The temporal dimension of postional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
-            The spatial interpolation scale of the embed.
+            Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
-            The temporal interpolation scale of the embed.
+            Scale factor for temporal grid interpolation.
+    
     Returns:
-        np.ndarray: The 3D position embedding.
+        `np.ndarray`:
+            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1], embed_dim]`.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
