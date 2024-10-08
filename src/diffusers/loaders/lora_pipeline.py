@@ -1100,6 +1100,12 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             allow_pickle=allow_pickle,
         )
 
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
         return state_dict
 
     def load_lora_weights(
@@ -1135,12 +1141,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-
-        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
-        if is_dora_scale_present:
-            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
-            logger.warning(warn_msg)
-            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1611,7 +1611,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         # TODO (sayakpaul): to a follow-up to clean and try to unify the conditions.
-
         is_kohya = any(".lora_down.weight" in k for k in state_dict)
         if is_kohya:
             state_dict = _convert_kohya_flux_lora_to_diffusers(state_dict)
@@ -2395,6 +2394,11 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         return state_dict
 
@@ -2426,12 +2430,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-
-        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
-        if is_dora_scale_present:
-            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
-            logger.warning(warn_msg)
-            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
