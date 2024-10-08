@@ -42,6 +42,7 @@ from .lora_conversion_utils import (
 )
 
 
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 if is_torch_version(">=", "1.9.0"):
     if (
         is_peft_available()
@@ -50,8 +51,6 @@ if is_torch_version(">=", "1.9.0"):
         and is_transformers_version(">", "4.45.1")
     ):
         _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
-else:
-    _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 
 
 if is_transformers_available():
