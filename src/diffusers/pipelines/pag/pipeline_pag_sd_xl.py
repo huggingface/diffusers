@@ -1238,7 +1238,7 @@ class StableDiffusionXLPAGPipeline(
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
                     noise_pred, noise_pred_text = self._apply_perturbed_attention_guidance(
-                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t, True
                     )
 
                 elif self.do_classifier_free_guidance:

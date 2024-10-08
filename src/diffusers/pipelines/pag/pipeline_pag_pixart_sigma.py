@@ -827,7 +827,7 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PAGMixin):
 
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
-                    noise_pred, noise_pred_text = self._apply_perturbed_attention_guidance(
+                    noise_pred = self._apply_perturbed_attention_guidance(
                         noise_pred, do_classifier_free_guidance, guidance_scale, current_timestep
                     )
                 elif do_classifier_free_guidance:
