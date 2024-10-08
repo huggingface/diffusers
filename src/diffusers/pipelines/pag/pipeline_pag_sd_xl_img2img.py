@@ -1437,8 +1437,8 @@ class StableDiffusionXLPAGImg2ImgPipeline(
 
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
-                    noise_pred = self._apply_perturbed_attention_guidance(
-                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t
+                    noise_pred, noise_pred_text = self._apply_perturbed_attention_guidance(
+                        noise_pred, self.do_classifier_free_guidance, self.guidance_scale, t, True
                     )
                 elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
