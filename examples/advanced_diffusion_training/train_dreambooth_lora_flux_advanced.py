@@ -663,7 +663,7 @@ def parse_args(input_args=None):
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params")
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
     )
@@ -1515,7 +1515,7 @@ def main(args):
     if args.train_text_encoder_ti:
         # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
         # TOK2" -> ["TOK", "TOK2"] etc.
-        token_abstraction_list = "".join(args.token_abstraction.split()).split(",")
+        token_abstraction_list = [place_holder.strip() for place_holder in re.split(r',\s*', args.token_abstraction)]
         logger.info(f"list of token identifiers: {token_abstraction_list}")
 
         if args.initializer_concept is None:
@@ -1622,8 +1622,8 @@ def main(args):
     if args.lora_transformer_blocks:
         # if training specific transformer blocks
         target_blocks_list = "".join(args.lora_transformer_blocks.split()).split(",")
-        logger.info(f"list of unet blocks to train: {target_blocks_list}")
-        target_modules = get_transformer_lora_target_modules(unet, target_blocks=target_blocks_list)
+        logger.info(f"list of transformer blocks to train: {target_blocks_list}")
+        target_modules = get_transformer_lora_target_modules(transformer, target_blocks=target_blocks_list)
     else:
         target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
 
@@ -1780,7 +1780,7 @@ def main(args):
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
     if not freeze_text_encoder:
-        # different learning rate for text encoder and unet
+        # different learning rate for text encoder and transformer
         text_parameters_one_with_lr = {
             "params": text_lora_parameters_one,
             "weight_decay": args.adam_weight_decay_text_encoder
