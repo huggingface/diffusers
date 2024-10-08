@@ -66,7 +66,7 @@ def check_if_lora_correctly_set(model) -> bool:
     return False
 
 
-def populate_meta_state_dict_with_dummy(state_dict):
+def initialize_dummy_state_dict(state_dict):
     if not all(v.device.type == "meta" for _, v in state_dict.items()):
         raise ValueError("`state_dict` has non-meta values.")
     return {k: torch.randn(v.shape, device=torch_device, dtype=v.dtype) for k, v in state_dict.items()}
@@ -298,7 +298,7 @@ class PeftLoraLoaderMixinTests:
                     "The LoRA params should be on 'meta' device.",
                 )
 
-                te_state_dict = populate_meta_state_dict_with_dummy(get_peft_model_state_dict(pipe.text_encoder))
+                te_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(pipe.text_encoder))
                 set_peft_model_state_dict(pipe.text_encoder, te_state_dict, low_cpu_mem_usage=True)
                 self.assertTrue(
                     "meta" not in {p.device.type for p in pipe.text_encoder.parameters()},
@@ -312,7 +312,7 @@ class PeftLoraLoaderMixinTests:
                 "meta" in {p.device.type for p in denoiser.parameters()}, "The LoRA params should be on 'meta' device."
             )
 
-            denoiser_state_dict = populate_meta_state_dict_with_dummy(get_peft_model_state_dict(denoiser))
+            denoiser_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(denoiser))
             set_peft_model_state_dict(denoiser, denoiser_state_dict, low_cpu_mem_usage=True)
             self.assertTrue(
                 "meta" not in {p.device.type for p in denoiser.parameters()}, "No param should be on 'meta' device."
@@ -329,9 +329,7 @@ class PeftLoraLoaderMixinTests:
                         "The LoRA params should be on 'meta' device.",
                     )
 
-                    te2_state_dict = populate_meta_state_dict_with_dummy(
-                        get_peft_model_state_dict(pipe.text_encoder_2)
-                    )
+                    te2_state_dict = initialize_dummy_state_dict(get_peft_model_state_dict(pipe.text_encoder_2))
                     set_peft_model_state_dict(pipe.text_encoder_2, te2_state_dict, low_cpu_mem_usage=True)
                     self.assertTrue(
                         "meta" not in {p.device.type for p in pipe.text_encoder_2.parameters()},
