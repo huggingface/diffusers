@@ -176,14 +176,15 @@ def get_2d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    """
-    This function generates 2D positional embeddings from a grid.
+    r"""
+    This function generates 2D sinusoidal positional embeddings from a grid.
 
     Args:
-        embed_dim (`int`): output dimension for each position
-        grid (`np.ndarray`): grid of positions
-    Output:
-        `np.ndarray`: tensor in shape (grid_size*grid_size, embed_dim)
+        embed_dim (`int`): The embedding dimension.
+        grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
+    
+    Returns:
+        `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
