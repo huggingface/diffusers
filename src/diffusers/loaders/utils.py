@@ -16,6 +16,14 @@ from typing import Dict
 
 import torch
 
+from ..utils import is_peft_version, is_torch_version, is_transformers_version
+
+
+if is_torch_version(">=", "1.9.0") and is_peft_version(">", "0.13.1") and is_transformers_version(">", "4.45.1"):
+    _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
+
 
 class AttnProcsLayers(torch.nn.Module):
     def __init__(self, state_dict: Dict[str, torch.Tensor]):

@@ -38,6 +38,7 @@ from .lora_conversion_utils import (
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
+from .utils import _LOW_CPU_MEM_USAGE_DEFAULT_LORA
 
 
 if is_transformers_available():
@@ -94,7 +95,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -588,7 +589,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -1201,7 +1202,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -1772,7 +1773,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and not is_peft_version(">", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
@@ -2575,7 +2576,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
