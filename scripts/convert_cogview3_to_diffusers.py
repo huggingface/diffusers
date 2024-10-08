@@ -78,19 +78,19 @@ def convert_cogview3_transformer_checkpoint_to_diffusers(ckpt_path):
     new_state_dict["pos_embed.text_proj.weight"] = original_state_dict.pop("mixins.patch_embed.text_proj.weight")
     new_state_dict["pos_embed.text_proj.bias"] = original_state_dict.pop("mixins.patch_embed.text_proj.bias")
 
-    # Convert time_text_embed
-    new_state_dict["time_text_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
+    # Convert time_condition_embed
+    new_state_dict["time_condition_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
         "time_embed.0.weight"
     )
-    new_state_dict["time_text_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_embed.0.bias")
-    new_state_dict["time_text_embed.timestep_embedder.linear_2.weight"] = original_state_dict.pop(
+    new_state_dict["time_condition_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_embed.0.bias")
+    new_state_dict["time_condition_embed.timestep_embedder.linear_2.weight"] = original_state_dict.pop(
         "time_embed.2.weight"
     )
-    new_state_dict["time_text_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_embed.2.bias")
-    new_state_dict["time_text_embed.text_embedder.linear_1.weight"] = original_state_dict.pop("label_emb.0.0.weight")
-    new_state_dict["time_text_embed.text_embedder.linear_1.bias"] = original_state_dict.pop("label_emb.0.0.bias")
-    new_state_dict["time_text_embed.text_embedder.linear_2.weight"] = original_state_dict.pop("label_emb.0.2.weight")
-    new_state_dict["time_text_embed.text_embedder.linear_2.bias"] = original_state_dict.pop("label_emb.0.2.bias")
+    new_state_dict["time_condition_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_embed.2.bias")
+    new_state_dict["time_condition_embed.condition_embedder.linear_1.weight"] = original_state_dict.pop("label_emb.0.0.weight")
+    new_state_dict["time_condition_embed.condition_embedder.linear_1.bias"] = original_state_dict.pop("label_emb.0.0.bias")
+    new_state_dict["time_condition_embed.condition_embedder.linear_2.weight"] = original_state_dict.pop("label_emb.0.2.weight")
+    new_state_dict["time_condition_embed.condition_embedder.linear_2.bias"] = original_state_dict.pop("label_emb.0.2.bias")
 
     # Convert transformer blocks
     for i in range(30):
@@ -150,6 +150,8 @@ def convert_cogview3_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
 
 
 def main(args):
+    if args.dtype is None:
+        dtype = None
     if args.dtype == "fp16":
         dtype = torch.float16
     elif args.dtype == "bf16":
@@ -168,7 +170,9 @@ def main(args):
         )
         transformer = CogView3PlusTransformer2DModel()
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
-        transformer = transformer.to(dtype=dtype)
+        if dtype is not None:
+            # Original checkpoint data type will be preserved
+            transformer = transformer.to(dtype=dtype)
 
     if args.vae_checkpoint_path is not None:
         vae_config = {
@@ -191,7 +195,8 @@ def main(args):
         converted_vae_state_dict = convert_cogview3_vae_checkpoint_to_diffusers(args.vae_checkpoint_path, vae_config)
         vae = AutoencoderKL(**vae_config)
         vae.load_state_dict(converted_vae_state_dict, strict=True)
-        vae = vae.to(dtype=dtype)
+        if dtype is not None:
+            vae = vae.to(dtype=dtype)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)

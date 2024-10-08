@@ -1070,27 +1070,6 @@ class IPAdapterFaceIDImageProjection(nn.Module):
         return self.norm(x)
 
 
-class CogView3CombineTimestepLabelEmbedding(nn.Module):
-    def __init__(self, time_embed_dim, label_embed_dim, in_channels=2560):
-        super().__init__()
-
-        self.time_proj = Timesteps(num_channels=in_channels, flip_sin_to_cos=True, downscale_freq_shift=1)
-        self.timestep_embedder = TimestepEmbedding(in_channels=in_channels, time_embed_dim=time_embed_dim)
-        self.label_embedder = nn.Sequential(
-            nn.Linear(label_embed_dim, time_embed_dim),
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
-
-    def forward(self, timestep, class_labels, hidden_dtype=None):
-        t_proj = self.time_proj(timestep)
-        t_emb = self.timestep_embedder(t_proj.to(dtype=hidden_dtype))
-        label_emb = self.label_embedder(class_labels)
-        emb = t_emb + label_emb
-
-        return emb
-
-
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -1150,6 +1129,30 @@ class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
         pooled_projections = self.text_embedder(pooled_projection)
         conditioning = time_guidance_emb + pooled_projections
 
+        return conditioning
+
+
+class CogView3CombinedTimestepConditionEmbeddings(nn.Module):
+    def __init__(self, timestep_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim=256):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=timesteps_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.condition_proj = Timesteps(num_channels=condition_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=timestep_dim)
+        self.condition_embedder = PixArtAlphaTextProjection(pooled_projection_dim, timestep_dim, act_fn="silu")
+
+    def forward(self, timestep: torch.Tensor, original_size: torch.Tensor, target_size: torch.Tensor, crop_coords: torch.Tensor, hidden_dtype: torch.dtype) -> torch.Tensor:
+        timesteps_proj = self.time_proj(timestep)
+        
+        original_size_proj = self.condition_proj(original_size)
+        crop_coords_proj = self.condition_proj(crop_coords)
+        target_size_proj = self.condition_proj(target_size)
+        condition_proj = torch.cat([original_size_proj, crop_coords_proj, target_size_proj], dim=1)  # (B, 3 * condition_dim)
+        
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(hidden_dtype))  # (B, embedding_dim)
+        condition_emb = self.condition_embedder(condition_proj.to(hidden_dtype))  # (B, embedding_dim)
+
+        conditioning = timesteps_emb + condition_emb
         return conditioning
 
 

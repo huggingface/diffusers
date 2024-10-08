@@ -24,7 +24,7 @@ from ...models.attention_processor import Attention, AttentionProcessor, FusedJo
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
-from ..embeddings import CogView3PlusPatchEmbed, CombinedTimestepTextProjEmbeddings
+from ..embeddings import CogView3PlusPatchEmbed, CogView3CombinedTimestepConditionEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 
@@ -108,7 +108,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         norm_hidden_states = torch.cat((norm_encoder_hidden_states, norm_hidden_states), dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        encoder_hidden_states = (encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length],)
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
         hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:]
 
         return hidden_states, encoder_hidden_states
@@ -151,8 +151,10 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         out_channels: int = 16,
         text_embed_dim: int = 4096,
         time_embed_dim: int = 512,
+        condition_dim: int = 512,
         pooled_projection_dim: int = 1536,
         pos_embed_max_size: int = 128,
+        sample_size: int = 128,
     ):
         super().__init__()
         self.out_channels = out_channels
@@ -166,8 +168,9 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             pos_embed_max_size=pos_embed_max_size,
         )
 
-        self.time_text_embed = CombinedTimestepTextProjEmbeddings(
-            embedding_dim=time_embed_dim,
+        self.time_condition_embed = CogView3CombinedTimestepConditionEmbeddings(
+            timestep_dim=time_embed_dim,
+            condition_dim=condition_dim,
             pooled_projection_dim=pooled_projection_dim,
             timesteps_dim=self.inner_dim,
         )
@@ -301,9 +304,11 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        pooled_projections: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        encoder_hidden_states: torch.Tensor,
+        timestep: torch.LongTensor,
+        original_size: torch.Tensor,
+        target_size: torch.Tensor,
+        crop_coords: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
@@ -320,14 +325,13 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         Returns:
             Output tensor or `Transformer2DModelOutput`.
         """
-
         height, width = hidden_states.shape[-2:]
         text_seq_length = encoder_hidden_states.shape[1]
 
         hidden_states = self.pos_embed(
             hidden_states, encoder_hidden_states
         )  # takes care of adding positional embeddings too.
-        emb = self.time_text_embed(timestep, pooled_projections)
+        emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)
 
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
