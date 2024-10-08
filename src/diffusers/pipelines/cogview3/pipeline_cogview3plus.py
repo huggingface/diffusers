@@ -144,7 +144,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             Frozen text-encoder. CogView3Plus uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel); specifically the
@@ -153,9 +153,9 @@ class CogView3PlusPipeline(DiffusionPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`CogView3PlusTransformer2DModel`]):
-            A text conditioned `CogView3PlusTransformer2DModel` to denoise the encoded video latents.
+            A text conditioned `CogView3PlusTransformer2DModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
 
     _optional_components = []
@@ -189,7 +189,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
-        num_videos_per_prompt: int = 1,
+        num_images_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -223,8 +223,8 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds
 
@@ -233,7 +233,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
-        num_videos_per_prompt: int = 1,
+        num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 226,
@@ -252,8 +252,8 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 Whether to use classifier free guidance or not.
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                Number of images that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -277,7 +277,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         if prompt_embeds is None:
             prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
@@ -301,7 +301,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
@@ -551,14 +551,13 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, defaults to `224`):
-                Maximum sequence length in encoded prompt. Must be consistent with
-                `self.transformer.config.max_text_seq_length` otherwise may lead to poor results.
+                Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
 
         Examples:
 
         Returns:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogView3PipelineOutput`] or `tuple`:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.cogview3.pipeline_cogview3plus.CogView3PipelineOutput`] or `tuple`:
+            [`~pipelines.cogview3.pipeline_cogview3plus.CogView3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
@@ -604,7 +603,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
             prompt,
             negative_prompt,
             do_classifier_free_guidance,
-            num_videos_per_prompt=num_images_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
@@ -635,14 +634,14 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
         # 7. Prepare additional timestep conditions
         # TODO: Make this like SDXL
-        original_size = torch.tensor(original_size, dtype=prompt_embeds.dtype)
-        target_size = torch.tensor(target_size, dtype=prompt_embeds.dtype)
-        crops_coords_top_left = torch.tensor(crops_coords_top_left, dtype=prompt_embeds.dtype)
+        original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
+        target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype)
+        crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype)
 
         if negative_original_size is not None and negative_target_size is not None:
-            negative_original_size = torch.tensor(negative_original_size, dtype=prompt_embeds.dtype)
-            negative_target_size = torch.tensor(negative_target_size, dtype=prompt_embeds.dtype)
-            negative_crops_coords_top_left = torch.tensor(negative_crops_coords_top_left, dtype=prompt_embeds.dtype)
+            negative_original_size = torch.tensor([negative_original_size], dtype=prompt_embeds.dtype)
+            negative_target_size = torch.tensor([negative_target_size], dtype=prompt_embeds.dtype)
+            negative_crops_coords_top_left = torch.tensor([negative_crops_coords_top_left], dtype=prompt_embeds.dtype)
         else:
             negative_original_size = original_size
             negative_target_size = target_size
@@ -652,6 +651,10 @@ class CogView3PlusPipeline(DiffusionPipeline):
             original_size = torch.cat([negative_original_size, original_size])
             target_size = torch.cat([negative_target_size, target_size])
             crops_coords_top_left = torch.cat([negative_crops_coords_top_left, crops_coords_top_left])
+        
+        original_size = original_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
+        crops_coords_top_left = crops_coords_top_left.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)

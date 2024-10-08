@@ -1151,15 +1151,16 @@ class CogView3CombinedTimestepConditionEmbeddings(nn.Module):
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
 
-        original_size_proj = self.condition_proj(original_size)
-        crop_coords_proj = self.condition_proj(crop_coords)
-        target_size_proj = self.condition_proj(target_size)
+        original_size_proj = self.condition_proj(original_size.flatten()).view(original_size.size(0), -1)
+        crop_coords_proj = self.condition_proj(crop_coords.flatten()).view(crop_coords.size(0), -1)
+        target_size_proj = self.condition_proj(target_size.flatten()).view(target_size.size(0), -1)
         condition_proj = torch.cat(
             [original_size_proj, crop_coords_proj, target_size_proj], dim=1
         )  # (B, 3 * condition_dim)
 
-        timesteps_emb = self.timestep_embedder(timesteps_proj.to(hidden_dtype))  # (B, embedding_dim)
-        condition_emb = self.condition_embedder(condition_proj.to(hidden_dtype))  # (B, embedding_dim)
+
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
+        condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
 
         conditioning = timesteps_emb + condition_emb
         return conditioning

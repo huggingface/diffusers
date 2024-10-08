@@ -151,7 +151,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         out_channels: int = 16,
         text_embed_dim: int = 4096,
         time_embed_dim: int = 512,
-        condition_dim: int = 512,
+        condition_dim: int = 256,
         pooled_projection_dim: int = 1536,
         pos_embed_max_size: int = 128,
         sample_size: int = 128,
