@@ -177,7 +177,6 @@ class FluxTransformerBlock(nn.Module):
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
             **joint_attention_kwargs,
-            
         )
 
         # Process attention outputs for the `hidden_states`.
