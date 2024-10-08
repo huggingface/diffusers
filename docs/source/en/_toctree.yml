@@ -242,6 +242,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/transformer_cogview3plus
+        title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
