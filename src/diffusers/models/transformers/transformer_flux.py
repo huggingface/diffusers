@@ -92,7 +92,7 @@ class FluxSingleTransformerBlock(nn.Module):
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
-            **joint_attention_kwargs
+            **joint_attention_kwargs,
         )
 
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
