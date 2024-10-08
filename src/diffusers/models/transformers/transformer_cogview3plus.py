@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.attention import FeedForward
-from ...models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
+from ...models.attention_processor import Attention, AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
@@ -48,7 +48,7 @@ class CogView3PlusTransformerBlock(nn.Module):
 
         self.norm1 = CogView3PlusAdaLayerNormZeroTextImage(embedding_dim=time_embed_dim, dim=dim)
 
-        self.attn = Attention(
+        self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
@@ -57,6 +57,7 @@ class CogView3PlusTransformerBlock(nn.Module):
             qk_norm="layer_norm",
             elementwise_affine=False,
             eps=1e-6,
+            processor=CogVideoXAttnProcessor2_0(),
         )
 
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
@@ -87,29 +88,24 @@ class CogView3PlusTransformerBlock(nn.Module):
         ) = self.norm1(hidden_states, encoder_hidden_states, emb)
 
         # attention
-        attn_input = torch.cat((norm_encoder_hidden_states, norm_hidden_states), dim=1)
-        attn_output = self.attn(hidden_states=attn_input)
-        context_attn_output, attn_output = attn_output[:, :text_seq_length], attn_output[:, text_seq_length:]
+        attn_hidden_states, attn_encoder_hidden_states = self.attn1(hidden_states=norm_hidden_states, encoder_hidden_states=norm_encoder_hidden_states)
 
-        attn_output = gate_msa.unsqueeze(1) * attn_output
-        hidden_states = hidden_states + attn_output
+        hidden_states = hidden_states + gate_msa.unsqueeze(1) * attn_hidden_states
+        encoder_hidden_states = encoder_hidden_states + c_gate_msa.unsqueeze(1) * attn_encoder_hidden_states
 
         # norm & modulate
         norm_hidden_states = self.norm2(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
-        # context norm
-        context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
-        encoder_hidden_states = encoder_hidden_states + context_attn_output
         norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
         norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
 
         # feed-forward
-        norm_hidden_states = torch.cat((norm_encoder_hidden_states, norm_hidden_states), dim=1)
+        norm_hidden_states = torch.cat([norm_encoder_hidden_states, norm_hidden_states], dim=1)
         ff_output = self.ff(norm_hidden_states)
 
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
         hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:]
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
 
         return hidden_states, encoder_hidden_states
 
@@ -169,7 +165,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         )
 
         self.time_condition_embed = CogView3CombinedTimestepConditionEmbeddings(
-            timestep_dim=time_embed_dim,
+            embedding_dim=time_embed_dim,
             condition_dim=condition_dim,
             pooled_projection_dim=pooled_projection_dim,
             timesteps_dim=self.inner_dim,
@@ -281,7 +277,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-        self.set_attn_processor(FusedJointAttnProcessor2_0())
+        self.set_attn_processor(FusedCogVideoXAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

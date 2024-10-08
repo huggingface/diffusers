@@ -45,13 +45,17 @@ class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        pooled_projections = torch.randn((batch_size, embedding_dim)).to(torch_device)
+        original_size = torch.tensor([height * 8, width * 8]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
+        target_size = torch.tensor([height * 8, width * 8]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
+        crop_coords = torch.tensor([0, 0]).unsqueeze(0).repeat(batch_size, 1).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
 
         return {
             "hidden_states": hidden_states,
             "encoder_hidden_states": encoder_hidden_states,
-            "pooled_projections": pooled_projections,
+            "original_size": original_size,
+            "target_size": target_size,
+            "crop_coords": crop_coords,
             "timestep": timestep,
         }
 
@@ -73,8 +77,10 @@ class CogView3PlusTransformerTests(ModelTesterMixin, unittest.TestCase):
             "out_channels": 4,
             "text_embed_dim": 8,
             "time_embed_dim": 8,
-            "pooled_projection_dim": 8,
+            "condition_dim": 2,
+            "pooled_projection_dim": 12,
             "pos_embed_max_size": 8,
+            "sample_size": 8,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

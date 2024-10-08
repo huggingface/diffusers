@@ -1133,13 +1133,13 @@ class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
 
 
 class CogView3CombinedTimestepConditionEmbeddings(nn.Module):
-    def __init__(self, timestep_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim=256):
+    def __init__(self, embedding_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim: int = 256):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=timesteps_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.condition_proj = Timesteps(num_channels=condition_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=timestep_dim)
-        self.condition_embedder = PixArtAlphaTextProjection(pooled_projection_dim, timestep_dim, act_fn="silu")
+        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=embedding_dim)
+        self.condition_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
 
     def forward(
         self,
@@ -1157,7 +1157,6 @@ class CogView3CombinedTimestepConditionEmbeddings(nn.Module):
         condition_proj = torch.cat(
             [original_size_proj, crop_coords_proj, target_size_proj], dim=1
         )  # (B, 3 * condition_dim)
-
 
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
         condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)

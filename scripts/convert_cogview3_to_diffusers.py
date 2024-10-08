@@ -119,17 +119,17 @@ def convert_cogview3_transformer_checkpoint_to_diffusers(ckpt_path):
         q, k, v = qkv_weight.chunk(3, dim=0)
         q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
 
-        new_state_dict[block_prefix + "attn.to_q.weight"] = q
-        new_state_dict[block_prefix + "attn.to_q.bias"] = q_bias
-        new_state_dict[block_prefix + "attn.to_k.weight"] = k
-        new_state_dict[block_prefix + "attn.to_k.bias"] = k_bias
-        new_state_dict[block_prefix + "attn.to_v.weight"] = v
-        new_state_dict[block_prefix + "attn.to_v.bias"] = v_bias
+        new_state_dict[block_prefix + "attn1.to_q.weight"] = q
+        new_state_dict[block_prefix + "attn1.to_q.bias"] = q_bias
+        new_state_dict[block_prefix + "attn1.to_k.weight"] = k
+        new_state_dict[block_prefix + "attn1.to_k.bias"] = k_bias
+        new_state_dict[block_prefix + "attn1.to_v.weight"] = v
+        new_state_dict[block_prefix + "attn1.to_v.bias"] = v_bias
 
-        new_state_dict[block_prefix + "attn.to_out.0.weight"] = original_state_dict.pop(
+        new_state_dict[block_prefix + "attn1.to_out.0.weight"] = original_state_dict.pop(
             old_prefix + "attention.dense.weight"
         )
-        new_state_dict[block_prefix + "attn.to_out.0.bias"] = original_state_dict.pop(
+        new_state_dict[block_prefix + "attn1.to_out.0.bias"] = original_state_dict.pop(
             old_prefix + "attention.dense.bias"
         )
 
