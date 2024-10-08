@@ -280,7 +280,6 @@ except importlib_metadata.PackageNotFoundError:
     _invisible_watermark_available = False
 
 
-_peft_version = "N/A"
 _peft_available = importlib.util.find_spec("peft") is not None
 try:
     _peft_version = importlib_metadata.version("peft")

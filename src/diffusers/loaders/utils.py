@@ -16,11 +16,19 @@ from typing import Dict
 
 import torch
 
-from ..utils import is_peft_version, is_torch_version, is_transformers_version
+from ..utils import (
+    is_peft_available,
+    is_peft_version,
+    is_torch_version,
+    is_transformers_available,
+    is_transformers_version,
+)
 
 
-if is_torch_version(">=", "1.9.0") and is_peft_version(">", "0.13.1") and is_transformers_version(">", "4.45.1"):
-    _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
+if is_torch_version(">=", "1.9.0"):
+    if is_peft_available() and is_transformers_available():
+        if is_peft_version(">", "0.13.1") and is_transformers_version(">", "4.45.1"):
+            _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 
