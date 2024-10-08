@@ -25,7 +25,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -1190,7 +1190,7 @@ def main(args):
     )
     use_deepspeed_scheduler = (
         accelerator.state.deepspeed_plugin is not None
-        and "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
+        and "scheduler" in accelerator.state.deepspeed_plugin.deepspeed_config
     )
 
     optimizer = get_optimizer(args, params_to_optimize, use_deepspeed=use_deepspeed_optimizer)
@@ -1221,7 +1221,7 @@ def main(args):
 
         image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
         image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
-        noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
+        noisy_image = image + torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
         image_latent_dist = vae.encode(noisy_image).latent_dist
 
         return latent_dist, image_latent_dist
@@ -1494,7 +1494,7 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process:
+        if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 # Create pipeline
                 pipe = CogVideoXImageToVideoPipeline.from_pretrained(
