@@ -346,7 +346,7 @@ class UNet2DConditionLoadersMixin:
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
             peft_kwargs = {}
-            if is_peft_version(">=", "0.13.0"):
+            if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
             inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
