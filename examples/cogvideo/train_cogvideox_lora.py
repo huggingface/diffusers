@@ -620,7 +620,7 @@ class VideoDataset(Dataset):
 
             # Training transforms
             frames = (frames - 127.5) / 127.5
-            frames = frames.permute(0, 3, 1, 2) # [F, C, H, W]
+            frames = frames.permute(0, 3, 1, 2)  # [F, C, H, W]
             progress_dataset_bar.set_description(
                 f"Loading progress Resizing video from {frames.shape[2]}x{frames.shape[3]} to {self.height}x{self.width}"
             )
@@ -1234,7 +1234,6 @@ def main(args):
         id_token=args.id_token,
     )
 
-
     def encode_video(video, bar):
         bar.update(1)
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
@@ -1246,7 +1245,9 @@ def main(args):
         range(0, len(train_dataset.instance_videos)),
         desc="Loading Encode videos",
     )
-    train_dataset.instance_videos = [encode_video(video,progress_encode_bar) for video in train_dataset.instance_videos]
+    train_dataset.instance_videos = [
+        encode_video(video, progress_encode_bar) for video in train_dataset.instance_videos
+    ]
     progress_encode_bar.close()
 
     def collate_fn(examples):
