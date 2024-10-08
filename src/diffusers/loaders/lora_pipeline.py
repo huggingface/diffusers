@@ -26,6 +26,7 @@ from ..utils import (
     get_adapter_name,
     get_peft_kwargs,
     is_peft_version,
+    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -38,7 +39,13 @@ from .lora_conversion_utils import (
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
-from .utils import _LOW_CPU_MEM_USAGE_DEFAULT_LORA
+
+
+if is_torch_version(">=", "1.9.0"):
+    if is_peft_version(">", "0.13.1") and is_transformers_version(">", "4.45.1"):
+        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 
 
 if is_transformers_available():
