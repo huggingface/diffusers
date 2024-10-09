@@ -77,7 +77,7 @@ image
 
 <Tip>
 
-By default, if we detect the most up-to-date versions of `peft` (0.13.1) and `transformers` (4.46.0), we set `low_cpu_mem_usage=True` to speed up the loading time of LoRA checkpoints. 
+By default, if the most up-to-date versions of PEFT and Transformers are detected, `low_cpu_mem_usage` is set to `True` to speed up the loading time of LoRA checkpoints. 
 
 </Tip>
 
