@@ -1775,9 +1775,8 @@ class PeftLoraLoaderMixinTests:
             self.pipeline_class.save_lora_weights(
                 save_directory=tmpdirname, safe_serialization=False, **lora_state_dicts
             )
-
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             pipe.unload_lora_weights()
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             state_dict = torch.load(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), weights_only=True)
 
         # To make things dynamic since we cannot settle with a single key for all the models where we
@@ -1785,15 +1784,55 @@ class PeftLoraLoaderMixinTests:
         missing_key = [k for k in state_dict if "lora_A" in k][0]
         del state_dict[missing_key]
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
-        logger.setLevel(logging.WARNING)
+        logger = (
+            logging.get_logger("diffusers.loaders.unet")
+            if self.unet_kwargs is not None
+            else logging.get_logger("diffusers.loaders.lora_pipeline")
+        )
+        logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(state_dict)
 
         # Since the missing key won't contain the adapter name ("default_0").
         # Also strip out the component prefix (such as "unet." from `missing_key`).
         component = list({k.split(".")[0] for k in state_dict})[0]
-        self.assertTrue(missing_key.replace(f"{component}.", "") in str(cap_logger.out.replace("default_0.", "")))
+        self.assertTrue(missing_key.replace(f"{component}.", "") in cap_logger.out.replace("default_0.", ""))
+
+    def test_unexpected_keys_warning(self):
+        scheduler_cls = self.scheduler_classes[0]
+        # Skip text encoder check for now as that is handled with `transformers`.
+        components, _, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+            self.pipeline_class.save_lora_weights(
+                save_directory=tmpdirname, safe_serialization=False, **lora_state_dicts
+            )
+            pipe.unload_lora_weights()
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            state_dict = torch.load(os.path.join(tmpdirname, "pytorch_lora_weights.bin"), weights_only=True)
+
+        unexpected_key = [k for k in state_dict if "lora_A" in k][0] + ".diffusers_cat"
+        state_dict[unexpected_key] = torch.tensor(1.0, device=torch_device)
+
+        logger = (
+            logging.get_logger("diffusers.loaders.unet")
+            if self.unet_kwargs is not None
+            else logging.get_logger("diffusers.loaders.lora_pipeline")
+        )
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(state_dict)
+
+        self.assertTrue(".diffusers_cat" in cap_logger.out)
 
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_denoiser_lora_unfused_torch_compile(self):
