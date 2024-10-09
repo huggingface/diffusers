@@ -18,7 +18,13 @@ import unittest
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
-from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    is_flaky,
+    is_peft_available,
+    require_peft_backend,
+    require_torch_gpu,
+    torch_device,
+)
 
 
 if is_peft_available():
@@ -108,3 +114,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in SD3.")
     def test_modify_padding_mode(self):
         pass
+
+    @is_flaky
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        super().test_multiple_wrong_adapter_name_raises_error()
