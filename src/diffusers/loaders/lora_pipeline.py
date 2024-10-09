@@ -1893,6 +1893,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         state_dict = {
             k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
         }
+        print(f'{any("transformer_blocks." in k for k in state_dict)=}')
 
         if len(state_dict.keys()) > 0:
             # check with first key if is not in peft format
@@ -1944,17 +1945,19 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 # Check only for unexpected keys.
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora" in k and adapter_name in k]
                     logger.warning(
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {unexpected_keys}. "
+                        f" {lora_unexpected_keys}. "
                     )
 
                 # Filter missing keys specific to the current adapter.
                 missing_keys = getattr(incompatible_keys, "missing_keys", None)
                 if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora" in k and adapter_name in k]
                     logger.warning(
                         f"Loading adapter weights from state_dict led to missing keys in the model: "
-                        f" {missing_keys}. "
+                        f" {lora_missing_keys}. "
                     )
 
             # Offload back.
