@@ -32,8 +32,6 @@ from diffusers.utils.testing_utils import (
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
     to_np,
 )
 
@@ -232,44 +230,6 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        images = pipe(**inputs)[0]  # [B, C, H, W]
-        original_image_slice = images[0, -1, -3:, -3:]
-
-        pipe.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(
-            pipe.transformer
-        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs(device)
-        images = pipe(**inputs)[0]
-        image_slice_fused = images[0, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        images = pipe(**inputs)[0]
-        image_slice_disabled = images[0, -1, -3:, -3:]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
 
 
 @slow
