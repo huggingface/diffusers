@@ -564,12 +564,6 @@ class LoraBaseMixin:
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
                     component_adapter_weights = weights.pop(component, None)
-
-                    if component_adapter_weights is not None and not hasattr(self, component):
-                        logger.warning(
-                            f"Lora weight dict contains {component} weights but will be ignored because pipeline does not have {component}."
-                        )
-
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (
