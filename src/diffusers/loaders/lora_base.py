@@ -518,8 +518,18 @@ class LoraBaseMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        if isinstance(adapter_weights, dict):
+            components_passed = set(adapter_weights.keys())
+            lora_components = set(self._lora_loadable_modules)
 
+            invalid_components = components_passed - lora_components
+            if invalid_components:
+                raise ValueError(
+                    f"The following components in `adapter_weights` are not part of the pipeline: {invalid_components}. "
+                    f"Available components that are LoRA-compatible: {self._lora_loadable_modules}"
+                )
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
         adapter_weights = copy.deepcopy(adapter_weights)
 
         # Expand weights into a list, one entry per adapter
