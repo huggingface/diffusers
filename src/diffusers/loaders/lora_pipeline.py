@@ -2763,7 +2763,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                     lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
                     logger.warning(
                         f"Loading adapter weights from state_dict led to missing keys in the model:"
-                        f" {', '.join(lora_missing_keys)}."
+                        f" {', '.join(lora_missing_keys)}"
                     )
 
             # Offload back.
