@@ -192,7 +192,7 @@ def main(args):
             "latent_channels": 16,
             "norm_num_groups": 32,
             "sample_size": 1024,
-            "scaling_factor": 0.18215,
+            "scaling_factor": 1.0,
             "force_upcast": True,
             "use_quant_conv": False,
             "use_post_quant_conv": False,
