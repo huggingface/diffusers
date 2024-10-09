@@ -962,13 +962,11 @@ class DownloadTests(unittest.TestCase):
         pipe1.load_textual_inversion(ten, token=token)
         pipe1.unload_textual_inversion()
 
-
         final_tokenizer_size = len(pipe1.tokenizer)
         final_emb_size = len(pipe1.text_encoder.get_input_embeddings().weight)
         # both should be restored to original size
         assert final_tokenizer_size == orig_tokenizer_size
         assert final_emb_size == orig_emb_size
-
 
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
