@@ -388,6 +388,24 @@ def require_peft_version_greater(peft_version):
     return decorator
 
 
+def require_transformers_version_greater(transformers_version):
+    """
+    Decorator marking a test that requires transformers with a specific version, this would require some specific
+    versions of PEFT and transformers.
+    """
+
+    def decorator(test_case):
+        correct_transformers_version = is_transformers_available() and version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse(transformers_version)
+        return unittest.skipUnless(
+            correct_transformers_version,
+            f"test requires transformers with the version greater than {transformers_version}",
+        )(test_case)
+
+    return decorator
+
+
 def require_accelerate_version_greater(accelerate_version):
     def decorator(test_case):
         correct_accelerate_version = is_peft_available() and version.parse(
