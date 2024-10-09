@@ -341,7 +341,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -601,7 +601,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -805,7 +805,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -865,7 +865,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1226,7 +1226,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -1301,7 +1301,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -1408,7 +1408,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1803,7 +1803,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1870,7 +1870,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -1982,7 +1982,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2329,7 +2329,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2610,7 +2610,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -2660,7 +2660,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
