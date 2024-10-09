@@ -146,7 +146,7 @@ else:
         "CogVideoXVideoToVideoPipeline",
     ]
     _import_structure["cogview3"] = [
-        "CogView3PlusPipeline",
+        "CogView3PlusPipeline"
     ]
     _import_structure["controlnet"].extend(
         [

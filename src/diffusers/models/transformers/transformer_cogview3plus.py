@@ -29,7 +29,7 @@ from ...models.attention_processor import (
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous
 from ...utils import is_torch_version, logging
-from ..embeddings import CogView3CombinedTimestepConditionEmbeddings, CogView3PlusPatchEmbed
+from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import CogView3PlusAdaLayerNormZeroTextImage
 
@@ -133,12 +133,27 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             The number of channels in each head.
         num_attention_heads (`int`, defaults to `64`):
             The number of heads to use for multi-head attention.
-        out_channels (`int`, *optional*, defaults to `16`):
+        out_channels (`int`, defaults to `16`):
             The number of channels in the output.
         text_embed_dim (`int`, defaults to `4096`):
             Input dimension of text embeddings from the text encoder.
         time_embed_dim (`int`, defaults to `512`):
             Output dimension of timestep embeddings.
+        condition_dim (`int`, defaults to `256`):
+            The embedding dimension of the input SDXL-style resolution conditions (original_size, target_size, crop_coords).
+        pooled_projection_dim (`int`, defaults to `1536`):
+            The overall pooled dimension by concatenating SDXL-style resolution conditions. As 3 additional conditions are
+            used (original_size, target_size, crop_coords), and each is a sinusoidal condition of dimension `2 * condition_dim`,
+            we get the pooled projection dimension as `2 * condition_dim * 3 => 1536`. The timestep embeddings will be projected
+            to this dimension as well.
+            TODO(yiyi): Do we need this parameter based on the above explanation?
+        pos_embed_max_size (`int`, defaults to `128`):
+            The maximum resolution of the positional embeddings, from which slices of shape `H x W` are taken and added to input
+            patched latents, where `H` and `W` are the latent height and width respectively. A value of 128 means that the maximum
+            supported height and width for image generation is `128 * vae_scale_factor * patch_size => 128 * 8 * 2 => 2048`.
+        sample_size (`int`, defaults to `128`):
+            The base resolution of input latents. If height/width is not provided during generation, this value is used to determine
+            the resolution as `sample_size * vae_scale_factor => 128 * 8 => 1024`
     """
 
     _supports_gradient_checkpointing = True
@@ -163,7 +178,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.pos_embed = CogView3PlusPatchEmbed(
+        self.patch_embed = CogView3PlusPatchEmbed(
             in_channels=in_channels,
             hidden_size=self.inner_dim,
             patch_size=patch_size,
@@ -171,7 +186,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             pos_embed_max_size=pos_embed_max_size,
         )
 
-        self.time_condition_embed = CogView3CombinedTimestepConditionEmbeddings(
+        self.time_condition_embed = CogView3CombinedTimestepSizeEmbeddings(
             embedding_dim=time_embed_dim,
             condition_dim=condition_dim,
             pooled_projection_dim=pooled_projection_dim,
@@ -318,20 +333,31 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         The [`CogView3PlusTransformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.Tensor`): Input `hidden_states`.
-            timestep (`torch.LongTensor`): Indicates denoising step.
-            y (`torch.LongTensor`, *optional*): 标签输入，用于获取标签嵌入。
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`): A list of tensors for residuals.
-            joint_attention_kwargs (`dict`, *optional*): Additional kwargs for the attention processor.
-            return_dict (`bool`, *optional*, defaults to `True`): Whether to return a `Transformer2DModelOutput`.
+            hidden_states (`torch.Tensor`):
+                Input `hidden_states` of shape `(batch size, channel, height, width)`.
+            encoder_hidden_states (`torch.Tensor`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts)
+                of shape `(batch_size, sequence_len, text_embed_dim)`
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            original_size (`torch.Tensor`):
+                CogView3 uses SDXL-like micro-conditioning for original image size as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            target_size (`torch.Tensor`):
+                CogView3 uses SDXL-like micro-conditioning for target image size as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            crop_coords (`torch.Tensor`):
+                CogView3 uses SDXL-like micro-conditioning for crop coordinates as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
 
         Returns:
-            Output tensor or `Transformer2DModelOutput`.
+            `torch.Tensor` or [`~models.transformer_2d.Transformer2DModelOutput`]:
+                The denoised latents using provided inputs as conditioning.
         """
         height, width = hidden_states.shape[-2:]
         text_seq_length = encoder_hidden_states.shape[1]
 
-        hidden_states = self.pos_embed(
+        hidden_states = self.patch_embed(
             hidden_states, encoder_hidden_states
         )  # takes care of adding positional embeddings too.
         emb = self.time_condition_embed(timestep, original_size, target_size, crop_coords, hidden_states.dtype)

@@ -229,7 +229,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 226,
+        max_sequence_length: int = 224,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -254,6 +254,8 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            max_sequence_length (`int`, defaults to `224`):
+                Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
             device: (`torch.device`, *optional*):
                 torch device
             dtype: (`torch.dtype`, *optional*):
@@ -430,7 +432,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 6,
+        guidance_scale: float = 5.0,
         use_dynamic_cfg: bool = False,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
@@ -440,10 +442,6 @@ class CogView3PlusPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
-        target_size: Optional[Tuple[int, int]] = None,
-        negative_original_size: Optional[Tuple[int, int]] = None,
-        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
-        negative_target_size: Optional[Tuple[int, int]] = None,
         output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -473,7 +471,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 7.0):
+            guidance_scale (`float`, *optional*, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -505,25 +503,6 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
                 `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                For most cases, `target_size` should be set to the desired height and width of the generated image. If
-                not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in
-                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
-            negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                To negatively condition the generation process based on a specific image resolution. Part of SDXL's
-                micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            negative_crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's
-                micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            negative_target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
-                To negatively condition the generation process based on a target image resolution. It should be as same
-                as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
-                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -561,7 +540,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
         original_size = original_size or (height, width)
-        target_size = target_size or (height, width)
+        target_size = (height, width)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -626,24 +605,14 @@ class CogView3PlusPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Prepare additional timestep conditions
-        # TODO: Make this like SDXL
         original_size = torch.tensor([original_size], dtype=prompt_embeds.dtype)
         target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype)
         crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype)
 
-        if negative_original_size is not None and negative_target_size is not None:
-            negative_original_size = torch.tensor([negative_original_size], dtype=prompt_embeds.dtype)
-            negative_target_size = torch.tensor([negative_target_size], dtype=prompt_embeds.dtype)
-            negative_crops_coords_top_left = torch.tensor([negative_crops_coords_top_left], dtype=prompt_embeds.dtype)
-        else:
-            negative_original_size = original_size
-            negative_target_size = target_size
-            negative_crops_coords_top_left = crops_coords_top_left
-
         if do_classifier_free_guidance:
-            original_size = torch.cat([negative_original_size, original_size])
-            target_size = torch.cat([negative_target_size, target_size])
-            crops_coords_top_left = torch.cat([negative_crops_coords_top_left, crops_coords_top_left])
+            original_size = torch.cat([original_size, original_size])
+            target_size = torch.cat([target_size, target_size])
+            crops_coords_top_left = torch.cat([crops_coords_top_left, crops_coords_top_left])
 
         original_size = original_size.to(device).repeat(batch_size * num_images_per_prompt, 1)
         target_size = target_size.to(device).repeat(batch_size * num_images_per_prompt, 1)

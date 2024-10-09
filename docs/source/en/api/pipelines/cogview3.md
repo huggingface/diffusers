@@ -13,7 +13,7 @@
 # limitations under the License.
 -->
 
-# CogVideoX
+# CogView3Plus
 
 [CogView3: Finer and Faster Text-to-Image Generation via Relay Diffusion](https://huggingface.co/papers/2403.05121) from Tsinghua University & ZhipuAI, by Wendi Zheng, Jiayan Teng, Zhuoyi Yang, Weihan Wang, Jidong Chen, Xiaotao Gu, Yuxiao Dong, Ming Ding, Jie Tang.
 
@@ -28,45 +28,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 </Tip>
 
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
-
-## Inference
-
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
-
-First, load the pipeline:
-
-```python
-import torch
-from diffusers import CogView3PlusPipeline
-from diffusers.utils import export_to_video,load_image
-
-pipe = CogView3PlusPipeline.from_pretrained("THUDM/CogView3Plus-3b").to("cuda") # or "THUDM/CogVideoX-2b" 
-```
-
-Then change the memory layout of the `transformer` and `vae` components to `torch.channels_last`:
-
-```python
-pipe.transformer.to(memory_format=torch.channels_last)
-pipe.vae.to(memory_format=torch.channels_last)
-```
-
-Compile the components and run inference:
-
-```python
-pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
-pipe.vae.decode = torch.compile(pipeline.vae.decode, mode="max-autotune", fullgraph=True)
-
-# CogVideoX works well with long and well-described prompts
-prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical performance."
-video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
-```
-
-The [benchmark](TODO) results on an 80GB A100 machine are:
-
-```
-Without torch.compile(): Average inference time: TODO seconds.
-With torch.compile(): Average inference time: TODO seconds.
-```
 
 ## CogView3PlusPipeline
 
