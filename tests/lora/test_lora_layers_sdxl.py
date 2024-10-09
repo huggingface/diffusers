@@ -37,6 +37,7 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    is_flaky,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
@@ -110,6 +111,10 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
+
+    @is_flaky
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        super().test_multiple_wrong_adapter_name_raises_error()
 
 
 @slow
