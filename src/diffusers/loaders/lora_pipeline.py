@@ -1367,6 +1367,14 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                         f" {unexpected_keys}. "
                     )
 
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to missing keys in the model: "
+                        f" {missing_keys}. "
+                    )
+
             # Offload back.
             if is_model_cpu_offload:
                 _pipeline.enable_model_cpu_offload()
@@ -1933,12 +1941,20 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
 
             if incompatible_keys is not None:
-                # check only for unexpected keys
+                # Check only for unexpected keys.
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
                     logger.warning(
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
+                    )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to missing keys in the model: "
+                        f" {missing_keys}. "
                     )
 
             # Offload back.
@@ -2286,6 +2302,14 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     logger.warning(
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
+                    )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to missing keys in the model: "
+                        f" {missing_keys}. "
                     )
 
             # Offload back.
@@ -2724,6 +2748,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                     logger.warning(
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
+                    )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to missing keys in the model: "
+                        f" {missing_keys}. "
                     )
 
             # Offload back.

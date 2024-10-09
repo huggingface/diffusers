@@ -363,6 +363,14 @@ class UNet2DConditionLoadersMixin:
                         f" {unexpected_keys}. "
                     )
 
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to missing keys in the model: "
+                        f" {missing_keys}. "
+                    )
+
         return is_model_cpu_offload, is_sequential_cpu_offload
 
     @classmethod
