@@ -169,7 +169,11 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @unittest.skip("We cannot run inference on this model with the current CI hardware")
 # TODO (DN6, sayakpaul): move these tests to a beefier GPU
 class FluxLoRAIntegrationTests(unittest.TestCase):
-    """internal note: The integration slices were obtained on audace."""
+    """internal note: The integration slices were obtained on audace.
+
+    torch: 2.6.0.dev20241006+cu124 with CUDA 12.5. Need the same setup for the
+    assertions to pass.
+    """
 
     num_inference_steps = 10
     seed = 0
