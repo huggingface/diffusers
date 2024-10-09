@@ -522,7 +522,7 @@ class LoraBaseMixin:
             components_passed = set(adapter_weights.keys())
             lora_components = set(self._lora_loadable_modules)
 
-            invalid_components = components_passed - lora_components
+            invalid_components = sorted(components_passed - lora_components)
             if invalid_components:
                 raise ValueError(
                     f"The following components in `adapter_weights` are not part of the pipeline: {invalid_components}. "

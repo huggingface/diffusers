@@ -1136,7 +1136,7 @@ class PeftLoraLoaderMixinTests:
         with self.assertRaises(ValueError) as err_context:
             pipe.set_adapters("adapter-1", adapter_weights=scale_with_wrong_components)
 
-        wrong_components = set(scale_with_wrong_components.keys())
+        wrong_components = sorted(set(scale_with_wrong_components.keys()))
         msg = f"The following components in `adapter_weights` are not part of the pipeline: {wrong_components}"
         self.assertTrue(msg in str(err_context.exception))
 
