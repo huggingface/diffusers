@@ -140,20 +140,22 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         time_embed_dim (`int`, defaults to `512`):
             Output dimension of timestep embeddings.
         condition_dim (`int`, defaults to `256`):
-            The embedding dimension of the input SDXL-style resolution conditions (original_size, target_size, crop_coords).
+            The embedding dimension of the input SDXL-style resolution conditions (original_size, target_size,
+            crop_coords).
         pooled_projection_dim (`int`, defaults to `1536`):
-            The overall pooled dimension by concatenating SDXL-style resolution conditions. As 3 additional conditions are
-            used (original_size, target_size, crop_coords), and each is a sinusoidal condition of dimension `2 * condition_dim`,
-            we get the pooled projection dimension as `2 * condition_dim * 3 => 1536`. The timestep embeddings will be projected
-            to this dimension as well.
-            TODO(yiyi): Do we need this parameter based on the above explanation?
+            The overall pooled dimension by concatenating SDXL-style resolution conditions. As 3 additional conditions
+            are used (original_size, target_size, crop_coords), and each is a sinusoidal condition of dimension `2 *
+            condition_dim`, we get the pooled projection dimension as `2 * condition_dim * 3 => 1536`. The timestep
+            embeddings will be projected to this dimension as well. TODO(yiyi): Do we need this parameter based on the
+            above explanation?
         pos_embed_max_size (`int`, defaults to `128`):
-            The maximum resolution of the positional embeddings, from which slices of shape `H x W` are taken and added to input
-            patched latents, where `H` and `W` are the latent height and width respectively. A value of 128 means that the maximum
-            supported height and width for image generation is `128 * vae_scale_factor * patch_size => 128 * 8 * 2 => 2048`.
+            The maximum resolution of the positional embeddings, from which slices of shape `H x W` are taken and added
+            to input patched latents, where `H` and `W` are the latent height and width respectively. A value of 128
+            means that the maximum supported height and width for image generation is `128 * vae_scale_factor *
+            patch_size => 128 * 8 * 2 => 2048`.
         sample_size (`int`, defaults to `128`):
-            The base resolution of input latents. If height/width is not provided during generation, this value is used to determine
-            the resolution as `sample_size * vae_scale_factor => 128 * 8 => 1024`
+            The base resolution of input latents. If height/width is not provided during generation, this value is used
+            to determine the resolution as `sample_size * vae_scale_factor => 128 * 8 => 1024`
     """
 
     _supports_gradient_checkpointing = True
@@ -336,16 +338,19 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             hidden_states (`torch.Tensor`):
                 Input `hidden_states` of shape `(batch size, channel, height, width)`.
             encoder_hidden_states (`torch.Tensor`):
-                Conditional embeddings (embeddings computed from the input conditions such as prompts)
-                of shape `(batch_size, sequence_len, text_embed_dim)`
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) of shape
+                `(batch_size, sequence_len, text_embed_dim)`
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
             original_size (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for original image size as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+                CogView3 uses SDXL-like micro-conditioning for original image size as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             target_size (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for target image size as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+                CogView3 uses SDXL-like micro-conditioning for target image size as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             crop_coords (`torch.Tensor`):
-                CogView3 uses SDXL-like micro-conditioning for crop coordinates as explained in section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+                CogView3 uses SDXL-like micro-conditioning for crop coordinates as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.

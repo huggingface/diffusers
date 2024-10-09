@@ -469,10 +469,10 @@ class CogView3PlusPatchEmbed(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, channel, height, width = hidden_states.shape
-        
+
         if height % self.patch_size != 0 or width % self.patch_size != 0:
             raise ValueError("Height and width must be divisible by patch size")
-        
+
         height = height // self.patch_size
         width = width // self.patch_size
         hidden_states = hidden_states.view(batch_size, channel, height, self.patch_size, width, self.patch_size)
@@ -1156,11 +1156,9 @@ class CogView3CombinedTimestepSizeEmbeddings(nn.Module):
         original_size_proj = self.condition_proj(original_size.flatten()).view(original_size.size(0), -1)
         crop_coords_proj = self.condition_proj(crop_coords.flatten()).view(crop_coords.size(0), -1)
         target_size_proj = self.condition_proj(target_size.flatten()).view(target_size.size(0), -1)
-        
+
         # (B, 3 * condition_dim)
-        condition_proj = torch.cat(
-            [original_size_proj, crop_coords_proj, target_size_proj], dim=1
-        )
+        condition_proj = torch.cat([original_size_proj, crop_coords_proj, target_size_proj], dim=1)
 
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
         condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)

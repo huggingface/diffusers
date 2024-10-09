@@ -6,26 +6,19 @@ with the Diffusers library.
 
 Example usage:
     python scripts/convert_cogview3_to_diffusers.py \
-        --original_state_dict_repo_id "THUDM/cogview3-sat" \
-        --filename "cogview3.pt" \
-        --transformer \
-        --output_path "./cogview3_diffusers" \
-        --dtype "bf16"
-
-Alternatively, if you have a local checkpoint:
-    python scripts/convert_cogview3_to_diffusers.py \
-        --checkpoint_path 'your path/cogview3plus_3b/1/mp_rank_00_model_states.pt' \
-        --transformer \
+        --transformer_checkpoint_path 'your path/cogview3plus_3b/1/mp_rank_00_model_states.pt' \
+        --vae_checkpoint_path 'your path/3plus_ae/imagekl_ch16.pt' \
         --output_path "/raid/yiyi/cogview3_diffusers" \
         --dtype "bf16"
 
 Arguments:
-    --original_state_dict_repo_id: The Hugging Face repo ID containing the original checkpoint.
-    --filename: The filename of the checkpoint in the repo (default: "flux.safetensors").
-    --checkpoint_path: Path to a local checkpoint file (alternative to repo_id and filename).
-    --transformer: Flag to convert the transformer model.
+    --transformer_checkpoint_path: Path to Transformer state dict.
+    --vae_checkpoint_path: Path to VAE state dict.
     --output_path: The path to save the converted model.
-    --dtype: The dtype to save the model in (default: "bf16", options: "fp16", "bf16", "fp32").
+    --push_to_hub: Whether to push the converted checkpoint to the HF Hub or not. Defaults to `False`.
+    --text_encoder_cache_dir: Cache directory where text encoder is located. Defaults to None, which means HF_HOME will be used
+    --dtype: The dtype to save the model in (default: "bf16", options: "fp16", "bf16", "fp32"). If None, the dtype of the state dict is considered.
+
     Default is "bf16" because CogView3 uses bfloat16 for Training.
 
 Note: You must provide either --original_state_dict_repo_id or --checkpoint_path.
@@ -73,11 +66,11 @@ def convert_cogview3_transformer_checkpoint_to_diffusers(ckpt_path):
 
     new_state_dict = {}
 
-    # Convert pos_embed
-    new_state_dict["pos_embed.proj.weight"] = original_state_dict.pop("mixins.patch_embed.proj.weight")
-    new_state_dict["pos_embed.proj.bias"] = original_state_dict.pop("mixins.patch_embed.proj.bias")
-    new_state_dict["pos_embed.text_proj.weight"] = original_state_dict.pop("mixins.patch_embed.text_proj.weight")
-    new_state_dict["pos_embed.text_proj.bias"] = original_state_dict.pop("mixins.patch_embed.text_proj.bias")
+    # Convert patch_embed
+    new_state_dict["patch_embed.proj.weight"] = original_state_dict.pop("mixins.patch_embed.proj.weight")
+    new_state_dict["patch_embed.proj.bias"] = original_state_dict.pop("mixins.patch_embed.proj.bias")
+    new_state_dict["patch_embed.text_proj.weight"] = original_state_dict.pop("mixins.patch_embed.text_proj.weight")
+    new_state_dict["patch_embed.text_proj.bias"] = original_state_dict.pop("mixins.patch_embed.text_proj.bias")
 
     # Convert time_condition_embed
     new_state_dict["time_condition_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
