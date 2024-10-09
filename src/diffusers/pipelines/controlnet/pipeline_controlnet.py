@@ -1242,7 +1242,7 @@ class StableDiffusionControlNetPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                
+
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
                 if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:

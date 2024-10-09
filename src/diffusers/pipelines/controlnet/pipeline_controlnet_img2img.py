@@ -890,7 +890,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
-    
+
     @property
     def interrupt(self):
         return self._interrupt
@@ -1218,7 +1218,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
