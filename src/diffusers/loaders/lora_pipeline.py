@@ -1363,19 +1363,21 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
-                        f" {', '.join(lora_unexpected_keys)}."
-                    )
+                    if lora_unexpected_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}."
+                        )
 
                 # Filter missing keys specific to the current adapter.
                 missing_keys = getattr(incompatible_keys, "missing_keys", None)
                 if missing_keys:
                     lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to missing keys in the model:"
-                        f" {', '.join(lora_missing_keys)}"
-                    )
+                    if lora_missing_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}"
+                        )
 
             # Offload back.
             if is_model_cpu_offload:
@@ -1947,19 +1949,21 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
-                        f" {', '.join(lora_unexpected_keys)}."
-                    )
+                    if lora_unexpected_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}."
+                        )
 
                 # Filter missing keys specific to the current adapter.
                 missing_keys = getattr(incompatible_keys, "missing_keys", None)
                 if missing_keys:
                     lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to missing keys in the model:"
-                        f" {', '.join(lora_missing_keys)}"
-                    )
+                    if lora_missing_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}"
+                        )
 
             # Offload back.
             if is_model_cpu_offload:
@@ -2304,19 +2308,21 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
-                        f" {', '.join(lora_unexpected_keys)}."
-                    )
+                    if lora_unexpected_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}."
+                        )
 
                 # Filter missing keys specific to the current adapter.
                 missing_keys = getattr(incompatible_keys, "missing_keys", None)
                 if missing_keys:
                     lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to missing keys in the model:"
-                        f" {', '.join(lora_missing_keys)}."
-                    )
+                    if lora_missing_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
 
             # Offload back.
             if is_model_cpu_offload:
@@ -2752,19 +2758,21 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
-                        f" {', '.join(lora_unexpected_keys)}."
-                    )
+                    if lora_unexpected_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}."
+                        )
 
                 # Filter missing keys specific to the current adapter.
                 missing_keys = getattr(incompatible_keys, "missing_keys", None)
                 if missing_keys:
                     lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to missing keys in the model:"
-                        f" {', '.join(lora_missing_keys)}"
-                    )
+                    if lora_missing_keys:
+                        logger.warning(
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}"
+                        )
 
             # Offload back.
             if is_model_cpu_offload:
