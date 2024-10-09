@@ -25,8 +25,11 @@ from ..utils import (
     deprecate,
     get_adapter_name,
     get_peft_kwargs,
+    is_peft_available,
     is_peft_version,
+    is_torch_version,
     is_transformers_available,
+    is_transformers_version,
     logging,
     scale_lora_layers,
 )
@@ -37,6 +40,17 @@ from .lora_conversion_utils import (
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
+
+
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
+if is_torch_version(">=", "1.9.0"):
+    if (
+        is_peft_available()
+        and is_peft_version(">=", "0.13.1")
+        and is_transformers_available()
+        and is_transformers_version(">", "4.45.2")
+    ):
+        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 
 
 if is_transformers_available():
@@ -83,14 +97,23 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -109,6 +132,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -119,6 +143,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             lora_scale=self.lora_scale,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
     @classmethod
@@ -237,7 +262,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return state_dict, network_alphas
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -255,9 +282,15 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading only loading the pretrained LoRA weights and not initializing the random weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
@@ -268,7 +301,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
@@ -281,6 +318,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -303,9 +341,24 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
         from peft import LoraConfig
 
@@ -377,6 +430,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
                     peft_config=lora_config,
+                    **peft_kwargs,
                 )
 
                 # scale LoRA layers with `lora_scale`
@@ -547,11 +601,18 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
@@ -573,7 +634,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA checkpoint.")
 
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
+            state_dict,
+            network_alphas=network_alphas,
+            unet=self.unet,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
@@ -585,6 +651,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -597,6 +664,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
@@ -717,7 +785,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None):
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -735,9 +805,15 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading only loading the pretrained LoRA weights and not initializing the random weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
@@ -748,7 +824,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_attn_procs(
-                state_dict, network_alphas=network_alphas, adapter_name=adapter_name, _pipeline=_pipeline
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
@@ -762,6 +842,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -784,9 +865,24 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
         from peft import LoraConfig
 
@@ -858,6 +954,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
                     peft_config=lora_config,
+                    **peft_kwargs,
                 )
 
                 # scale LoRA layers with `lora_scale`
@@ -1126,14 +1223,21 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1151,6 +1255,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
@@ -1163,6 +1268,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -1175,10 +1281,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
-    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -1192,7 +1301,13 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         keys = list(state_dict.keys())
@@ -1236,8 +1351,12 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
@@ -1266,6 +1385,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1288,9 +1408,24 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
         from peft import LoraConfig
 
@@ -1362,6 +1497,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
                     peft_config=lora_config,
+                    **peft_kwargs,
                 )
 
                 # scale LoRA layers with `lora_scale`
@@ -1667,9 +1803,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1690,6 +1833,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
@@ -1702,10 +1846,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 lora_scale=self.lora_scale,
                 adapter_name=adapter_name,
                 _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
 
     @classmethod
-    def load_lora_into_transformer(cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(
+        cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -1723,7 +1870,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         keys = list(state_dict.keys())
@@ -1772,8 +1925,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
@@ -1802,6 +1959,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1824,9 +1982,24 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
         from peft import LoraConfig
 
@@ -1898,6 +2071,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
                     peft_config=lora_config,
+                    **peft_kwargs,
                 )
 
                 # scale LoRA layers with `lora_scale`
@@ -2132,6 +2306,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         lora_scale=1.0,
         adapter_name=None,
         _pipeline=None,
+        low_cpu_mem_usage=False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -2154,9 +2329,24 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
         from peft import LoraConfig
 
@@ -2228,6 +2418,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     adapter_name=adapter_name,
                     adapter_state_dict=text_encoder_lora_state_dict,
                     peft_config=lora_config,
+                    **peft_kwargs,
                 )
 
                 # scale LoRA layers with `lora_scale`
@@ -2416,14 +2607,21 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -2441,11 +2639,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
-    def load_lora_into_transformer(cls, state_dict, transformer, adapter_name=None, _pipeline=None):
+    def load_lora_into_transformer(
+        cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -2459,7 +2660,13 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
         """
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         keys = list(state_dict.keys())
@@ -2503,8 +2710,12 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
