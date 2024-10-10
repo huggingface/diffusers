@@ -61,6 +61,7 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
+    free_memory
 )
 from diffusers.utils import (
     check_min_version,
@@ -229,7 +230,6 @@ def log_validation(
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-    # autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
     autocast_ctx = nullcontext()
 
     with autocast_ctx:
@@ -250,8 +250,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -772,10 +771,10 @@ def parse_args(input_args=None):
             "This contradicts with --max_train_steps, please specify different values or set both to 1."
         )
     if args.enable_t5_ti and not args.train_text_encoder_ti:
-        warnings.warn("You need not use --enable_t5_ti without --train_text_encoder_ti.")
+        logger.warning("You need not use --enable_t5_ti without --train_text_encoder_ti.")
 
     if args.train_text_encoder_ti and args.initializer_concept and args.num_new_tokens_per_abstraction:
-        warnings.warn(
+        logger.warning(
             "When specifying --initializer_concept, the number of tokens per abstraction is detrimned "
             "by the initializer token. --num_new_tokens_per_abstraction will be ignored"
         )
@@ -790,11 +789,10 @@ def parse_args(input_args=None):
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
     else:
-        # logger is not available yet
         if args.class_data_dir is not None:
-            warnings.warn("You need not use --class_data_dir without --with_prior_preservation.")
+            logger.warning("You need not use --class_data_dir without --with_prior_preservation.")
         if args.class_prompt is not None:
-            warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
+            logger.warning("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -832,7 +830,7 @@ class TokenEmbeddingsHandler:
             )
             std_token_embedding = embeds.weight.data.std()
 
-            print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
+            logger.info(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             # if initializer_concept are not provided, token embeddings are initialized randomly
             if args.initializer_concept is None:
@@ -860,7 +858,7 @@ class TokenEmbeddingsHandler:
 
             self.embeddings_settings[f"index_no_updates_{idx}"] = index_no_updates
 
-            print(self.embeddings_settings[f"index_no_updates_{idx}"].shape)
+            logger.info(self.embeddings_settings[f"index_no_updates_{idx}"].shape)
 
             idx += 1
 
@@ -1457,8 +1455,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1524,7 +1521,7 @@ def main(args):
             if args.enable_t5_ti:
                 token_ids_t5 = tokenizer_two.encode(args.initializer_concept, add_special_tokens=False)
                 num_new_tokens_per_abstraction = max(len(token_ids), len(token_ids_t5))
-            print(
+            logger.info(
                 f"initializer_concept: {args.initializer_concept}, num_new_tokens_per_abstraction: {num_new_tokens_per_abstraction}"
             )
 
@@ -1710,7 +1707,6 @@ def main(args):
         text_lora_parameters_one = []  # CLIP
         for name, param in text_encoder_one.named_parameters():
             if "token_embedding" in name:
-                print("YES 5")
                 # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
                 param.data = param.to(dtype=torch.float32)
                 param.requires_grad = True
@@ -1718,7 +1714,6 @@ def main(args):
             else:
                 param.requires_grad = False
         if args.enable_t5_ti:  # whether to do pivotal tuning/textual inversion for T5 as well
-            print("NO")
             text_lora_parameters_two = []
             for name, param in text_encoder_two.named_parameters():
                 if "token_embedding" in name:
@@ -1735,7 +1730,6 @@ def main(args):
     # if --train_text_encoder_ti and train_transformer_frac == 0 where essentially performing textual inversion
     # and not training transformer LoRA layers
     pure_textual_inversion = args.train_text_encoder_ti and args.train_transformer_frac == 0
-    print("NO 2:", pure_textual_inversion)
 
     # Optimization parameters
     transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
@@ -1756,7 +1750,6 @@ def main(args):
                 ]
                 te_idx = 0
             else:  # regular te training or regular pivotal for clip
-                print("YES1")
                 params_to_optimize = [
                     transformer_parameters_with_lr,
                     text_parameters_one_with_lr,
@@ -1908,12 +1901,8 @@ def main(args):
 
     # Clear the memory here
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
-        del tokenizers, text_encoders
-        # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
-        del text_encoder_one, text_encoder_two
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        del tokenizers, text_encoders, text_encoder_one, text_encoder_two
+        free_memory()
 
     # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens_clip = True if args.train_text_encoder_ti else False
@@ -1968,15 +1957,13 @@ def main(args):
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
-                    accelerator.device, non_blocking=True, dtype=weight_dtype
+                    accelerator.device, non_blocking=True, dtype=weight_dtype, pin_memory=True
                 )
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
 
         if args.validation_prompt is None:
             del vae
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                gc.collect()
+            free_memory()
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -2061,13 +2048,13 @@ def main(args):
             path = dirs[-1] if len(dirs) > 0 else None
 
         if path is None:
-            accelerator.print(
+            logger.info(
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
             )
             args.resume_from_checkpoint = None
             initial_global_step = 0
         else:
-            accelerator.print(f"Resuming from checkpoint {path}")
+            logger.info(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
@@ -2112,7 +2099,7 @@ def main(args):
         if args.train_text_encoder or args.train_text_encoder_ti:
             if epoch == num_train_epochs_text_encoder:
                 # flag to stop text encoder optimization
-                print("PIVOT TE", epoch)
+                logger.info("PIVOT TE", epoch)
                 pivoted_te = True
             else:
                 # still optimizing the text encoder
@@ -2127,7 +2114,7 @@ def main(args):
 
             if epoch == num_train_epochs_transformer:
                 # flag to stop transformer optimization
-                print("PIVOT TRANSFORMER", epoch)
+                logger.info("PIVOT TRANSFORMER", epoch)
                 pivoted_tr = True
 
         for step, batch in enumerate(train_dataloader):
@@ -2136,7 +2123,7 @@ def main(args):
                 optimizer.param_groups[te_idx]["lr"] = 0.0
                 optimizer.param_groups[-1]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
-                print("PIVOT TRANSFORMER")
+                logger.info("PIVOT TRANSFORMER")
                 optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
@@ -2363,12 +2350,10 @@ def main(args):
                 )
                 if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    free_memory()
                 elif args.train_text_encoder:
                     del text_encoder_two
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
