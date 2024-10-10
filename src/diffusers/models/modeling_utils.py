@@ -683,9 +683,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
 
             # Force-set to `True` for more mem efficiency
-            if low_cpu_mem_usage is None:
-                low_cpu_mem_usage = True
-                logger.warning("`low_cpu_mem_usage` was None, now set to True since model is quantized.")
+            if not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
