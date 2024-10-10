@@ -316,14 +316,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             return
 
         hf_quantizer = getattr(self, "hf_quantizer", None)
-        quantization_serializable = (
-            hf_quantizer is not None and isinstance(hf_quantizer, DiffusersQuantizer) and hf_quantizer.is_serializable
-        )
-        if not quantization_serializable:
-            raise ValueError(
-                f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
-                " the logger on the traceback to understand the reason why the quantized model is not serializable."
+        if hf_quantizer is not None:
+            quantization_serializable = (
+                hf_quantizer is not None
+                and isinstance(hf_quantizer, DiffusersQuantizer)
+                and hf_quantizer.is_serializable
             )
+            if not quantization_serializable:
+                raise ValueError(
+                    f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
+                    " the logger on the traceback to understand the reason why the quantized model is not serializable."
+                )
 
         weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
         weights_name = _add_variant(weights_name, variant)
