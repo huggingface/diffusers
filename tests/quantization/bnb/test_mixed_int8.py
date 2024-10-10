@@ -337,11 +337,7 @@ class BnB8bitTrainingTests(Base8bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb8bitTests(Base8bitTests):
     def setUp(self) -> None:
-        mixed_int8_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            bnb_8bit_quant_type="nf4",
-            bnb_8bit_compute_dtype=torch.float16,
-        )
+        mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         model_8bit = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
         )
@@ -364,7 +360,7 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.0442, 0.0457, 0.0254, 0.0405, 0.0535, 0.0261, 0.0259, 0.04, 0.0452])
+        expected_slice = np.array([0.0149, 0.0322, 0.0073, 0.0134, 0.0332, 0.011, 0.002, 0.0232, 0.0193])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-2)
