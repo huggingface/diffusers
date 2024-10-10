@@ -2274,8 +2274,7 @@ class AttnProcessorNPU:
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim).to(query.dtype)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -4277,6 +4276,7 @@ ADDED_KV_ATTENTION_PROCESSORS = (
 CROSS_ATTENTION_PROCESSORS = (
     AttnProcessor,
     AttnProcessor2_0,
+    AttnProcessorNPU,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     IPAdapterAttnProcessor,
@@ -4286,6 +4286,7 @@ CROSS_ATTENTION_PROCESSORS = (
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
+    AttnProcessorNPU,
     FusedAttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
