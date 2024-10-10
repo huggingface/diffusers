@@ -1068,18 +1068,16 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
         add_noise = True if self.denoising_start is None else False
 
         # 6. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
         if latents is None:
             latents = self.prepare_latents(
-                batch_size * num_images_per_prompt,
-                num_channels_latents,
-                height,
-                width,
                 init_image,
                 latent_timestep,
+                batch_size,
+                num_images_per_prompt,
                 prompt_embeds.dtype,
                 device,
                 generator,
+                add_noise,
             )
 
         # 7. Prepare extra step kwargs.
