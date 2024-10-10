@@ -90,7 +90,8 @@ def resolve_interpolation_mode(interpolation_type: str):
             in torchvision.
 
     Returns:
-        `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize` transform.
+        `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize`
+        transform.
     """
     if not is_torchvision_available():
         raise ImportError(
@@ -542,8 +543,8 @@ class EMAModel:
 
     def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
-        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without:
-        affecting the original optimization process. Store the parameters before the `copy_to()` method. After
+        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters
+        without: affecting the original optimization process. Store the parameters before the `copy_to()` method. After
         validation (or model saving), use this to restore the former parameters.
 
         Args:
@@ -551,7 +552,7 @@ class EMAModel:
                 updated with the stored parameters. If `None`, the parameters with which this
                 `ExponentialMovingAverage` was initialized will be used.
         """
-        
+
         if self.temp_stored_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
         if self.foreach:
