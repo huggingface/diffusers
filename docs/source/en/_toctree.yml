@@ -242,6 +242,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/cogview3plus_transformer2d
+        title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
@@ -320,6 +322,8 @@
       title: BLIP-Diffusion
     - local: api/pipelines/cogvideox
       title: CogVideoX
+    - local: api/pipelines/cogview3
+      title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
