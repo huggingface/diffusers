@@ -822,12 +822,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
                     )
 
-                    # We store the original dtype for quantized models as we cannot easily retrieve it
-                    # once the weights have been quantized
-                    # Note that once you have loaded a quantized model, you can't change its dtype so this will
-                    # remain a single source of truth
-                    config["_pre_quantization_dtype"] = torch_dtype
-
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
                 if device_map is None and not is_sharded:
                     # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
