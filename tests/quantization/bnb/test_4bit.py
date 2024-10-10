@@ -19,7 +19,9 @@ import unittest
 import numpy as np
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     is_bitsandbytes_available,
     is_torch_available,
     is_transformers_available,
@@ -416,6 +418,27 @@ class SlowBnb4BitTests(Base4bitTests):
             generator=torch.manual_seed(self.seed),
             output_type="np",
         ).images
+
+    def test_moving_to_cpu_throws_warning(self):
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        model_4bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=nf4_config
+        )
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
+            _ = DiffusionPipeline.from_pretrained(
+                self.model_name, transformer=model_4bit, torch_dtype=torch.float16
+            ).to("cpu")
+        assert (
+            "Pipelines loaded with `dtype=torch.float16` and containing modules that have int weights"
+            in cap_logger.out
+        )
 
 
 @require_transformers_version_greater("4.44.0")

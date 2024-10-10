@@ -384,6 +384,23 @@ class SlowBnb8bitTests(Base8bitTests):
 
         assert "has been loaded in `bitsandbytes` 8bit" in cap_logger.out
 
+    def test_moving_to_cpu_throws_warning(self):
+        model_8bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name, subfolder="transformer", quantization_config=BitsAndBytesConfig(load_in_8bit=True)
+        )
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(30)
+
+        with CaptureLogger(logger) as cap_logger:
+            _ = DiffusionPipeline.from_pretrained(
+                self.model_name, transformer=model_8bit, torch_dtype=torch.float16
+            ).to("cpu")
+
+        assert (
+            "Pipelines loaded with `dtype=torch.float16` and containing modules that have int weights"
+            in cap_logger.out
+        )
+
     def test_generate_quality_dequantize(self):
         r"""
         Test that loading the model and unquantize it produce correct results.
