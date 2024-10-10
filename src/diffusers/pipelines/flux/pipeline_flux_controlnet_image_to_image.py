@@ -11,9 +11,9 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel, TextualInversionLoaderMixin
+from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
