@@ -86,12 +86,24 @@ def get_3d_sincos_pos_embed(
     temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
+    Creates 3D sinusoidal positional embeddings.
+
     Args:
         embed_dim (`int`):
+            The embedding dimension of inputs. It must be divisible by 16.
         spatial_size (`int` or `Tuple[int, int]`):
+            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied
+            to both spatial dimensions (height and width).
         temporal_size (`int`):
+            The temporal dimension of postional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for temporal grid interpolation.
+    
+    Returns:
+        `np.ndarray`:
+            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1], embed_dim]`.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
@@ -129,8 +141,24 @@ def get_2d_sincos_pos_embed(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
     """
-    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
-    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    Creates 2D sinusoidal positional embeddings.
+
+    Args:
+        embed_dim (`int`):
+            The embedding dimension.
+        grid_size (`int`):
+            The size of the grid height and width.
+        cls_token (`bool`, defaults to `False`):
+            Whether or not to add a classification token.
+        extra_tokens (`int`, defaults to `0`):
+            The number of extra tokens to add.
+        interpolation_scale (`float`, defaults to `1.0`):
+            The scale of the interpolation.
+
+    Returns:
+        pos_embed (`np.ndarray`):
+            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or
+            `[1 + grid_size*grid_size, embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
@@ -148,6 +176,16 @@ def get_2d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    r"""
+    This function generates 2D sinusoidal positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension.
+        grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
+    
+    Returns:
+        `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
+    """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
@@ -161,7 +199,14 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
+    This function generates 1D positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension `D`
+        pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
+    
+    Returns:
+        `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
