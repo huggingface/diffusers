@@ -1135,15 +1135,7 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
 
         # preparations for diff diff
         original_with_noise = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            init_image,
-            timesteps,
-            prompt_embeds.dtype,
-            device,
-            generator,
+            init_image, timesteps, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
         thresholds = torch.arange(total_time_steps, dtype=map.dtype) / total_time_steps
         thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(device)
