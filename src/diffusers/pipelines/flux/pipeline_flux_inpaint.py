@@ -239,6 +239,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer_2)
+
         text_inputs = self.tokenizer_2(
             prompt,
             padding="max_length",
@@ -282,6 +285,9 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
+
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
         text_inputs = self.tokenizer(
             prompt,
