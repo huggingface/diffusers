@@ -23,13 +23,13 @@ from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin, StableDiffusionXLLoraLoaderMixin
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.kolors.pipeline_output import KolorsPipelineOutput
 from diffusers.pipelines.kolors.text_encoder import ChatGLMModel
 from diffusers.pipelines.kolors.tokenizer import ChatGLMTokenizer
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
+from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -140,7 +140,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin):
+class KolorsDifferentialImg2ImgPipeline(
+    DiffusionPipeline, StableDiffusionMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin
+):
     r"""
     Pipeline for text-to-image generation using Kolors.
 
@@ -1177,7 +1179,7 @@ class KolorsDifferentialImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin,
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                
+
                 # diff diff
                 if i == 0:
                     latents = original_with_noise[:1]
