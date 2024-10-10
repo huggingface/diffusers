@@ -58,15 +58,15 @@ EXAMPLE_DOC_STRING = """
         >>> mask_image = load_image(mask_url).convert("RGB")
         >>> prompt = "A majestic tiger sitting on a bench"
         >>> image = pipe(
-            prompt=prompt,
-            image=init_image,
-            mask_image=mask_image,
-            strength=0.8,
-            num_inference_steps=50,
-            guidance_scale=guidance_scale,
-            generator=generator,
-            pag_scale=pag_scale,
-        ).images[0]
+        ...     prompt=prompt,
+        ...     image=init_image,
+        ...     mask_image=mask_image,
+        ...     strength=0.8,
+        ...     num_inference_steps=50,
+        ...     guidance_scale=guidance_scale,
+        ...     generator=generator,
+        ...     pag_scale=pag_scale,
+        ... ).images[0]
         ```
 """
 
