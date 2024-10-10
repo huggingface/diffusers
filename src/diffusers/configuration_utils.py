@@ -510,6 +510,9 @@ class ConfigMixin:
         # remove private attributes
         config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
 
+        # remove quantization_config
+        config_dict = {k: v for k, v in config_dict.items() if k != "quantization_config"}
+
         # 3. Create keyword arguments that will be passed to __init__ from expected keyword arguments
         init_dict = {}
         for key in expected_keys:
@@ -526,8 +529,7 @@ class ConfigMixin:
                 init_dict[key] = config_dict.pop(key)
 
         # 4. Give nice warning if unexpected values have been passed
-        only_quant_config_remaining = len(config_dict) == 1 and "quantization_config" in config_dict
-        if len(config_dict) > 0 and not only_quant_config_remaining:
+        if len(config_dict) > 0:
             logger.warning(
                 f"The config attributes {config_dict} were passed to {cls.__name__}, "
                 "but are not expected and will be ignored. Please verify your "

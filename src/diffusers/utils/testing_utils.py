@@ -447,19 +447,6 @@ def require_bitsandbytes_version_greater(bnb_version):
     return decorator
 
 
-def require_transformers_version_greater(transformers_version):
-    def decorator(test_case):
-        correct_transformers_version = is_transformers_available() and version.parse(
-            version.parse(importlib.metadata.version("transformers")).base_version
-        ) > version.parse(transformers_version)
-        return unittest.skipUnless(
-            correct_transformers_version,
-            f"test requires transformers backend with the version greater than {transformers_version}",
-        )(test_case)
-
-    return decorator
-
-
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
