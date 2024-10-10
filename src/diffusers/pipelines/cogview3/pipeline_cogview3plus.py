@@ -49,25 +49,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
-def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
-    tw = tgt_width
-    th = tgt_height
-    h, w = src
-    r = h / w
-    if r > (th / tw):
-        resize_height = th
-        resize_width = int(round(th / h * w))
-    else:
-        resize_width = tw
-        resize_height = int(round(tw / w * h))
-
-    crop_top = int(round((th - resize_height) / 2.0))
-    crop_left = int(round((tw - resize_width) / 2.0))
-
-    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
-
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -179,6 +160,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -278,8 +260,10 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
+        if do_classifier_free_guidance and negative_prompt is None:
+            negative_prompt_embeds = prompt_embeds.new_zeros(prompt_embeds.shape)
+
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
