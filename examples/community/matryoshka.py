@@ -654,7 +654,12 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if use_clipped_model_output:
             # the pred_epsilon is always re-derived from the clipped x_0 in Glide
-            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            if len(model_output) > 1:
+                pred_epsilon = []
+                for s, a_p_t, p_o_s, b_p_t in zip(sample, alpha_prod_t, pred_original_sample, beta_prod_t):
+                    pred_epsilon.append((s - a_p_t ** (0.5) * p_o_s) / b_p_t ** (0.5))
+            else:
+                pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         if len(model_output) > 1:
