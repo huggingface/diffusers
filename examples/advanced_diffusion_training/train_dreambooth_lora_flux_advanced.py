@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -23,7 +22,6 @@ import os
 import random
 import re
 import shutil
-import warnings
 from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional, Union
@@ -61,7 +59,7 @@ from diffusers.training_utils import (
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
-    free_memory
+    free_memory,
 )
 from diffusers.utils import (
     check_min_version,
@@ -2048,9 +2046,7 @@ def main(args):
             path = dirs[-1] if len(dirs) > 0 else None
 
         if path is None:
-            logger.info(
-                f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
+            logger.info(f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
             args.resume_from_checkpoint = None
             initial_global_step = 0
         else:
