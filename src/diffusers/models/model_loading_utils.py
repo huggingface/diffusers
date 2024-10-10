@@ -132,6 +132,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
+    # TODO: We merge the sharded checkpoints in case we're doing quantization. We can revisit this change
+    # when refactoring the _merge_sharded_checkpoints() method later.
     if isinstance(checkpoint_file, dict):
         return checkpoint_file
     try:
