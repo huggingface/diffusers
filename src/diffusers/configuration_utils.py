@@ -589,7 +589,6 @@ class ConfigMixin:
                 value = value.as_posix()
             return value
 
-        # IFWatermarker, for example, doesn't have a `config`.
         if "quantization_config" in config_dict:
             config_dict["quantization_config"] = (
                 config_dict.quantization_config.to_dict()
