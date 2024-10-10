@@ -27,7 +27,7 @@ from transformers import (
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
+from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel, TextualInversionLoaderMixin
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -234,6 +234,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
         text_inputs = self.tokenizer_2(
             prompt,
             padding="max_length",
@@ -276,6 +279,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
+
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
         text_inputs = self.tokenizer(
             prompt,
