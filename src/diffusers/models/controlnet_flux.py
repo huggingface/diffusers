@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from einops import rearrange
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import PeftAdapterMixin
@@ -55,6 +56,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         guidance_embeds: bool = False,
         axes_dims_rope: List[int] = [16, 56, 56],
         num_mode: int = None,
+        is_xlabs_controlnet: bool = False,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -106,7 +108,27 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if self.union:
             self.controlnet_mode_embedder = nn.Embedding(num_mode, self.inner_dim)
 
-        self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
+        if self.is_xlabs_controlnet:
+            self.input_hint_block = nn.Sequential(
+                nn.Conv2d(3, 16, 3, padding=1),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1, stride=2),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1, stride=2),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1),
+                nn.SiLU(),
+                nn.Conv2d(16, 16, 3, padding=1, stride=2),
+                nn.SiLU(),
+                zero_module(nn.Conv2d(16, 16, 3, padding=1))
+            )
+            self.controlnet_x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
+        else:
+            self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
 
         self.gradient_checkpointing = False
 
@@ -269,6 +291,9 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
         hidden_states = self.x_embedder(hidden_states)
 
+        if self.is_xlabs_controlnet:
+            controlnet_cond = self.input_hint_block(controlnet_cond)
+            controlnet_cond = rearrange(controlnet_cond, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
         # add
         hidden_states = hidden_states + self.controlnet_x_embedder(controlnet_cond)
 

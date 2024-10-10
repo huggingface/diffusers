@@ -740,7 +740,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         # 3. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
-        if isinstance(self.controlnet, FluxControlNetModel):
+        if isinstance(self.controlnet, FluxControlNetModel) and not self.controlnet.is_xlabs_controlnet:
             control_image = self.prepare_image(
                 image=control_image,
                 width=width,
@@ -772,6 +772,17 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     raise ValueError(" For `FluxControlNet`, `control_mode` should be an `int` or `None`")
                 control_mode = torch.tensor(control_mode).to(device, dtype=torch.long)
                 control_mode = control_mode.view(-1, 1).expand(control_image.shape[0], 1)
+
+        elif isinstance(self.controlnet, FluxControlNetModel) and self.controlnet.is_xlabs_controlnet:
+            control_image = self.prepare_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=self.vae.dtype,
+            )
 
         elif isinstance(self.controlnet, FluxMultiControlNetModel):
             control_images = []
