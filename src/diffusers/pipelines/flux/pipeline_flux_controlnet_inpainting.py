@@ -787,6 +787,10 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 Custom timesteps to use for the denoising process.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+                The percentage of total steps at which the ControlNet starts applying.
+            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+                The percentage of total steps at which the ControlNet stops applying.
             control_mode (`int` or `List[int]`, *optional*):
                 The mode for the ControlNet. If multiple ControlNets are used, this should be a list.
             controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
@@ -1073,17 +1077,18 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                     guidance = None
 
                 if isinstance(controlnet_keep[i], list):
-                    current_controlnet_conditioning_scale = [
-                        c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])
-                    ]
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
-                    current_controlnet_conditioning_scale = controlnet_conditioning_scale * controlnet_keep[i]
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
                     hidden_states=latents,
                     controlnet_cond=control_image,
                     controlnet_mode=control_mode,
-                    conditioning_scale=current_controlnet_conditioning_scale,
+                    conditioning_scale=cond_scale,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

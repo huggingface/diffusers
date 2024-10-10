@@ -901,17 +901,18 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 if isinstance(controlnet_keep[i], list):
-                    current_controlnet_conditioning_scale = [
-                        c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])
-                    ]
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
-                    current_controlnet_conditioning_scale = controlnet_conditioning_scale * controlnet_keep[i]
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 controlnet_block_samples, controlnet_single_block_samples = self.controlnet(
                     hidden_states=latents,
                     controlnet_cond=control_image,
                     controlnet_mode=control_mode,
-                    conditioning_scale=current_controlnet_conditioning_scale,
+                    conditioning_scale=cond_scale,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
