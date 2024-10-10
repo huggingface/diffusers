@@ -714,6 +714,58 @@ class FluxPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+class CogView3PlusPatchEmbed(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 16,
+        hidden_size: int = 2560,
+        patch_size: int = 2,
+        text_hidden_size: int = 4096,
+        pos_embed_max_size: int = 128,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.patch_size = patch_size
+        self.text_hidden_size = text_hidden_size
+        self.pos_embed_max_size = pos_embed_max_size
+        # Linear projection for image patches
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
+
+        # Linear projection for text embeddings
+        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
+
+        pos_embed = get_2d_sincos_pos_embed(hidden_size, pos_embed_max_size, base_size=pos_embed_max_size)
+        pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
+        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float(), persistent=False)
+
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor = None) -> torch.Tensor:
+        batch_size, channel, height, width = hidden_states.shape
+        if height % self.patch_size != 0 or width % self.patch_size != 0:
+            raise ValueError("Height and width must be divisible by patch size")
+        height = height // self.patch_size
+        width = width // self.patch_size
+        hidden_states = hidden_states.view(batch_size, channel, height, self.patch_size, width, self.patch_size)
+        hidden_states = hidden_states.permute(0, 2, 4, 1, 3, 5).contiguous()
+        hidden_states = hidden_states.view(batch_size, height * width, channel * self.patch_size * self.patch_size)
+
+        # Project the patches
+        hidden_states = self.proj(hidden_states)
+        encoder_hidden_states = self.text_proj(encoder_hidden_states)
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        # Calculate text_length
+        text_length = encoder_hidden_states.shape[1]
+
+        image_pos_embed = self.pos_embed[:height, :width].reshape(height * width, -1)
+        text_pos_embed = torch.zeros(
+            (text_length, self.hidden_size), dtype=image_pos_embed.dtype, device=image_pos_embed.device
+        )
+        pos_embed = torch.cat([text_pos_embed, image_pos_embed], dim=0)[None, ...]
+
+        return (hidden_states + pos_embed).to(hidden_states.dtype)
+
+
 class TimestepEmbedding(nn.Module):
     def __init__(
         self,
@@ -1018,6 +1070,27 @@ class IPAdapterFaceIDImageProjection(nn.Module):
         return self.norm(x)
 
 
+class CogView3CombineTimestepLabelEmbedding(nn.Module):
+    def __init__(self, time_embed_dim, label_embed_dim, in_channels=2560):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=in_channels, flip_sin_to_cos=True, downscale_freq_shift=1)
+        self.timestep_embedder = TimestepEmbedding(in_channels=in_channels, time_embed_dim=time_embed_dim)
+        self.label_embedder = nn.Sequential(
+            nn.Linear(label_embed_dim, time_embed_dim),
+            nn.SiLU(),
+            nn.Linear(time_embed_dim, time_embed_dim),
+        )
+
+    def forward(self, timestep, class_labels, hidden_dtype=None):
+        t_proj = self.time_proj(timestep)
+        t_emb = self.timestep_embedder(t_proj.to(dtype=hidden_dtype))
+        label_emb = self.label_embedder(class_labels)
+        emb = t_emb + label_emb
+
+        return emb
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -1038,11 +1111,11 @@ class CombinedTimestepLabelEmbeddings(nn.Module):
 
 
 class CombinedTimestepTextProjEmbeddings(nn.Module):
-    def __init__(self, embedding_dim, pooled_projection_dim):
+    def __init__(self, embedding_dim, pooled_projection_dim, timesteps_dim=256):
         super().__init__()
 
-        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.time_proj = Timesteps(num_channels=timesteps_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=embedding_dim)
         self.text_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
 
     def forward(self, timestep, pooled_projection):
