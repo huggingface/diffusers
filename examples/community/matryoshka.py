@@ -4533,11 +4533,16 @@ class MatryoshkaPipeline(
                 self.do_classifier_free_guidance,
             )
 
+
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
         # 4. Prepare timesteps
         if isinstance(self.scheduler, MatryoshkaDDIMScheduler):
             timesteps, num_inference_steps = retrieve_timesteps(
                 self.scheduler, num_inference_steps, device, timesteps, sigmas
             )
+
+            extra_step_kwargs |= {"use_clipped_model_output": True}
         else:
             timesteps = self.scheduler.timesteps
 
@@ -4556,9 +4561,6 @@ class MatryoshkaPipeline(
             self.scheduler.scales,
             latents,
         )
-
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
         added_cond_kwargs = (
