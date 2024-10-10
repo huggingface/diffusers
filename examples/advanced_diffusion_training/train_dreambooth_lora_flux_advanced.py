@@ -2099,7 +2099,7 @@ def main(args):
         if args.train_text_encoder or args.train_text_encoder_ti:
             if epoch == num_train_epochs_text_encoder:
                 # flag to stop text encoder optimization
-                logger.info("PIVOT TE", epoch)
+                logger.info(f"PIVOT TE {epoch}")
                 pivoted_te = True
             else:
                 # still optimizing the text encoder
@@ -2114,7 +2114,7 @@ def main(args):
 
             if epoch == num_train_epochs_transformer:
                 # flag to stop transformer optimization
-                logger.info("PIVOT TRANSFORMER", epoch)
+                logger.info(f"PIVOT TRANSFORMER {epoch}")
                 pivoted_tr = True
 
         for step, batch in enumerate(train_dataloader):
@@ -2123,7 +2123,7 @@ def main(args):
                 optimizer.param_groups[te_idx]["lr"] = 0.0
                 optimizer.param_groups[-1]["lr"] = 0.0
             elif pivoted_tr and not pure_textual_inversion:
-                logger.info("PIVOT TRANSFORMER")
+                logger.info(f"PIVOT TRANSFORMER {epoch}")
                 optimizer.param_groups[0]["lr"] = 0.0
 
             with accelerator.accumulate(transformer):
