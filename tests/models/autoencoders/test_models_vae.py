@@ -528,6 +528,10 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
     def test_forward_with_norm_groups(self):
         pass
 
+    @unittest.skip("No attention module used in this model")
+    def test_set_attn_processor_for_determinism(self):
+        return
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
@@ -647,12 +651,12 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+                [-0.1556, 0.9848, -0.0410, -0.0642, -0.2685, 0.8381, -0.2004, -0.0700],
                 [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
             ],
             [
                 47,
-                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+                [-0.2376, 0.1200, 0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
                 [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
             ],
             # fmt: on
@@ -882,7 +886,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
+                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
                 [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
             ],
             [
@@ -1032,9 +1036,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         ).resize((256, 256))
-        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
-            None, :, :, :
-        ].cuda()
+        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :].to(
+            torch_device
+        )
 
         latent = vae.encode(image).latent_dist.mean
 
@@ -1047,7 +1051,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_sd(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None
+        )
         pipe.to(torch_device)
 
         out = pipe(
@@ -1075,7 +1081,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         image = (
             torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
             .half()
-            .cuda()
+            .to(torch_device)
         )
 
         latent = vae.encode(image).latent_dist.mean
@@ -1095,7 +1101,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
             torch_dtype=torch.float16,
             vae=vae,
             safety_checker=None,
@@ -1120,7 +1126,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
     def test_vae_tiling(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

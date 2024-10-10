@@ -271,8 +271,7 @@ if cache_version < 1:
 def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
-        split_index = -2 if weights_name.endswith(".index.json") else -1
-        splits = splits[:-split_index] + [variant] + splits[-split_index:]
+        splits = splits[:-1] + [variant] + splits[-1:]
         weights_name = ".".join(splits)
 
     return weights_name
@@ -500,6 +499,19 @@ def _get_checkpoint_shard_files(
             cached_folder = os.path.join(cached_folder, subfolder)
 
     return cached_folder, sharded_metadata
+
+
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+    if filenames and folder:
+        raise ValueError("Both `filenames` and `folder` cannot be provided.")
+    if not filenames:
+        filenames = []
+        for _, _, files in os.walk(folder):
+            for file in files:
+                filenames.append(os.path.basename(file))
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+    return any(variant_file_re.match(f) is not None for f in filenames)
 
 
 class PushToHubMixin:
