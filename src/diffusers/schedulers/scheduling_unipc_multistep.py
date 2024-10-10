@@ -527,72 +527,13 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         )
         return sigmas
 
-    def convert_noise_to_x0(self, model_output: torch.Tensor, sample: torch.Tensor, timestep: int) -> torch.Tensor:
-        """
-        Convert to original sample x0 from noise prediction.
-
-        Args:
-            model_output (`torch.Tensor`): The model output.
-            sample (`torch.Tensor`): A current instance of a sample created by the diffusion process.
-            timestep (`int`): The current discrete timestep in the diffusion chain.
-
-        Returns:
-            `torch.Tensor`: The predicted original sample (x0).
-        """
-        if self.step_index is None:
-            self._init_step_index(timestep)
-        sigma = self.sigmas[self.step_index]
-        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
-
-        if self.config.prediction_type == "epsilon":
-            return (sample - sigma_t * model_output) / alpha_t
-        elif self.config.prediction_type == "sample":
-            return model_output
-        elif self.config.prediction_type == "v_prediction":
-            return alpha_t * sample - sigma_t * model_output
-        else:
-            raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`."
-            )
-
-    def convert_x0_to_noise(self, pred_x0: torch.Tensor, sample: torch.Tensor, timestep: int) -> torch.Tensor:
-        """
-        Convert to noise prediction from original sample x0.
-
-        Args:
-            pred_x0 (`torch.Tensor`): The predicted original sample (x0).
-            sample (`torch.Tensor`): A current instance of a sample created by the diffusion process.
-            timestep (`int`): The current discrete timestep in the diffusion chain.
-
-        Returns:
-            `torch.Tensor`: The converted noise prediction.
-        """
-        if self.step_index is None:
-            self._init_step_index(timestep)
-        sigma = self.sigmas[self.step_index]
-        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
-
-        if self.config.prediction_type == "epsilon":
-            x0_pred = (sample - alpha_t * pred_x0) / sigma_t
-        elif self.config.prediction_type == "sample":
-            x0_pred = pred_x0
-        elif self.config.prediction_type == "v_prediction":
-            x0_pred = alpha_t * pred_x0 + sigma_t * sample
-        else:
-            raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction`."
-            )
-        if self.config.thresholding:
-            x0_pred = self._threshold_sample(x0_pred)
-        return x0_pred
-
     def convert_model_output(
         self,
         model_output: torch.Tensor,
         *args,
         sample: torch.Tensor = None,
+        predict_x0: bool = True,
+        step_index: Optional[int] = None,
         **kwargs,
     ) -> torch.Tensor:
         r"""
@@ -622,11 +563,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 "1.0.0",
                 "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
+        step_index = step_index if step_index is not None else self.step_index
 
-        sigma = self.sigmas[self.step_index]
+        sigma = self.sigmas[step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
 
-        if self.predict_x0:
+        if predict_x0:
             if self.config.prediction_type == "epsilon":
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
@@ -996,7 +938,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None
         )
 
-        model_output_convert = self.convert_model_output(model_output, sample=sample)
+        model_output_convert = self.convert_model_output(model_output, sample=sample, predict_x0=self.predict_x0)
         if use_corrector:
             sample = self.multistep_uni_c_bh_update(
                 this_model_output=model_output_convert,

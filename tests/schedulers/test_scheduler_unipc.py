@@ -297,8 +297,8 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
             for i, t in enumerate(scheduler.timesteps):
                 residual = model(sample, t)
-                pred_x0 = scheduler.convert_noise_to_x0(residual, sample, timestep=t)
-                pred_noise = scheduler.convert_x0_to_noise(pred_x0, sample, timestep=t)
+                pred_x0 = scheduler.convert_model_output(residual, sample=sample, predict_x0=True, step_index=i)
+                pred_noise = scheduler.convert_model_output(pred_x0, sample=sample, predict_x0=False, step_index=i)
                 assert (
                     abs(torch.mean(torch.abs(pred_noise)).item() - torch.mean(torch.abs(residual)).item()) < 1e-4
                 ), prediction_type
@@ -314,8 +314,8 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(num_inference_steps)
         for i, t in enumerate(scheduler.timesteps):
             residual = model(sample, t)
-            pred_x0 = scheduler.convert_noise_to_x0(residual, sample, timestep=t)
-            pred_noise = scheduler.convert_x0_to_noise(pred_x0, sample, timestep=t)
+            pred_x0 = scheduler.convert_model_output(residual, sample=sample, predict_x0=True, step_index=i)
+            pred_noise = scheduler.convert_model_output(pred_x0, sample=sample, predict_x0=False, step_index=i)
             sample = scheduler.step(residual, t, sample).prev_sample
         assert (
             abs(torch.mean(torch.abs(pred_noise)).item() - torch.mean(torch.abs(residual)).item()) < 2e-2
