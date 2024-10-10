@@ -624,10 +624,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
                 raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
-        if (low_cpu_mem_usage is None or not low_cpu_mem_usage) and cls._keep_in_fp32_modules is not None:
-            low_cpu_mem_usage = True
-            logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
-
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
 
@@ -683,7 +679,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
 
             # Force-set to `True` for more mem efficiency
-            if not low_cpu_mem_usage:
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+                logger.info("Set `low_cpu_mem_usage` to True as `hf_quantizer` is not None.")
+            elif not low_cpu_mem_usage:
                 raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
 
         # Check if `_keep_in_fp32_modules` is not None
@@ -694,6 +693,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules = cls._keep_in_fp32_modules
             if not isinstance(keep_in_fp32_modules, list):
                 keep_in_fp32_modules = [keep_in_fp32_modules]
+
+            if low_cpu_mem_usage is None:
+                low_cpu_mem_usage = True
+                logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
+            elif not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
         else:
             keep_in_fp32_modules = []
         #######################################
