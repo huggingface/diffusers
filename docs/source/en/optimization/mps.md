@@ -24,7 +24,7 @@ The `mps` backend uses PyTorch's `.to()` interface to move the Stable Diffusion 
 ```python
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 pipe = pipe.to("mps")
 
 # Recommended if your computer has < 64 GB of RAM
@@ -46,7 +46,7 @@ If you're using **PyTorch 1.13**, you need to "prime" the pipeline with an addit
 ```diff
   from diffusers import DiffusionPipeline
 
-  pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to("mps")
+  pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5").to("mps")
   pipe.enable_attention_slicing()
 
   prompt = "a photo of an astronaut riding a horse on mars"
@@ -67,7 +67,7 @@ To prevent this from happening, we recommend *attention slicing* to reduce memor
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
 pipeline.enable_attention_slicing()
 ```
 

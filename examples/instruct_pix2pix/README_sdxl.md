@@ -155,7 +155,7 @@ If you're looking for some interesting ways to use the InstructPix2Pix training 
 We aim to understand the differences resulting from the use of SD-1.5 and SDXL-0.9 as pretrained models. To achieve this, we trained on the [small toy dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) using both of these pretrained models. The training script is as follows:
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5" or "stabilityai/stable-diffusion-xl-base-0.9"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5" or "stabilityai/stable-diffusion-xl-base-0.9"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
 accelerate launch train_instruct_pix2pix.py \

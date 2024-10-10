@@ -19,7 +19,7 @@ The Stable Diffusion model can also be applied to inpainting which lets you edit
 It is recommended to use this pipeline with checkpoints that have been specifically fine-tuned for inpainting, such
 as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). Default
 text-to-image Stable Diffusion checkpoints, such as
-[runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) are also compatible but they might be less performant.
+[stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) are also compatible but they might be less performant.
 
 <Tip>
 

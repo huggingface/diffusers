@@ -20,12 +20,12 @@ specific language governing permissions and limitations under the License.
 
 このチュートリアルでは、[`DiffusionPipeline`]を用いて、より速く、より良い計算を行う方法を説明します。
 
-まず、[`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)モデルをロードします：
+まず、[`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)モデルをロードします：
 
 ```python
 from diffusers import DiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 

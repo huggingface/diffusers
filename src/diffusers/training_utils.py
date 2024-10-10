@@ -260,12 +260,8 @@ def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
     return weighting
 
 
-def clear_objs_and_retain_memory(objs: List[Any]):
-    """Deletes `objs` and runs garbage collection. Then clears the cache of the available accelerator."""
-    if len(objs) >= 1:
-        for obj in objs:
-            del obj
-
+def free_memory():
+    """Runs garbage collection. Then clears the cache of the available accelerator."""
     gc.collect()
 
     if torch.cuda.is_available():

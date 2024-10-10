@@ -51,7 +51,7 @@ When running `accelerate config`, if we specify torch compile mode to True there
 The following uses the [Conceptual Captions 12M (CC12M) dataset](https://github.com/google-research-datasets/conceptual-12m) as an example, and for illustrative purposes only. For best results you may consider large and high-quality text-image datasets such as [LAION](https://laion.ai/blog/laion-400-open-dataset/). You may also need to search the hyperparameter space according to the dataset you use.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/saved/model"
 
 accelerate launch train_lcm_distill_sd_wds.py \
@@ -85,7 +85,7 @@ Instead of fine-tuning the full model, we can also just train a LoRA that can be
 The following uses the [Conceptual Captions 12M (CC12M) dataset](https://github.com/google-research-datasets/conceptual-12m) as an example. For best results you may consider large and high-quality text-image datasets such as [LAION](https://laion.ai/blog/laion-400-open-dataset/).
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/saved/model"
 
 accelerate launch train_lcm_distill_lora_sd_wds.py \

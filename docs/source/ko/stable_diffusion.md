@@ -20,12 +20,12 @@ specific language governing permissions and limitations under the License.
 
 이 튜토리얼에서는 [`DiffusionPipeline`]을 사용하여 더 빠르고 효과적으로 생성하는 방법을 안내합니다.
 
-[`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 모델을 불러와서 시작합니다:
+[`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 모델을 불러와서 시작합니다:
 
 ```python
 from diffusers import DiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(model_id)
 ```
 

@@ -203,7 +203,7 @@ from diffusers import StableDiffusionImg2ImgPipeline
 import gradio as gr
 
 
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
 
 gr.Interface.from_pipeline(pipe).launch()
 ```

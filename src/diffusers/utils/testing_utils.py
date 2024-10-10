@@ -252,6 +252,18 @@ def require_torch_2(test_case):
     )
 
 
+def require_torch_version_greater_equal(torch_version):
+    """Decorator marking a test that requires torch with a specific version or greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
@@ -371,6 +383,24 @@ def require_peft_version_greater(peft_version):
         ) > version.parse(peft_version)
         return unittest.skipUnless(
             correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        )(test_case)
+
+    return decorator
+
+
+def require_transformers_version_greater(transformers_version):
+    """
+    Decorator marking a test that requires transformers with a specific version, this would require some specific
+    versions of PEFT and transformers.
+    """
+
+    def decorator(test_case):
+        correct_transformers_version = is_transformers_available() and version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse(transformers_version)
+        return unittest.skipUnless(
+            correct_transformers_version,
+            f"test requires transformers with the version greater than {transformers_version}",
         )(test_case)
 
     return decorator

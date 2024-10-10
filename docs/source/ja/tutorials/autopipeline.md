@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-Diffusersは様々なタスクをこなすことができ、テキストから画像、画像から画像、画像の修復など、複数のタスクに対して同じように事前学習された重みを再利用することができます。しかし、ライブラリや拡散モデルに慣れていない場合、どのタスクにどのパイプラインを使えばいいのかがわかりにくいかもしれません。例えば、 [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) チェックポイントをテキストから画像に変換するために使用している場合、それぞれ[`StableDiffusionImg2ImgPipeline`]クラスと[`StableDiffusionInpaintPipeline`]クラスでチェックポイントをロードすることで、画像から画像や画像の修復にも使えることを知らない可能性もあります。
+Diffusersは様々なタスクをこなすことができ、テキストから画像、画像から画像、画像の修復など、複数のタスクに対して同じように事前学習された重みを再利用することができます。しかし、ライブラリや拡散モデルに慣れていない場合、どのタスクにどのパイプラインを使えばいいのかがわかりにくいかもしれません。例えば、 [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) チェックポイントをテキストから画像に変換するために使用している場合、それぞれ[`StableDiffusionImg2ImgPipeline`]クラスと[`StableDiffusionInpaintPipeline`]クラスでチェックポイントをロードすることで、画像から画像や画像の修復にも使えることを知らない可能性もあります。
 
 `AutoPipeline` クラスは、🤗 Diffusers の様々なパイプラインをよりシンプルするために設計されています。この汎用的でタスク重視のパイプラインによってタスクそのものに集中することができます。`AutoPipeline` は、使用するべき正しいパイプラインクラスを自動的に検出するため、特定のパイプラインクラス名を知らなくても、タスクのチェックポイントを簡単にロードできます。
 
@@ -25,14 +25,14 @@ Diffusersは様々なタスクをこなすことができ、テキストから�
 このチュートリアルでは、`AutoPipeline` を使用して、事前に学習された重みが与えられたときに、特定のタスクを読み込むためのパイプラインクラスを自動的に推測する方法を示します。
 
 ## タスクに合わせてAutoPipeline を選択する
-まずはチェックポイントを選ぶことから始めましょう。例えば、 [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) チェックポイントでテキストから画像への変換したいなら、[`AutoPipelineForText2Image`]を使います:
+まずはチェックポイントを選ぶことから始めましょう。例えば、 [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) チェックポイントでテキストから画像への変換したいなら、[`AutoPipelineForText2Image`]を使います:
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 prompt = "peasant and dragon combat, wood cutting style, viking era, bevel with rune"
 
@@ -46,7 +46,7 @@ image
 
 [`AutoPipelineForText2Image`] を具体的に見ていきましょう:
 
-1. [`model_index.json`](https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/model_index.json) ファイルから `"stable-diffusion"` クラスを自動的に検出します。
+1. [`model_index.json`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/model_index.json) ファイルから `"stable-diffusion"` クラスを自動的に検出します。
 2. `"stable-diffusion"` のクラス名に基づいて、テキストから画像へ変換する [`StableDiffusionPipeline`] を読み込みます。
 
 同様に、画像から画像へ変換する場合、[`AutoPipelineForImage2Image`] は `model_index.json` ファイルから `"stable-diffusion"` チェックポイントを検出し、対応する [`StableDiffusionImg2ImgPipeline`] を読み込みます。また、入力画像にノイズの量やバリエーションの追加を決めるための強さなど、パイプラインクラスに固有の追加引数を渡すこともできます:
@@ -59,7 +59,7 @@ from PIL import Image
 from io import BytesIO
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
@@ -128,7 +128,7 @@ from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 )
 print(type(pipeline_text2img))
 "<class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'>"
@@ -148,7 +148,7 @@ from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
     requires_safety_checker=False,

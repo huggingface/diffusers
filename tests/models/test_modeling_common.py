@@ -27,8 +27,9 @@ import numpy as np
 import requests_mock
 import torch
 from accelerate.utils import compute_module_sizes
-from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub import ModelCard, delete_repo, snapshot_download
 from huggingface_hub.utils import is_jinja_available
+from parameterized import parameterized
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
@@ -39,7 +40,13 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.training_utils import EMAModel
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_torch_npu_available, is_xformers_available, logging
+from diffusers.utils import (
+    SAFE_WEIGHTS_INDEX_NAME,
+    WEIGHTS_INDEX_NAME,
+    is_torch_npu_available,
+    is_xformers_available,
+    logging,
+)
 from diffusers.utils.hub_utils import _add_variant
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -99,6 +106,52 @@ class ModelUtilsTest(unittest.TestCase):
 
         # make sure that error message states what keys are missing
         assert "conv_out.bias" in str(error_context.exception)
+
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds", "unet", False),
+            ("hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds", "unet", True),
+            ("hf-internal-testing/tiny-sd-unet-with-sharded-ckpt", None, False),
+            ("hf-internal-testing/tiny-sd-unet-with-sharded-ckpt", None, True),
+        ]
+    )
+    def test_variant_sharded_ckpt_legacy_format_raises_warning(self, repo_id, subfolder, use_local):
+        def load_model(path):
+            kwargs = {"variant": "fp16"}
+            if subfolder:
+                kwargs["subfolder"] = subfolder
+            return UNet2DConditionModel.from_pretrained(path, **kwargs)
+
+        with self.assertWarns(FutureWarning) as warning:
+            if use_local:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    tmpdirname = snapshot_download(repo_id=repo_id)
+                    _ = load_model(tmpdirname)
+            else:
+                _ = load_model(repo_id)
+
+        warning_message = str(warning.warnings[0].message)
+        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_message)
+
+    # Local tests are already covered down below.
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", None, "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "unet", "fp16"),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants", None, None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-no-variants-subfolder", "unet", None),
+        ]
+    )
+    def test_variant_sharded_ckpt_loads_from_hub(self, repo_id, subfolder, variant=None):
+        def load_model():
+            kwargs = {}
+            if variant:
+                kwargs["variant"] = variant
+            if subfolder:
+                kwargs["subfolder"] = subfolder
+            return UNet2DConditionModel.from_pretrained(repo_id, **kwargs)
+
+        assert load_model()
 
     def test_cached_files_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
@@ -924,6 +977,7 @@ class ModelTesterMixin:
             # testing if loading works with the variant when the checkpoint is sharded should be
             # enough.
             model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
+
             index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_filename)))
 
@@ -975,6 +1029,44 @@ class ModelTesterMixin:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
             self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+
+    # This test is okay without a GPU because we're not running any execution. We're just serializing
+    # and check if the resultant files are following an expected format.
+    def test_variant_sharded_ckpt_right_format(self):
+        for use_safe in [True, False]:
+            extension = ".safetensors" if use_safe else ".bin"
+            config, _ = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**config).eval()
+
+            model_size = compute_module_sizes(model)[""]
+            max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
+            variant = "fp16"
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                model.cpu().save_pretrained(
+                    tmp_dir, variant=variant, max_shard_size=f"{max_shard_size}KB", safe_serialization=use_safe
+                )
+                index_variant = _add_variant(SAFE_WEIGHTS_INDEX_NAME if use_safe else WEIGHTS_INDEX_NAME, variant)
+                self.assertTrue(os.path.exists(os.path.join(tmp_dir, index_variant)))
+
+                # Now check if the right number of shards exists. First, let's get the number of shards.
+                # Since this number can be dependent on the model being tested, it's important that we calculate it
+                # instead of hardcoding it.
+                expected_num_shards = caculate_expected_num_shards(os.path.join(tmp_dir, index_variant))
+                actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(extension)])
+                self.assertTrue(actual_num_shards == expected_num_shards)
+
+                # Check if the variant is present as a substring in the checkpoints.
+                shard_files = [
+                    file
+                    for file in os.listdir(tmp_dir)
+                    if file.endswith(extension) or ("index" in file and "json" in file)
+                ]
+                assert all(variant in f for f in shard_files)
+
+                # Check if the sharded checkpoints were serialized in the right format.
+                shard_files = [file for file in os.listdir(tmp_dir) if file.endswith(extension)]
+                # Example: diffusion_pytorch_model.fp16-00001-of-00002.safetensors
+                assert all(f.split(".")[1].split("-")[0] == variant for f in shard_files)
 
 
 @is_staging_test

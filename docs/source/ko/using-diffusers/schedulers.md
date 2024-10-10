@@ -30,7 +30,7 @@ diffusion 파이프라인은 diffusion 모델, 스케줄러 등의 컴포넌트�
 
 ## 파이프라인 불러오기
 
-먼저 스테이블 diffusion 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 diffusion을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/runwayml/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요.
+먼저 스테이블 diffusion 파이프라인을 불러오도록 해보겠습니다. 물론 스테이블 diffusion을 사용하기 위해서는, 허깅페이스 허브에 등록된 사용자여야 하며, 관련 [라이센스](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)에 동의해야 한다는 점을 잊지 말아주세요.
 
 *역자 주: 다만, 현재 신규로 생성한 허깅페이스 계정에 대해서는 라이센스 동의를 요구하지 않는 것으로 보입니다!*
 
@@ -43,7 +43,7 @@ import torch
 login()
 
 # Now we can download the pipeline
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 ```
 
 다음으로, GPU로 이동합니다.
@@ -288,7 +288,7 @@ from flax.training.common_utils import shard
 
 from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
     model_id,
     subfolder="scheduler"

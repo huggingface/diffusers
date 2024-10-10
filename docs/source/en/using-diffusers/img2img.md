@@ -66,7 +66,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 
 ## Popular models
 
-The most popular image-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder). The results from the Stable Diffusion and Kandinsky models vary due to their architecture differences and training process; you can generally expect SDXL to produce higher quality images than Stable Diffusion v1.5. Let's take a quick look at how to use each of these models and compare their results.
+The most popular image-to-image models are [Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder). The results from the Stable Diffusion and Kandinsky models vary due to their architecture differences and training process; you can generally expect SDXL to produce higher quality images than Stable Diffusion v1.5. Let's take a quick look at how to use each of these models and compare their results.
 
 ### Stable Diffusion v1.5
 
@@ -78,7 +78,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -203,7 +203,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -247,7 +247,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -334,7 +334,7 @@ import torch
 from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -370,7 +370,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -433,7 +433,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -499,7 +499,7 @@ from diffusers import AutoPipelineForImage2Image
 import torch
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -536,7 +536,7 @@ import torch
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed

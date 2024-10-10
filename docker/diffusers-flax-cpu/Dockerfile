@@ -43,6 +43,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         numpy==1.26.4 \
         scipy \
         tensorboard \
-        transformers
+        transformers \
+        hf_transfer
 
 CMD ["/bin/bash"]

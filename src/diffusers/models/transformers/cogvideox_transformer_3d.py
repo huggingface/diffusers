@@ -19,7 +19,8 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
@@ -152,7 +153,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 
@@ -235,9 +236,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
+        use_learned_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
+
+        if not use_rotary_positional_embeddings and use_learned_positional_embeddings:
+            raise ValueError(
+                "There are no CogVideoX checkpoints available with disable rotary embeddings and learned positional "
+                "embeddings. If you're using a custom model and/or believe this should be supported, please open an "
+                "issue at https://github.com/huggingface/diffusers/issues."
+            )
 
         # 1. Patch embedding
         self.patch_embed = CogVideoXPatchEmbed(
@@ -254,6 +263,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             spatial_interpolation_scale=spatial_interpolation_scale,
             temporal_interpolation_scale=temporal_interpolation_scale,
             use_positional_embeddings=not use_rotary_positional_embeddings,
+            use_learned_positional_embeddings=use_learned_positional_embeddings,
         )
         self.embedding_dropout = nn.Dropout(dropout)
 
@@ -402,8 +412,24 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ):
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
@@ -465,9 +491,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
+        # Note: we use `-1` instead of `channels`:
+        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
+        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

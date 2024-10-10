@@ -35,7 +35,7 @@ This guide will show you how to perform inference with TCD-LoRAs for a variety o
 
 | Base model                                                                                      | TCD-LoRA checkpoint                                            |
 |-------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
-| [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)                  | [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA)           |
+| [stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)                  | [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA)           |
 | [stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)       | [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA) |
 | [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA)           |
 

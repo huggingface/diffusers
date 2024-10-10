@@ -75,6 +75,12 @@ image
 
 ![pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_12_1.png)
 
+<Tip>
+
+By default, if the most up-to-date versions of PEFT and Transformers are detected, `low_cpu_mem_usage` is set to `True` to speed up the loading time of LoRA checkpoints. 
+
+</Tip>
+
 ## Merge adapters
 
 You can also merge different adapter checkpoints for inference to blend their styles together.
