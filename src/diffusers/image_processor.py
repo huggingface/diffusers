@@ -48,7 +48,7 @@ def is_valid_image(image) -> bool:
 
     Args:
         image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
-            The image to validate. It can be a PIL image, a numpy array, or a torch tensor.
+            The image to validate. It can be a PIL image, a NumPy array, or a torch tensor.
 
     Returns:
         `bool`:
@@ -548,7 +548,7 @@ class VaeImageProcessor(ConfigMixin):
 
         Args:
             image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
-                The image input, which can be a PIL image, numpy array, or PyTorch tensor. If it is a numpy array, it
+                The image input, which can be a PIL image, NumPy array, or PyTorch tensor. If it is a NumPy array, it
                 should have shape `[batch, height, width]` or `[batch, height, width, channels]`. If it is a PyTorch
                 tensor, it should have shape `[batch, channels, height, width]`.
             height (`Optional[int]`, *optional*, defaults to `None`):
@@ -1274,10 +1274,10 @@ class PixArtImageProcessor(VaeImageProcessor):
         Resizes and crops a tensor of images to the specified dimensions.
 
         Args:
-            samples (`torch.Tensor`): A tensor of shape (N, C, H, W) where N is the batch size,
-                                        C is the number of channels, H is the height, and W is the width.
-            new_width (`int`): The desired width of the output images.
-            new_height (`int`): The desired height of the output images.
+            samples (`torch.Tensor`):
+                A tensor of shape (N, C, H, W) where N is the batch size, C is the number of channels, H is the height,
+                and W is the width. new_width (`int`): The desired width of the output images. new_height (`int`): The
+                desired height of the output images.
 
         Returns:
             `torch.Tensor`: A tensor containing the resized and cropped images.
