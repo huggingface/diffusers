@@ -19,8 +19,8 @@
 # Adapted to Diffusers by [M. Tolga Cangöz](https://github.com/tolgacangoz).
 
 
-import inspect
 import gc
+import inspect
 import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -633,7 +633,10 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         # 4. Clip or threshold "predicted x_0"
         if self.config.thresholding:
             if len(model_output) > 1:
-                pred_original_sample = [self._threshold_sample(p_o_s * scale) / scale for p_o_s, scale in zip(pred_original_sample, self.scales)]
+                pred_original_sample = [
+                    self._threshold_sample(p_o_s * scale) / scale
+                    for p_o_s, scale in zip(pred_original_sample, self.scales)
+                ]
             else:
                 pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
@@ -3777,14 +3780,17 @@ class MatryoshkaPipeline(
         super().__init__()
 
         if nesting_level == 0:
-            unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                  subfolder="unet/nesting_level_0")
+            unet = MatryoshkaUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_0"
+            )
         elif nesting_level == 1:
-            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                subfolder="unet/nesting_level_1")
+            unet = NestedUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_1"
+            )
         elif nesting_level == 2:
-            unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                subfolder="unet/nesting_level_2")
+            unet = NestedUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_2"
+            )
         else:
             raise ValueError("Currently, nesting levels 0, 1, and 2 are supported.")
 
@@ -3854,17 +3860,20 @@ class MatryoshkaPipeline(
         if nesting_level == 0:
             if hasattr(self.unet, "nest_ratio"):
                 self.scheduler.scales = None
-            self.unet = MatryoshkaUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                      subfolder="unet/nesting_level_0").to(self.device)
+            self.unet = MatryoshkaUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_0"
+            ).to(self.device)
             self.config.nesting_level = 0
         elif nesting_level == 1:
-            self.unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                    subfolder="unet/nesting_level_1").to(self.device)
+            self.unet = NestedUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_1"
+            ).to(self.device)
             self.config.nesting_level = 1
             self.scheduler.scales = self.unet.nest_ratio + [1]
         elif nesting_level == 2:
-            self.unet = NestedUNet2DConditionModel.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                                                    subfolder="unet/nesting_level_2").to(self.device)
+            self.unet = NestedUNet2DConditionModel.from_pretrained(
+                "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_2"
+            ).to(self.device)
             self.config.nesting_level = 2
             self.scheduler.scales = self.unet.nest_ratio + [1]
         else:
@@ -4030,7 +4039,9 @@ class MatryoshkaPipeline(
                 prompt_attention_mask = torch.cat(
                     [
                         prompt_attention_mask,
-                        torch.zeros(batch_size, max_len - len(prompt_attention_mask[0]), dtype=torch.long, device=device),
+                        torch.zeros(
+                            batch_size, max_len - len(prompt_attention_mask[0]), dtype=torch.long, device=device
+                        ),
                     ],
                     dim=1,
                 )
@@ -4042,7 +4053,12 @@ class MatryoshkaPipeline(
                 negative_prompt_attention_mask = torch.cat(
                     [
                         negative_prompt_attention_mask,
-                        torch.zeros(batch_size, max_len - len(negative_prompt_attention_mask[0]), dtype=torch.long, device=device),
+                        torch.zeros(
+                            batch_size,
+                            max_len - len(negative_prompt_attention_mask[0]),
+                            dtype=torch.long,
+                            device=device,
+                        ),
                     ],
                     dim=1,
                 )
@@ -4532,7 +4548,6 @@ class MatryoshkaPipeline(
                 batch_size * num_images_per_prompt,
                 self.do_classifier_free_guidance,
             )
-
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
