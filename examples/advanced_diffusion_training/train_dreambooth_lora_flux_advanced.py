@@ -654,7 +654,9 @@ def parse_args(input_args=None):
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params")
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for transformer params"
+    )
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
     )
@@ -1506,7 +1508,7 @@ def main(args):
     if args.train_text_encoder_ti:
         # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
         # TOK2" -> ["TOK", "TOK2"] etc.
-        token_abstraction_list = [place_holder.strip() for place_holder in re.split(r',\s*', args.token_abstraction)]
+        token_abstraction_list = [place_holder.strip() for place_holder in re.split(r",\s*", args.token_abstraction)]
         logger.info(f"list of token identifiers: {token_abstraction_list}")
 
         if args.initializer_concept is None:
@@ -1534,8 +1536,10 @@ def main(args):
         for token_abs, token_replacement in token_abstraction_dict.items():
             new_instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
             if args.instance_prompt == new_instance_prompt:
-                logger.warning("Note! the instance prompt provided in --instance_prompt does not include the token abstraction specified "
-                               "--token_abstraction. This may lead to incorrect optimization of text embeddings during pivotal tuning")
+                logger.warning(
+                    "Note! the instance prompt provided in --instance_prompt does not include the token abstraction specified "
+                    "--token_abstraction. This may lead to incorrect optimization of text embeddings during pivotal tuning"
+                )
             args.instance_prompt = new_instance_prompt
             if args.with_prior_preservation:
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
