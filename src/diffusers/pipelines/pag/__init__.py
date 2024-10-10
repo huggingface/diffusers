@@ -54,11 +54,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_pag_hunyuandit import HunyuanDiTPAGPipeline
         from .pipeline_pag_kolors import KolorsPAGPipeline
         from .pipeline_pag_pixart_sigma import PixArtSigmaPAGPipeline
-        from .pipeline_pag_sd_img2img import StableDiffusionPAGImg2ImgPipeline
-        from .pipeline_pag_sd_inpaint import StableDiffusionPAGInpaintPipeline
         from .pipeline_pag_sd import StableDiffusionPAGPipeline
         from .pipeline_pag_sd_3 import StableDiffusion3PAGPipeline
         from .pipeline_pag_sd_animatediff import AnimateDiffPAGPipeline
+        from .pipeline_pag_sd_img2img import StableDiffusionPAGImg2ImgPipeline
+        from .pipeline_pag_sd_inpaint import StableDiffusionPAGInpaintPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
         from .pipeline_pag_sd_xl_img2img import StableDiffusionXLPAGImg2ImgPipeline
         from .pipeline_pag_sd_xl_inpaint import StableDiffusionXLPAGInpaintPipeline
