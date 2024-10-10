@@ -847,7 +847,7 @@ class TokenEmbeddingsHandler:
                 # Convert the initializer_token, placeholder_token to ids
                 initializer_token_ids = tokenizer.encode(args.initializer_concept, add_special_tokens=False)
                 for token_idx, token_id in enumerate(self.train_ids):
-                    embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_ids[token_idx]].clone()
+                    embeds.weight.data[token_id] = (embeds.weight.data)[initializer_token_ids[token_idx % len(initializer_token_ids)]].clone()
 
             self.embeddings_settings[f"original_embeddings_{idx}"] = embeds.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
