@@ -619,12 +619,12 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     @nightly
     def test_integration_logits_for_dora_lora(self):
         pipeline = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipeline.load_lora_weights("hf-internal-testing/dora-trained-on-kohya")
-        pipeline.enable_model_cpu_offload()
 
         logger = logging.get_logger("diffusers.loaders.lora_pipeline")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
+            pipeline.load_lora_weights("hf-internal-testing/dora-trained-on-kohya")
+            pipeline.enable_model_cpu_offload()
             images = pipeline(
                 "photo of ohwx dog",
                 num_inference_steps=10,
