@@ -1276,8 +1276,9 @@ class PixArtImageProcessor(VaeImageProcessor):
         Args:
             samples (`torch.Tensor`):
                 A tensor of shape (N, C, H, W) where N is the batch size, C is the number of channels, H is the height,
-                and W is the width. new_width (`int`): The desired width of the output images. new_height (`int`): The
-                desired height of the output images.
+                and W is the width. 
+                new_width (`int`): The desired width of the output images. 
+                new_height (`int`): The desired height of the output images.
 
         Returns:
             `torch.Tensor`: A tensor containing the resized and cropped images.
