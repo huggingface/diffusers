@@ -555,6 +555,13 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
+        "--lora_blocks",
+        type=str,
+        default=None,
+        help=('The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "q_proj,k_proj,v_proj,out_proj" will result in lora training of attention layers only'),
+    )
+
+    parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
@@ -1188,12 +1195,18 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
 
-    # now we will add new LoRA weights to the attention layers
+    if args.lora_blocks is not None:
+        target_modules = [block.strip() for block in args.lora_blocks.split(",")]
+    else:
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0",
+                        "add_k_proj", "add_q_proj", "add_v_proj", "to_add_out", "ff.net.0.proj","ff.net.2", "ff_context.net.0.proj","ff_context.net.2"]
+
+    # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=target_modules,
     )
     transformer.add_adapter(transformer_lora_config)
     if args.train_text_encoder:
