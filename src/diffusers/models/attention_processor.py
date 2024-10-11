@@ -4277,6 +4277,7 @@ ADDED_KV_ATTENTION_PROCESSORS = (
 CROSS_ATTENTION_PROCESSORS = (
     AttnProcessor,
     AttnProcessor2_0,
+    AttnProcessorNPU,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     IPAdapterAttnProcessor,
@@ -4286,6 +4287,7 @@ CROSS_ATTENTION_PROCESSORS = (
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
+    AttnProcessorNPU,
     FusedAttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
