@@ -34,7 +34,7 @@ pipe = CogVideoXImageToVideoPipeline.from_pretrained(
 ## Text-to-Video
 For text-to-video, pass a text prompt. By default, CogVideoX generates a 720x480 video for the best results.
 
-```
+```py
 import torch
 from diffusers import CogVideoXPipeline
 from diffusers.utils import export_to_video
