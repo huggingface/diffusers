@@ -1088,8 +1088,10 @@ class StableDiffusionPipeline(
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     if adaptive_projected_guidance:
+                        sigma = self.scheduler.sigmas[self.scheduler.step_index]
+                        noise_pred = latents - sigma * noise_pred
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = normalized_guidance(
                             noise_pred_text,
                             noise_pred_uncond,
@@ -1098,7 +1100,9 @@ class StableDiffusionPipeline(
                             eta,
                             adaptive_projected_guidance_rescale_factor,
                         )
+                        noise_pred = (latents - noise_pred) / sigma
                     else:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
