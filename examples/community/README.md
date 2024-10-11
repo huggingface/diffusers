@@ -105,7 +105,23 @@ Here is the demonstration of Adaptive Mask Inpainting:
 You can find additional information about Adaptive Mask Inpainting in the [paper](https://arxiv.org/pdf/2401.12978) or in the [project website](https://snuvclab.github.io/coma).
 
 #### Usage example
+First, clone the diffusers github repository, and run the following command to set environment.
+```Shell
+git clone https://github.com/huggingface/diffusers.git
+cd diffusers
 
+conda create --name ami python=3.9 -y
+conda activate ami
+
+conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch -c conda-forge -y
+python -m pip install detectron2==0.6 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu113/torch1.10/index.html
+pip install easydict
+pip install diffusers==0.20.2 accelerate safetensors transformers
+pip install setuptools==59.5.0
+pip install opencv-python
+pip install numpy==1.24.1
+```
+Then, run the below code under 'diffusers' directory.
 ```python
 import numpy as np
 import torch
