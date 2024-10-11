@@ -1007,8 +1007,7 @@ def encode_prompt(
         text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
     )
 
-    text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
-    text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
+    text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
     return prompt_embeds, pooled_prompt_embeds, text_ids
 
