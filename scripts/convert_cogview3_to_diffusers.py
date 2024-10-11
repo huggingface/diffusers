@@ -156,8 +156,7 @@ def convert_cogview3_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
 
 
 def main(args):
-    if args.dtype is None:
-        dtype = None
+
     if args.dtype == "fp16":
         dtype = torch.float16
     elif args.dtype == "bf16":
@@ -212,7 +211,6 @@ def main(args):
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
-    # TODO: figure out the correct scheduler if it is same as CogVideoXDDIMScheduler
     scheduler = CogVideoXDDIMScheduler.from_config(
         {
             "snr_shift_scale": 4.0,
