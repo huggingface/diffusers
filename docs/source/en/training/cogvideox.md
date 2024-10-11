@@ -10,11 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 # CogVideoX
-From the comparison information of the public rating rankings, CogVideoX has higher scores than other models in terms of consistent theme, dynamic information, consistent background, object information, human action, and spatial relationship. The classification dimensions where it scores lower than other models are mainly motion smoothness, imaging quality, multiple objects, color, scene, appearance style, and temporal style.
+
+🤗 Diffusers framework is huggface's open source solution related to diffusion model. Through module tools, it can be conveniently and quickly integrated with custom frameworks. In the direction of model training, Diffusers has accelerate acceleration support and is compatible with common reasoning frameworks.
 
 The actual test of the video instruction dimension found that our CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style, but cannot achieve good results in the dimensions of human action, spatial relationship, and multiple objects.
 
-You can make up for the gap in this aspect by fine-tuning training, and train the dataset that lacks effect through the Diffusers framework,ct through fine-tuning training, and train the dataset that lacks effect through the diffuser out-of-the-box framework,
+Through fine-tuning training to make up for this gap, the Diffusers framework is used to train the datasets with poor results.
 
 ## Data Preparation
 
@@ -273,7 +274,7 @@ pipe.vae.enable_tiling()
 + The memory usage of model fine-tuning is tested in an `8 * H100` environment, and the program automatically
   uses `Zero 2` optimization. If a specific number of GPUs is marked in the table, that number or more GPUs must be used
   for fine-tuning.
-  
+
 
  | **Attribute**                        | **CogVideoX-2B**                                                       | **CogVideoX-5B**                                                       |
 | ------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
