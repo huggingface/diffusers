@@ -32,7 +32,7 @@ pipe = CogVideoXImageToVideoPipeline.from_pretrained(
 ```
 
 ## Text-to-Video
-For text-to-Video, pass a text prompt. By default, CogVideoX generates a 720 x 480 Video for the best results
+For text-to-video, pass a text prompt. By default, CogVideoX generates a 720x480 video for the best results.
 
 ```
 import torch
