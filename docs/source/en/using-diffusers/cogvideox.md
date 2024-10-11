@@ -17,7 +17,7 @@ CogVideoX is an open-source version of the video generation model originating fr
 Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
 
 
-```
+```py
 from diffusers import CogVideoXPipeline, CogVideoXImageToVideoPipeline
 pipe = CogVideoXPipeline.from_pretrained(
     "THUDM/CogVideoX-2b",
