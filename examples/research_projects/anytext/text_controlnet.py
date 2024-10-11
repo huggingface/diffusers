@@ -172,7 +172,9 @@ class AnyTextControlNetModel(ControlNetModel):
             global_pool_conditions,
             addition_embed_type_num_heads,
         )
-        self.controlnet_cond_embedding = None  # This part is computed inside AuxiliaryLatentModel
+        self.controlnet_cond_embedding = (
+            None  # TODO: Instead of this, design a custom `ControlNetConditioningEmbedding`
+        )
 
     def forward(
         self,
