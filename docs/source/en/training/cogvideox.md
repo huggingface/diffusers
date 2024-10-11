@@ -143,7 +143,7 @@ When running `accelerate config`, if you use torch.compile, there can be dramati
 
 If you would like to push your model to the Hub after training is completed with a neat model card, make sure you're logged in:
 
-```
+```bash
 huggingface-cli login
 
 # Alternatively, you could upload your model manually using:
