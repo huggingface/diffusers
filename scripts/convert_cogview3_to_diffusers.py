@@ -156,7 +156,6 @@ def convert_cogview3_vae_checkpoint_to_diffusers(ckpt_path, vae_config):
 
 
 def main(args):
-
     if args.dtype == "fp16":
         dtype = torch.float16
     elif args.dtype == "bf16":
