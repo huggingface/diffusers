@@ -75,11 +75,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> # load control net and stable diffusion v1-5
-        >>> text_controlnet = TextControlNetModel.from_pretrained("a/TextControlNet", torch_dtype=torch.float16)
-        >>> pipe = AnyTextPipeline.from_pretrained(
-        ...     "a/AnyText", controlnet=text_controlnet, torch_dtype=torch.float16,
-        ...     variant="fp16"
-        ... ).to("cuda")
+        >>> text_controlnet = TextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/anytext", controlnet=text_controlnet,
+        ...                                          torch_dtype=torch.float16, variant="fp16",
+        ...                                          ).to("cuda")
 
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> # uncomment following line if PyTorch>=2.0 is not installed for memory optimization
@@ -93,10 +92,9 @@ EXAMPLE_DOC_STRING = """
         >>> generator = torch.Generator("cpu").manual_seed(66273235)
         >>> prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
         >>> draw_pos = load_image("www.huggingface.co/a/AnyText/tree/main/examples/gen9.png")
-        >>> image = pipe(
-        ...     prompt, num_inference_steps=20, generator=generator, mode="generate",
-        ...     draw_pos=draw_pos
-        ... ).images[0]
+        >>> image = pipe(prompt, num_inference_steps=20, generator=generator, mode="generate",
+        ...              draw_pos=draw_pos,
+        ...              ).images[0]
         >>> image
         ```
 """
