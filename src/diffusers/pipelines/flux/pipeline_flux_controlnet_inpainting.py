@@ -216,6 +216,8 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         ],
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = FluxMultiControlNetModel(controlnet)
 
         self.register_modules(
             scheduler=scheduler,

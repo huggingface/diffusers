@@ -202,6 +202,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         ],
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = FluxMultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
