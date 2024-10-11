@@ -23,7 +23,7 @@ from ..loaders import PeftAdapterMixin
 from ..models.attention_processor import AttentionProcessor
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from .controlnet import BaseOutput, zero_module
+from .controlnet import BaseOutput, zero_module, ControlNetConditioningEmbedding
 from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from .modeling_outputs import Transformer2DModelOutput
 from .transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
@@ -108,22 +108,9 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             self.controlnet_mode_embedder = nn.Embedding(num_mode, self.inner_dim)
 
         if self.is_xlabs_controlnet:
-            self.input_hint_block = nn.Sequential(
-                nn.Conv2d(3, 16, 3, padding=1),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1, stride=2),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1, stride=2),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1),
-                nn.SiLU(),
-                nn.Conv2d(16, 16, 3, padding=1, stride=2),
-                nn.SiLU(),
-                zero_module(nn.Conv2d(16, 16, 3, padding=1))
+            self.input_hint_block = ControlNetConditioningEmbedding(
+                conditioning_embedding_channels=16,
+                block_out_channels=(16,16,16,16)
             )
             self.controlnet_x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
         else:
