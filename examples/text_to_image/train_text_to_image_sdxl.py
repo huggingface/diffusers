@@ -59,6 +59,7 @@ check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
+    import torch_npu
     torch.npu.config.allow_internal_format = False
 
 DATASET_NAME_MAPPING = {
@@ -531,7 +532,7 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
     return {"prompt_embeds": prompt_embeds.cpu(), "pooled_prompt_embeds": pooled_prompt_embeds.cpu()}
 
 
-def compute_vae_encodings(batch, vae):
+def compute_vae_encodings(batch, accelerator, vae):
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -540,7 +541,7 @@ def compute_vae_encodings(batch, vae):
     with torch.no_grad():
         model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
-    return {"model_input": model_input.cpu()}
+    return {"model_input": accelerator.gather(model_input)}
 
 
 def generate_timestep_weights(args, num_timesteps):
@@ -910,7 +911,7 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
         caption_column=args.caption_column,
     )
-    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
+    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, accelerator=accelerator, vae=vae)
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
 
@@ -935,7 +936,10 @@ def main(args):
     del compute_vae_encodings_fn, compute_embeddings_fn, text_encoder_one, text_encoder_two
     del text_encoders, tokenizers, vae
     gc.collect()
-    torch.cuda.empty_cache()
+    if is_torch_npu_available():
+        torch_npu.npu.empty_cache()
+    else:
+        torch.cuda.empty_cache()
 
     def collate_fn(examples):
         model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
@@ -1091,8 +1095,7 @@ def main(args):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
                     target_size = (args.resolution, args.resolution)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
-                    add_time_ids = torch.tensor([add_time_ids])
-                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
+                    add_time_ids = torch.tensor([add_time_ids], device=accelerator.device, dtype=weight_dtype)
                     return add_time_ids
 
                 add_time_ids = torch.cat(
@@ -1261,7 +1264,10 @@ def main(args):
                         )
 
                 del pipeline
-                torch.cuda.empty_cache()
+                if is_torch_npu_available():
+                    torch_npu.npu.empty_cache()
+                else:
+                    torch.cuda.empty_cache()
 
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
