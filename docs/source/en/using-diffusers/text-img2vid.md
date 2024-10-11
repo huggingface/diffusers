@@ -32,7 +32,7 @@ This guide will show you how to generate videos, how to configure video model pa
 Begin by loading the [`CogVideoXPipeline`] and passing an initial text or image to generate a video.
 <Tip>
 
-CogVideoX offers various generation models. The image-to-video generation model checkpoint [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) uses the [`CogVideoXImageToVideoPipeline`] ,while the text-to-video generation model checkpoints are divided into [THUDM/CogVideoX-5b](https://huggingface.co/THUDM/CogVideoX-5b) and [THUDM/CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b) uses the  [`CogVideoXPipeline`] 
+CogVideoX is available for image-to-video and text-to-video. [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) uses the [`CogVideoXImageToVideoPipeline`] for image-to-video. [THUDM/CogVideoX-5b](https://huggingface.co/THUDM/CogVideoX-5b) and [THUDM/CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b) are available for text-to-video with the [`CogVideoXPipeline`].
  
 </Tip>
 
