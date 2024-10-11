@@ -27,9 +27,9 @@ This guide will show you how to generate videos, how to configure video model pa
 
 ### CogVideoX
  
-[CogVideoX](../api/pipelines/cogvideox) is on the  3D Variational Autoencoder (VAE) to compresses videos along both spatial and temporal dimensions .
+[CogVideoX](../api/pipelines/cogvideox) uses a 3D Variational Autoencoder (VAE) to compress videos along the spatial and temporal dimensions.
 
-Begin by loading the [`CogVideoXPipeline`] and passing an initial txt or image to generate a video from.
+Begin by loading the [`CogVideoXPipeline`] and passing an initial text or image to generate a video.
 <Tip>
 
 CogVideoX offers various generation models. The image-to-video generation model checkpoint [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) uses the [`CogVideoXImageToVideoPipeline`] ,while the text-to-video generation model checkpoints are divided into [THUDM/CogVideoX-5b](https://huggingface.co/THUDM/CogVideoX-5b) and [THUDM/CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b) uses the  [`CogVideoXPipeline`] 
