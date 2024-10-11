@@ -3762,8 +3762,7 @@ class MatryoshkaPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet"
-    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
-    _exclude_from_cpu_offload = ["safety_checker"]
+    _optional_components = ["unet", "feature_extractor", "image_encoder"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
