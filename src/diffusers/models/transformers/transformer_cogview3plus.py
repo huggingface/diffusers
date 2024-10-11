@@ -113,6 +113,10 @@ class CogView3PlusTransformerBlock(nn.Module):
         hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output[:, text_seq_length:]
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * ff_output[:, :text_seq_length]
 
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+        if encoder_hidden_states.dtype == torch.float16:
+            encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
         return hidden_states, encoder_hidden_states
 
 
