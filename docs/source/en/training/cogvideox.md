@@ -10,22 +10,19 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 # CogVideoX
+From the comparison information of the public rating rankings, CogVideoX has higher scores than other models in terms of consistent theme, dynamic information, consistent background, object information, human action, and spatial relationship. The classification dimensions where it scores lower than other models are mainly motion smoothness, imaging quality, multiple objects, color, scene, appearance style, and temporal style.
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+The actual test of the video instruction dimension found that our CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style, but cannot achieve good results in the dimensions of human action, spatial relationship, and multiple objects.
 
-In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
-
-- Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
-- Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
-- LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
-
-At the moment, LoRA finetuning has only been tested for [CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b).
+You can make up for the gap in this aspect by fine-tuning training, and train the dataset that lacks effect through the Diffusers framework,ct through fine-tuning training, and train the dataset that lacks effect through the diffuser out-of-the-box framework,
 
 ## Data Preparation
 
-The training scripts accepts data in two formats.
+The training scripts accepts data in two formats.  
 
-**First data format**
+first one is more suitable for small-scale training, and the second one uses csv encapsulation. In the future, diffusers will support the <Video> tag. The encapsulated `dataset` component can call your data through the stream to meet the requirements of large-scale training.
+
+**Small format**
 
 Two files where one file contains line-separated prompts and another file contains line-separated paths to video data (the path to video files must be relative to the path you pass when specifying `--instance_data_root`). Let's take a look at an example to understand this better!
 
@@ -61,7 +58,7 @@ Overall, this is how your dataset would look like if you ran the `tree` command 
 
 When using this format, the `--caption_column` must be `prompts.txt` and `--video_column` must be `videos.txt`.
 
-**Second data format**
+**Stream format**
 
 You could use a single CSV file. For the sake of this example, assume you have a `metadata.csv` file. The expected format is:
 
@@ -78,7 +75,7 @@ When using this format, the `--caption_column` must be `<CAPTION_COLUMN>` and `-
 
 You are not strictly restricted to the CSV format. Any format works as long as the `load_dataset` method supports the file format to load a basic `<PATH_TO_VIDEO_COLUMN>` and `<CAPTION_COLUMN>`. The reason for going through these dataset organization gymnastics for loading video data is because `load_dataset` does not fully support all kinds of video formats.
 
-> [!TIP]
+> [!NOTE]
 > CogVideoX works best with long and descriptive LLM-augmented prompts for video generation. We recommend pre-processing your videos by first generating a summary using a VLM and then augmenting the prompts with an LLM. To generate the above captions, we use [MiniCPM-V-26](https://huggingface.co/openbmb/MiniCPM-V-2_6) and [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct). A very barebones and no-frills example for this is available [here](https://gist.github.com/a-r-r-o-w/4dee20250e82f4e44690a02351324a4a). The official recommendation for augmenting prompts is [ChatGLM](https://huggingface.co/THUDM?search_models=chatglm) and a length of 50-100 words is considered good.
 
 >![NOTE]
@@ -112,14 +109,13 @@ pip install -e .
 
 Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
+- PyTorch
+
 ```bash
 cd examples/cogvideo
 pip install -r requirements.txt
 ```
-</hfoption> 
-</hfoptions>
+
 And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
@@ -202,7 +198,7 @@ To better track our training experiments, we're using the following flags in the
 
 Setting the `<ID_TOKEN>` is not necessary. From some limited experimentation, we found it works better (as it resembles [Dreambooth](https://huggingface.co/docs/diffusers/en/training/dreambooth) training) than without. When provided, the `<ID_TOKEN>` is appended to the beginning of each prompt. So, if your `<ID_TOKEN>` was `"DISNEY"` and your prompt was `"Spiderman swinging over buildings"`, the effective prompt used in training would be `"DISNEY Spiderman swinging over buildings"`. When not provided, you would either be training without any additional token or could augment your dataset to apply the token where you wish before starting the training.
 
-> [!TIP]
+> [!NOTE]
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training.
 
 > [!IMPORTANT]
