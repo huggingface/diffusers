@@ -132,7 +132,7 @@
     - local: training/instructpix2pix
       title: InstructPix2Pix
     - local: training/cogvideox
-      title: CogvideoX
+      title: CogVideoX
     title: Models
   - isExpanded: false
     sections:
