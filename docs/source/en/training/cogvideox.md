@@ -239,3 +239,48 @@ prompt = "A vast, shimmering ocean flows gracefully under a twilight sky, its wa
 frames = pipe(prompt, guidance_scale=6, use_dynamic_cfg=True).frames[0]
 export_to_video(frames, "output.mp4", fps=8)
 ```
+
+
+## Reduce memory usage
+
+While testing using the diffusers library, all optimizations included in the diffusers library were enabled. This
+scheme has not been tested for actual memory usage on devices outside of **NVIDIA A100 / H100** architectures.
+Generally, this scheme can be adapted to all **NVIDIA Ampere architecture** and above devices. If optimizations are
+disabled, memory consumption will multiply, with peak memory usage being about 3 times the value in the table.
+However, speed will increase by about 3-4 times. You can selectively disable some optimizations, including:
+
+```
+pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+```
+
++ For multi-GPU inference, the `enable_sequential_cpu_offload()` optimization needs to be disabled.
++ Using INT8 models will slow down inference, which is done to accommodate lower-memory GPUs while maintaining minimal
+  video quality loss, though inference speed will significantly decrease.
++ The CogVideoX-2B model was trained in `FP16` precision, and all CogVideoX-5B models were trained in `BF16` precision.
+  We recommend using the precision in which the model was trained for inference.
++ [PytorchAO](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be
+  used to quantize the text encoder, transformer, and VAE modules to reduce the memory requirements of CogVideoX. This
+  allows the model to run on free T4 Colabs or GPUs with smaller memory! Also, note that TorchAO quantization is fully
+  compatible with `torch.compile`, which can significantly improve inference speed. FP8 precision must be used on
+  devices with NVIDIA H100 and above, requiring source installation of `torch`, `torchao`, `diffusers`, and `accelerate`
+  Python packages. CUDA 12.4 is recommended.
++ The inference speed tests also used the above memory optimization scheme. Without memory optimization, inference speed
+  increases by about 10%. Only the `diffusers` version of the model supports quantization.
++ The model only supports English input; other languages can be translated into English for use via large model
+  refinement.
++ The memory usage of model fine-tuning is tested in an `8 * H100` environment, and the program automatically
+  uses `Zero 2` optimization. If a specific number of GPUs is marked in the table, that number or more GPUs must be used
+  for fine-tuning.
+  
+
+ | **Attribute**                        | **CogVideoX-2B**                                                       | **CogVideoX-5B**                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Model Name**                       | CogVideoX-2B                                                           | CogVideoX-5B                                                           |
+| **Inference Precision**              | FP16* (Recommended), BF16, FP32, FP8*, INT8, Not supported INT4         | BF16 (Recommended), FP16, FP32, FP8*, INT8, Not supported INT4         |
+| **Single GPU Inference VRAM**        | FP16: Using diffusers 12.5GB* INT8: Using diffusers with torchao 7.8GB* | BF16: Using diffusers 20.7GB* INT8: Using diffusers with torchao 11.4GB* |
+| **Multi GPU Inference VRAM**         | FP16: Using diffusers 10GB*                                             | BF16: Using diffusers 15GB*                                             |
+| **Inference Speed**                  | Single A100: ~90 seconds, Single H100: ~45 seconds                      | Single A100: ~180 seconds, Single H100: ~90 seconds                     |
+| **Fine-tuning Precision**            | FP16                                                                   | BF16                                                                   |
+| **Fine-tuning VRAM Consumption**     | 47 GB (bs=1, LORA) 61 GB (bs=2, LORA) 62GB (bs=1, SFT)                 | 63 GB (bs=1, LORA) 80 GB (bs=2, LORA) 75GB (bs=1, SFT)                 |

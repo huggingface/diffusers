@@ -12,6 +12,8 @@ specific language governing permissions and limitations under the License.
 # CogVideoX
 CogVideoX is an open-source version of the video generation model originating from QingYing. The table below displays the list of video generation models we currently offer, along with their foundational information.
 
+The model integrates text, time, and space into a transformer architecture. This architecture abandons the traditional cross attention module and converts it to Full Attention. It uses Expert Block to achieve alignment of two different modal spaces: text and video.
+
 
 ## Load model checkpoints
 Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
@@ -71,9 +73,7 @@ export_to_video(video, "output.mp4", fps=8)
 ## Image-to-Video
 
 
-The are two variants of this model,[THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V). The CogVideoX checkpoint is trained to generate 60 frames  
-
-You'll use the CogVideoX-5b-I2V  checkpoint for this guide.
+You'll use the [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V)  checkpoint for this guide.
 
 ```py
 import torch
@@ -114,36 +114,3 @@ export_to_video(video, "output.mp4", fps=8)
   </div>
 </div>
 
-
-## Reduce memory usage
-
-While testing using the diffusers library, all optimizations included in the diffusers library were enabled. This
-scheme has not been tested for actual memory usage on devices outside of **NVIDIA A100 / H100** architectures.
-Generally, this scheme can be adapted to all **NVIDIA Ampere architecture** and above devices. If optimizations are
-disabled, memory consumption will multiply, with peak memory usage being about 3 times the value in the table.
-However, speed will increase by about 3-4 times. You can selectively disable some optimizations, including:
-
-```
-pipe.enable_sequential_cpu_offload()
-pipe.vae.enable_slicing()
-pipe.vae.enable_tiling()
-```
-
-+ For multi-GPU inference, the `enable_sequential_cpu_offload()` optimization needs to be disabled.
-+ Using INT8 models will slow down inference, which is done to accommodate lower-memory GPUs while maintaining minimal
-  video quality loss, though inference speed will significantly decrease.
-+ The CogVideoX-2B model was trained in `FP16` precision, and all CogVideoX-5B models were trained in `BF16` precision.
-  We recommend using the precision in which the model was trained for inference.
-+ [PytorchAO](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be
-  used to quantize the text encoder, transformer, and VAE modules to reduce the memory requirements of CogVideoX. This
-  allows the model to run on free T4 Colabs or GPUs with smaller memory! Also, note that TorchAO quantization is fully
-  compatible with `torch.compile`, which can significantly improve inference speed. FP8 precision must be used on
-  devices with NVIDIA H100 and above, requiring source installation of `torch`, `torchao`, `diffusers`, and `accelerate`
-  Python packages. CUDA 12.4 is recommended.
-+ The inference speed tests also used the above memory optimization scheme. Without memory optimization, inference speed
-  increases by about 10%. Only the `diffusers` version of the model supports quantization.
-+ The model only supports English input; other languages can be translated into English for use via large model
-  refinement.
-+ The memory usage of model fine-tuning is tested in an `8 * H100` environment, and the program automatically
-  uses `Zero 2` optimization. If a specific number of GPUs is marked in the table, that number or more GPUs must be used
-  for fine-tuning.
