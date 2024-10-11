@@ -86,7 +86,7 @@ pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion
 
 ### Adaptive Mask Inpainting
 
-**Hyeonwoo Kim, Sookwan Han, Patrick Kwon, Hanbyul Joo**
+**Hyeonwoo Kim\*, Sookwan Han\*, Patrick Kwon, Hanbyul Joo**
 
 **Seoul National University, Naver Webtoon**
 
