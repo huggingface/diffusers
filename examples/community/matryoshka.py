@@ -102,15 +102,21 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import MatryoshkaPipeline
+        >>> from diffusers import DiffusionPipeline
+        >>> from diffusers.utils import make_image_grid
 
-        >>> pipe = MatryoshkaPipeline.from_pretrained("A/B", torch_dtype=torch.float16, variant="fp16")
-        >>> pipe = pipe.to("cuda")
+        >>> # nesting_level=0 -> 64x64; nesting_level=1 -> 256x256 - 64x64; nesting_level=2 -> 1024x1024 - 256x256 - 64x64
+        >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+        >>>                                          custom_pipeline="matryoshka").to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        >>> image
+        >>> prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
+        >>> prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
+        >>> negative_prompt = "deformed, mutated, ugly, disfigured, blur, blurry, noise, noisy"
+        >>> image = pipe(prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=50).images
+        >>> make_image_grid(image, rows=1, cols=len(image))
+
+        >>> pipe.change_nesting_level(<int>)  # 0, 1, or 2
+        >>> # 50+, 100+, and 250+ num_inference_steps are recommended for nesting levels 0, 1, and 2 respectively.
         ```
 """
 
