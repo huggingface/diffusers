@@ -56,6 +56,40 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+message = """
+
+Example Demo of Adaptive Mask Inpainting
+
+Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models
+Kim et al.
+ECCV-2024 (Oral)
+
+
+Please prepare the environment via
+
+```
+conda create --name ami python=3.9
+conda activate ami
+
+conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch -c conda-forge
+python -m pip install detectron2==0.6 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu113/torch1.10/index.html
+pip install easydict
+pip install diffusers==0.20.2 accelerate safetensors transformers
+pip install setuptools==59.5.0
+pip install opencv-python
+```
+
+
+Put the code inside the root of diffusers library (i.e., as '/home/username/diffusers/adaptive_mask_inpainting_example.py') and run the python code.
+
+
+
+
+"""
+print(message)
+
+
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -117,7 +151,10 @@ EXAMPLE_DOC_STRING = """
 
 import requests
 from tqdm import tqdm
-def download_file(url, output_file):
+def download_file(url, output_file, exist_ok: bool):
+    if exist_ok and os.path.exists(output_file):
+        return
+        
     response = requests.get(url, stream=True)
 
     with open(output_file, "wb") as file:
@@ -336,7 +373,11 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-
+        
+        self.register_adaptive_mask_model()
+        self.register_adaptive_mask_settings()
+        
+        
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -1107,9 +1148,11 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                         
                         # Image.fromarray(mask_image_new_colormap).convert("L").save(f"{visualization_save_dir}/masks/{i:05}.png")
                         plt.axis("off")
+                        plt.subplot(1,2,1)
                         plt.imshow(mask_image_np)
+                        plt.subplot(1,2,2)
                         plt.imshow(pred_orig_image)
-                        plt.savefig(f"{visualization_save_dir}/{i:05}.png", bbox_inches="tight", pad_inches=0)
+                        plt.savefig(f"{visualization_save_dir}/{i:05}.png", bbox_inches='tight')
                         plt.close("all")
 
                 if num_channels_unet == 4:
@@ -1167,11 +1210,50 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         image = (image.squeeze().permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)  # np, uint8, 0~255
         return image
 
-    def register_adaptive_mask_settings(self, adaptive_mask_settings):
-        self.adaptive_mask_settings = adaptive_mask_settings
+    def register_adaptive_mask_settings(self):
+        from easydict import EasyDict
+        num_steps = 50
 
-    def register_adaptive_mask_model(self, adaptive_mask_model: callable):
-        self.adaptive_mask_model = adaptive_mask_model
+        step_num = int(num_steps * 0.1)
+        final_step_num = num_steps - step_num * 7
+        # adaptive mask settings
+        self.adaptive_mask_settings = EasyDict(
+            dict(
+                dilate_scheduler=MaskDilateScheduler(
+                    max_dilate_num=20,
+                    num_inference_steps=num_steps,
+                    schedule=[20] * step_num + [10] * step_num + [5] * step_num + [4] * step_num + [3] * step_num + [2] * step_num + [1] * step_num + [0] * final_step_num
+                ),
+                dilate_kernel=np.ones((3, 3), dtype=np.uint8),
+                provoke_scheduler=ProvokeScheduler(
+                    num_inference_steps=num_steps,
+                    schedule=list(range(2, 10 + 1, 2)) + list(range(12, 40 + 1, 2)) + [45],
+                    is_zero_indexing=False,
+                ),
+            )
+        )
+
+
+    def register_adaptive_mask_model(self):
+        # declare segmentation model used for mask adaptation
+        use_visualizer = True
+        # assert not use_visualizer, \
+        # """
+        # If you plan to 'use_visualizer', USE WITH CAUTION. 
+        # It creates a directory of images and masks, which is used for merging into a video.
+        # The procedure involves deleting the directory of images, which means that 
+        # if you set the directory wrong you can have other important files blown away.
+        # """
+        
+        self.adaptive_mask_model = PointRendPredictor(
+            # pointrend_thres=0.2,
+            pointrend_thres=0.9, 
+            device="cuda" if torch.cuda.is_available() else "cpu", 
+            use_visualizer=use_visualizer,
+            config_pth="pointrend_rcnn_R_50_FPN_3x_coco.yaml",
+            weights_pth="model_final_edd263.pkl",
+        )
+
 
     def adapt_mask(self, init_image, pred_orig_image, default_mask_image, dilate_num, use_default_mask, **kwargs):
         ## predict mask to use for adaptation
