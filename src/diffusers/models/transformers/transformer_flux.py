@@ -508,6 +508,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             if controlnet_block_samples is not None:
                 interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
                 interval_control = int(np.ceil(interval_control))
+                # For Xlabs ControlNet.
                 if len(controlnet_block_samples) == 2:
                     hidden_states = hidden_states + controlnet_block_samples[index_block % 2]
                 else:

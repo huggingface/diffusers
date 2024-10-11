@@ -17,7 +17,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import PeftAdapterMixin
@@ -293,7 +292,14 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         if self.is_xlabs_controlnet:
             controlnet_cond = self.input_hint_block(controlnet_cond)
-            controlnet_cond = rearrange(controlnet_cond, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+            batch_size, channels, height_pw, width_pw = controlnet_cond.shape
+            height = height_pw // self.config.patch_size
+            width = width_pw // self.config.patch_size
+            controlnet_cond = controlnet_cond.reshape(
+                batch_size, channels, height, self.config.patch_size, width, self.config.patch_size
+            )
+            controlnet_cond = controlnet_cond.permute(0, 2, 4, 1, 3, 5)
+            controlnet_cond = controlnet_cond.reshape(batch_size, height * width, -1)
         # add
         hidden_states = hidden_states + self.controlnet_x_embedder(controlnet_cond)
 
