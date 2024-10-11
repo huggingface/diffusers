@@ -160,7 +160,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds with num_videos_per_prompt->num_images_per_prompt
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
