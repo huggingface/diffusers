@@ -236,7 +236,7 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         downscale_factor (`int`, *optional*, defaults to `8`):
             A factor that determines the total downscale factor of the Adapter.
         adapter_type (`str`, *optional*, defaults to `full_adapter`):
-            Type of Adapter to use. Choose either `full_adapter` or `full_adapter_xl` or `light_adapter`.
+            Adapter type (`full_adapter` or `full_adapter_xl` or `light_adapter`) to use.
     """
 
     @register_to_config
