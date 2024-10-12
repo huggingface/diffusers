@@ -83,14 +83,16 @@ class FluxSingleTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
+        joint_attention_kwargs=None,
     ):
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
-
+        joint_attention_kwargs = joint_attention_kwargs or {}
         attn_output = self.attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            **joint_attention_kwargs,
         )
 
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
@@ -161,18 +163,20 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         image_rotary_emb=None,
+        joint_attention_kwargs=None,
     ):
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-
+        joint_attention_kwargs = joint_attention_kwargs or {}
         # Attention.
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
+            **joint_attention_kwargs,
         )
 
         # Process attention outputs for the `hidden_states`.
@@ -497,6 +501,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual
@@ -533,6 +538,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                     hidden_states=hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual
