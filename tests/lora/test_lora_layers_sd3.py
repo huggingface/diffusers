@@ -15,7 +15,7 @@
 import gc
 import sys
 import unittest
-
+import numpy as np
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
