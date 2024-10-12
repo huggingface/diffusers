@@ -123,8 +123,7 @@ class MultiAdapter(ModelMixin):
                 Useful when in distributed training (e.g., TPUs) and need to call this function on all processes. 
                 In this case, set `is_main_process=True` only for the main process to avoid race conditions.
             save_function (`Callable`):
-                Function used to save the state dictionary. Useful on distributed training (e.g., TPUs) when one
-                need to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
+                Function used to save the state dictionary. Useful for distributed training (e.g., TPUs) to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
             safe_serialization (`bool`, optional, defaults=True):
                 If `True`, save the model using `safetensors`.
                 If `False`, save the model with `pickle`.
