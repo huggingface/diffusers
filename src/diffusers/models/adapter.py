@@ -127,7 +127,7 @@ class MultiAdapter(ModelMixin):
                 need to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
             safe_serialization (`bool`, optional, defaults=True):
                 If `True`, save the model using `safetensors`.
-                If `False`, save the model using the traditional PyTorch way (using `pickle`).
+                If `False`, save the model with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
         """
