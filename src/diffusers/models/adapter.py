@@ -120,7 +120,7 @@ class MultiAdapter(ModelMixin):
                 The directory where the model will be saved. If the directory does not exist, it will be created.
             is_main_process (`bool`, optional, defaults=True):
                 Indicates whether current process is the main process or not. 
-                Useful when in distributed training (e.g., TPUs) and need to call this function on all processes. 
+                Useful for distributed training (e.g., TPUs) and need to call this function on all processes. 
                 In this case, set `is_main_process=True` only for the main process to avoid race conditions.
             save_function (`Callable`):
                 Function used to save the state dictionary. Useful for distributed training (e.g., TPUs) to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
