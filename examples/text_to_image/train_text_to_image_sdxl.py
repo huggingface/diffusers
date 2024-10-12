@@ -541,6 +541,8 @@ def compute_vae_encodings(batch, vae):
     with torch.no_grad():
         model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
+    # There might have slightly performance improvement
+    # by changing model_input.cpu() to accelerator.gather(model_input)
     return {"model_input": model_input.cpu()}
 
 
