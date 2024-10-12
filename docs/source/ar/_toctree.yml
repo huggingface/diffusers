@@ -1,0 +1,188 @@
+- sections:
+  - local: index
+    title: 🧨 الموزعون
+  - local: quicktour
+    title: جولة سريعة
+  - local: stable_diffusion
+    title: الانتشار الفعال والكفء
+  - local: installation
+    title: التثبيت
+  title: البدء
+- sections:
+  - local: tutorials/tutorial_overview
+    title: نظرة عامة
+  - local: using-diffusers/write_own_pipeline
+    title: فهم خطوط الأنابيب والنماذج والجداول
+  - local: tutorials/autopipeline
+    title: AutoPipeline
+  - local: tutorials/basic_training
+    title: تدريب نموذج الانتشار
+  - local: tutorials/using_peft_for_inference
+    title: تحميل LoRAs للاستدلال
+  - local: tutorials/fast_diffusion
+    title: تسريع الاستدلال لنموذج الانتشار من نص إلى صورة
+  title: البرامج التعليمية
+- sections:
+  - local: using-diffusers/loading
+    title: تحميل خطوط الأنابيب
+  - local: using-diffusers/custom_pipeline_overview
+    title: تحميل خطوط الأنابيب والمكونات المجتمعية
+  - local: using-diffusers/schedulers
+    title: تحميل الجداول والنماذج
+  - local: using-diffusers/other-formats
+    title: تنسيقات الملفات والنُسَق
+  - local: using-diffusers/loading_adapters
+    title: تحميل المحولات
+  - local: using-diffusers/push_to_hub
+    title: دفع الملفات إلى المركز
+  title: تحميل خطوط الأنابيب والمحولات
+- sections:
+  - local: using-diffusers/unconditional_image_generation
+    title: توليد الصور غير المشروطة
+  - local: using-diffusers/conditional_image_generation
+    title: نص إلى صورة
+  - local: using-diffusers/img2img
+    title: صورة إلى صورة
+  - local: using-diffusers/inpaint
+    title: إعادة الرسم
+  - local: using-diffusers/text-img2vid
+    title: نص أو صورة إلى فيديو
+  - local: using-diffusers/depth2img
+    title: العمق إلى الصورة
+  title: المهام التوليدية
+- sections:
+  - local: using-diffusers/overview_techniques
+    title: نظرة عامة
+  - local: training/distributed_inference
+    title: الاستدلال الموزع باستخدام وحدات معالجة الرسومات (GPU) متعددة
+  - local: using-diffusers/merge_loras
+    title: دمج LoRAs
+  - local: using-diffusers/scheduler_features
+    title: ميزات الجدول
+  - local: using-diffusers/callback
+    title: استدعاءات خط الأنابيب
+  - local: using-diffusers/reusing_seeds
+    title: خطوط الأنابيب القابلة للتكرار
+  - local: using-diffusers/image_quality
+    title: التحكم في جودة الصورة
+  - local: using-diffusers/weighted_prompts
+    title: تقنيات الاستدعاء
+  title: تقنيات الاستدلال
+- sections:
+  - local: advanced_inference/outpaint
+    title: إعادة الرسم
+  title: الاستدلال المتقدم
+- sections:
+  - local: using-diffusers/sdxl
+    title: الانتشار المستقر XL
+  - local: using-diffusers/sdxl_turbo
+    title: SDXL Turbo
+  - local: using-diffusers/kandinsky
+    title: Kandinsky
+  - local: using-diffusers/ip_adapter
+    title: محول IP
+  - local: using-diffusers/controlnet
+    title: ControlNet
+  - local: using-diffusers/t2i_adapter
+    title: محول T2I
+  - local: using-diffusers/inference_with_lcm
+    title: نموذج الاتساق الخفي
+  - local: using-diffusers/textual_inversion_inference
+    title: الانقلاب النصي
+  - local: using-diffusers/shap-e
+    title: Shap-E
+  - local: using-diffusers/diffedit
+    title: DiffEdit
+  - local: using-diffusers/inference_with_tcd_lora
+    title: استدلال اتساق المسار المقطر-LoRA
+  - local: using-diffusers/svd
+    title: انتشار الفيديو المستقر
+  - local: using-diffusers/marigold_usage
+    title: رؤية الكمبيوتر Marigold
+  title: أمثلة محددة لخطوط الأنابيب
+- sections:
+  - local: training/overview
+    title: نظرة عامة
+  - local: training/create_dataset
+    title: إنشاء مجموعة بيانات للتدريب
+  - local: training/adapt_a_model
+    title: تكييف نموذج مع مهمة جديدة
+  - isExpanded: false
+    sections:
+    - local: training/unconditional_training
+      title: توليد الصور غير المشروطة
+    - local: training/text2image
+      title: نص إلى صورة
+    - local: training/sdxl
+      title: الانتشار المستقر XL
+    - local: training/kandinsky
+      title: Kandinsky 2.2
+    - local: training/wuerstchen
+      title: Wuerstchen
+    - local: training/controlnet
+      title: ControlNet
+    - local: training/t2i_adapters
+      title: محولات T2I
+    - local: training/instructpix2pix
+      title: InstructPix2Pix
+    title: النماذج
+  - isExpanded: false
+    sections:
+    - local: training/text_inversion
+      title: الانقلاب النصي
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/lora
+      title: LoRA
+    - local: training/custom_diffusion
+      title: انتشار مخصص
+    - local: training/lcm_distill
+      title: تقطير الاتساق الخفي
+    - local: training/ddpo
+      title: التدريب على التعلم التعزيزي باستخدام DDPO
+    title: الأساليب
+  title: التدريب
+- sections:
+  - local: optimization/fp16
+    title: تسريع الاستدلال
+  - local: optimization/memory
+    title: تقليل استخدام الذاكرة
+  - local: optimization/torch2.0
+    title: PyTorch 2.0
+  - local: optimization/xformers
+    title: xFormers
+  - local: optimization/tome
+    title: دمج الرموز
+  - local: optimization/deepcache
+    title: DeepCache
+  - local: optimization/tgate
+    title: TGATE
+  - sections:
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: جاك/فلاكس
+    - local: optimization/onnx
+      title: ONNX
+    - local: optimization/open_vino
+      title: OpenVINO
+    - local: optimization/coreml
+      title: Core ML
+    title: تنسيقات النماذج المحُللة
+  - sections:
+    - local: optimization/mps
+      title: شظايا المعادن (MPS)
+    - local: optimization/habana
+      title: هابانا جودي
+    title: الأجهزة المحُللة
+  title: تسريع الاستدلال وتقليل الذاكرة
+- sections:
+  - local: conceptual/philosophy
+    title: الفلسفة
+  - local: using-diffusers/controlling_generation
+    title: التوليد الخاضع للرقابة
+  - local: conceptual/contribution
+    title: كيفية المساهمة؟
+  - local: conceptual/ethical_guidelines
+    title: المبادئ التوجيهية الأخلاقية للمُوزِعات
+  - local: conceptual/evaluation
+    title: تقييم نماذج الانتشار
+  title: أدلة مفاهيمية
