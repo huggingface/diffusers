@@ -24,7 +24,7 @@ from .utils import (
 if is_transformers_available():
     import transformers
 
-    if transformers.deepspeed.is_deepspeed_zero3_enabled():
+    if transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
         import deepspeed
 
 if is_peft_available():
@@ -433,7 +433,7 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
-        context_manager = contextlib.nullcontext
+        context_manager = contextlib.nullcontext()
 
         if self.foreach:
             if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
