@@ -4275,7 +4275,7 @@ ADDED_KV_ATTENTION_PROCESSORS = (
 )
 
 if is_torch_npu_available():
-    CROSS_ATTENTION_PROCESSORS = (
+    cross_attention_processors = (
         AttnProcessor,
         AttnProcessor2_0,
         AttnProcessorNPU,
@@ -4285,7 +4285,7 @@ if is_torch_npu_available():
         IPAdapterAttnProcessor2_0,
     )
 
-    AttentionProcessor = Union[
+    attentionProcessor = Union[
         AttnProcessor,
         AttnProcessor2_0,
         AttnProcessorNPU,
@@ -4306,7 +4306,7 @@ if is_torch_npu_available():
     ]
 
 else:
-    CROSS_ATTENTION_PROCESSORS = (
+    cross_attention_processors = (
         AttnProcessor,
         AttnProcessor2_0,
         XFormersAttnProcessor,
@@ -4315,7 +4315,7 @@ else:
         IPAdapterAttnProcessor2_0,
     )
 
-    AttentionProcessor = Union[
+    attentionProcessor= Union[
         AttnProcessor,
         AttnProcessor2_0,
         FusedAttnProcessor2_0,
@@ -4333,3 +4333,6 @@ else:
         PAGCFGHunyuanAttnProcessor2_0,
         PAGHunyuanAttnProcessor2_0,
     ]
+
+CROSS_ATTENTION_PROCESSORS = cross_attention_processors
+AttentionProcessor = attentionProcessor
