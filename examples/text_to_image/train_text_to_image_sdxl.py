@@ -532,7 +532,7 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
     return {"prompt_embeds": prompt_embeds.cpu(), "pooled_prompt_embeds": pooled_prompt_embeds.cpu()}
 
 
-def compute_vae_encodings(batch, accelerator, vae):
+def compute_vae_encodings(batch, vae):
     images = batch.pop("pixel_values")
     pixel_values = torch.stack(list(images))
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -541,7 +541,7 @@ def compute_vae_encodings(batch, accelerator, vae):
     with torch.no_grad():
         model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
-    return {"model_input": accelerator.gather(model_input)}
+    return {"model_input": model_input.cpu()}
 
 
 def generate_timestep_weights(args, num_timesteps):
@@ -911,7 +911,7 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
         caption_column=args.caption_column,
     )
-    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, accelerator=accelerator, vae=vae)
+    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
 
