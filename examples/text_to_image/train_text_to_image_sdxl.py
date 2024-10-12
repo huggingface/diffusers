@@ -938,7 +938,7 @@ def main(args):
     gc.collect()
     if is_torch_npu_available():
         torch_npu.npu.empty_cache()
-    else:
+    elif torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     def collate_fn(examples):
@@ -1266,7 +1266,7 @@ def main(args):
                 del pipeline
                 if is_torch_npu_available():
                     torch_npu.npu.empty_cache()
-                else:
+                elif torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
                 if args.use_ema:
