@@ -10,7 +10,7 @@ on:
 
 jobs:
   find-and-checkout-latest-branch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
     steps:
@@ -36,7 +36,7 @@ jobs:
 
   release:
     needs: find-and-checkout-latest-branch
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repo

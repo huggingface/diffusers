@@ -25,7 +25,7 @@ jobs:
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       # Checkout to correct ref
       #   If workflow dispatch
