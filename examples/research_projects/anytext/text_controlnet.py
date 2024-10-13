@@ -14,6 +14,8 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
 from diffusers.configuration_utils import register_to_config
 from diffusers.models.controlnet import (
@@ -24,6 +26,51 @@ from diffusers.utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class AnyTextControlNetConditioningEmbedding(nn.Module):
+    """
+    Quoting from https://arxiv.org/abs/2302.05543: "Stable Diffusion uses a pre-processing method similar to VQ-GAN
+    [11] to convert the entire dataset of 512 × 512 images into smaller 64 × 64 “latent images” for stabilized
+    training. This requires ControlNets to convert image-based conditions to 64 × 64 feature space to match the
+    convolution size. We use a tiny network E(·) of four convolution layers with 4 × 4 kernels and 2 × 2 strides
+    (activated by ReLU, channels are 16, 32, 64, 128, initialized with Gaussian weights, trained jointly with the full
+    model) to encode image-space conditions ... into feature maps ..."
+    """
+
+    def __init__(
+        self,
+        conditioning_embedding_channels: int,
+        conditioning_channels: int = 3,
+        block_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+    ):
+        super().__init__()
+
+        self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
+
+        self.blocks = nn.ModuleList([])
+
+        for i in range(len(block_out_channels) - 1):
+            channel_in = block_out_channels[i]
+            channel_out = block_out_channels[i + 1]
+            self.blocks.append(nn.Conv2d(channel_in, channel_in, kernel_size=3, padding=1))
+            self.blocks.append(nn.Conv2d(channel_in, channel_out, kernel_size=3, padding=1, stride=2))
+
+        self.conv_out = zero_module(
+            nn.Conv2d(block_out_channels[-1], conditioning_embedding_channels, kernel_size=3, padding=1)
+        )
+
+    def forward(self, conditioning):
+        embedding = self.conv_in(conditioning)
+        embedding = F.silu(embedding)
+
+        for block in self.blocks:
+            embedding = block(embedding)
+            embedding = F.silu(embedding)
+
+        embedding = self.conv_out(embedding)
+
+        return embedding
 
 
 class AnyTextControlNetModel(ControlNetModel):
@@ -172,8 +219,13 @@ class AnyTextControlNetModel(ControlNetModel):
             global_pool_conditions,
             addition_embed_type_num_heads,
         )
-        self.controlnet_cond_embedding = (
-            None  # TODO: Instead of this, design a custom `ControlNetConditioningEmbedding`
+
+        # control net conditioning embedding
+        # TODO: what happens ControlNetModel's self.controlnet_cond_embedding's memory occupation?
+        self.controlnet_cond_embedding = AnyTextControlNetConditioningEmbedding(
+            conditioning_embedding_channels=block_out_channels[0],
+            block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
     def forward(
@@ -181,7 +233,7 @@ class AnyTextControlNetModel(ControlNetModel):
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        guided_hint: torch.Tensor,
+        controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -310,8 +362,8 @@ class AnyTextControlNetModel(ControlNetModel):
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        # controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
-        sample = sample + guided_hint
+        controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+        sample = sample + controlnet_cond
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -375,3 +427,10 @@ class AnyTextControlNetModel(ControlNetModel):
         return ControlNetOutput(
             down_block_res_samples=down_block_res_samples, mid_block_res_sample=mid_block_res_sample
         )
+
+
+# Copied from diffusers.models.controlnet.zero_module
+def zero_module(module):
+    for p in module.parameters():
+        nn.init.zeros_(p)
+    return module
