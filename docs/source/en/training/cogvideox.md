@@ -21,7 +21,7 @@ Through fine-tuning training to make up for this gap, the Diffusers framework is
 
 The training scripts accepts data in two formats.  
 
-first one is more suitable for small-scale training, and the second one uses csv encapsulation. In the future, diffusers will support the <Video> tag. The encapsulated `dataset` component can call your data through the stream to meet the requirements of large-scale training.
+The first format is suited for small-scale training, and the second format uses a CSV format, which is more appropriate for streaming data for large-scale training. In the future, Diffusers will support the `<Video>` tag.
 
 **Small format**
 
