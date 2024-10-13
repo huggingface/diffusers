@@ -10,9 +10,13 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 # CogVideoX
-CogVideoX is an open-source version of the video generation model originating from QingYing. The table below displays the list of video generation models we currently offer, along with their foundational information.
 
-The model integrates text, time, and space into a transformer architecture. This architecture abandons the traditional cross attention module and converts it to Full Attention. It uses Expert Block to achieve alignment of two different modal spaces: text and video.
+CogVideoX is a text-to-video generation model focused on creating more coherent videos aligned with a prompt. It achieves this using several methods.
+
+- a 3D variational autoencoder that compresses videos spatially and temporally, improving compression rate and video accuracy.
+
+- an expert transformer block to help align text and video, and a 3D full attention module for capturing and creating spatially and temporally accurate videos.
+ 
 
 
 ## Load model checkpoints

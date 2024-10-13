@@ -11,7 +11,11 @@ specific language governing permissions and limitations under the License.
 -->
 # CogVideoX
 
-🤗 Diffusers framework is huggface's open source solution related to diffusion model. Through module tools, it can be conveniently and quickly integrated with custom frameworks. In the direction of model training, Diffusers has accelerate acceleration support and is compatible with common reasoning frameworks.
+CogVideoX is a text-to-video generation model focused on creating more coherent videos aligned with a prompt. It achieves this using several methods.
+
+- a 3D variational autoencoder that compresses videos spatially and temporally, improving compression rate and video accuracy.
+
+- an expert transformer block to help align text and video, and a 3D full attention module for capturing and creating spatially and temporally accurate videos.
 
 The actual test of the video instruction dimension found that CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style but cannot achieve good results with human action, spatial relationship, and multiple objects.
 
