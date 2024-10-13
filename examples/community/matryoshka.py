@@ -1553,7 +1553,6 @@ class MatryoshkaFusedAttnProcessor2_0:
                 "MatryoshkaFusedAttnProcessor2_0 requires PyTorch 2.x, to use it. Please upgrade PyTorch to > 2.x."
             )
 
-
     def __call__(
         self,
         attn: Attention,
