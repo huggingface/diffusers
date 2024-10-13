@@ -13,9 +13,9 @@ specific language governing permissions and limitations under the License.
 
 🤗 Diffusers framework is huggface's open source solution related to diffusion model. Through module tools, it can be conveniently and quickly integrated with custom frameworks. In the direction of model training, Diffusers has accelerate acceleration support and is compatible with common reasoning frameworks.
 
-The actual test of the video instruction dimension found that our CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style, but cannot achieve good results in the dimensions of human action, spatial relationship, and multiple objects.
+The actual test of the video instruction dimension found that CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style but cannot achieve good results with human action, spatial relationship, and multiple objects.
 
-Through fine-tuning training to make up for this gap, the Diffusers framework is used to train the datasets with poor results.
+Finetuning with Diffusers can help make up for these poor results. 
 
 ## Data Preparation
 
