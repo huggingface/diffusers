@@ -734,10 +734,7 @@ class TimestepEmbedding(nn.Module):
         else:
             self.cond_proj = None
 
-        if act_fn is None:
-            self.act = None
-        else:
-            self.act = get_activation(act_fn)
+        self.act = get_activation(act_fn)
 
         if out_dim is not None:
             time_embed_dim_out = out_dim
