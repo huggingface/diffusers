@@ -1440,7 +1440,7 @@ class MatryoshkaTransformerBlock(nn.Module):
             bias=True,
             upcast_attention=upcast_attention,
             pre_only=True,
-            processor=MatryoshkaFusedAttnProcessor1_0_or_2_0(),
+            processor=MatryoshkaFusedAttnProcessor2_0(),
         )
         self.attn1.fuse_projections()
         del self.attn1.to_q
@@ -1458,7 +1458,7 @@ class MatryoshkaTransformerBlock(nn.Module):
                 bias=True,
                 upcast_attention=upcast_attention,
                 pre_only=True,
-                processor=MatryoshkaFusedAttnProcessor1_0_or_2_0(),
+                processor=MatryoshkaFusedAttnProcessor2_0(),
             )
             self.attn2.fuse_projections()
             del self.attn2.to_q
@@ -1517,7 +1517,6 @@ class MatryoshkaTransformerBlock(nn.Module):
                 # **cross_attention_kwargs,
             )
 
-        attn_output_cond = attn_output_cond.permute(0, 2, 1).contiguous()
         attn_output_cond = self.proj_out(attn_output_cond)
         attn_output_cond = attn_output_cond.permute(0, 2, 1).reshape(batch_size, channels, *spatial_dims)
         hidden_states = hidden_states + attn_output_cond
@@ -1535,7 +1534,7 @@ class MatryoshkaTransformerBlock(nn.Module):
         return hidden_states
 
 
-class MatryoshkaFusedAttnProcessor1_0_or_2_0:
+class MatryoshkaFusedAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
@@ -1548,28 +1547,12 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
     </Tip>
     """
 
-    # def __init__(self):
-    #     if not hasattr(F, "scaled_dot_product_attention"):
-    #         raise ImportError(
-    #             "MatryoshkaFusedAttnProcessor2_0 requires PyTorch 2.x, to use it. Please upgrade PyTorch to > 2.x."
-    #         )
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "MatryoshkaFusedAttnProcessor2_0 requires PyTorch 2.x, to use it. Please upgrade PyTorch to > 2.x."
+            )
 
-    # TODO: They seem to give different results; but nevertheless can I replace this with torch.nn.functional.scaled_dot_product_attention()?
-    def attention(self, q, k, v, num_heads, mask=None):
-        bs, width, length = q.shape
-        ch = width // num_heads
-        scale = 1 / torch.sqrt(torch.sqrt(torch.tensor(ch)))
-        weight = torch.einsum(
-            "bct,bcs->bts",
-            (q * scale).reshape(bs * num_heads, ch, length),
-            (k * scale).reshape(bs * num_heads, ch, -1),
-        )  # More stable with f16 than dividing afterwards
-        if mask is not None:
-            mask = mask.view(mask.size(0), 1, 1, mask.size(-1)).repeat(1, num_heads, 1, 1).flatten(0, 1)
-            weight = weight.masked_fill(mask == 0, float("-inf"))
-        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
-        a = torch.einsum("bts,bcs->bct", weight, v.reshape(bs * num_heads, ch, -1))
-        return a.reshape(bs, -1, length)
 
     def __call__(
         self,
@@ -1593,26 +1576,12 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
 
         input_ndim = hidden_states.ndim
 
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states)
+
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
-            # hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        # batch_size, sequence_length, _ = (
-        #     hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        # )
-
-        # if attention_mask is not None:
-        #     attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-        #     # scaled_dot_product_attention expects attention_mask shape to be
-        #     # (batch, heads, source_length, target_length)
-        #     attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states)  # .transpose(1, 2)).transpose(1, 2)
-
-        # Reshape hidden_states to 2D tensor
-        hidden_states = hidden_states.view(batch_size, channel, height * width).permute(0, 2, 1).contiguous()
-        # Now hidden_states.shape is [batch_size, height * width, channels]
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2).contiguous()
 
         if encoder_hidden_states is None:
             qkv = attn.to_qkv(hidden_states)
@@ -1630,10 +1599,18 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
             split_size = kv.shape[-1] // 2
             key, value = torch.split(kv, split_size, dim=-1)
 
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
         if self_attention_output is None:
-            query = query.permute(0, 2, 1)
-        key = key.permute(0, 2, 1)
-        value = value.permute(0, 2, 1)
+            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -1641,25 +1618,16 @@ class MatryoshkaFusedAttnProcessor1_0_or_2_0:
             key = attn.norm_k(key)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1 if F.scaled_dot_product_attention() is available
-        hidden_states = self.attention(
-            query,
-            key,
-            value,
-            mask=attention_mask,
-            num_heads=attn.heads,
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.to(query.dtype)
 
         if self_attention_output is not None:
             hidden_states = hidden_states + self_attention_output
-
-        if not attn.pre_only:
-            # linear proj
-            hidden_states = attn.to_out[0](hidden_states)
-            # dropout
-            hidden_states = attn.to_out[1](hidden_states)
+            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
         if attn.residual_connection:
             hidden_states = hidden_states + residual
