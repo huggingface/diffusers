@@ -29,7 +29,14 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .flux import FluxControlNetPipeline, FluxImg2ImgPipeline, FluxInpaintPipeline, FluxPipeline
+from .flux import (
+    FluxControlNetImg2ImgPipeline,
+    FluxControlNetInpaintPipeline,
+    FluxControlNetPipeline,
+    FluxImg2ImgPipeline,
+    FluxInpaintPipeline,
+    FluxPipeline,
+)
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -54,7 +61,9 @@ from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
     StableDiffusion3PAGPipeline,
+    StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
+    StableDiffusionPAGImg2ImgPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -123,11 +132,13 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("kandinsky3", Kandinsky3Img2ImgPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
         ("flux", FluxImg2ImgPipeline),
+        ("flux-controlnet", FluxControlNetImg2ImgPipeline),
     ]
 )
 
@@ -140,9 +151,11 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
+        ("flux-controlnet", FluxControlNetInpaintPipeline),
     ]
 )
 

@@ -380,7 +380,7 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -421,7 +421,7 @@ from diffusers.utils import load_image
 from insightface.app import FaceAnalysis
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -617,7 +617,7 @@ controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
 controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
 
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
 pipeline.to("cuda")
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 ```

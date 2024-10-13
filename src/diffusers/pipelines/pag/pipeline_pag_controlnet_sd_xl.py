@@ -1347,7 +1347,7 @@ class StableDiffusionXLControlNetPAGPipeline(
             latents,
         )
 
-        # 6.5 Optionally get Guidance Scale Embedding
+        # 6.1 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
