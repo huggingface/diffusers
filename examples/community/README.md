@@ -4358,6 +4358,7 @@ from diffusers.utils import make_image_grid
 pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
                                          custom_pipeline="matryoshka",
                                          nesting_level=0,
+                                         trust_remote_code=False,  # One needs to give permission for this code to run
                                          ).to("cuda")
 
 prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
