@@ -49,11 +49,7 @@ from diffusers import (
     StableDiffusion3ControlNetPipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import (
-    clear_objs_and_retain_memory,
-    compute_density_for_timestep_sampling,
-    compute_loss_weighting_for_sd3,
-)
+from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -174,7 +170,8 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step, is_final_v
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        clear_objs_and_retain_memory(pipeline)
+        del pipeline
+        free_memory()
 
         if not is_final_validation:
             controlnet.to(accelerator.device)
@@ -359,6 +356,11 @@ def parse_args(input_args=None):
         "--gradient_checkpointing",
         action="store_true",
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
+    )
+    parser.add_argument(
+        "--upcast_vae",
+        action="store_true",
+        help="Whether or not to upcast vae to fp32",
     )
     parser.add_argument(
         "--learning_rate",
@@ -1097,7 +1099,10 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move vae, transformer and text_encoder to device and cast to weight_dtype
-    vae.to(accelerator.device, dtype=torch.float32)
+    if args.upcast_vae:
+        vae.to(accelerator.device, dtype=torch.float32)
+    else:
+        vae.to(accelerator.device, dtype=weight_dtype)
     transformer.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
@@ -1131,7 +1136,9 @@ def main(args):
         new_fingerprint = Hasher.hash(args)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
 
-    clear_objs_and_retain_memory(text_encoders + tokenizers)
+    del text_encoder_one, text_encoder_two, text_encoder_three
+    del tokenizer_one, tokenizer_two, tokenizer_three
+    free_memory()
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
