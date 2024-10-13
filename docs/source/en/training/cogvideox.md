@@ -59,7 +59,7 @@ Overall, this is how your dataset would look like if you ran the `tree` command 
 
 When using this format, the `--caption_column` must be `prompts.txt` and `--video_column` must be `videos.txt`.
 
-**Stream format**
+### Stream format
 
 You could use a single CSV file. For the sake of this example, assume you have a `metadata.csv` file. The expected format is:
 
