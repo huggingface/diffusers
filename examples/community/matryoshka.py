@@ -1909,7 +1909,7 @@ class MatryoshkaCombinedTimestepTextEmbedding(nn.Module):
             # if self.cond_emb is not None and not added_cond_kwargs.get("from_nested", False):
             return temb_micro_conditioning, conditioning_mask, cond_emb
 
-        return cond_emb, conditioning_mask, cond_emb
+        return None, conditioning_mask, cond_emb
 
 
 @dataclass
@@ -3137,7 +3137,7 @@ class MatryoshkaUNet2DConditionModel(
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    encoder_attention_mask=encoder_attention_mask,  # cond_mask?
+                    encoder_attention_mask=encoder_attention_mask,
                     **additional_residuals,
                 )
             else:
@@ -3167,7 +3167,7 @@ class MatryoshkaUNet2DConditionModel(
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    encoder_attention_mask=encoder_attention_mask,  # cond_mask?
+                    encoder_attention_mask=encoder_attention_mask,
                 )
             else:
                 sample = self.mid_block(sample, emb)
@@ -3204,7 +3204,7 @@ class MatryoshkaUNet2DConditionModel(
                     cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,  # cond_mask?
+                    encoder_attention_mask=encoder_attention_mask,
                 )
             else:
                 sample = upsample_block(
@@ -3652,7 +3652,7 @@ class NestedUNet2DConditionModel(MatryoshkaUNet2DConditionModel):
                     cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
-                    encoder_attention_mask=cond_mask[:bh] if cond_mask is not None else cond_mask,  # cond_mask?
+                    encoder_attention_mask=cond_mask[:bh] if cond_mask is not None else cond_mask,
                 )
             else:
                 sample = upsample_block(
