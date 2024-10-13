@@ -644,6 +644,22 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
+
+        masked_image_latents = self._pack_latents(
+            masked_image_latents,
+            batch_size,
+            num_channels_latents,
+            height,
+            width,
+        )
+        mask = self._pack_latents(
+            mask.repeat(1, num_channels_latents, 1, 1),
+            batch_size,
+            num_channels_latents,
+            height,
+            width,
+        )
+
         return mask, masked_image_latents
 
     @property
@@ -918,16 +934,8 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         )
 
         mask_thresholds = torch.arange(num_inference_steps, dtype=original_mask.dtype) / num_inference_steps
-        mask_thresholds = mask_thresholds.unsqueeze(1).unsqueeze(1).to(device)
+        mask_thresholds = mask_thresholds.reshape(-1, 1, 1, 1).to(device)
         masks = (original_mask > mask_thresholds)
-        masks = self._pack_latents(
-            # masks.repeat(num_channels_latents, 1, 1, 1).permute(1, 0, 2, 3),
-            masks.repeat(num_channels_latents // num_images_per_prompt, 1, 1, 1).permute(1, 0, 2, 3),
-            len(mask_thresholds),
-            num_channels_latents,
-            2 * (int(height) // self.vae_scale_factor),
-            2 * (int(width) // self.vae_scale_factor),
-        )
         # end diff diff preparation
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
