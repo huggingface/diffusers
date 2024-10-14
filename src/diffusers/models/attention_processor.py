@@ -4285,7 +4285,7 @@ if is_torch_npu_available():
         IPAdapterAttnProcessor2_0,
     )
 
-    attentionProcessor = Union[
+    attention_processor = Union[
         AttnProcessor,
         AttnProcessor2_0,
         AttnProcessorNPU,
@@ -4315,7 +4315,7 @@ else:
         IPAdapterAttnProcessor2_0,
     )
 
-    attentionProcessor= Union[
+    attention_processor= Union[
         AttnProcessor,
         AttnProcessor2_0,
         FusedAttnProcessor2_0,
@@ -4335,4 +4335,4 @@ else:
     ]
 
 CROSS_ATTENTION_PROCESSORS = cross_attention_processors
-AttentionProcessor = attentionProcessor
+AttentionProcessor = attention_processor
