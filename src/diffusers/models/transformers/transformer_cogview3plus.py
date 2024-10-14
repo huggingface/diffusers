@@ -37,8 +37,18 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class CogView3PlusTransformerBlock(nn.Module):
-    """
-    Updated CogView3 Transformer Block to align with AdalnAttentionMixin style, simplified with qk_ln always True.
+    r"""
+    Transformer block used in [CogView](https://github.com/THUDM/CogView3) model.
+
+    Args:
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        time_embed_dim (`int`):
+            The number of channels in timestep embedding.
     """
 
     def __init__(
@@ -145,12 +155,6 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         condition_dim (`int`, defaults to `256`):
             The embedding dimension of the input SDXL-style resolution conditions (original_size, target_size,
             crop_coords).
-        pooled_projection_dim (`int`, defaults to `1536`):
-            The overall pooled dimension by concatenating SDXL-style resolution conditions. As 3 additional conditions
-            are used (original_size, target_size, crop_coords), and each is a sinusoidal condition of dimension `2 *
-            condition_dim`, we get the pooled projection dimension as `2 * condition_dim * 3 => 1536`. The timestep
-            embeddings will be projected to this dimension as well. TODO(yiyi): Do we need this parameter based on the
-            above explanation?
         pos_embed_max_size (`int`, defaults to `128`):
             The maximum resolution of the positional embeddings, from which slices of shape `H x W` are taken and added
             to input patched latents, where `H` and `W` are the latent height and width respectively. A value of 128
@@ -175,13 +179,16 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         text_embed_dim: int = 4096,
         time_embed_dim: int = 512,
         condition_dim: int = 256,
-        pooled_projection_dim: int = 1536,
         pos_embed_max_size: int = 128,
         sample_size: int = 128,
     ):
         super().__init__()
         self.out_channels = out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
+
+        # CogView3 uses 3 additional SDXL-like conditions - original_size, target_size, crop_coords
+        # Each of these are sincos embeddings of shape 2 * condition_dim
+        self.pooled_projection_dim = 3 * 2 * condition_dim
 
         self.patch_embed = CogView3PlusPatchEmbed(
             in_channels=in_channels,
@@ -194,7 +201,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         self.time_condition_embed = CogView3CombinedTimestepSizeEmbeddings(
             embedding_dim=time_embed_dim,
             condition_dim=condition_dim,
-            pooled_projection_dim=pooled_projection_dim,
+            pooled_projection_dim=self.pooled_projection_dim,
             timesteps_dim=self.inner_dim,
         )
 
