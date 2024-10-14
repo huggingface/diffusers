@@ -341,7 +341,7 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_lora.shape == self.output_shape)
 
     @require_peft_version_greater("0.13.1")
-    @require_transformers_version_greater("4.45.1")
+    @require_transformers_version_greater("4.45.2")
     def test_low_cpu_mem_usage_with_loading(self):
         """Tests if we can load LoRA state dict with low_cpu_mem_usage."""
 
