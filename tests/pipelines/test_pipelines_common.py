@@ -1824,6 +1824,74 @@ class PipelineTesterMixin:
         # accounts for models that modify the number of inference steps based on strength
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
+    def test_serialization_with_variants(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        model_components = [
+            component_name for component_name, component in pipe.components.items() if isinstance(component, nn.Module)
+        ]
+        variant = "fp16"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
+
+            with open(f"{tmpdir}/model_index.json", "r") as f:
+                config = json.load(f)
+
+            for subfolder in os.listdir(tmpdir):
+                if not os.path.isfile(subfolder) and subfolder in model_components:
+                    folder_path = os.path.join(tmpdir, subfolder)
+                    is_folder = os.path.isdir(folder_path) and subfolder in config
+                    assert is_folder and any(p.split(".")[1].startswith(variant) for p in os.listdir(folder_path))
+
+    def test_loading_with_variants(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        variant = "fp16"
+
+        def is_nan(tensor):
+            if tensor.ndimension() == 0:
+                has_nan = torch.isnan(tensor).item()
+            else:
+                has_nan = torch.isnan(tensor).any()
+            return has_nan
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, variant=variant, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
+
+            model_components_pipe = {
+                component_name: component
+                for component_name, component in pipe.components.items()
+                if isinstance(component, nn.Module)
+            }
+            model_components_pipe_loaded = {
+                component_name: component
+                for component_name, component in pipe_loaded.components.items()
+                if isinstance(component, nn.Module)
+            }
+            for component_name in model_components_pipe:
+                pipe_component = model_components_pipe[component_name]
+                pipe_loaded_component = model_components_pipe_loaded[component_name]
+                for p1, p2 in zip(pipe_component.parameters(), pipe_loaded_component.parameters()):
+                    # nan check for luminanext (mps).
+                    if not (is_nan(p1) and is_nan(p2)):
+                        self.assertTrue(torch.equal(p1, p2))
+
+    def test_loading_with_incorrect_variants_raises_error(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        variant = "fp16"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Don't save with variants.
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+
+            with self.assertRaises(ValueError) as error:
+                _ = self.pipeline_class.from_pretrained(tmpdir, variant=variant)
+
+            assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
+
     def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
         if not issubclass(self.pipeline_class, StableDiffusionMixin):
