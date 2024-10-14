@@ -69,7 +69,6 @@ class CogView3PlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             text_embed_dim=32,  # Must match with tiny-random-t5
             time_embed_dim=8,
             condition_dim=2,
-            pooled_projection_dim=12,
             pos_embed_max_size=8,
             sample_size=8,
         )
