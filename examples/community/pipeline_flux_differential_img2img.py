@@ -935,7 +935,7 @@ class FluxDifferentialImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         mask_thresholds = torch.arange(num_inference_steps, dtype=original_mask.dtype) / num_inference_steps
         mask_thresholds = mask_thresholds.reshape(-1, 1, 1, 1).to(device)
-        masks = (original_mask > mask_thresholds)
+        masks = original_mask > mask_thresholds
         # end diff diff preparation
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
