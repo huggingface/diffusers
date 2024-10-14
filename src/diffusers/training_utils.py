@@ -461,7 +461,7 @@ class EMAModel:
                 if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
                     context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
 
-                with context_manager():
+                with context_manager:
                     if param.requires_grad:
                         s_param.sub_(one_minus_decay * (s_param - param))
                     else:
