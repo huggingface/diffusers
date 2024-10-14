@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import inspect
-import math
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -385,6 +384,13 @@ class CogView3PlusPipeline(DiffusionPipeline):
     def guidance_scale(self):
         return self._guidance_scale
 
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
     @property
     def num_timesteps(self):
         return self._num_timesteps
@@ -404,7 +410,6 @@ class CogView3PlusPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 5.0,
-        use_dynamic_cfg: bool = False,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -545,14 +550,14 @@ class CogView3PlusPipeline(DiffusionPipeline):
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             negative_prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
@@ -580,7 +585,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         target_size = torch.tensor([target_size], dtype=prompt_embeds.dtype)
         crops_coords_top_left = torch.tensor([crops_coords_top_left], dtype=prompt_embeds.dtype)
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             original_size = torch.cat([original_size, original_size])
             target_size = torch.cat([target_size, target_size])
             crops_coords_top_left = torch.cat([crops_coords_top_left, crops_coords_top_left])
@@ -599,7 +604,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -618,11 +623,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                    )
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
