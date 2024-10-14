@@ -53,6 +53,11 @@ Since RegEx is supported as a way for matching layer identifiers, it is crucial 
 	- all
 	- __call__
 
+## StableDiffusionPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionPAGImg2ImgPipeline
+	- all
+	- __call__
+
 ## StableDiffusionControlNetPAGPipeline
 [[autodoc]] StableDiffusionControlNetPAGPipeline
 
