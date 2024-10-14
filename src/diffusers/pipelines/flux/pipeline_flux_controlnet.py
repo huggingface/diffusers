@@ -752,7 +752,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             )
             height, width = control_image.shape[-2:]
 
-            if not self.controlnet.is_xlabs_controlnet:
+            if self.controlnet.input_hint_block is None:
                 # vae encode
                 control_image = self.vae.encode(control_image).latent_dist.sample()
                 control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor

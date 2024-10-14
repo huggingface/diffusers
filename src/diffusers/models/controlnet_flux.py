@@ -55,7 +55,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         guidance_embeds: bool = False,
         axes_dims_rope: List[int] = [16, 56, 56],
         num_mode: int = None,
-        is_xlabs_controlnet: bool = False,
+        conditioning_embedding_channels: int = None,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -107,13 +107,14 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if self.union:
             self.controlnet_mode_embedder = nn.Embedding(num_mode, self.inner_dim)
 
-        if self.is_xlabs_controlnet:
+        if conditioning_embedding_channels is not None:
             self.input_hint_block = ControlNetConditioningEmbedding(
-                conditioning_embedding_channels=16,
+                conditioning_embedding_channels=conditioning_embedding_channels,
                 block_out_channels=(16,16,16,16)
             )
             self.controlnet_x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
         else:
+            self.input_hint_block = None
             self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
 
         self.gradient_checkpointing = False
@@ -277,7 +278,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
         hidden_states = self.x_embedder(hidden_states)
 
-        if self.is_xlabs_controlnet:
+        if self.input_hint_block is not None:
             controlnet_cond = self.input_hint_block(controlnet_cond)
             batch_size, channels, height_pw, width_pw = controlnet_cond.shape
             height = height_pw // self.config.patch_size
