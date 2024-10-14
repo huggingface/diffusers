@@ -555,11 +555,11 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
-        "--lora_blocks",
+        "--lora_layers",
         type=str,
         default=None,
         help=(
-            'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "q_proj,k_proj,v_proj,out_proj" will result in lora training of attention layers only'
+            'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only'
         ),
     )
 
@@ -1197,18 +1197,18 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
 
-    if args.lora_blocks is not None:
-        target_modules = [block.strip() for block in args.lora_blocks.split(",")]
+    if args.lora_layers is not None:
+        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
         target_modules = [
-            "to_k",
-            "to_q",
-            "to_v",
-            "to_out.0",
-            "add_k_proj",
-            "add_q_proj",
-            "add_v_proj",
-            "to_add_out",
+            "attn.to_k",
+            "attn.to_q",
+            "attn.to_v",
+            "attn.to_out.0",
+            "attn.add_k_proj",
+            "attn.add_q_proj",
+            "attn.add_v_proj",
+            "attn.to_add_out",
             "ff.net.0.proj",
             "ff.net.2",
             "ff_context.net.0.proj",
