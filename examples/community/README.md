@@ -4356,7 +4356,6 @@ from diffusers.utils import make_image_grid
 
 # nesting_level=0 -> 64x64; nesting_level=1 -> 256x256 - 64x64; nesting_level=2 -> 1024x1024 - 256x256 - 64x64
 pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-                                         custom_pipeline="matryoshka",
                                          nesting_level=0,
                                          trust_remote_code=False,  # One needs to give permission for this code to run
                                          ).to("cuda")
