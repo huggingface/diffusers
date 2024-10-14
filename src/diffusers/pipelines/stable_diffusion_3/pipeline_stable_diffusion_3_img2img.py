@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL.Image
 import torch
@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import SD3LoraLoaderMixin
+from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -149,7 +149,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
+class StableDiffusion3Img2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -681,6 +681,10 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         return self._guidance_scale
 
     @property
+    def joint_attention_kwargs(self):
+        return self._joint_attention_kwargs
+
+    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -723,6 +727,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -797,6 +802,10 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
+            joint_attention_kwargs (`dict`, *optional*):
+               A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -835,6 +844,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
+        self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -846,6 +856,10 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+
+        lora_scale = (
+            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        )
 
         (
             prompt_embeds,
@@ -868,6 +882,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
             clip_skip=self.clip_skip,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
 
         if self.do_classifier_free_guidance:
@@ -912,6 +927,7 @@ class StableDiffusion3Img2ImgPipeline(DiffusionPipeline):
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 
