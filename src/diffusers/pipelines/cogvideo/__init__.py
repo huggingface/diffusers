@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_cogvideox"] = ["CogVideoXPipeline"]
     _import_structure["pipeline_cogvideox_image2video"] = ["CogVideoXImageToVideoPipeline"]
     _import_structure["pipeline_cogvideox_video2video"] = ["CogVideoXVideoToVideoPipeline"]
+    _import_structure["pipeline_cogvideox_fun_control"] = ["CogVideoXFunControlPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -37,6 +38,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_cogvideox import CogVideoXPipeline
         from .pipeline_cogvideox_image2video import CogVideoXImageToVideoPipeline
         from .pipeline_cogvideox_video2video import CogVideoXVideoToVideoPipeline
+        from .pipeline_cogvideox_fun_control import CogVideoXFunControlPipeline
 
 else:
     import sys
