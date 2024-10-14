@@ -12,21 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
 from PIL import Image
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXFunControlPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -123,13 +119,13 @@ class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         # Cannot reduce because convolution kernel becomes bigger than sample
         height = 16
         width = 16
-        
+
         control_video = [Image.new("RGB", (width, height))] * num_frames
-        
+
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "",

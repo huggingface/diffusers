@@ -18,11 +18,10 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import T5EncoderModel, T5Tokenizer
 from PIL import Image
+from transformers import T5EncoderModel, T5Tokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import VaeImageProcessor
 from ...loaders import CogVideoXLoraLoaderMixin
 from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
@@ -44,11 +43,15 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import CogVideoXFunControlPipeline, DDIMScheduler
         >>> from diffusers.utils import export_to_video, load_video
 
-        >>> pipe = CogVideoXFunControlPipeline.from_pretrained("alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose", torch_dtype=torch.bfloat16)
+        >>> pipe = CogVideoXFunControlPipeline.from_pretrained(
+        ...     "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> pipe.to("cuda")
 
-        >>> control_video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4")
+        >>> control_video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
+        ... )
         >>> prompt = (
         ...     "An astronaut stands triumphantly at the peak of a towering mountain. Panorama of rugged peaks and "
         ...     "valleys. Very futuristic vibe and animated aesthetic. Highlights of purple and golden colors in "
@@ -350,7 +353,9 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def prepare_control_latents(self, mask: Optional[torch.Tensor] = None, masked_image: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def prepare_control_latents(
+        self, mask: Optional[torch.Tensor] = None, masked_image: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if mask is not None:
             masks = []
             for i in range(mask.size(0)):
@@ -358,7 +363,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 current_mask = self.vae.encode(current_mask)[0]
                 current_mask = current_mask.mode()
                 masks.append(current_mask)
-            mask = torch.cat(masks, dim = 0)
+            mask = torch.cat(masks, dim=0)
             mask = mask * self.vae.config.scaling_factor
 
         if masked_image is not None:
@@ -368,7 +373,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 mask_pixel_value = self.vae.encode(mask_pixel_value)[0]
                 mask_pixel_value = mask_pixel_value.mode()
                 mask_pixel_values.append(mask_pixel_value)
-            masked_image_latents = torch.cat(mask_pixel_values, dim = 0)
+            masked_image_latents = torch.cat(mask_pixel_values, dim=0)
             masked_image_latents = masked_image_latents * self.vae.config.scaling_factor
         else:
             masked_image_latents = None
@@ -453,9 +458,11 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        
+
         if control_video is not None and control_video_latents is not None:
-            raise ValueError(f"Cannot pass both `control_video` and `control_video_latents`. Please make sure to pass only one of these parameters.")
+            raise ValueError(
+                "Cannot pass both `control_video` and `control_video_latents`. Please make sure to pass only one of these parameters."
+            )
 
     def fuse_qkv_projections(self) -> None:
         r"""Enables fused QKV projections."""
@@ -554,8 +561,8 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             control_video (`List[PIL.Image.Image]`):
-                The control video to condition the generation on. Must be a list of images/frames of the video. If not provided,
-                `control_video_latents` must be provided.
+                The control video to condition the generation on. Must be a list of images/frames of the video. If not
+                provided, `control_video_latents` must be provided.
             height (`int`, *optional*, defaults to self.transformer.config.sample_height * self.vae_scale_factor_spatial):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to self.transformer.config.sample_height * self.vae_scale_factor_spatial):
@@ -583,8 +590,8 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             control_video_latents (`torch.Tensor`, *optional*):
-                Pre-generated control latents, sampled from a Gaussian distribution, to be used as inputs for controlled
-                video generation. If not provided, `control_video` must be provided.
+                Pre-generated control latents, sampled from a Gaussian distribution, to be used as inputs for
+                controlled video generation. If not provided, `control_video` must be provided.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -651,7 +658,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         if control_video is not None and isinstance(control_video[0], Image.Image):
             control_video = [control_video]
 
@@ -698,7 +705,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         if control_video_latents is None:
             control_video = self.video_processor.preprocess_video(control_video, height=height, width=width)
             control_video = control_video.to(device=device, dtype=prompt_embeds.dtype)
-        
+
         _, control_video_latents = self.prepare_control_latents(None, control_video)
         control_video_latents = control_video_latents.permute(0, 2, 1, 3, 4)
 
@@ -725,7 +732,9 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                latent_control_input = torch.cat([control_video_latents] * 2) if do_classifier_free_guidance else control_video_latents
+                latent_control_input = (
+                    torch.cat([control_video_latents] * 2) if do_classifier_free_guidance else control_video_latents
+                )
                 latent_model_input = torch.cat([latent_model_input, latent_control_input], dim=2)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
