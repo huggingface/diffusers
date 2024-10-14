@@ -60,6 +60,7 @@ check_min_version("0.31.0.dev0")
 logger = get_logger(__name__)
 if is_torch_npu_available():
     import torch_npu
+
     torch.npu.config.allow_internal_format = False
 
 DATASET_NAME_MAPPING = {
