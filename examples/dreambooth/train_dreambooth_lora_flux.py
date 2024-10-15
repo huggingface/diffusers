@@ -1396,10 +1396,9 @@ def main(args):
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
             )
-            # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
+            # changes the learning rate of text_encoder_parameters_one to be
             # --learning_rate
             params_to_optimize[1]["lr"] = args.learning_rate
-            params_to_optimize[2]["lr"] = args.learning_rate
 
         optimizer = optimizer_class(
             params_to_optimize,
