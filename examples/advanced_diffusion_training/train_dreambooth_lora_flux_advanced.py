@@ -1468,9 +1468,11 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        model_id = args.hub_model_id or Path(args.output_dir).name
+        repo_id = None
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                repo_id=model_id,
                 exist_ok=True,
             ).repo_id
 
@@ -2427,7 +2429,7 @@ def main(args):
             )
 
         save_model_card(
-            repo_id,
+            model_id if not args.push_to_hub else repo_id,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
