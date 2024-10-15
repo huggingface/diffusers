@@ -30,7 +30,7 @@ class MultiAdapter(ModelMixin):
     MultiAdapter is a wrapper model that contains multiple adapter models and merges their outputs according to
     user-assigned weighting.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for common methods such as 
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for common methods such as
     downloading or saving.
 
     Args:
@@ -77,10 +77,10 @@ class MultiAdapter(ModelMixin):
         r"""
         Args:
             xs (`torch.Tensor`):
-                A tensor of shape (batch, channel, height, width) representing input images for multiple adapter models, 
+                A tensor of shape (batch, channel, height, width) representing input images for multiple adapter models,
                 concatenated along dimension 1(channel dimension).
                 The `channel` dimension should be equal to `num_adapter` * number of channel per image.
-            
+
             adapter_weights (`List[float]`, *optional*, defaults to None):
                 A list of floats representing the weights which will be multiplied by each adapter's output before summing
                 them together.
@@ -119,8 +119,8 @@ class MultiAdapter(ModelMixin):
             save_directory (`str` or `os.PathLike`):
                 The directory where the model will be saved. If the directory does not exist, it will be created.
             is_main_process (`bool`, optional, defaults=True):
-                Indicates whether current process is the main process or not. 
-                Useful for distributed training (e.g., TPUs) and need to call this function on all processes. 
+                Indicates whether current process is the main process or not.
+                Useful for distributed training (e.g., TPUs) and need to call this function on all processes.
                 In this case, set `is_main_process=True` only for the main process to avoid race conditions.
             save_function (`Callable`):
                 Function used to save the state dictionary. Useful for distributed training (e.g., TPUs) to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
@@ -153,7 +153,7 @@ class MultiAdapter(ModelMixin):
         the model, set it back to training mode using `model.train()`.
 
         Warnings:
-            *Weights from XXX not initialized from pretrained model* means that the weights of XXX are not pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning. 
+            *Weights from XXX not initialized from pretrained model* means that the weights of XXX are not pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning.
             *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, so those weights are discarded.
 
         Args:
@@ -185,8 +185,8 @@ class MultiAdapter(ModelMixin):
                 If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will be
                 ignored when using `from_flax`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
-                If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is installed. 
-                If `True`, the model will be forcibly loaded from`safetensors` weights. 
+                If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is installed.
+                If `True`, the model will be forcibly loaded from`safetensors` weights.
                 If `False`, `safetensors` is not used.
         """
         idx = 0
