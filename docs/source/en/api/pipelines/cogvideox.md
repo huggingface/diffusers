@@ -106,7 +106,7 @@ It is also worth noting that torchao quantization is fully compatible with [torc
 
 Pyramid Attention Broadcast (PAB) is a method that speeds up inference in diffusion models by systematically skipping attention computations between successive inference steps and reusing cached attention states. The attention states aren't that different between successive steps. The most prominent difference is in the spatial attention blocks, not as much in the temporal attention blocks, and finally the least in the cross attention blocks. Therefore, many cross attention computation blocks can be skipped, followed by the temporal and spatial attention blocks. By combining other techniques like sequence parallelism and classifier-free guidance parallelism, PAB achieves near real-time video generation.
 
-PAB can be enabled easily on any pipeline by deriving from the [`PyramidAttentionBroadcastMixin`] and keeping track of current inference timestep in the pipeline. Minimal example to demonstrate how to use PAB with CogVideoX:
+Enable PAB with [`~PyramidAttentionBroadcastMixin.enable_pyramind_attention_broadcast`] on any pipeline and keep track of the current inference timestep in the pipeline.
 
 ```python
 import torch
