@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
