@@ -900,13 +900,13 @@ class GaussianSmoothing(nn.Module):
     in the input using a depthwise convolution.
 
     Args:
-        channels (`int` or `sequence`): 
+        channels (`int` or `sequence`):
             Number of channels of the input tensors. The output will have this number of channels as well.
-        kernel_size (`int` or `sequence`): 
+        kernel_size (`int` or `sequence`):
             Size of the Gaussian kernel.
-        sigma (`float` or `sequence`): 
+        sigma (`float` or `sequence`):
             Standard deviation of the Gaussian kernel.
-        dim (`int`, *optional*, defaults to `2`): 
+        dim (`int`, *optional*, defaults to `2`):
             The number of dimensions of the data. Default is 2 (spatial dimensions).
     """
 
@@ -953,7 +953,7 @@ class GaussianSmoothing(nn.Module):
                 Input to apply Gaussian filter on.
 
         Returns:
-            `torch.Tensor`: 
+            `torch.Tensor`:
                 The filtered output tensor with the same shape as the input.
         """
         return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups, padding="same")
