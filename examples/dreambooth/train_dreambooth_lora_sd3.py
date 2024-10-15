@@ -1635,7 +1635,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
             if args.train_text_encoder:
-                models_to_accumulate.extend([text_encoder_one])
+                models_to_accumulate.extend([text_encoder_one, text_encoder_two])
             with accelerator.accumulate(models_to_accumulate):
                 prompts = batch["prompts"]
 
