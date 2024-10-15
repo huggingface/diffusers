@@ -524,9 +524,6 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         gamma = 0
         sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
 
-        device = model_output.device
-        noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=device, generator=generator)
-
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
             sigma_input = sigma_hat if self.state_in_first_order else sigma_interpol
@@ -564,6 +561,9 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.sample = None
 
             prev_sample = sample + derivative * dt
+            noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+            )
             prev_sample = prev_sample + noise * sigma_up
 
         # upon completion increase step index by one
