@@ -635,6 +635,15 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--upcast_before_saving",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to upcast the trained transformer layers to float32 before saving (at the end of training). "
+            "Defaults to precision dtype used for training to save memory"
+        ),
+    )
+    parser.add_argument(
         "--prior_generation_precision",
         type=str,
         default=None,
@@ -1824,7 +1833,10 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        if args.upcast_before_saving:
+            transformer.to(torch.float32)
+        else:
+            transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
