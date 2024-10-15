@@ -23,7 +23,7 @@ from ..loaders import PeftAdapterMixin
 from ..models.attention_processor import AttentionProcessor
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from .controlnet import BaseOutput, zero_module
+from .controlnet import BaseOutput, ControlNetConditioningEmbedding, zero_module
 from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from .modeling_outputs import Transformer2DModelOutput
 from .transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
@@ -55,6 +55,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         guidance_embeds: bool = False,
         axes_dims_rope: List[int] = [16, 56, 56],
         num_mode: int = None,
+        conditioning_embedding_channels: int = None,
     ):
         super().__init__()
         self.out_channels = in_channels
@@ -106,7 +107,14 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if self.union:
             self.controlnet_mode_embedder = nn.Embedding(num_mode, self.inner_dim)
 
-        self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
+        if conditioning_embedding_channels is not None:
+            self.input_hint_block = ControlNetConditioningEmbedding(
+                conditioning_embedding_channels=conditioning_embedding_channels, block_out_channels=(16, 16, 16, 16)
+            )
+            self.controlnet_x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
+        else:
+            self.input_hint_block = None
+            self.controlnet_x_embedder = zero_module(torch.nn.Linear(in_channels, self.inner_dim))
 
         self.gradient_checkpointing = False
 
@@ -269,6 +277,16 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
         hidden_states = self.x_embedder(hidden_states)
 
+        if self.input_hint_block is not None:
+            controlnet_cond = self.input_hint_block(controlnet_cond)
+            batch_size, channels, height_pw, width_pw = controlnet_cond.shape
+            height = height_pw // self.config.patch_size
+            width = width_pw // self.config.patch_size
+            controlnet_cond = controlnet_cond.reshape(
+                batch_size, channels, height, self.config.patch_size, width, self.config.patch_size
+            )
+            controlnet_cond = controlnet_cond.permute(0, 2, 4, 1, 3, 5)
+            controlnet_cond = controlnet_cond.reshape(batch_size, height * width, -1)
         # add
         hidden_states = hidden_states + self.controlnet_x_embedder(controlnet_cond)
 
