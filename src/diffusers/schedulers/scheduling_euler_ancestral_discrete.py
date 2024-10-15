@@ -435,7 +435,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index += 1
 
         if not return_dict:
-            return (prev_sample,)
+            return (
+                prev_sample,
+                pred_original_sample,
+            )
 
         return EulerAncestralDiscreteSchedulerOutput(
             prev_sample=prev_sample, pred_original_sample=pred_original_sample

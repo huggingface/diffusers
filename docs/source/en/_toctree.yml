@@ -56,7 +56,7 @@
   - local: using-diffusers/overview_techniques
     title: Overview
   - local: training/distributed_inference
-    title: Distributed inference with multiple GPUs
+    title: Distributed inference
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
   - local: using-diffusers/scheduler_features
@@ -161,6 +161,8 @@
     title: DeepCache
   - local: optimization/tgate
     title: TGATE
+  - local: optimization/xdit
+    title: xDiT
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -240,6 +242,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/cogview3plus_transformer2d
+        title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
@@ -318,6 +322,8 @@
       title: BLIP-Diffusion
     - local: api/pipelines/cogvideox
       title: CogVideoX
+    - local: api/pipelines/cogview3
+      title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet

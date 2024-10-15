@@ -29,9 +29,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
 
-There are two models available that can be used with the CogVideoX pipeline:
-- [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b)
-- [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b)
+There are two models available that can be used with the text-to-video and video-to-video CogVideoX pipelines:
+- [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b): The recommended dtype for running this model is `fp16`.
+- [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b): The recommended dtype for running this model is `bf16`.
+
+There is one model available that can be used with the image-to-video CogVideoX pipeline:
+- [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V): The recommended dtype for running this model is `bf16`.
 
 ## Inference
 
@@ -41,10 +44,15 @@ First, load the pipeline:
 
 ```python
 import torch
-from diffusers import CogVideoXPipeline
-from diffusers.utils import export_to_video
+from diffusers import CogVideoXPipeline, CogVideoXImageToVideoPipeline
+from diffusers.utils import export_to_video,load_image
+pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b").to("cuda") # or "THUDM/CogVideoX-2b" 
+```
 
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b").to("cuda")
+If you are using the image-to-video pipeline, load it as follows:
+
+```python
+pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V").to("cuda")
 ```
 
 Then change the memory layout of the pipelines `transformer` component to `torch.channels_last`:
@@ -53,7 +61,7 @@ Then change the memory layout of the pipelines `transformer` component to `torch
 pipe.transformer.to(memory_format=torch.channels_last)
 ```
 
-Finally, compile the components and run inference:
+Compile the components and run inference:
 
 ```python
 pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
@@ -63,7 +71,7 @@ prompt = "A panda, dressed in a small, red jacket and a tiny hat, sits on a wood
 video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
 ```
 
-The [benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f) results on an 80GB A100 machine are:
+The [T2V benchmark](https://gist.github.com/a-r-r-o-w/5183d75e452a368fd17448fcc810bd3f) results on an 80GB A100 machine are:
 
 ```
 Without torch.compile(): Average inference time: 96.89 seconds.
@@ -95,6 +103,12 @@ It is also worth noting that torchao quantization is fully compatible with [torc
 ## CogVideoXPipeline
 
 [[autodoc]] CogVideoXPipeline
+  - all
+  - __call__
+
+## CogVideoXImageToVideoPipeline
+
+[[autodoc]] CogVideoXImageToVideoPipeline
   - all
   - __call__
 

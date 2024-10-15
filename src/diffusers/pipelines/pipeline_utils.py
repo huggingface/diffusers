@@ -50,7 +50,6 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -58,7 +57,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -189,6 +188,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         save_directory: Union[str, os.PathLike],
         safe_serialization: bool = True,
         variant: Optional[str] = None,
+        max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -204,6 +204,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            max_shard_size (`int` or `str`, defaults to `None`):
+                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
+                If expressed as an integer, the unit is bytes. Note that this limit will be decreased after a certain
+                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`.
+                This is to establish a common default size for this argument across different libraries in the Hugging
+                Face ecosystem (`transformers`, and `accelerate`, for example).
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
@@ -278,12 +285,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
+            save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
 
             save_kwargs = {}
             if save_method_accept_safe:
                 save_kwargs["safe_serialization"] = safe_serialization
             if save_method_accept_variant:
                 save_kwargs["variant"] = variant
+            if save_method_accept_max_shard_size and max_shard_size is not None:
+                # max_shard_size is expected to not be None in ModelMixin
+                save_kwargs["max_shard_size"] = max_shard_size
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
@@ -723,6 +734,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
+        # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+        # a warning if detected.
+        if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
+            warn_msg = (
+                f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                "Please check your files carefully:\n\n"
+                "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                "If you find any files in the deprecated format:\n"
+                "1. Remove all existing checkpoint files for this variant.\n"
+                "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                "This will ensure you're using the most up-to-date and compatible checkpoint format."
+            )
+            logger.warning(warn_msg)
+
         config_dict = cls.load_config(cached_folder)
 
         # pop out "_ignore_files" as it is only needed for download
@@ -733,6 +759,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
         # with variant being `"fp16"`.
         model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
+        if len(model_variants) == 0 and variant is not None:
+            error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+            raise ValueError(error_message)
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -876,6 +905,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
+                    use_safetensors=use_safetensors,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1239,6 +1269,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            filenames = {sibling.rfilename for sibling in info.siblings}
+            if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
+                warn_msg = (
+                    f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                    "Please check your files carefully:\n\n"
+                    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                    "If you find any files in the deprecated format:\n"
+                    "1. Remove all existing checkpoint files for this variant.\n"
+                    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                    "This will ensure you're using the most up-to-date and compatible checkpoint format."
+                )
+                logger.warning(warn_msg)
+
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1254,9 +1300,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
-
-            filenames = {sibling.rfilename for sibling in info.siblings}
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
             pipelines = getattr(diffusers_module, "pipelines")
@@ -1280,13 +1323,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     )
 
             if len(variant_filenames) == 0 and variant is not None:
-                deprecation_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
-                    "modeling files is deprecated."
-                )
-                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
+                error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+                raise ValueError(error_message)
 
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
