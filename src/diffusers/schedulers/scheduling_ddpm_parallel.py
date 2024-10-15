@@ -500,7 +500,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
-            return (pred_prev_sample,)
+            return (
+                pred_prev_sample,
+                pred_original_sample,
+            )
 
         return DDPMParallelSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
