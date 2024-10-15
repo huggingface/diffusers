@@ -701,7 +701,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage = True
                 logger.info("Set `low_cpu_mem_usage` to True as `_keep_in_fp32_modules` is not None.")
             elif not low_cpu_mem_usage:
-                raise ValueError("`low_cpu_mem_usage` cannot be False or None when using quantization.")
+                raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
         else:
             keep_in_fp32_modules = []
         #######################################
