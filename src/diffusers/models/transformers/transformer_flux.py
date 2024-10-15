@@ -511,7 +511,9 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 interval_control = int(np.ceil(interval_control))
                 # For Xlabs ControlNet.
                 if controlnet_blocks_repeat:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
+                    hidden_states = (
+                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
+                    )
                 else:
                     hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 

@@ -22,15 +22,12 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import PeftAdapterMixin
 from ..models.attention_processor import AttentionProcessor
 from ..models.modeling_utils import ModelMixin
-from ..utils import (USE_PEFT_BACKEND, is_torch_version, logging,
-                     scale_lora_layers, unscale_lora_layers)
-from .controlnet import (BaseOutput, ControlNetConditioningEmbedding,
-                         zero_module)
-from .embeddings import (CombinedTimestepGuidanceTextProjEmbeddings,
-                         CombinedTimestepTextProjEmbeddings, FluxPosEmbed)
+from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from .controlnet import BaseOutput, ControlNetConditioningEmbedding, zero_module
+from .embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from .modeling_outputs import Transformer2DModelOutput
-from .transformers.transformer_flux import (FluxSingleTransformerBlock,
-                                            FluxTransformerBlock)
+from .transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -112,8 +109,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         if conditioning_embedding_channels is not None:
             self.input_hint_block = ControlNetConditioningEmbedding(
-                conditioning_embedding_channels=conditioning_embedding_channels,
-                block_out_channels=(16,16,16,16)
+                conditioning_embedding_channels=conditioning_embedding_channels, block_out_channels=(16, 16, 16, 16)
             )
             self.controlnet_x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
         else:
