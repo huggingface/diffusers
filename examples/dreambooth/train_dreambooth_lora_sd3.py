@@ -1512,6 +1512,20 @@ def main(args):
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
                 tokens_three = torch.cat([tokens_three, class_tokens_three], dim=0)
 
+    if args.cache_latents:
+        latents_cache = []
+        for batch in tqdm(train_dataloader, desc="Caching latents"):
+            with torch.no_grad():
+                batch["pixel_values"] = batch["pixel_values"].to(
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
+                )
+                latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+
+        if args.validation_prompt is None:
+            del vae
+            free_memory()
+
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
