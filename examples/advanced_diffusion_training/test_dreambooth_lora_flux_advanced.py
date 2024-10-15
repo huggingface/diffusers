@@ -134,7 +134,9 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
             self.assertTrue(is_lora)
 
             # make sure the state_dict has the correct naming in the parameters.
-            textual_inversion_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, f"{tmpdir}_emb.safetensors"))
+            textual_inversion_state_dict = safetensors.torch.load_file(
+                os.path.join(tmpdir, f"{tmpdir}_emb.safetensors")
+            )
             is_clip = all("clip_l" in k for k in textual_inversion_state_dict.keys())
             self.assertTrue(is_clip)
 
@@ -175,7 +177,9 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
             self.assertTrue(is_lora)
 
             # make sure the state_dict has the correct naming in the parameters.
-            textual_inversion_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, f"{tmpdir}_emb.safetensors"))
+            textual_inversion_state_dict = safetensors.torch.load_file(
+                os.path.join(tmpdir, f"{tmpdir}_emb.safetensors")
+            )
             is_te = all(("clip_l" in k or "t5" in k) for k in textual_inversion_state_dict.keys())
             self.assertTrue(is_te)
 
