@@ -13,7 +13,11 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+)
 
 
 class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
@@ -191,7 +195,16 @@ class StableDiffusion3PipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         image = pipe(**inputs).images
         original_image_slice = image[0, -3:, -3:, -1]
 
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice_fused = image[0, -3:, -3:, -1]
@@ -252,18 +265,37 @@ class StableDiffusion3PipelineSlowTests(unittest.TestCase):
         image_slice = image[0, :10, :10]
         expected_slice = np.array(
             [
-                [0.36132812, 0.30004883, 0.25830078],
-                [0.36669922, 0.31103516, 0.23754883],
-                [0.34814453, 0.29248047, 0.23583984],
-                [0.35791016, 0.30981445, 0.23999023],
-                [0.36328125, 0.31274414, 0.2607422],
-                [0.37304688, 0.32177734, 0.26171875],
-                [0.3671875, 0.31933594, 0.25756836],
-                [0.36035156, 0.31103516, 0.2578125],
-                [0.3857422, 0.33789062, 0.27563477],
-                [0.3701172, 0.31982422, 0.265625],
-            ],
-            dtype=np.float32,
+                0.4648,
+                0.4404,
+                0.4177,
+                0.5063,
+                0.4800,
+                0.4287,
+                0.5425,
+                0.5190,
+                0.4717,
+                0.5430,
+                0.5195,
+                0.4766,
+                0.5361,
+                0.5122,
+                0.4612,
+                0.4871,
+                0.4749,
+                0.4058,
+                0.4756,
+                0.4678,
+                0.3804,
+                0.4832,
+                0.4822,
+                0.3799,
+                0.5103,
+                0.5034,
+                0.3953,
+                0.5073,
+                0.4839,
+                0.3884,
+            ]
         )
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())

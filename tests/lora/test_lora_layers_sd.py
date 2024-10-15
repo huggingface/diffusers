@@ -20,8 +20,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
-from huggingface_hub.repocard import RepoCard
 from safetensors.torch import load_file
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -80,6 +80,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+    text_encoder_cls, text_encoder_id = CLIPTextModel, "peft-internal-testing/tiny-clip-text-2"
+    tokenizer_cls, tokenizer_id = CLIPTokenizer, "peft-internal-testing/tiny-clip-text-2"
+
+    @property
+    def output_shape(self):
+        return (1, 64, 64, 3)
 
     def setUp(self):
         super().setUp()
@@ -96,7 +102,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     @slow
     @require_torch_gpu
     def test_integration_move_lora_cpu(self):
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
@@ -150,11 +156,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
                 self.assertTrue(m.weight.device != torch.device("cpu"))
 
+    @slow
     @require_torch_gpu
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
 
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         unet_lora_config = LoraConfig(
             init_lora_weights="gaussian",
             target_modules=["to_k", "to_q", "to_v", "to_out.0"],
@@ -214,7 +221,7 @@ class LoraIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_integration_logits_with_scale(self):
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
@@ -246,7 +253,7 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_integration_logits_no_scale(self):
-        path = "runwayml/stable-diffusion-v1-5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
@@ -276,8 +283,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "hf-internal-testing/lora_dreambooth_dog_example"
-        card = RepoCard.load(lora_model_id)
-        base_model_id = card.data.to_dict()["base_model"]
+
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -300,8 +307,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         lora_model_id = "hf-internal-testing/lora-trained"
-        card = RepoCard.load(lora_model_id)
-        base_model_id = card.data.to_dict()["base_model"]
+
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -412,9 +419,9 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_kohya_sd_v15_with_higher_dimensions(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         lora_model_id = "hf-internal-testing/urushisato-lora"
         lora_filename = "urushisato_v15.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -436,8 +443,8 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         lora_model_id = "hf-internal-testing/sd-model-finetuned-lora-t4"
-        card = RepoCard.load(lora_model_id)
-        base_model_id = card.data.to_dict()["base_model"]
+
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -460,9 +467,9 @@ class LoraIntegrationTests(unittest.TestCase):
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         initial_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -498,9 +505,9 @@ class LoraIntegrationTests(unittest.TestCase):
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         initial_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -541,7 +548,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_not_empty_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -555,7 +562,7 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_load_unload_load_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -573,7 +580,9 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora(self):
-        pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -601,7 +610,9 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        pipe = AutoPipelineForImage2Image.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -642,7 +653,7 @@ class LoraIntegrationTests(unittest.TestCase):
         This test simply checks that loading a LoRA with an empty network alpha works fine
         See: https://github.com/huggingface/diffusers/issues/5606
         """
-        pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipeline.enable_sequential_cpu_offload()
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")

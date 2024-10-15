@@ -31,7 +31,7 @@ from diffusers.utils import make_image_grid
 Pick a Stable Diffusion checkpoint and a pre-learned concept from the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer):
 
 ```py
-pretrained_model_name_or_path = "runwayml/stable-diffusion-v1-5"
+pretrained_model_name_or_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 repo_id_embeds = "sd-concepts-library/cat-toy"
 ```
 

@@ -73,12 +73,12 @@ from .import_utils import (
     is_librosa_available,
     is_matplotlib_available,
     is_note_seq_available,
-    is_notebook,
     is_onnx_available,
     is_peft_available,
     is_peft_version,
     is_safetensors_available,
     is_scipy_available,
+    is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,
     is_torch_available,
@@ -94,7 +94,7 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .loading_utils import load_image
+from .loading_utils import load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
