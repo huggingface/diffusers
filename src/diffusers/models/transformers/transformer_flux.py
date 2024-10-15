@@ -402,6 +402,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
         return_dict: bool = True,
+        controlnet_blocks_repeat: bool = False,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
@@ -509,8 +510,8 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
                 interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
                 interval_control = int(np.ceil(interval_control))
                 # For Xlabs ControlNet.
-                if len(controlnet_block_samples) == 2:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block % 2]
+                if controlnet_blocks_repeat:
+                    hidden_states = hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
                 else:
                     hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 

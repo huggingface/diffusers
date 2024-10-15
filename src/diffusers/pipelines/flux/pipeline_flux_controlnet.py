@@ -739,6 +739,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         )
 
         # 3. Prepare control image
+        controlnet_blocks_repeat = False
         num_channels_latents = self.transformer.config.in_channels // 4
         if isinstance(self.controlnet, FluxControlNetModel):
             control_image = self.prepare_image(
@@ -766,6 +767,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     height_control_image,
                     width_control_image,
                 )
+            else:
+                controlnet_blocks_repeat = True
 
             # Here we ensure that `control_mode` has the same length as the control_image.
             if control_mode is not None:
@@ -926,6 +929,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
+                    controlnet_blocks_repeat=controlnet_blocks_repeat,
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
