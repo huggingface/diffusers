@@ -115,6 +115,9 @@ class UNet2DConditionLoadersMixin:
                 `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
 
         Example:
 
@@ -142,7 +145,13 @@ class UNet2DConditionLoadersMixin:
         adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
         network_alphas = kwargs.pop("network_alphas", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         if use_safetensors is None:
             use_safetensors = True
@@ -209,6 +218,7 @@ class UNet2DConditionLoadersMixin:
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
         else:
             raise ValueError(
@@ -268,7 +278,9 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+    def _process_lora(
+        self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, low_cpu_mem_usage
+    ):
         # This method does the following things:
         # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
         #    format. For legacy format no filtering is applied.
@@ -335,9 +347,12 @@ class UNet2DConditionLoadersMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
