@@ -739,7 +739,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         )
 
         # 3. Prepare control image
-        controlnet_blocks_repeat = False
         num_channels_latents = self.transformer.config.in_channels // 4
         if isinstance(self.controlnet, FluxControlNetModel):
             control_image = self.prepare_image(
@@ -753,6 +752,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             )
             height, width = control_image.shape[-2:]
 
+            # xlab controlnet has a input_hint_block and instantx controlnet does not
+            controlnet_blocks_repeat = False if self.controlnet.input_hint_block is None else True
             if self.controlnet.input_hint_block is None:
                 # vae encode
                 control_image = self.vae.encode(control_image).latent_dist.sample()
@@ -767,8 +768,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     height_control_image,
                     width_control_image,
                 )
-            else:
-                controlnet_blocks_repeat = True
 
             # Here we ensure that `control_mode` has the same length as the control_image.
             if control_mode is not None:
@@ -779,7 +778,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         elif isinstance(self.controlnet, FluxMultiControlNetModel):
             control_images = []
-
+            # xlab controlnet has a input_hint_block and instantx controlnet does not
+            controlnet_blocks_repeat = False if self.controlnet.nets[0].input_hint_block is None else True
             for i, control_image_ in enumerate(control_image):
                 control_image_ = self.prepare_image(
                     image=control_image_,
@@ -792,7 +792,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 )
                 height, width = control_image_.shape[-2:]
 
-                if self.controlnet.nets[i].input_hint_block is None:
+                if self.controlnet.nets[0].input_hint_block is None:
                     # vae encode
                     control_image_ = self.vae.encode(control_image_).latent_dist.sample()
                     control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
@@ -806,9 +806,6 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                         height_control_image,
                         width_control_image,
                     )
-                else:
-                    controlnet_blocks_repeat = True
-
                 control_images.append(control_image_)
 
             control_image = control_images
