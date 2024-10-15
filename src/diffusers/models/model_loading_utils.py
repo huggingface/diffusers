@@ -190,6 +190,7 @@ def load_model_dict_into_meta(
         if param_name not in empty_state_dict:
             continue
 
+        set_module_kwargs = {}
         # We convert floating dtypes to the `dtype` passed. We also want to keep the buffers/params
         # in int/uint/bool and not cast them.
         # TODO: revisit cases when param.dtype == torch.float8_e4m3fn
@@ -201,10 +202,13 @@ def load_model_dict_into_meta(
                 )
                 and dtype == torch.float16
             ):
-                dtype = torch.float32
-                param = param.to(dtype)
+                param = param.to(torch.float32)
+                if accepts_dtype:
+                    set_module_kwargs["dtype"] = torch.float32
             else:
                 param = param.to(dtype)
+                if accepts_dtype:
+                    set_module_kwargs["dtype"] = dtype
 
         # bnb params are flattened.
         if not is_quant_method_bnb and empty_state_dict[param_name].shape != param.shape:
@@ -217,7 +221,7 @@ def load_model_dict_into_meta(
             not hf_quantizer.check_quantized_param(model, param, param_name, state_dict, param_device=device)
         ):
             if accepts_dtype:
-                set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
+                set_module_tensor_to_device(model, param_name, device, value=param, **set_module_kwargs)
             else:
                 set_module_tensor_to_device(model, param_name, device, value=param)
         else:
