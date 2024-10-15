@@ -1956,7 +1956,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
                     if lora_unexpected_keys:
                         warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
                             f" {', '.join(lora_unexpected_keys)}. "
                         )
 
@@ -2319,7 +2319,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
                     if lora_unexpected_keys:
                         warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
                             f" {', '.join(lora_unexpected_keys)}. "
                         )
 
@@ -2773,7 +2773,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                     lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
                     if lora_unexpected_keys:
                         warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys not found in the model:"
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
                             f" {', '.join(lora_unexpected_keys)}. "
                         )
 
