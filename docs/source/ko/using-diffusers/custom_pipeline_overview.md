@@ -46,7 +46,7 @@ feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id)
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
