@@ -30,8 +30,8 @@ class MultiAdapter(ModelMixin):
     MultiAdapter is a wrapper model that contains multiple adapter models and merges their outputs according to
     user-assigned weighting.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for common methods such as
-    downloading or saving.
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for common methods such as downloading
+    or saving.
 
     Args:
         adapters (`List[T2IAdapter]`, *optional*, defaults to None):
@@ -77,14 +77,13 @@ class MultiAdapter(ModelMixin):
         r"""
         Args:
             xs (`torch.Tensor`):
-                A tensor of shape (batch, channel, height, width) representing input images for multiple adapter models,
-                concatenated along dimension 1(channel dimension).
-                The `channel` dimension should be equal to `num_adapter` * number of channel per image.
+                A tensor of shape (batch, channel, height, width) representing input images for multiple adapter
+                models, concatenated along dimension 1(channel dimension). The `channel` dimension should be equal to
+                `num_adapter` * number of channel per image.
 
             adapter_weights (`List[float]`, *optional*, defaults to None):
-                A list of floats representing the weights which will be multiplied by each adapter's output before summing
-                them together.
-                If  `None`, equal weights will be used for all adapters.
+                A list of floats representing the weights which will be multiplied by each adapter's output before
+                summing them together. If `None`, equal weights will be used for all adapters.
         """
         if adapter_weights is None:
             adapter_weights = torch.tensor([1 / self.num_adapter] * self.num_adapter)
@@ -119,14 +118,15 @@ class MultiAdapter(ModelMixin):
             save_directory (`str` or `os.PathLike`):
                 The directory where the model will be saved. If the directory does not exist, it will be created.
             is_main_process (`bool`, optional, defaults=True):
-                Indicates whether current process is the main process or not.
-                Useful for distributed training (e.g., TPUs) and need to call this function on all processes.
-                In this case, set `is_main_process=True` only for the main process to avoid race conditions.
+                Indicates whether current process is the main process or not. Useful for distributed training (e.g.,
+                TPUs) and need to call this function on all processes. In this case, set `is_main_process=True` only
+                for the main process to avoid race conditions.
             save_function (`Callable`):
-                Function used to save the state dictionary. Useful for distributed training (e.g., TPUs) to replace `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment variable.
+                Function used to save the state dictionary. Useful for distributed training (e.g., TPUs) to replace
+                `torch.save` with another method. Can also be configured using`DIFFUSERS_SAVE_MODE` environment
+                variable.
             safe_serialization (`bool`, optional, defaults=True):
-                If `True`, save the model using `safetensors`.
-                If `False`, save the model with `pickle`.
+                If `True`, save the model using `safetensors`. If `False`, save the model with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
         """
@@ -153,8 +153,9 @@ class MultiAdapter(ModelMixin):
         the model, set it back to training mode using `model.train()`.
 
         Warnings:
-            *Weights from XXX not initialized from pretrained model* means that the weights of XXX are not pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning.
-            *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, so those weights are discarded.
+            *Weights from XXX not initialized from pretrained model* means that the weights of XXX are not pretrained
+            with the rest of the model. It is up to you to train those weights with a downstream fine-tuning. *Weights
+            from XXX not used in YYY* means that the layer XXX is not used by YYY, so those weights are discarded.
 
         Args:
             pretrained_model_path (`os.PathLike`):
@@ -174,20 +175,20 @@ class MultiAdapter(ModelMixin):
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
             max_memory (`Dict`, *optional*):
-                A dictionary mapping device identifiers to their maximum memory. Default to the maximum memory available for each
-                GPU and the available CPU RAM if unset.
+                A dictionary mapping device identifiers to their maximum memory. Default to the maximum memory
+                available for each GPU and the available CPU RAM if unset.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             variant (`str`, *optional*):
-                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will be
-                ignored when using `from_flax`.
+                If specified, load weights from a `variant` file (*e.g.* pytorch_model.<variant>.bin). `variant` will
+                be ignored when using `from_flax`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
-                If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is installed.
-                If `True`, the model will be forcibly loaded from`safetensors` weights.
-                If `False`, `safetensors` is not used.
+                If `None`, the `safetensors` weights will be downloaded if available **and** if`safetensors` library is
+                installed. If `True`, the model will be forcibly loaded from`safetensors` weights. If `False`,
+                `safetensors` is not used.
         """
         idx = 0
         adapters = []
@@ -222,14 +223,16 @@ class T2IAdapter(ModelMixin, ConfigMixin):
      and
      [AdapterLight](https://github.com/TencentARC/T2I-Adapter/blob/686de4681515662c0ac2ffa07bf5dda83af1038a/ldm/modules/encoders/adapter.py#L235).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for the common methods, such as downloading or saving.
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the common methods, such as
+    downloading or saving.
 
     Args:
         in_channels (`int`, *optional*, defaults to `3`):
-            The number of channels in the adapter's input (*control image*). Set it to 1 if you're using a gray scale image.
+            The number of channels in the adapter's input (*control image*). Set it to 1 if you're using a gray scale
+            image.
         channels (`List[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
-            The number of channels in each downsample block's output hidden state. The `len(block_out_channels)` determines
-            the number of downsample blocks in the adapter.
+            The number of channels in each downsample block's output hidden state. The `len(block_out_channels)`
+            determines the number of downsample blocks in the adapter.
         num_res_blocks (`int`, *optional*, defaults to `2`):
             Number of ResNet blocks in each downsample block.
         downscale_factor (`int`, *optional*, defaults to `8`):
