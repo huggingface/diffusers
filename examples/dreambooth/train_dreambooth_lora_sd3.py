@@ -1525,7 +1525,6 @@ def main(args):
             del vae
             free_memory()
 
-
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
