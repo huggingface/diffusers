@@ -333,14 +333,13 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
-        noise = randn_tensor(
-            model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
-        )
-
-        eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)
 
         if gamma > 0:
+            noise = randn_tensor(
+                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+            )
+            eps = noise * s_noise
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -360,7 +359,10 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self._step_index += 1
 
         if not return_dict:
-            return (prev_sample,)
+            return (
+                prev_sample,
+                pred_original_sample,
+            )
 
         return EDMEulerSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
