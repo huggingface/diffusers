@@ -496,7 +496,7 @@ def _get_checkpoint_shard_files(
             local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
         if subfolder is not None:
-            cached_folder = os.path.join(cached_folder, subfolder)
+            cached_folder = os.path.join(cache_dir, subfolder)
 
     return cached_folder, sharded_metadata
 
