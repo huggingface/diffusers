@@ -102,6 +102,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
                 (key.startswith("transformer") or key.startswith("text_encoder")) for key in lora_state_dict.keys()
             )
             self.assertTrue(starts_with_expected_prefix)
+
     def test_dreambooth_lora_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -134,6 +135,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
             # with `"transformer"` in their names.
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
+
     def test_dreambooth_lora_sd3_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
