@@ -73,7 +73,8 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
-| HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffsuion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
+| HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
+| [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -85,17 +86,17 @@ pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion
 
 ### Flux with CFG
 
-Know more about Flux [here](https://blackforestlabs.ai/announcing-black-forest-labs/). Since Flux doesn't use CFG, this implementation provides one, inspired by the [PuLID Flux adaptation](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md).  
+Know more about Flux [here](https://blackforestlabs.ai/announcing-black-forest-labs/). Since Flux doesn't use CFG, this implementation provides one, inspired by the [PuLID Flux adaptation](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md).
 
 Example usage:
 
 ```py
 from diffusers import DiffusionPipeline
-import torch 
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", 
-    torch_dtype=torch.bfloat16, 
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
     custom_pipeline="pipeline_flux_with_cfg"
 )
 pipeline.enable_model_cpu_offload()
@@ -103,10 +104,10 @@ prompt = "a watercolor painting of a unicorn"
 negative_prompt = "pink"
 
 img = pipeline(
-    prompt=prompt, 
-    negative_prompt=negative_prompt, 
-    true_cfg=1.5, 
-    guidance_scale=3.5, 
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    true_cfg=1.5,
+    guidance_scale=3.5,
     num_images_per_prompt=1,
     generator=torch.manual_seed(0)
 ).images[0]
@@ -2656,7 +2657,7 @@ image with mask mech_painted.png
 
 <img src=https://github.com/noskill/diffusers/assets/733626/c334466a-67fe-4377-9ff7-f46021b9c224 width="25%" >
 
-result: 
+result:
 
 <img src=https://github.com/noskill/diffusers/assets/733626/5043fb57-a785-4606-a5ba-a36704f7cb42 width="25%" >
 
@@ -4323,6 +4324,51 @@ image = pipe(
 | Gradient                                                                                   | Input                                                                                   | Output                                                                                   |
 
 A colab notebook demonstrating all results can be found [here](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing). Depth Maps have also been added in the same colab.
+
+### 🪆Matryoshka Diffusion Models
+
+![🪆Matryoshka Diffusion Models](https://github.com/user-attachments/assets/bf90b53b-48c3-4769-a805-d9dfe4a7c572)
+
+The Abstract of the paper:
+>Diffusion models are the _de-facto_ approach for generating high-quality images and videos but learning high-dimensional models remains a formidable task due to computational and optimization challenges. Existing methods often resort to training cascaded models in pixel space, or using a downsampled latent space of a separately trained auto-encoder. In this paper, we introduce Matryoshka Diffusion (MDM), **a novel framework for high-resolution image and video synthesis**. We propose a diffusion process that denoises inputs at multiple resolutions jointly and uses a **NestedUNet** architecture where features and parameters for small scale inputs are nested within those of the large scales. In addition, MDM enables a progressive training schedule from lower to higher resolutions which leads to significant improvements in optimization for high-resolution generation. We demonstrate the effectiveness of our approach on various benchmarks, including class-conditioned image generation, high-resolution text-to-image, and text-to-video applications. Remarkably, we can train a **_single pixel-space model_ at resolutions of up to 1024 × 1024 pixels**, demonstrating strong zero shot generalization using the **CC12M dataset, which contains only 12 million images**. Code and pre-trained checkpoints are released at https://github.com/apple/ml-mdm.
+
+- `64×64, nesting_level=0`: 1.719 GiB. With `50` DDIM inference steps:
+
+**64x64**
+:-------------------------:
+| <img src="https://github.com/user-attachments/assets/9e7bb2cd-45a0-4bd1-adb8-23e283baed39" width="222" height="222" alt="bird_64"> |
+
+- `256×256, nesting_level=1`: 1.776 GiB. With `150` DDIM inference steps:
+
+**64x64**             |  **256x256**
+:-------------------------:|:-------------------------:
+| <img src="https://github.com/user-attachments/assets/6b724c2e-5e6a-4b63-9b65-c1182cbb67e0" width="222" height="222" alt="64x64"> | <img src="https://github.com/user-attachments/assets/7dbab2ad-bf40-4a73-ab04-f178347cb7d5" width="222" height="222" alt="256x256"> |
+
+- `1024×1024, nesting_level=2`: 1.792 GiB. As one can realize the cost of adding another layer is really negligible. With `250` DDIM inference steps:
+
+**64x64**             |  **256x256**  |  **1024x1024**
+:-------------------------:|:-------------------------:|:-------------------------:
+| <img src="https://github.com/user-attachments/assets/4a9454e4-e20a-4736-a196-270e2ae796c0" width="222" height="222" alt="64x64"> | <img src="https://github.com/user-attachments/assets/4a96555d-0fda-4303-82b1-a4d886f770b9" width="222" height="222" alt="256x256"> | <img src="https://github.com/user-attachments/assets/e0239b7a-ab73-4d45-8f3e-b4e6b4b50abe" width="222" height="222" alt="1024x1024"> |
+
+```py
+from diffusers import DiffusionPipeline
+from diffusers.utils import make_image_grid
+
+# nesting_level=0 -> 64x64; nesting_level=1 -> 256x256 - 64x64; nesting_level=2 -> 1024x1024 - 256x256 - 64x64
+pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                         nesting_level=0,
+                                         trust_remote_code=False,  # One needs to give permission for this code to run
+                                         ).to("cuda")
+
+prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
+prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
+negative_prompt = "deformed, mutated, ugly, disfigured, blur, blurry, noise, noisy"
+image = pipe(prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=50).images
+make_image_grid(image, rows=1, cols=len(image))
+
+# pipe.change_nesting_level(<int>)  # 0, 1, or 2
+# 50+, 100+, and 250+ num_inference_steps are recommended for nesting levels 0, 1, and 2 respectively.
+```
 
 # Perturbed-Attention Guidance
 
