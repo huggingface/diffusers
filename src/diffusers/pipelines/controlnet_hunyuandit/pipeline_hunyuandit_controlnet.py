@@ -225,6 +225,8 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = HunyuanDiT2DMultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
