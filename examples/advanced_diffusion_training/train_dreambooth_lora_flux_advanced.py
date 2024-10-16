@@ -810,6 +810,7 @@ class TokenEmbeddingsHandler:
         self.tokenizers = tokenizers
 
         self.train_ids: Optional[torch.Tensor] = None
+        self.train_ids_t5: Optional[torch.Tensor] = None
         self.inserting_toks: Optional[List[str]] = None
         self.embeddings_settings = {}
 
@@ -828,7 +829,10 @@ class TokenEmbeddingsHandler:
             text_encoder.resize_token_embeddings(len(tokenizer))
 
             # Convert the token abstractions to ids
-            self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
+            if idx == 0:
+                self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
+            else:
+                self.train_ids_t5 = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
             embeds = (
@@ -838,19 +842,20 @@ class TokenEmbeddingsHandler:
 
             logger.info(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
+            train_ids = self.train_ids if idx == 0 else self.train_ids_t5
             # if initializer_concept are not provided, token embeddings are initialized randomly
             if args.initializer_concept is None:
                 hidden_size = (
                     text_encoder.text_model.config.hidden_size if idx == 0 else text_encoder.encoder.config.hidden_size
                 )
-                embeds.weight.data[self.train_ids] = (
-                    torch.randn(len(self.train_ids), hidden_size).to(device=self.device).to(dtype=self.dtype)
+                embeds.weight.data[train_ids] = (
+                    torch.randn(len(train_ids), hidden_size).to(device=self.device).to(dtype=self.dtype)
                     * std_token_embedding
                 )
             else:
                 # Convert the initializer_token, placeholder_token to ids
                 initializer_token_ids = tokenizer.encode(args.initializer_concept, add_special_tokens=False)
-                for token_idx, token_id in enumerate(self.train_ids):
+                for token_idx, token_id in enumerate(train_ids):
                     embeds.weight.data[token_id] = (embeds.weight.data)[
                         initializer_token_ids[token_idx % len(initializer_token_ids)]
                     ].clone()
@@ -860,7 +865,7 @@ class TokenEmbeddingsHandler:
 
             # makes sure we don't update any embedding weights besides the newly added token
             index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
-            index_no_updates[self.train_ids] = False
+            index_no_updates[train_ids] = False
 
             self.embeddings_settings[f"index_no_updates_{idx}"] = index_no_updates
 
@@ -874,11 +879,12 @@ class TokenEmbeddingsHandler:
         # text_encoder_one, idx==0 - CLIP ViT-L/14, text_encoder_two, idx==1 - T5 xxl
         idx_to_text_encoder_name = {0: "clip_l", 1: "t5"}
         for idx, text_encoder in enumerate(self.text_encoders):
+            train_ids = self.train_ids if idx == 0 else self.train_ids_t5
             embeds = (
                 text_encoder.text_model.embeddings.token_embedding if idx == 0 else text_encoder.encoder.embed_tokens
             )
             assert embeds.weight.data.shape[0] == len(self.tokenizers[idx]), "Tokenizers should be the same."
-            new_token_embeddings = embeds.weight.data[self.train_ids]
+            new_token_embeddings = embeds.weight.data[train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0),
             # Note: When loading with diffusers, any name can work - simply specify in inference
