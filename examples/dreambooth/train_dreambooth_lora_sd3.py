@@ -140,7 +140,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="other",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -186,7 +186,7 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
+    pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -609,6 +609,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--cache_latents",
+        action="store_true",
+        default=False,
+        help="Cache the VAE latents",
+    )
+    parser.add_argument(
         "--report_to",
         type=str,
         default="tensorboard",
@@ -626,6 +632,15 @@ def parse_args(input_args=None):
             "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
+    )
+    parser.add_argument(
+        "--upcast_before_saving",
+        action="store_true",
+        default=False,
+        help=(
+            "Whether to upcast the trained transformer layers to float32 before saving (at the end of training). "
+            "Defaults to precision dtype used for training to save memory"
         ),
     )
     parser.add_argument(
@@ -1394,6 +1409,16 @@ def main(args):
             logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
+        if args.train_text_encoder and args.text_encoder_lr:
+            logger.warning(
+                f"Learning rates were provided both for the transformer and the text encoder- e.g. text_encoder_lr:"
+                f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
+                f"When using prodigy only learning_rate is used as the initial learning rate."
+            )
+            # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
+            # --learning_rate
+            params_to_optimize[1]["lr"] = args.learning_rate
+            params_to_optimize[2]["lr"] = args.learning_rate
 
         optimizer = optimizer_class(
             params_to_optimize,
@@ -1440,6 +1465,9 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
+    # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
+    # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
+    # the redundant encoding.
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
@@ -1484,6 +1512,21 @@ def main(args):
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
                 tokens_three = torch.cat([tokens_three, class_tokens_three], dim=0)
 
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
+    if args.cache_latents:
+        latents_cache = []
+        for batch in tqdm(train_dataloader, desc="Caching latents"):
+            with torch.no_grad():
+                batch["pixel_values"] = batch["pixel_values"].to(
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
+                )
+                latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+
+        if args.validation_prompt is None:
+            del vae
+            free_memory()
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1500,7 +1543,6 @@ def main(args):
         power=args.lr_power,
     )
 
-    # Prepare everything with our `accelerator`.
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
         (
@@ -1607,8 +1649,9 @@ def main(args):
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
+            if args.train_text_encoder:
+                models_to_accumulate.extend([text_encoder_one, text_encoder_two])
             with accelerator.accumulate(models_to_accumulate):
-                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1639,8 +1682,13 @@ def main(args):
                         )
 
                 # Convert images to latent space
-                model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
+                if args.cache_latents:
+                    model_input = latents_cache[step].sample()
+                else:
+                    pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1773,6 +1821,8 @@ def main(args):
                     text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
                         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
                     )
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
                 pipeline = StableDiffusion3Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1793,15 +1843,18 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
-
-                del text_encoder_one, text_encoder_two, text_encoder_three
-                free_memory()
+                if not args.train_text_encoder:
+                    del text_encoder_one, text_encoder_two, text_encoder_three
+                    free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         transformer = unwrap_model(transformer)
-        transformer = transformer.to(torch.float32)
+        if args.upcast_before_saving:
+            transformer.to(torch.float32)
+        else:
+            transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
         if args.train_text_encoder:
