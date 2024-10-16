@@ -188,7 +188,7 @@ jobs:
     name: Torch tests on big GPU (24GB)
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 2
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
