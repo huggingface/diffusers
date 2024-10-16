@@ -440,8 +440,6 @@ class UNet2DConditionLoadersMixin:
                     # no need to account for potential _orig_mod in key here, as torch handles that
                     old_val = attrgetter(key)(model)
                     old_val.data = new_val.data.to(device=old_val.device)
-                    # TODO: wanted to use swap_tensors but this somehow does not work on nn.Parameter
-                    # torch.utils.swap_tensors(old_val.data, new_val.data)
 
             if hotswap:
                 _check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)

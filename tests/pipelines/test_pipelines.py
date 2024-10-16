@@ -2019,17 +2019,13 @@ class PipelineNightlyTests(unittest.TestCase):
 
 
 class TestLoraHotSwapping:
-    def test_hotswapping_peft_config_incompatible_raises(self):
-        # TODO
-        pass
+    """Test that hotswapping does not result in recompilation.
 
-    def test_hotswapping_no_existing_adapter_raises(self):
-        # TODO
-        pass
+    We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
+    tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
+    recompilation.
 
-    def test_hotswapping_works(self):
-        # TODO
-        pass
+    """
 
     @slow
     @require_torch_2
