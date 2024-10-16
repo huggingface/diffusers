@@ -807,7 +807,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
     def load_lora_into_unet(
-        cls, state_dict, network_alphas, unet, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+        cls,
+        state_dict,
+        network_alphas,
+        unet,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -829,6 +836,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage (`boo`, *optional*):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
+            hotswap TODO
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -852,6 +860,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
             )
 
     @classmethod
