@@ -296,6 +296,7 @@ jobs:
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_onnx_tests:
+    if: github.event_name == 'schedule'
     name: Nightly ONNXRuntime CUDA tests on Ubuntu
     runs-on:
       group: aws-g4dn-2xlarge
