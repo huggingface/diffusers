@@ -123,7 +123,7 @@ def check_hotswap(do_hotswap):
         unet = get_small_unet()
         file_name = os.path.join(tmp_dirname, "pytorch_lora_weights.safetensors")
         unet.load_attn_procs(file_name)
-        # unet = torch.compile(unet, mode="reduce-overhead")
+        unet = torch.compile(unet, mode="reduce-overhead")
 
         torch.manual_seed(42)
         out0 = unet(**dummy_input)["sample"]

@@ -2070,6 +2070,9 @@ class TestLoraHotSwapping:
     tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
     recompilation.
 
+    The reason why we need to shell out instead of just running the script inside of the test is that shelling out is
+    required to collect the torch.compile logs.
+
     """
 
     @slow
