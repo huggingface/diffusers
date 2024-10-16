@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team, The InstantX Team, and the XLabs Tean. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team, The InstantX Team, and the XLabs Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -35,9 +35,9 @@ XLabs ControlNets are also supported, which was contributed by the [XLabs team](
 
 | ControlNet type | Developer | Link |
 | -------- | ---------- | ---- |
-| Canny | [The XLabs Team](https://huggingface.co/InstantX) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-canny-diffusers) |
-| Depth | [The XLabs Team](https://huggingface.co/InstantX) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-depth-diffusers) |
-| HED | [The XLabs Team](https://huggingface.co/InstantX) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-hed-diffusers) |
+| Canny | [The XLabs Team](https://huggingface.co/XLabs-AI) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-canny-diffusers) |
+| Depth | [The XLabs Team](https://huggingface.co/XLabs-AI) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-depth-diffusers) |
+| HED | [The XLabs Team](https://huggingface.co/XLabs-AI) | [Link](https://huggingface.co/XLabs-AI/flux-controlnet-hed-diffusers) |
 
 
 <Tip>
