@@ -56,7 +56,7 @@
   - local: using-diffusers/overview_techniques
     title: Overview
   - local: training/distributed_inference
-    title: Distributed inference with multiple GPUs
+    title: Distributed inference
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
   - local: using-diffusers/scheduler_features
@@ -75,6 +75,8 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: using-diffusers/cogvideox
+    title: CogVideoX
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -129,6 +131,8 @@
       title: T2I-Adapters
     - local: training/instructpix2pix
       title: InstructPix2Pix
+    - local: training/cogvideox
+      title: CogVideoX
     title: Models
   - isExpanded: false
     sections:
@@ -161,6 +165,8 @@
     title: DeepCache
   - local: optimization/tgate
     title: TGATE
+  - local: optimization/xdit
+    title: xDiT
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -226,6 +232,8 @@
     - sections:
       - local: api/models/controlnet
         title: ControlNetModel
+      - local: api/models/controlnet_flux
+        title: FluxControlNetModel
       - local: api/models/controlnet_hunyuandit
         title: HunyuanDiT2DControlNetModel
       - local: api/models/controlnet_sd3
@@ -238,6 +246,8 @@
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
+      - local: api/models/cogview3plus_transformer2d
+        title: CogView3PlusTransformer2DModel
       - local: api/models/dit_transformer2d
         title: DiTTransformer2DModel
       - local: api/models/flux_transformer
@@ -316,10 +326,14 @@
       title: BLIP-Diffusion
     - local: api/pipelines/cogvideox
       title: CogVideoX
+    - local: api/pipelines/cogview3
+      title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_flux
+      title: ControlNet with Flux.1
     - local: api/pipelines/controlnet_hunyuandit
       title: ControlNet with Hunyuan-DiT
     - local: api/pipelines/controlnet_sd3

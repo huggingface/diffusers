@@ -32,6 +32,7 @@ enable_full_determinism()
 class CogVideoXTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = CogVideoXTransformer3DModel
     main_input_name = "hidden_states"
+    uses_custom_attn_processor = True
 
     @property
     def dummy_input(self):
