@@ -353,6 +353,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Adapted from https://github.com/aigc-apps/CogVideoX-Fun/blob/2a93e5c14e02b2b5921d533fd59fc8c0ed69fb24/cogvideox/pipeline/pipeline_cogvideox_control.py#L366
     def prepare_control_latents(
         self, mask: Optional[torch.Tensor] = None, masked_image: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
