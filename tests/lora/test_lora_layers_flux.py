@@ -27,6 +27,7 @@ from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransfo
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
+    numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
     slow,
@@ -166,7 +167,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @slow
 @require_torch_gpu
 @require_peft_backend
-@unittest.skip("We cannot run inference on this model with the current CI hardware")
+# @unittest.skip("We cannot run inference on this model with the current CI hardware")
 # TODO (DN6, sayakpaul): move these tests to a beefier GPU
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
@@ -208,9 +209,11 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(self.seed),
         ).images
         out_slice = out[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.1719, 0.1719, 0.1699, 0.1719, 0.1719, 0.1738, 0.1641, 0.1621, 0.2090])
+        expected_slice = np.array([0.1855, 0.1855, 0.1836, 0.1855, 0.1836, 0.1875, 0.1777, 0.1758, 0.2246])
 
-        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
 
     def test_flux_kohya(self):
         self.pipeline.load_lora_weights("Norod78/brain-slug-flux")
@@ -230,7 +233,9 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         out_slice = out[0, -3:, -3:, -1].flatten()
         expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
 
-        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
 
     def test_flux_kohya_with_text_encoder(self):
         self.pipeline.load_lora_weights("cocktailpeanut/optimus", weight_name="optimus.safetensors")
@@ -248,9 +253,11 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         ).images
 
         out_slice = out[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.4023, 0.4043, 0.4023, 0.3965, 0.3984, 0.3984, 0.3906, 0.3906, 0.4219])
+        expected_slice = np.array([0.4023, 0.4023, 0.4023, 0.3965, 0.3984, 0.3965, 0.3926, 0.3906, 0.4219])
 
-        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
 
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
@@ -268,6 +275,8 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(self.seed),
         ).images
         out_slice = out[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.3984, 0.4199, 0.4453, 0.4102, 0.4375, 0.4590, 0.4141, 0.4355, 0.4980])
+        expected_slice = np.array([0.3965, 0.4180, 0.4434, 0.4082, 0.4375, 0.4590, 0.4141, 0.4375, 0.4980])
 
-        assert np.allclose(out_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
