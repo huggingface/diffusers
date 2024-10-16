@@ -2405,7 +2405,7 @@ def main(args):
             )
 
         if args.train_text_encoder_ti:
-            embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
+            embeddings_path = f"{args.output_dir}/{os.path.basename(args.output_dir)}_emb.safetensors"
             embedding_handler.save_embeddings(embeddings_path)
 
         # Final inference

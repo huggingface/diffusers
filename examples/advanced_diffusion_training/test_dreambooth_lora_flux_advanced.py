@@ -178,7 +178,7 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
 
             # make sure the state_dict has the correct naming in the parameters.
             textual_inversion_state_dict = safetensors.torch.load_file(
-                os.path.join(tmpdir, f"{os.path(tmpdir).name}_emb.safetensors")
+                os.path.join(tmpdir, f"{os.path.basename(tmpdir)}_emb.safetensors")
             )
             is_te = all(("clip_l" in k or "t5" in k) for k in textual_inversion_state_dict.keys())
             self.assertTrue(is_te)
