@@ -1349,7 +1349,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
-            # retrieve all patterns that should not be downloaded
+            # retrieve all patterns that should not be downloaded and error out when needed
             ignore_patterns = _get_ignore_patterns(
                 passed_components,
                 model_folder_names,
