@@ -1,25 +1,33 @@
-# LoRA finetuning example for CogVideoX
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
 
-In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
+http://www.apache.org/licenses/LICENSE-2.0
 
-- Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
-- Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
-- LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+# CogVideoX
 
-At the moment, LoRA finetuning has only been tested for [CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b).
+CogVideoX is a text-to-video generation model focused on creating more coherent videos aligned with a prompt. It achieves this using several methods.
 
-> [!NOTE]
-> The scripts for CogVideoX come with limited support and may not be fully compatible with different training techniques. They are not feature-rich either and simply serve as minimal examples of finetuning to take inspiration from and improve.
->
-> A repository containing memory-optimized finetuning scripts with support for multiple resolutions, dataset preparation, captioning, etc. is available [here](https://github.com/a-r-r-o-w/cogvideox-factory), which will be maintained jointly by the CogVideoX and Diffusers team.
+- a 3D variational autoencoder that compresses videos spatially and temporally, improving compression rate and video accuracy.
+
+- an expert transformer block to help align text and video, and a 3D full attention module for capturing and creating spatially and temporally accurate videos.
+
+The actual test of the video instruction dimension found that CogVideoX has good effects on consistent theme, dynamic information, consistent background, object information, smooth motion, color, scene, appearance style, and temporal style but cannot achieve good results with human action, spatial relationship, and multiple objects.
+
+Finetuning with Diffusers can help make up for these poor results. 
 
 ## Data Preparation
 
-The training scripts accepts data in two formats.
+The training scripts accepts data in two formats.  
 
-**First data format**
+The first format is suited for small-scale training, and the second format uses a CSV format, which is more appropriate for streaming data for large-scale training. In the future, Diffusers will support the `<Video>` tag.
+
+### Small format
 
 Two files where one file contains line-separated prompts and another file contains line-separated paths to video data (the path to video files must be relative to the path you pass when specifying `--instance_data_root`). Let's take a look at an example to understand this better!
 
@@ -55,7 +63,7 @@ Overall, this is how your dataset would look like if you ran the `tree` command 
 
 When using this format, the `--caption_column` must be `prompts.txt` and `--video_column` must be `videos.txt`.
 
-**Second data format**
+### Stream format
 
 You could use a single CSV file. For the sake of this example, assume you have a `metadata.csv` file. The expected format is:
 
@@ -66,13 +74,13 @@ You could use a single CSV file. For the sake of this example, assume you have a
 ...
 ```
 
-In this case, the `--instance_data_root` should be the location where the videos are stored and `--dataset_name` should be either a path to local folder or `load_dataset` compatible hosted HF Dataset Repository or URL. Assuming you have videos of your Minecraft gameplay at `https://huggingface.co/datasets/my-awesome-username/minecraft-videos`, you would have to specify `my-awesome-username/minecraft-videos`.
+In this case, the `--instance_data_root` should be the location where the videos are stored and `--dataset_name` should be either a path to local folder or a [`~datasets.load_dataset`] compatible dataset hosted on the Hub. Assuming you have videos of Minecraft gameplay at `https://huggingface.co/datasets/my-awesome-username/minecraft-videos`, you would have to specify `my-awesome-username/minecraft-videos`.
 
 When using this format, the `--caption_column` must be `<CAPTION_COLUMN>` and `--video_column` must be `<PATH_TO_VIDEO_COLUMN>`.
 
-You are not strictly restricted to the CSV format. As long as the `load_dataset` method supports the file format to load a basic `<PATH_TO_VIDEO_COLUMN>` and `<CAPTION_COLUMN>`, you should be good to go. The reason for going through these dataset organization gymnastics for loading video data is because we found `load_dataset` from the datasets library to not fully support all kinds of video formats. This will undoubtedly be improved in the future.
+You are not strictly restricted to the CSV format. Any format works as long as the `load_dataset` method supports the file format to load a basic `<PATH_TO_VIDEO_COLUMN>` and `<CAPTION_COLUMN>`. The reason for going through these dataset organization gymnastics for loading video data is because `load_dataset` does not fully support all kinds of video formats.
 
->![NOTE]
+> [!NOTE]
 > CogVideoX works best with long and descriptive LLM-augmented prompts for video generation. We recommend pre-processing your videos by first generating a summary using a VLM and then augmenting the prompts with an LLM. To generate the above captions, we use [MiniCPM-V-26](https://huggingface.co/openbmb/MiniCPM-V-2_6) and [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct). A very barebones and no-frills example for this is available [here](https://gist.github.com/a-r-r-o-w/4dee20250e82f4e44690a02351324a4a). The official recommendation for augmenting prompts is [ChatGLM](https://huggingface.co/THUDM?search_models=chatglm) and a length of 50-100 words is considered good.
 
 >![NOTE]
@@ -95,10 +103,22 @@ You need to setup your development environment by installing the necessary requi
 
 To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 
+Before running the script, make sure you install the library from source:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install -e .
+```
+
+ 
+
+Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
+
+- PyTorch
+
+```bash
+cd examples/cogvideo
+pip install -r requirements.txt
 ```
 
 And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -120,11 +140,11 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+When running `accelerate config`, if you use torch.compile, there can be dramatic speedups. The PEFT library is used as a backend for LoRA training, so make sure to have `peft>=0.6.0` installed in your environment.
 
-If you would like to push your model to the HF Hub after training is completed with a neat model card, make sure you're logged in:
+If you would like to push your model to the Hub after training is completed with a neat model card, make sure you're logged in:
 
-```
+```bash
 huggingface-cli login
 
 # Alternatively, you could upload your model manually using:
@@ -136,8 +156,6 @@ Make sure your data is prepared as described in [Data Preparation](#data-prepara
 Assuming you are training on 50 videos of a similar concept, we have found 1500-2000 steps to work well. The official recommendation, however, is 100 videos with a total of 4000 steps. Assuming you are training on a single GPU with a `--train_batch_size` of `1`:
 - 1500 steps on 50 videos would correspond to `30` training epochs
 - 4000 steps on 100 videos would correspond to `40` training epochs
-
-The following bash script launches training for text-to-video lora.
 
 ```bash
 #!/bin/bash
@@ -179,17 +197,14 @@ accelerate launch --gpu_ids $GPU_IDS examples/cogvideo/train_cogvideox_lora.py \
   --report_to wandb
 ```
 
-For launching image-to-video finetuning instead, run the `train_cogvideox_image_to_video_lora.py` file instead. Additionally, you will have to pass `--validation_images` as paths to initial images corresponding to `--validation_prompts` for I2V validation to work.
-
 To better track our training experiments, we're using the following flags in the command above:
 * `--report_to wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
-Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimentation, we found it to work better (as it resembles [Dreambooth](https://huggingface.co/docs/diffusers/en/training/dreambooth) like training) than without. When provided, the ID_TOKEN is appended to the beginning of each prompt. So, if your ID_TOKEN was `"DISNEY"` and your prompt was `"Spiderman swinging over buildings"`, the effective prompt used in training would be `"DISNEY Spiderman swinging over buildings"`. When not provided, you would either be training without any such additional token or could augment your dataset to apply the token where you wish before starting the training.
+Setting the `<ID_TOKEN>` is not necessary. From some limited experimentation, we found it works better (as it resembles [Dreambooth](https://huggingface.co/docs/diffusers/en/training/dreambooth) training) than without. When provided, the `<ID_TOKEN>` is appended to the beginning of each prompt. So, if your `<ID_TOKEN>` was `"DISNEY"` and your prompt was `"Spiderman swinging over buildings"`, the effective prompt used in training would be `"DISNEY Spiderman swinging over buildings"`. When not provided, you would either be training without any additional token or could augment your dataset to apply the token where you wish before starting the training.
 
-> [!TIP]
+> [!NOTE]
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training.
-> You can pass `--video_reshape_mode` video cropping functionality, supporting options: ['center', 'random', 'none']. See [this](https://gist.github.com/glide-the/7658dbfd5f555be0a1a687a4139dba40) notebook for examples.
 
 > [!IMPORTANT]
 > The following settings have been tested at the time of adding CogVideoX LoRA training support:
@@ -205,6 +220,8 @@ Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimen
 > - The recommended learning rate by the CogVideoX authors and from our experimentation with Adam/AdamW is between `1e-3` and `1e-4` for a dataset of 25+ videos.
 >
 > Note that our testing is not exhaustive due to limited time for exploration. Our recommendation would be to play around with the different knobs and dials to find the best settings for your data.
+
+<!-- TODO: Test finetuning with CogVideoX-5b and CogVideoX-5b-I2V and update scripts accordingly -->
 
 ## Inference
 
@@ -223,16 +240,52 @@ pipe.to("cuda")
 # Assuming lora_alpha=32 and rank=64 for training. If different, set accordingly
 pipe.set_adapters(["cogvideox-lora"], [32 / 64])
 
-prompt = (
-    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The "
-    "panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
-    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
-    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
-    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
-    "atmosphere of this unique musical performance"
-)
+prompt = "A vast, shimmering ocean flows gracefully under a twilight sky, its waves undulating in a mesmerizing dance of blues and greens. The surface glints with the last rays of the setting sun, casting golden highlights that ripple across the water. Seagulls soar above, their cries blending with the gentle roar of the waves. The horizon stretches infinitely, where the ocean meets the sky in a seamless blend of hues. Close-ups reveal the intricate patterns of the waves, capturing the fluidity and dynamic beauty of the sea in motion."
 frames = pipe(prompt, guidance_scale=6, use_dynamic_cfg=True).frames[0]
 export_to_video(frames, "output.mp4", fps=8)
 ```
 
-If you've trained a LoRA for `CogVideoXImageToVideoPipeline` instead, everything in the above example remains the same except you must also pass an image as initial condition for generation.
+
+## Reduce memory usage
+
+While testing using the diffusers library, all optimizations included in the diffusers library were enabled. This
+scheme has not been tested for actual memory usage on devices outside of **NVIDIA A100 / H100** architectures.
+Generally, this scheme can be adapted to all **NVIDIA Ampere architecture** and above devices. If optimizations are
+disabled, memory consumption will multiply, with peak memory usage being about 3 times the value in the table.
+However, speed will increase by about 3-4 times. You can selectively disable some optimizations, including:
+
+```
+pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+```
+
++ For multi-GPU inference, the `enable_sequential_cpu_offload()` optimization needs to be disabled.
++ Using INT8 models will slow down inference, which is done to accommodate lower-memory GPUs while maintaining minimal
+  video quality loss, though inference speed will significantly decrease.
++ The CogVideoX-2B model was trained in `FP16` precision, and all CogVideoX-5B models were trained in `BF16` precision.
+  We recommend using the precision in which the model was trained for inference.
++ [PytorchAO](https://github.com/pytorch/ao) and [Optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be
+  used to quantize the text encoder, transformer, and VAE modules to reduce the memory requirements of CogVideoX. This
+  allows the model to run on free T4 Colabs or GPUs with smaller memory! Also, note that TorchAO quantization is fully
+  compatible with `torch.compile`, which can significantly improve inference speed. FP8 precision must be used on
+  devices with NVIDIA H100 and above, requiring source installation of `torch`, `torchao`, `diffusers`, and `accelerate`
+  Python packages. CUDA 12.4 is recommended.
++ The inference speed tests also used the above memory optimization scheme. Without memory optimization, inference speed
+  increases by about 10%. Only the `diffusers` version of the model supports quantization.
++ The model only supports English input; other languages can be translated into English for use via large model
+  refinement.
++ The memory usage of model fine-tuning is tested in an `8 * H100` environment, and the program automatically
+  uses `Zero 2` optimization. If a specific number of GPUs is marked in the table, that number or more GPUs must be used
+  for fine-tuning.
+
+
+ | **Attribute**                        | **CogVideoX-2B**                                                       | **CogVideoX-5B**                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Model Name**                       | CogVideoX-2B                                                           | CogVideoX-5B                                                           |
+| **Inference Precision**              | FP16* (Recommended), BF16, FP32, FP8*, INT8, Not supported INT4         | BF16 (Recommended), FP16, FP32, FP8*, INT8, Not supported INT4         |
+| **Single GPU Inference VRAM**        | FP16: Using diffusers 12.5GB* INT8: Using diffusers with torchao 7.8GB* | BF16: Using diffusers 20.7GB* INT8: Using diffusers with torchao 11.4GB* |
+| **Multi GPU Inference VRAM**         | FP16: Using diffusers 10GB*                                             | BF16: Using diffusers 15GB*                                             |
+| **Inference Speed**                  | Single A100: ~90 seconds, Single H100: ~45 seconds                      | Single A100: ~180 seconds, Single H100: ~90 seconds                     |
+| **Fine-tuning Precision**            | FP16                                                                   | BF16                                                                   |
+| **Fine-tuning VRAM Consumption**     | 47 GB (bs=1, LORA) 61 GB (bs=2, LORA) 62GB (bs=1, SFT)                 | 63 GB (bs=1, LORA) 80 GB (bs=2, LORA) 75GB (bs=1, SFT)                 |
