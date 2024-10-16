@@ -57,7 +57,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -70,7 +70,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    _check_legacy_sharding_variant_format,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
