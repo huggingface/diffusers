@@ -2081,7 +2081,8 @@ class TestLoraHotSwapping:
     @require_peft_backend
     def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
         # TODO: kinda slow, should it get a slow marker?
-        env = {"TORCH_LOGS": "guards,recompiles"}
+        env = os.environ.copy()
+        env["TORCH_LOGS"] = "guards,recompiles"
         here = os.path.dirname(__file__)
         file_name = os.path.join(here, "run_compiled_model_hotswap.py")
 
