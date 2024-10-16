@@ -1988,7 +1988,7 @@ def main(args):
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
-                    accelerator.device, non_blocking=True, dtype=weight_dtype, pin_memory=True
+                    accelerator.device, non_blocking=True, dtype=weight_dtype
                 )
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
 
