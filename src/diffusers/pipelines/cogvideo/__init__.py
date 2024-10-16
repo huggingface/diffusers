@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_cogvideox"] = ["CogVideoXPipeline"]
+    _import_structure["pipeline_cogvideox_fun_control"] = ["CogVideoXFunControlPipeline"]
     _import_structure["pipeline_cogvideox_image2video"] = ["CogVideoXImageToVideoPipeline"]
     _import_structure["pipeline_cogvideox_video2video"] = ["CogVideoXVideoToVideoPipeline"]
 
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_cogvideox import CogVideoXPipeline
+        from .pipeline_cogvideox_fun_control import CogVideoXFunControlPipeline
         from .pipeline_cogvideox_image2video import CogVideoXImageToVideoPipeline
         from .pipeline_cogvideox_video2video import CogVideoXVideoToVideoPipeline
 
