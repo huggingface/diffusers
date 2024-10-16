@@ -75,6 +75,8 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: using-diffusers/cogvideox
+    title: CogVideoX
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -129,6 +131,8 @@
       title: T2I-Adapters
     - local: training/instructpix2pix
       title: InstructPix2Pix
+    - local: training/cogvideox
+      title: CogVideoX
     title: Models
   - isExpanded: false
     sections:
