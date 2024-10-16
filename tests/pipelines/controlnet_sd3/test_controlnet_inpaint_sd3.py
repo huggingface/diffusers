@@ -56,36 +56,36 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(
-            sample_size=32,
+            sample_size=8,
             patch_size=1,
             in_channels=8,
-            num_layers=4,
-            attention_head_dim=8,
-            num_attention_heads=4,
+            num_layers=2,
+            attention_head_dim=4,
+            num_attention_heads=2,
             joint_attention_dim=32,
-            caption_projection_dim=32,
-            pooled_projection_dim=64,
+            caption_projection_dim=8,
+            pooled_projection_dim=16,
             out_channels=8,
         )
 
         torch.manual_seed(0)
         controlnet = SD3ControlNetModel(
-            sample_size=32,
+            sample_size=8,
             patch_size=1,
             in_channels=8,
             num_layers=1,
-            attention_head_dim=8,
-            num_attention_heads=4,
+            attention_head_dim=4,
+            num_attention_heads=2,
             joint_attention_dim=32,
-            caption_projection_dim=32,
-            pooled_projection_dim=64,
+            caption_projection_dim=8,
+            pooled_projection_dim=16,
             out_channels=8,
             extra_conditioning_channels=1,
         )
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
+            hidden_size=8,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             num_attention_heads=4,
@@ -93,7 +93,7 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
             pad_token_id=1,
             vocab_size=1000,
             hidden_act="gelu",
-            projection_dim=32,
+            projection_dim=8,
         )
 
         torch.manual_seed(0)
@@ -163,6 +163,8 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "height": 32,
+            "width": 32,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 7.0,
@@ -176,7 +178,7 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
 
     def test_controlnet_inpaint_sd3(self):
         components = self.get_dummy_components()
-        sd_pipe = StableDiffusion3ControlNetInpaintingPipeline(**components)
+        sd_pipe = self.pipeline_class(**components)
         sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
         sd_pipe.set_progress_bar_config(disable=None)
 
