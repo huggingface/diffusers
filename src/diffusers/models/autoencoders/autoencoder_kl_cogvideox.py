@@ -1182,7 +1182,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         frame_batch_size = self.num_sample_frames_batch_size
         # Note: We expect the number of frames to be either `1` or `frame_batch_size * k` or `frame_batch_size * k + 1` for some k.
-        # So, it is okay to not round up as the extra remaining frame is handled in the loop
+        # As the extra single frame is handled inside the loop, it is not required to round up here.
         num_batches = max(num_frames // frame_batch_size, 1)
         conv_cache = None
         enc = []
@@ -1331,7 +1331,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             row = []
             for j in range(0, width, overlap_width):
                 # Note: We expect the number of frames to be either `1` or `frame_batch_size * k` or `frame_batch_size * k + 1` for some k.
-                # So, it is okay to not round up as the extra remaining frame is handled in the loop
+                # As the extra single frame is handled inside the loop, it is not required to round up here.
                 num_batches = max(num_frames // frame_batch_size, 1)
                 conv_cache = None
                 time = []
