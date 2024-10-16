@@ -2,6 +2,7 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
@@ -14,7 +15,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -225,7 +226,8 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetImg2ImgPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -261,7 +263,6 @@ class FluxControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
             "generator": generator,
         }
 
-    @unittest.skip("We cannot run inference on this model with the current CI hardware")
     def test_flux_controlnet_img2img_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()

@@ -2,13 +2,14 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -191,7 +192,8 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxPipeline
     repo_id = "black-forest-labs/FLUX.1-schnell"
@@ -220,8 +222,6 @@ class FluxPipelineSlowTests(unittest.TestCase):
             "generator": generator,
         }
 
-    # TODO: Dhruv. Move large model tests to a dedicated runner)
-    @unittest.skip("We cannot run inference on this model with the current CI hardware")
     def test_flux_inference(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()

@@ -17,6 +17,7 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
@@ -30,7 +31,7 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -180,7 +181,8 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetPipeline
 
