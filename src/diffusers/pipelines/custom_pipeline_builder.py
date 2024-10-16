@@ -375,6 +375,58 @@ class SDXLCustomPipeline(
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
+    def _get_add_time_ids_img2img(
+        self,
+        original_size,
+        crops_coords_top_left,
+        target_size,
+        aesthetic_score,
+        negative_aesthetic_score,
+        negative_original_size,
+        negative_crops_coords_top_left,
+        negative_target_size,
+        dtype,
+        text_encoder_projection_dim=None,
+    ):
+        if self.config.requires_aesthetics_score:
+            add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
+            add_neg_time_ids = list(
+                negative_original_size + negative_crops_coords_top_left + (negative_aesthetic_score,)
+            )
+        else:
+            add_time_ids = list(original_size + crops_coords_top_left + target_size)
+            add_neg_time_ids = list(negative_original_size + crops_coords_top_left + negative_target_size)
+
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+        )
+        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
+
+        if (
+            expected_add_embed_dim > passed_add_embed_dim
+            and (expected_add_embed_dim - passed_add_embed_dim) == self.unet.config.addition_time_embed_dim
+        ):
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to enable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=True)` to make sure `aesthetic_score` {aesthetic_score} and `negative_aesthetic_score` {negative_aesthetic_score} is correctly used by the model."
+            )
+        elif (
+            expected_add_embed_dim < passed_add_embed_dim
+            and (passed_add_embed_dim - expected_add_embed_dim) == self.unet.config.addition_time_embed_dim
+        ):
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. Please make sure to disable `requires_aesthetics_score` with `pipe.register_to_config(requires_aesthetics_score=False)` to make sure `target_size` {target_size} is correctly used by the model."
+            )
+        elif expected_add_embed_dim != passed_add_embed_dim:
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
+
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
+        add_neg_time_ids = torch.tensor([add_neg_time_ids], dtype=dtype)
+
+        return add_time_ids, add_neg_time_ids
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -862,7 +914,6 @@ class SDXLCustomPipeline(
 
         return latents
     
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -1209,127 +1260,43 @@ class SetTimestepsStep(PipelineBlock):
 
         return pipeline, state
 
+class Image2ImageSetTimestepsStep(PipelineBlock):
+    inputs = [
+        ("num_inference_steps", 50),
+        ("timesteps", None),
+        ("sigmas", None),
+        ("denoising_end", None),
+        ("strength", 0.3),
+        ("denoising_start", None),
+        ("num_images_per_prompt", 1),
+    ]
+    required_components = ["scheduler"]
+    intermediates_outputs = ["timesteps", "num_inference_steps", "latent_timestep"]
 
-class Image2ImagePrepareLatentsStep(PipelineBlock):
-    intermediates_inputs = ["batch_size", "timesteps", "num_inference_steps"]
-    intermediates_outputs = ["image", "latents"]
-
-    def __init__(self, vae=None):
-        if vae is not None:
-            self.components["vae"] = vae
-
-    @staticmethod
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.prepare_latents with self->pipe
-    def prepare_latents(
-        pipe, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
-    ):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
-
-        latents_mean = latents_std = None
-        if hasattr(pipe.vae.config, "latents_mean") and pipe.vae.config.latents_mean is not None:
-            latents_mean = torch.tensor(pipe.vae.config.latents_mean).view(1, 4, 1, 1)
-        if hasattr(pipe.vae.config, "latents_std") and pipe.vae.config.latents_std is not None:
-            latents_std = torch.tensor(pipe.vae.config.latents_std).view(1, 4, 1, 1)
-
-        # Offload text encoder if `enable_model_cpu_offload` was enabled
-        if hasattr(pipe, "final_offload_hook") and pipe.final_offload_hook is not None:
-            pipe.text_encoder_2.to("cpu")
-            torch.cuda.empty_cache()
-
-        image = image.to(device=device, dtype=dtype)
-
-        batch_size = batch_size * num_images_per_prompt
-
-        if image.shape[1] == 4:
-            init_latents = image
-
-        else:
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            if pipe.vae.config.force_upcast:
-                image = image.float()
-                pipe.vae.to(dtype=torch.float32)
-
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            elif isinstance(generator, list):
-                if image.shape[0] < batch_size and batch_size % image.shape[0] == 0:
-                    image = torch.cat([image] * (batch_size // image.shape[0]), dim=0)
-                elif image.shape[0] < batch_size and batch_size % image.shape[0] != 0:
-                    raise ValueError(
-                        f"Cannot duplicate `image` of batch size {image.shape[0]} to effective batch_size {batch_size} "
-                    )
-
-                init_latents = [
-                    retrieve_latents(pipe.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(pipe.vae.encode(image), generator=generator)
-
-            if pipe.vae.config.force_upcast:
-                pipe.vae.to(dtype)
-
-            init_latents = init_latents.to(dtype)
-            if latents_mean is not None and latents_std is not None:
-                latents_mean = latents_mean.to(device=device, dtype=dtype)
-                latents_std = latents_std.to(device=device, dtype=dtype)
-                init_latents = (init_latents - latents_mean) * pipe.vae.config.scaling_factor / latents_std
-            else:
-                init_latents = pipe.vae.config.scaling_factor * init_latents
-
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents], dim=0)
-
-        if add_noise:
-            shape = init_latents.shape
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            # get latents
-            init_latents = pipe.scheduler.add_noise(init_latents, noise, timestep)
-
-        latents = init_latents
-
-        return latents
+    def __init__(self, scheduler=None):
+        if scheduler is not None:
+            self.components["scheduler"] = scheduler
 
     @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-        image = state.get_input("image")
-        height = state.get_input("height")
-        width = state.get_input("width")
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        num_inference_steps = state.get_input("num_inference_steps")
+        timesteps = state.get_input("timesteps")
+        sigmas = state.get_input("sigmas")
+        denoising_end = state.get_input("denoising_end")
         strength = state.get_input("strength")
         denoising_start = state.get_input("denoising_start")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
-        generator = state.get_input("generator")
-        latents = state.get_input("latents")
 
-        # get intermediates
-        timesteps = state.get_intermediate("timesteps")
-        num_inference_steps = state.get_intermediate("num_inference_steps")
         batch_size = state.get_intermediate("batch_size")
 
         device = pipeline._execution_device
-        dtype = pipeline.vae.dtype
-
-        # 4. Prepare image and controlnet_conditioning_image
-        image = pipeline.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
+
+        timesteps, num_inference_steps = retrieve_timesteps(
+            pipeline.scheduler, num_inference_steps, device, timesteps, sigmas
+        )
 
         timesteps, num_inference_steps = pipeline.get_timesteps(
             num_inference_steps,
@@ -1339,11 +1306,59 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
         )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        add_noise = True if self.denoising_start is None else False
+        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
+            discrete_timestep_cutoff = int(
+                round(
+                    pipeline.scheduler.config.num_train_timesteps
+                    - (denoising_end * pipeline.scheduler.config.num_train_timesteps)
+                )
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
 
-        # 6. Prepare latent variables
+        state.add_intermediate("timesteps", timesteps)
+        state.add_intermediate("num_inference_steps", num_inference_steps)
+        state.add_intermediate("latent_timestep", latent_timestep)
+
+        return pipeline, state
+
+
+class Image2ImagePrepareLatentsStep(PipelineBlock):
+    inputs = [
+        ("image", None),
+        ("num_images_per_prompt", 1),
+        ("generator", None),
+        ("latents", None),
+    ]
+    intermediates_inputs = ["batch_size", "timesteps", "num_inference_steps"]
+    intermediates_outputs = ["latents", "timesteps", "num_inference_steps"]
+
+    def __init__(self, vae=None, vae_scale_factor=8):
+        if vae is not None:
+            self.components["vae"] = vae
+        self.image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+
+    @torch.no_grad()
+    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
+        image = state.get_input("image")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        generator = state.get_input("generator")
+        latents = state.get_input("latents")
+        denoising_start = state.get_input("denoising_start")
+        # get intermediates
+        batch_size = state.get_intermediate("batch_size")
+        latent_timestep = state.get_intermediate("latent_timestep")
+
+        device = pipeline._execution_device
+        dtype = pipeline.vae.dtype
+
+        image = pipeline.image_processor.preprocess(image)
+
+
+        add_noise = True if denoising_start is None else False
+
         if latents is None:
-            latents = self.prepare_latents(
+            latents = pipeline.prepare_latents_img2img(
                 image,
                 latent_timestep,
                 batch_size,
@@ -1354,7 +1369,6 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
                 add_noise,
             )
 
-        state.add_intermediate("image", image)
         state.add_intermediate("latents", latents)
 
         return pipeline, state
@@ -1507,6 +1521,96 @@ class PrepareAdditionalConditioningStep(PipelineBlock):
         state.add_intermediate("timestep_cond", timestep_cond)
         return pipeline, state
 
+class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
+    inputs = [
+        ("original_size", None),
+        ("target_size", None),
+        ("negative_original_size", None),
+        ("negative_target_size", None),
+        ("crops_coords_top_left", (0, 0)),
+        ("negative_crops_coords_top_left", (0, 0)),
+        ("num_images_per_prompt", 1),
+        ("guidance_scale", 5.0),
+        ("aesthetic_score", 6.0),
+        ("negative_aesthetic_score", 2.0),
+    ]
+    intermediates_inputs = ["latents"]
+    intermediates_outputs = ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
+    required_components = ["unet"]
+
+    def __init__(self, unet=None, requires_aesthetics_score=False):
+        if unet is not None:
+            self.components["unet"] = unet
+        if requires_aesthetics_score is not None:
+            self.configs["requires_aesthetics_score"] = requires_aesthetics_score
+
+    @torch.no_grad()
+    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
+        original_size = state.get_input("original_size")
+        target_size = state.get_input("target_size")
+        negative_original_size = state.get_input("negative_original_size")
+        negative_target_size = state.get_input("negative_target_size")
+        crops_coords_top_left = state.get_input("crops_coords_top_left")
+        negative_crops_coords_top_left = state.get_input("negative_crops_coords_top_left")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        guidance_scale = state.get_input("guidance_scale")
+        aesthetic_score = state.get_input("aesthetic_score")
+        negative_aesthetic_score = state.get_input("negative_aesthetic_score")
+
+        latents = state.get_intermediate("latents")
+        batch_size = state.get_intermediate("batch_size")
+        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
+
+        device = pipeline._execution_device
+
+        height, width = latents.shape[-2:]
+        height = height * pipeline.vae_scale_factor
+        width = width * pipeline.vae_scale_factor
+
+        original_size = original_size or (height, width)
+        target_size = target_size or (height, width)
+
+        if negative_original_size is None:
+            negative_original_size = original_size
+        if negative_target_size is None:
+            negative_target_size = target_size
+
+        if hasattr(pipeline, "text_encoder_2") and pipeline.text_encoder_2 is not None:
+            text_encoder_projection_dim = pipeline.text_encoder_2.config.projection_dim
+        else:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+
+        add_time_ids, negative_add_time_ids = pipeline._get_add_time_ids_img2img(
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            aesthetic_score,
+            negative_aesthetic_score,
+            negative_original_size,
+            negative_crops_coords_top_left,
+            negative_target_size,
+            dtype=pooled_prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
+        )
+        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
+        negative_add_time_ids = negative_add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
+
+        # Optionally get Guidance Scale Embedding for LCM
+        timestep_cond = None
+        if (
+            hasattr(pipeline, "unet")
+            and pipeline.unet is not None
+            and pipeline.unet.config.time_cond_proj_dim is not None
+        ):
+            guidance_scale_tensor = torch.tensor(guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            timestep_cond = pipeline.get_guidance_scale_embedding(
+                guidance_scale_tensor, embedding_dim=pipeline.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
+
+        state.add_intermediate("add_time_ids", add_time_ids)
+        state.add_intermediate("negative_add_time_ids", negative_add_time_ids)
+        state.add_intermediate("timestep_cond", timestep_cond)
+        return pipeline, state
 
 class PrepareGuidance(PipelineBlock):
     inputs = [
