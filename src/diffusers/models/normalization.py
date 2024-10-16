@@ -67,7 +67,7 @@ class AdaLayerNorm(nn.Module):
     def forward(
         self, x: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        assert timestep is not None or temb is not None, "One has to provide either timeste or temb argument."
+        assert timestep is not None or temb is not None, "One has to provide either timestep or temb argument."
         if self.emb is not None:
             temb = self.emb(timestep)
 
