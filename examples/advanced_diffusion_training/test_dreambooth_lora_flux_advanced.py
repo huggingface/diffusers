@@ -126,7 +126,7 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
             # make sure embeddings were also saved
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, f"{tmpdir}_emb.safetensors")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, f"{os.path.basename(tmpdir)}_emb.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
@@ -135,7 +135,7 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
 
             # make sure the state_dict has the correct naming in the parameters.
             textual_inversion_state_dict = safetensors.torch.load_file(
-                os.path.join(tmpdir, f"{tmpdir}_emb.safetensors")
+                os.path.join(tmpdir, f"{os.path.basename(tmpdir)}_emb.safetensors")
             )
             is_clip = all("clip_l" in k for k in textual_inversion_state_dict.keys())
             self.assertTrue(is_clip)
@@ -169,7 +169,7 @@ class DreamBoothLoRAFluxAdvanced(ExamplesTestsAccelerate):
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
             # make sure embeddings were also saved
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, f"{tmpdir}_emb.safetensors")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, f"{os.path.basename(tmpdir)}_emb.safetensors")))
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
