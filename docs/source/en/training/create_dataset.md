@@ -78,7 +78,7 @@ Now the dataset is available for training by passing the dataset name to the `--
 
 ```bash
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>
 ```

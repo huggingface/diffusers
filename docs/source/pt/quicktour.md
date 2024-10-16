@@ -54,7 +54,7 @@ O [`DiffusionPipeline`] é a forma mais fácil de usar um sistema de difusão pr
 
 Comece criando uma instância do [`DiffusionPipeline`] e especifique qual checkpoint do pipeline você gostaria de baixar.
 Você pode usar o [`DiffusionPipeline`] para qualquer [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads) armazenado no Hugging Face Hub.
-Nesse quicktour, você carregará o checkpoint [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) para geração de texto para imagem.
+Nesse quicktour, você carregará o checkpoint [`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) para geração de texto para imagem.
 
 <Tip warning={true}>
 
@@ -67,7 +67,7 @@ Para carregar o modelo com o método [`~DiffusionPipeline.from_pretrained`]:
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
 O [`DiffusionPipeline`] baixa e armazena em cache todos os componentes de modelagem, tokenização, e agendamento. Você verá que o pipeline do Stable Diffusion é composto pelo [`UNet2DConditionModel`] e [`PNDMScheduler`] entre outras coisas:
@@ -124,7 +124,7 @@ Você também pode utilizar o pipeline localmente. A única diferença é que vo
 
 ```bash
 !git lfs install
-!git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+!git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 Assim carregue os pesos salvos no pipeline:
@@ -142,7 +142,7 @@ Agendadores diferentes tem diferentes velocidades de retirar o ruído e compensa
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 
