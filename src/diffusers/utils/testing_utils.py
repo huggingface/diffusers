@@ -316,10 +316,10 @@ def require_big_gpu_with_torch_cuda(test_case):
     if not is_torch_available():
         return unittest.skip("test requires PyTorch")(test_case)
 
+    import torch
+
     if not torch.cuda.is_available():
         return unittest.skip("test requires PyTorch CUDA")(test_case)
-
-    import torch
 
     device_properties = torch.cuda.get_device_properties(0)
     total_memory = device_properties.total_memory / (1024**3)
