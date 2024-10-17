@@ -151,6 +151,12 @@
     title: Methods
   title: Training
 - sections:
+  - local: quantization/overview
+    title: Getting Started
+  - local: quantization/bitsandbytes
+    title: bitsandbytes
+  title: Quantization Methods
+- sections:
   - local: optimization/fp16
     title: Speed up inference
   - local: optimization/memory
@@ -209,6 +215,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/quantization
+      title: Quantization
     title: Main Classes
   - isExpanded: false
     sections:
