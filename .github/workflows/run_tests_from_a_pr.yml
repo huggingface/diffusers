@@ -7,8 +7,8 @@ on:
         default: 'diffusers/diffusers-pytorch-cuda'
         description: 'Name of the Docker image'
         required: true
-      branch:
-        description: 'PR Branch to test on'
+      pr_number:
+        description: 'PR number to test on'
         required: true
       test:
         description: 'Tests to run (e.g.: `tests/models`).'
@@ -59,15 +59,7 @@ jobs:
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-
-      - name: Debug PR Info
-        run: |
-          echo "PR Repository: ${{ github.event.pull_request.head.repo.full_name }}"
-          echo "PR Branch: ${{ github.event.pull_request.head.ref }}"
-
+          ref: refs/pull/${{ inputs.pr_number }}/head
 
       - name: Install pytest
         run: |
