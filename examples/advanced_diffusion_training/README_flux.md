@@ -96,7 +96,7 @@ Please keep the following points in mind:
 To activate pivotal tuning for both encoders, add the flag `--enable_t5_ti`. 
 * When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
 * **pure textual inversion** - to support the full range from pivotal tuning to textual inversion we introduce `--train_transformer_frac` which controls the amount of epochs the transformer LoRA layers are trained. By default, `--train_transformer_frac==1`, to trigger a textual inversion run set `--train_transformer_frac==0`. Values between 0 and 1 are supported as well, and we welcome the community to experiment w/ different settings and share the results!
-* **token initializer** - similar to the original textual inversion work, you can specify a token of your choosing as the starting point for training. By default, when enabling `--train_text_encoder_ti`, the new inserted tokens are initialized randomly. You can specify a token in `--initializer_token` such that the starting point for the trained embeddings will be the embeddings associated with your chosen `--initializer_token`.
+* **token initializer** - similar to the original textual inversion work, you can specify a concept of your choosing as the starting point for training. By default, when enabling `--train_text_encoder_ti`, the new inserted tokens are initialized randomly. You can specify a token in `--initializer_concept` such that the starting point for the trained embeddings will be the embeddings associated with your chosen `--initializer_token`.
 
 ## Training examples
 
@@ -147,7 +147,6 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --instance_prompt="3d icon in the style of TOK" \
-  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
   --output_dir=$OUTPUT_DIR \
   --caption_column="prompt" \
   --mixed_precision="bf16" \
@@ -165,7 +164,7 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --rank=8 \
-  --max_train_steps=1000 \
+  --max_train_steps=700 \
   --checkpointing_steps=2000 \
   --seed="0" \
   --push_to_hub
@@ -190,7 +189,6 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --instance_prompt="3d icon in the style of TOK" \
-  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
   --output_dir=$OUTPUT_DIR \
   --caption_column="prompt" \
   --mixed_precision="bf16" \
@@ -209,7 +207,7 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --rank=8 \
-  --max_train_steps=1000 \
+  --max_train_steps=700 \
   --checkpointing_steps=2000 \
   --seed="0" \
   --push_to_hub
@@ -229,7 +227,6 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --instance_prompt="3d icon in the style of TOK" \
-  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
   --output_dir=$OUTPUT_DIR \
   --caption_column="prompt" \
   --mixed_precision="bf16" \
@@ -249,7 +246,7 @@ accelerate launch train_dreambooth_lora_flux_advanced.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --rank=8 \
-  --max_train_steps=1000 \
+  --max_train_steps=700 \
   --checkpointing_steps=2000 \
   --seed="0" \
   --push_to_hub
