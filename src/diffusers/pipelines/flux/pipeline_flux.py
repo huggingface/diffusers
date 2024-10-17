@@ -16,6 +16,8 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import tempfile
+import os
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
@@ -35,6 +37,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import FluxPipelineOutput
+from huggingface_hub import upload_file
 
 
 if is_torch_xla_available():
@@ -665,6 +668,18 @@ class FluxPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
             max_sequence_length=max_sequence_length,
             lora_scale=lora_scale,
         )
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            path = os.path.join(tmpdirname, "prompt_embeds.pt")
+            torch.save(prompt_embeds.cpu(), path)
+            upload_file(
+                repo_id="diffusers/test-slices", repo_type="dataset", path_or_fileobj=path, path_in_repo=os.path.join("flux", path.split("/")[-1])
+            )
+
+            path = os.path.join(tmpdirname, "pooled_prompt_embeds.pt")
+            torch.save(pooled_prompt_embeds.cpu(), path)
+            upload_file(
+                repo_id="diffusers/test-slices", repo_type="dataset", path_or_fileobj=path, path_in_repo=os.path.join("flux", path.split("/")[-1])
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4

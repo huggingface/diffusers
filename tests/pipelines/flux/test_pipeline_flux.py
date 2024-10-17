@@ -217,7 +217,8 @@ class FluxPipelineSlowTests(unittest.TestCase):
         return {
             "prompt": "A photo of a cat",
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 0.0,
+            "max_sequence_length": 256,
             "output_type": "np",
             "generator": generator,
         }
