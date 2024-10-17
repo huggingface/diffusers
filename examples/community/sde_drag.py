@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DiffusionPipeline, DPMSolverMultistepScheduler, UNet2DConditionModel
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers.loaders import AttnProcsLayers, StableDiffusionLoraLoaderMixin
 from diffusers.models.attention_processor import (
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -321,7 +321,7 @@ class SdeDragPipeline(DiffusionPipeline):
             optimizer.zero_grad()
 
         with tempfile.TemporaryDirectory() as save_lora_dir:
-            LoraLoaderMixin.save_lora_weights(
+            StableDiffusionLoraLoaderMixin.save_lora_weights(
                 save_directory=save_lora_dir,
                 unet_lora_layers=unet_lora_layers,
                 text_encoder_lora_layers=None,

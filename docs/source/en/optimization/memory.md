@@ -41,7 +41,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 )
@@ -66,7 +66,7 @@ import torch
 from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 )
@@ -92,7 +92,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 )
@@ -140,7 +140,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 )
@@ -201,7 +201,7 @@ def generate_inputs():
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
@@ -261,11 +261,11 @@ from dataclasses import dataclass
 
 @dataclass
 class UNet2DConditionOutput:
-    sample: torch.FloatTensor
+    sample: torch.Tensor
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")
@@ -315,7 +315,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
 ).to("cuda")

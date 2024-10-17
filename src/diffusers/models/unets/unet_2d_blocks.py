@@ -561,7 +561,7 @@ class AutoencoderTinyBlock(nn.Module):
             ` The activation function to use. Supported values are `"swish"`, `"mish"`, `"gelu"`, and `"relu"`.
 
     Returns:
-        `torch.FloatTensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to
+        `torch.Tensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to
         `out_channels`.
     """
 
@@ -582,7 +582,7 @@ class AutoencoderTinyBlock(nn.Module):
         )
         self.fuse = nn.ReLU()
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fuse(self.conv(x) + self.skip(x))
 
 
@@ -612,8 +612,8 @@ class UNetMidBlock2D(nn.Module):
         output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
 
     Returns:
-        `torch.FloatTensor`: The output of the last residual block, which is a tensor of shape `(batch_size,
-        in_channels, height, width)`.
+        `torch.Tensor`: The output of the last residual block, which is a tensor of shape `(batch_size, in_channels,
+        height, width)`.
 
     """
 
@@ -731,7 +731,7 @@ class UNetMidBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
@@ -746,6 +746,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
+        out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -753,6 +754,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
+        resnet_groups_out: Optional[int] = None,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
@@ -764,6 +766,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     ):
         super().__init__()
 
+        out_channels = out_channels or in_channels
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -772,14 +778,17 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
+        resnet_groups_out = resnet_groups_out or resnet_groups
+
         # there is always at least one resnet
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
-                out_channels=in_channels,
+                out_channels=out_channels,
                 temb_channels=temb_channels,
                 eps=resnet_eps,
                 groups=resnet_groups,
+                groups_out=resnet_groups_out,
                 dropout=dropout,
                 time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
@@ -794,11 +803,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
-                        norm_num_groups=resnet_groups,
+                        norm_num_groups=resnet_groups_out,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
@@ -808,8 +817,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
@@ -817,11 +826,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
+                    groups=resnet_groups_out,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
@@ -837,13 +846,13 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -977,13 +986,13 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1109,11 +1118,11 @@ class AttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1231,14 +1240,14 @@ class CrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        additional_residuals: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        additional_residuals: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1353,8 +1362,8 @@ class DownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1456,7 +1465,7 @@ class DownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1558,7 +1567,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1657,12 +1666,12 @@ class AttnSkipDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        skip_sample: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        skip_sample: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...], torch.Tensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1748,12 +1757,12 @@ class SkipDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        skip_sample: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        skip_sample: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...], torch.Tensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1841,8 +1850,8 @@ class ResnetDownsampleBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -1977,13 +1986,13 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -2088,8 +2097,8 @@ class KDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -2192,13 +2201,13 @@ class KCrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -2349,13 +2358,13 @@ class AttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -2472,15 +2481,15 @@ class CrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -2607,13 +2616,13 @@ class UpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -2732,7 +2741,7 @@ class UpDecoderBlock2D(nn.Module):
 
         self.resolution_idx = resolution_idx
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb)
 
@@ -2830,7 +2839,7 @@ class AttnUpDecoderBlock2D(nn.Module):
 
         self.resolution_idx = resolution_idx
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb)
             hidden_states = attn(hidden_states, temb=temb)
@@ -2938,13 +2947,13 @@ class AttnSkipUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         skip_sample=None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -3050,13 +3059,13 @@ class SkipUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         skip_sample=None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -3157,13 +3166,13 @@ class ResnetUpsampleBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -3301,15 +3310,15 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -3419,13 +3428,13 @@ class KUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         *args,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -3549,15 +3558,15 @@ class KCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
             hidden_states = torch.cat([hidden_states, res_hidden_states_tuple], dim=1)
@@ -3675,23 +3684,23 @@ class KAttentionBlock(nn.Module):
             cross_attention_norm=cross_attention_norm,
         )
 
-    def _to_3d(self, hidden_states: torch.FloatTensor, height: int, weight: int) -> torch.FloatTensor:
+    def _to_3d(self, hidden_states: torch.Tensor, height: int, weight: int) -> torch.Tensor:
         return hidden_states.permute(0, 2, 3, 1).reshape(hidden_states.shape[0], height * weight, -1)
 
-    def _to_4d(self, hidden_states: torch.FloatTensor, height: int, weight: int) -> torch.FloatTensor:
+    def _to_4d(self, hidden_states: torch.Tensor, height: int, weight: int) -> torch.Tensor:
         return hidden_states.permute(0, 2, 1).reshape(hidden_states.shape[0], -1, height, weight)
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         # TODO: mark emb as non-optional (self.norm2 requires it).
         #       requires assessing impact of change to positional param interface.
-        emb: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
             logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")

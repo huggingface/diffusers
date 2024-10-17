@@ -28,10 +28,10 @@ class RASGAttnProcessor:
     def __call__(
         self,
         attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ) -> torch.Tensor:
         # Same as the default AttnProcessor up untill the part where similarity matrix gets saved
@@ -111,10 +111,10 @@ class PAIntAAttnProcessor:
     def __call__(
         self,
         attn: Attention,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ) -> torch.Tensor:
         # Automatically recognize the resolution of the current attention layer and resize the masks accordingly
@@ -454,7 +454,7 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         prompt: Union[str, List[str]] = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
-        masked_image_latents: torch.FloatTensor = None,
+        masked_image_latents: torch.Tensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         padding_mask_crop: Optional[int] = None,
@@ -467,9 +467,9 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.01,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -898,13 +898,16 @@ class GaussianSmoothing(nn.Module):
     Apply gaussian smoothing on a
     1d, 2d or 3d tensor. Filtering is performed seperately for each channel
     in the input using a depthwise convolution.
-    Arguments:
-        channels (int, sequence): Number of channels of the input tensors. Output will
-            have this number of channels as well.
-        kernel_size (int, sequence): Size of the gaussian kernel.
-        sigma (float, sequence): Standard deviation of the gaussian kernel.
-        dim (int, optional): The number of dimensions of the data.
-            Default value is 2 (spatial).
+
+    Args:
+        channels (`int` or `sequence`):
+            Number of channels of the input tensors. The output will have this number of channels as well.
+        kernel_size (`int` or `sequence`):
+            Size of the Gaussian kernel.
+        sigma (`float` or `sequence`):
+            Standard deviation of the Gaussian kernel.
+        dim (`int`, *optional*, defaults to `2`):
+            The number of dimensions of the data. Default is 2 (spatial dimensions).
     """
 
     def __init__(self, channels, kernel_size, sigma, dim=2):
@@ -944,10 +947,14 @@ class GaussianSmoothing(nn.Module):
     def forward(self, input):
         """
         Apply gaussian filter to input.
-        Arguments:
-            input (torch.Tensor): Input to apply gaussian filter on.
+
+        Args:
+            input (`torch.Tensor` of shape `(N, C, H, W)`):
+                Input to apply Gaussian filter on.
+
         Returns:
-            filtered (torch.Tensor): Filtered output.
+            `torch.Tensor`:
+                The filtered output tensor with the same shape as the input.
         """
         return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups, padding="same")
 

@@ -11,16 +11,16 @@ In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-de
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
 - LoRA attention layers allow to control to which extent the model is adapted towards new training images via a `scale` parameter.
-[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in 
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in
 the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
 
-The `train_dreambooth_lora_sdxl_advanced.py` script shows how to implement dreambooth-LoRA, combining the training process shown in `train_dreambooth_lora_sdxl.py`, with 
-advanced features and techniques, inspired and built upon contributions by [Nataniel Ruiz](https://twitter.com/natanielruizg): [Dreambooth](https://dreambooth.github.io), [Rinon Gal](https://twitter.com/RinonGal): [Textual Inversion](https://textual-inversion.github.io), [Ron Mokady](https://twitter.com/MokadyRon): [Pivotal Tuning](https://arxiv.org/abs/2106.05744), [Simo Ryu](https://twitter.com/cloneofsimo): [cog-sdxl](https://github.com/replicate/cog-sdxl), 
+The `train_dreambooth_lora_sdxl_advanced.py` script shows how to implement dreambooth-LoRA, combining the training process shown in `train_dreambooth_lora_sdxl.py`, with
+advanced features and techniques, inspired and built upon contributions by [Nataniel Ruiz](https://twitter.com/natanielruizg): [Dreambooth](https://dreambooth.github.io), [Rinon Gal](https://twitter.com/RinonGal): [Textual Inversion](https://textual-inversion.github.io), [Ron Mokady](https://twitter.com/MokadyRon): [Pivotal Tuning](https://arxiv.org/abs/2106.05744), [Simo Ryu](https://twitter.com/cloneofsimo): [cog-sdxl](https://github.com/replicate/cog-sdxl),
 [Kohya](https://twitter.com/kohya_tech/): [sd-scripts](https://github.com/kohya-ss/sd-scripts), [The Last Ben](https://twitter.com/__TheBen): [fast-stable-diffusion](https://github.com/TheLastBen/fast-stable-diffusion) ❤️
 
 > [!NOTE]
-> 💡If this is your first time training a Dreambooth LoRA, congrats!🥳 
-> You might want to familiarize yourself more with the techniques: [Dreambooth blog](https://huggingface.co/blog/dreambooth), [Using LoRA for Efficient Stable Diffusion Fine-Tuning blog](https://huggingface.co/blog/lora) 
+> 💡If this is your first time training a Dreambooth LoRA, congrats!🥳
+> You might want to familiarize yourself more with the techniques: [Dreambooth blog](https://huggingface.co/blog/dreambooth), [Using LoRA for Efficient Stable Diffusion Fine-Tuning blog](https://huggingface.co/blog/lora)
 
 📚 Read more about the advanced features and best practices in this community derived blog post: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script)
 
@@ -64,19 +64,19 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 ### Pivotal Tuning
 **Training with text encoder(s)**
 
-Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization 
+Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization
 available with `train_dreambooth_lora_sdxl_advanced.py`, in the advanced script **pivotal tuning** is also supported.
-[pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) combines Textual Inversion with regular diffusion fine-tuning - 
-we insert new tokens into the text encoders of the model, instead of reusing existing ones. 
-We then optimize the newly-inserted token embeddings to represent the new concept. 
+[pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) combines Textual Inversion with regular diffusion fine-tuning -
+we insert new tokens into the text encoders of the model, instead of reusing existing ones.
+We then optimize the newly-inserted token embeddings to represent the new concept.
 
-To do so, just specify `--train_text_encoder_ti` while launching training (for regular text encoder optimizations, use `--train_text_encoder`). 
+To do so, just specify `--train_text_encoder_ti` while launching training (for regular text encoder optimizations, use `--train_text_encoder`).
 Please keep the following points in mind:
 
 * SDXL has two text encoders. So, we fine-tune both using LoRA.
@@ -101,7 +101,7 @@ snapshot_download(
 
 Let's review some of the advanced features we're going to be using for this example:
 - **custom captions**:
-To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by 
+To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by
 ```bash
 pip install datasets
 ```
@@ -113,11 +113,11 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 --caption_column=prompt
 ```
 
-You can also load a dataset straight from by specifying it's name in `dataset_name`. 
+You can also load a dataset straight from by specifying it's name in `dataset_name`.
 Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
 
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
-- **pivotal tuning** 
+- **pivotal tuning**
 - **min SNR gamma**
 
 **Now, we can launch training:**
@@ -161,7 +161,7 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 To better track our training experiments, we're using the following flags in the command above:
 
 * `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
-* `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
+* `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
 Our experiments were conducted on a single 40GB A100 GPU.
 
@@ -204,11 +204,11 @@ pipe.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_e
 pipe.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
 ```
 
-3. let's generate images 
+3. let's generate images
 
 ```python
 instance_token = "<s0><s1>"
-prompt = f"a {instance_token} icon of an orange llama eating ramen, in the style of {instance_token}" 
+prompt = f"a {instance_token} icon of an orange llama eating ramen, in the style of {instance_token}"
 
 image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"scale": 1.0}).images[0]
 image.save("llama.png")
@@ -218,37 +218,37 @@ image.save("llama.png")
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
 
 **AUTOMATIC1111 / SD.Next** \
-In AUTOMATIC1111/SD.Next we will load a LoRA and a textual embedding at the same time. 
-- *LoRA*: Besides the diffusers format, the script will also train a WebUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory. 
-- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `embeddings` directory. 
+In AUTOMATIC1111/SD.Next we will load a LoRA and a textual embedding at the same time.
+- *LoRA*: Besides the diffusers format, the script will also train a WebUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory.
+- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `embeddings` directory.
 
-You can then run inference by prompting `a y2k_emb webpage about the movie Mean Girls <lora:y2k:0.9>`. You can use the `y2k_emb` token normally, including increasing its weight by doing `(y2k_emb:1.2)`. 
+You can then run inference by prompting `a y2k_emb webpage about the movie Mean Girls <lora:y2k:0.9>`. You can use the `y2k_emb` token normally, including increasing its weight by doing `(y2k_emb:1.2)`.
 
 **ComfyUI** \
-In ComfyUI we will load a LoRA and a textual embedding at the same time. 
+In ComfyUI we will load a LoRA and a textual embedding at the same time.
 - *LoRA*: Besides the diffusers format, the script will also train a ComfyUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory. Then you will load the LoRALoader node and hook that up with your model and CLIP. [Official guide for loading LoRAs](https://comfyanonymous.github.io/ComfyUI_examples/lora/)
-- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `models/embeddings` directory and use it in your prompts like `embedding:y2k_emb`. [Official guide for loading embeddings](https://comfyanonymous.github.io/ComfyUI_examples/textual_inversion_embeddings/). 
-- 
+- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `models/embeddings` directory and use it in your prompts like `embedding:y2k_emb`. [Official guide for loading embeddings](https://comfyanonymous.github.io/ComfyUI_examples/textual_inversion_embeddings/).
+-
 ### Specifying a better VAE
 
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
-### DoRA training 
-The advanced script now supports DoRA training too!
-> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
-**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
-The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+### DoRA training
+The advanced script supports DoRA training too!
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353),
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters.
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference.
 
 > [!NOTE]
-> 💡DoRA training is still _experimental_  
+> 💡DoRA training is still _experimental_
 > and is likely to require different hyperparameter values to perform best compared to a LoRA.
-> Specifically, we've noticed 2 differences to take into account your training: 
+> Specifically, we've noticed 2 differences to take into account your training:
 > 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
-> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
-> This is also aligned with some of the quantitative analysis shown in the paper. 
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.
+> This is also aligned with some of the quantitative analysis shown in the paper.
 
 **Usage**
-1. To use DoRA you need to install `peft` from main: 
+1. To use DoRA you need to install `peft` from main:
 ```bash
 pip install git+https://github.com/huggingface/peft.git
 ```
@@ -256,12 +256,12 @@ pip install git+https://github.com/huggingface/peft.git
 ```bash
 --use_dora
 ```
-**Inference** 
+**Inference**
 The inference is the same as if you train a regular LoRA 🤗
 
 ## Conducting EDM-style training
 
-It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364). 
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364).
 
 simply set:
 
@@ -303,6 +303,147 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 > [!CAUTION]
 > Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
+
+### B-LoRA training
+The advanced script now supports B-LoRA training too!
+> Proposed in [Implicit Style-Content Separation using B-LoRA](https://arxiv.org/abs/2403.14572),
+B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
+It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs)
+achieves style-content separation that cannot be achieved by training each B-LoRA independently.
+Once trained, the two B-LoRAs can be used as independent components to allow various image stylization tasks
+
+**Usage**
+Enable B-LoRA training by adding this flag
+```bash
+--use_blora
+```
+You can train a B-LoRA with as little as 1 image, and 1000 steps. Try this default configuration as a start:
+```bash
+!accelerate launch train_dreambooth_b-lora_sdxl.py \
+ --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
+ --instance_data_dir="linoyts/B-LoRA_teddy_bear" \
+ --output_dir="B-LoRA_teddy_bear" \
+ --instance_prompt="a [v18]" \
+ --resolution=1024 \
+ --rank=64 \
+ --train_batch_size=1 \
+ --learning_rate=5e-5 \
+ --lr_scheduler="constant" \
+ --lr_warmup_steps=0 \
+ --max_train_steps=1000 \
+ --checkpointing_steps=2000 \
+ --seed="0" \
+ --gradient_checkpointing \
+ --mixed_precision="fp16"
+```
+**Inference**
+The inference is a bit different:
+1. we need load *specific* unet layers (as opposed to a regular LoRA/DoRA)
+2. the trained layers we load, changes based on our objective (e.g. style/content)
+
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
+
+# pick a blora for content/style (you can also set one to None)
+content_B_lora_path  = "lora-library/B-LoRA-teddybear"
+style_B_lora_path= "lora-library/B-LoRA-pen_sketch"
+
+
+content_B_LoRA = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+style_B_LoRA = lora_lora_unet_blocks(style_B_lora_path,alpha=1.1,target_blocks=["unet.up_blocks.0.attentions.1"])
+combined_lora = {**content_B_LoRA, **style_B_LoRA}
+
+# Load both loras
+pipeline.load_lora_into_unet(combined_lora, None, pipeline.unet)
+
+#generate
+prompt = "a [v18] in [v30] style"
+pipeline(prompt, num_images_per_prompt=4).images
+```
+### LoRA training of Targeted U-net Blocks
+The advanced script now supports custom choice of U-net blocks to train during Dreambooth LoRA tuning.
+> [!NOTE]
+> This feature is still experimental
+
+> Recently, works like B-LoRA showed the potential advantages of learning the LoRA weights of specific U-net blocks, not only in speed & memory,
+> but also in reducing the amount of needed data, improving style manipulation and overcoming overfitting issues.
+> In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks.
+
+**Usage**
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks.
+e.g:
+```bash
+--lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"
+```
+
+> [!NOTE]
+> if you specify both `--use_blora` and `--lora_unet_blocks`, values given in --lora_unet_blocks will be ignored.
+> When enabling --use_blora, targeted U-net blocks are automatically set to be "unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1" as discussed in the paper.
+> If you wish to experiment with different blocks, specify `--lora_unet_blocks` only.
+
+**Inference**
+Inference is the same as for B-LoRAs, except the input targeted blocks should be modified based on your training configuration.
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+
+# taken & modified from B-LoRA repo - https://github.com/yardenfren1996/B-LoRA/blob/main/blora_utils.py
+def is_belong_to_blocks(key, blocks):
+    try:
+        for g in blocks:
+            if g in key:
+                return True
+        return False
+    except Exception as e:
+        raise type(e)(f'failed to is_belong_to_block, due to: {e}')
+
+def lora_lora_unet_blocks(lora_path, alpha, target_blocks):
+  state_dict, _ = pipeline.lora_state_dict(lora_path)
+  filtered_state_dict = {k: v * alpha for k, v in state_dict.items() if is_belong_to_blocks(k, target_blocks)}
+  return filtered_state_dict
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+).to("cuda")
+
+lora_path  = "lora-library/B-LoRA-pen_sketch"
+
+state_dict = lora_lora_unet_blocks(content_B_lora_path,alpha=1,target_blocks=["unet.up_blocks.0.attentions.0"])
+
+# Load trained lora layers into the unet
+pipeline.load_lora_into_unet(state_dict, None, pipeline.unet)
+
+#generate
+prompt = "a dog in [v30] style"
+pipeline(prompt, num_images_per_prompt=4).images
+```
+
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)

@@ -64,7 +64,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
     """
     Args:
     Class for AudioLDM2 projection layer's outputs.
-        hidden_states (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
             Sequence of hidden-states obtained by linearly projecting the hidden-states for each of the text
              encoders and subsequently concatenating them together.
         attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -75,7 +75,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
             - 0 for tokens that are **masked**.
     """
 
-    hidden_states: torch.FloatTensor
+    hidden_states: torch.Tensor
     attention_mask: Optional[torch.LongTensor] = None
 
 
@@ -125,8 +125,8 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states: Optional[torch.FloatTensor] = None,
-        hidden_states_1: Optional[torch.FloatTensor] = None,
+        hidden_states: Optional[torch.Tensor] = None,
+        hidden_states_1: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         attention_mask_1: Optional[torch.LongTensor] = None,
     ):
@@ -544,7 +544,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -680,7 +680,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
@@ -696,10 +696,10 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         The [`AudioLDM2UNet2DConditionModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            encoder_hidden_states (`torch.FloatTensor`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
@@ -710,7 +710,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
-            encoder_hidden_states_1 (`torch.FloatTensor`, *optional*):
+            encoder_hidden_states_1 (`torch.Tensor`, *optional*):
                 A second set of encoder hidden states with shape `(batch, sequence_length_2, feature_dim_2)`. Can be
                 used to condition the model on a different set of embeddings to `encoder_hidden_states`.
             encoder_attention_mask_1 (`torch.Tensor`, *optional*):
@@ -1091,14 +1091,14 @@ class CrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ):
         output_states = ()
         num_layers = len(self.resnets)
@@ -1270,15 +1270,15 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         num_attention_per_layer = len(self.attentions) // (len(self.resnets) - 1)
 
@@ -1437,16 +1437,16 @@ class CrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states_1: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask_1: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: Optional[torch.Tensor] = None,
+        encoder_attention_mask_1: Optional[torch.Tensor] = None,
     ):
         num_layers = len(self.resnets)
         num_attention_per_layer = len(self.attentions) // num_layers

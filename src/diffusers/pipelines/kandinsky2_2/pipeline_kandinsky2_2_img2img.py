@@ -190,9 +190,9 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-        negative_image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
+        image_embeds: Union[torch.Tensor, List[torch.Tensor]],
+        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
+        negative_image_embeds: Union[torch.Tensor, List[torch.Tensor]],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
@@ -210,9 +210,9 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
@@ -222,7 +222,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
                 denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
                 be maximum and the denoising process will run for the full number of iterations specified in
                 `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
-            negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            negative_image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.

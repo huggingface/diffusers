@@ -103,7 +103,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         strength: float = 0.8,
         batch_size: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -115,7 +115,7 @@ class DDIMNoiseComparativeAnalysisPipeline(DiffusionPipeline):
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
-            image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.Tensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             strength (`float`, *optional*, defaults to 0.8):

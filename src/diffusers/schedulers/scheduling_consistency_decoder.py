@@ -61,12 +61,12 @@ class ConsistencyDecoderSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: torch.Tensor
 
 
 class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
@@ -113,28 +113,28 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
     def init_noise_sigma(self):
         return self.sqrt_one_minus_alphas_cumprod[self.timesteps[0]]
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample * self.c_in[timestep]
 
     def step(
         self,
-        model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
-        sample: torch.FloatTensor,
+        model_output: torch.Tensor,
+        timestep: Union[float, torch.Tensor],
+        sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[ConsistencyDecoderSchedulerOutput, Tuple]:
@@ -143,11 +143,11 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
             timestep (`float`):
                 The current timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.

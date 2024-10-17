@@ -88,7 +88,7 @@ class AmusedPipeline(DiffusionPipeline):
         negative_encoder_hidden_states: Optional[torch.Tensor] = None,
         output_type="pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         micro_conditioning_aesthetic_score: int = 6,
@@ -122,16 +122,16 @@ class AmusedPipeline(DiffusionPipeline):
             latents (`torch.IntTensor`, *optional*):
                 Pre-generated tokens representing latent vectors in `self.vqvae`, to be used as inputs for image
                 gneration. If not provided, the starting latents will be completely masked.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument. A single vector from the
                 pooled and projected final hidden states.
-            encoder_hidden_states (`torch.FloatTensor`, *optional*):
+            encoder_hidden_states (`torch.Tensor`, *optional*):
                 Pre-generated penultimate hidden states from the text encoder providing additional text conditioning.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            negative_encoder_hidden_states (`torch.FloatTensor`, *optional*):
+            negative_encoder_hidden_states (`torch.Tensor`, *optional*):
                 Analogous to `encoder_hidden_states` for the positive prompt.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
@@ -140,7 +140,7 @@ class AmusedPipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

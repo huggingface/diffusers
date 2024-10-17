@@ -25,20 +25,18 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from urllib import request
 
-from huggingface_hub import cached_download, hf_hub_download, model_info
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub import hf_hub_download, model_info
+from huggingface_hub.utils import RevisionNotFoundError, validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
 from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
-COMMUNITY_PIPELINES_URL = (
-    "https://raw.githubusercontent.com/huggingface/diffusers/{revision}/examples/community/{pipeline}.py"
-)
-
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+# See https://huggingface.co/datasets/diffusers/community-pipelines-mirror
+COMMUNITY_PIPELINES_MIRROR_ID = "diffusers/community-pipelines-mirror"
 
 
 def get_diffusers_versions():
@@ -201,7 +199,6 @@ def get_cached_module_file(
     module_file: str,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
-    resume_download: bool = False,
     proxies: Optional[Dict[str, str]] = None,
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
@@ -229,8 +226,6 @@ def get_cached_module_file(
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
             exist.
-        resume_download (`bool`, *optional*, defaults to `False`):
-            Whether or not to delete incompletely received file. Attempts to resume the download if such a file exists.
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
@@ -281,20 +276,24 @@ def get_cached_module_file(
                 f" {', '.join(available_versions + ['main'])}."
             )
 
-        # community pipeline on GitHub
-        github_url = COMMUNITY_PIPELINES_URL.format(revision=revision, pipeline=pretrained_model_name_or_path)
         try:
-            resolved_module_file = cached_download(
-                github_url,
+            resolved_module_file = hf_hub_download(
+                repo_id=COMMUNITY_PIPELINES_MIRROR_ID,
+                repo_type="dataset",
+                filename=f"{revision}/{pretrained_model_name_or_path}.py",
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
-                token=False,
             )
             submodule = "git"
             module_file = pretrained_model_name_or_path + ".py"
+        except RevisionNotFoundError as e:
+            raise EnvironmentError(
+                f"Revision '{revision}' not found in the community pipelines mirror. Check available revisions on"
+                " https://huggingface.co/datasets/diffusers/community-pipelines-mirror/tree/main."
+                " If you don't find the revision you are looking for, please open an issue on https://github.com/huggingface/diffusers/issues."
+            ) from e
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
@@ -307,7 +306,6 @@ def get_cached_module_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
             )
@@ -364,7 +362,6 @@ def get_cached_module_file(
                     f"{module_needed}.py",
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     token=token,
                     revision=revision,
@@ -380,7 +377,6 @@ def get_class_from_dynamic_module(
     class_name: Optional[str] = None,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
-    resume_download: bool = False,
     proxies: Optional[Dict[str, str]] = None,
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
@@ -417,8 +413,6 @@ def get_class_from_dynamic_module(
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
             exist.
-        resume_download (`bool`, *optional*, defaults to `False`):
-            Whether or not to delete incompletely received file. Attempts to resume the download if such a file exists.
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
@@ -455,7 +449,6 @@ def get_class_from_dynamic_module(
         module_file,
         cache_dir=cache_dir,
         force_download=force_download,
-        resume_download=resume_download,
         proxies=proxies,
         token=token,
         revision=revision,

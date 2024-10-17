@@ -34,12 +34,13 @@ from diffusers.utils.testing_utils import (
     is_flaky,
     load_image,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -338,6 +339,7 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
             negative_prompt="",
         ).to_tuple()
 
+        generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipeline(
             image=init_image,
             mask_image=mask,
@@ -354,4 +356,5 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (768, 768, 3)
 
-        assert_mean_pixel_difference(image, expected_image)
+        max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
+        assert max_diff < 1e-4

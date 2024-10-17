@@ -266,10 +266,10 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
     #  add_noise method to overwrite the one in schedule because it use a different beta schedule for adding noise vs sampling
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         betas = torch.linspace(0.0001, 0.02, 1000, dtype=torch.float32)
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
@@ -295,9 +295,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-        image_embeds: torch.FloatTensor,
-        negative_image_embeds: torch.FloatTensor,
+        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
+        image_embeds: torch.Tensor,
+        negative_image_embeds: torch.Tensor,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
@@ -307,7 +307,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         return_dict: bool = True,
     ):
@@ -317,12 +317,12 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`torch.FloatTensor`, `PIL.Image.Image`):
+            image (`torch.Tensor`, `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
-            image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
-            negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            negative_image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
@@ -356,7 +356,7 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

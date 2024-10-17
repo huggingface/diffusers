@@ -207,14 +207,14 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[Union[List[PIL.Image.Image], torch.FloatTensor]] = None,
+        image: Optional[Union[List[PIL.Image.Image], torch.Tensor]] = None,
         steps: int = 5,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         image_embeddings: Optional[torch.Tensor] = None,
-        decoder_latents: Optional[torch.FloatTensor] = None,
-        super_res_latents: Optional[torch.FloatTensor] = None,
+        decoder_latents: Optional[torch.Tensor] = None,
+        super_res_latents: Optional[torch.Tensor] = None,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -223,7 +223,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`List[PIL.Image.Image]` or `torch.FloatTensor`):
+            image (`List[PIL.Image.Image]` or `torch.Tensor`):
                 The images to use for the image interpolation. Only accepts a list of two PIL Images or If you provide a tensor, it needs to comply with the
                 configuration of
                 [this](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
@@ -242,9 +242,9 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
             image_embeddings (`torch.Tensor`, *optional*):
                 Pre-defined image embeddings that can be derived from the image encoder. Pre-defined image embeddings
                 can be passed for tasks like image interpolations. `image` can the be left to `None`.
-            decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
+            decoder_latents (`torch.Tensor` of shape (batch size, channels, height, width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
-            super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
+            super_res_latents (`torch.Tensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
@@ -272,19 +272,19 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
                 raise AssertionError(
                     f"Expected 'image' List to contain PIL.Image.Image, but passed 'image' contents are {type(image[0])} and {type(image[1])}"
                 )
-        elif isinstance(image, torch.FloatTensor):
+        elif isinstance(image, torch.Tensor):
             if image.shape[0] != 2:
                 raise AssertionError(
-                    f"Expected 'image' to be torch.FloatTensor of shape 2 in 0th dimension, but passed 'image' size is {image.shape[0]}"
+                    f"Expected 'image' to be torch.Tensor of shape 2 in 0th dimension, but passed 'image' size is {image.shape[0]}"
                 )
         elif isinstance(image_embeddings, torch.Tensor):
             if image_embeddings.shape[0] != 2:
                 raise AssertionError(
-                    f"Expected 'image_embeddings' to be torch.FloatTensor of shape 2 in 0th dimension, but passed 'image_embeddings' shape is {image_embeddings.shape[0]}"
+                    f"Expected 'image_embeddings' to be torch.Tensor of shape 2 in 0th dimension, but passed 'image_embeddings' shape is {image_embeddings.shape[0]}"
                 )
         else:
             raise AssertionError(
-                f"Expected 'image' or 'image_embeddings' to be not None with types List[PIL.Image] or Torch.FloatTensor respectively. Received {type(image)} and {type(image_embeddings)} repsectively"
+                f"Expected 'image' or 'image_embeddings' to be not None with types List[PIL.Image] or torch.Tensor respectively. Received {type(image)} and {type(image_embeddings)} repsectively"
             )
 
         original_image_embeddings = self._encode_image(

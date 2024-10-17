@@ -199,13 +199,13 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor]] = None,
+        image: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor]] = None,
         num_images_per_prompt: int = 1,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
         generator: Optional[torch.Generator] = None,
-        decoder_latents: Optional[torch.FloatTensor] = None,
-        super_res_latents: Optional[torch.FloatTensor] = None,
+        decoder_latents: Optional[torch.Tensor] = None,
+        super_res_latents: Optional[torch.Tensor] = None,
         image_embeddings: Optional[torch.Tensor] = None,
         decoder_guidance_scale: float = 8.0,
         output_type: Optional[str] = "pil",
@@ -215,7 +215,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
                 `Image` or tensor representing an image batch to be used as the starting point. If you provide a
                 tensor, it needs to be compatible with the [`CLIPImageProcessor`]
                 [configuration](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
@@ -231,9 +231,9 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
+            decoder_latents (`torch.Tensor` of shape (batch size, channels, height, width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
-            super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
+            super_res_latents (`torch.Tensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
