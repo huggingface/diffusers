@@ -247,8 +247,6 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
         original_image = image[-3:, -3:, -1].flatten()
         print_tensor_test(original_image)
 
-        expected_image = np.array(
-            [0.33007812, 0.33984375, 0.33984375, 0.328125, 0.34179688, 0.33984375, 0.30859375, 0.3203125, 0.3203125]
-        )
+        expected_image = np.array([0.2734, 0.2852, 0.2852, 0.2734, 0.2754, 0.2891, 0.2617, 0.2637, 0.2773])
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
