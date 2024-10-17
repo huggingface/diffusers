@@ -100,7 +100,7 @@ def get_3d_sincos_pos_embed(
             Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
             Scale factor for temporal grid interpolation.
-    
+
     Returns:
         `np.ndarray`:
             The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1], embed_dim]`.
@@ -182,7 +182,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     Args:
         embed_dim (`int`): The embedding dimension.
         grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
-    
+
     Returns:
         `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
     """
@@ -204,7 +204,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     Args:
         embed_dim (`int`): The embedding dimension `D`
         pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
-    
+
     Returns:
         `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
@@ -226,7 +226,22 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding with support for SD3 cropping."""
+    """
+    2D Image to Patch Embedding with support for SD3 cropping.
+
+    Args:
+        height (`int`, defaults to `224`): The height of the image.
+        width (`int`, defaults to `224`): The width of the image.
+        patch_size (`int`, defaults to `16`): The size of the patches.
+        in_channels (`int`, defaults to `3`): The number of input channels.
+        embed_dim (`int`, defaults to `768`): The output dimension of the embedding.
+        layer_norm (`bool`, defaults to `False`): Whether or not to use layer normalization.
+        flatten (`bool`, defaults to `True`): Whether or not to flatten the output.
+        bias (`bool`, defaults to `True`): Whether or not to use bias.
+        interpolation_scale (`float`, defaults to `1`): The scale of the interpolation.
+        pos_embed_type (`str`, defaults to `"sincos"`): The type of positional embedding.
+        pos_embed_max_size (`int`, defaults to `None`): The maximum size of the positional embedding.
+    """
 
     def __init__(
         self,
@@ -334,7 +349,15 @@ class PatchEmbed(nn.Module):
 
 
 class LuminaPatchEmbed(nn.Module):
-    """2D Image to Patch Embedding with support for Lumina-T2X"""
+    """
+    2D Image to Patch Embedding with support for Lumina-T2X
+
+    Args:
+        patch_size (`int`, defaults to `2`): The size of the patches.
+        in_channels (`int`, defaults to `4`): The number of input channels.
+        embed_dim (`int`, defaults to `768`): The output dimension of the embedding.
+        bias (`bool`, defaults to `True`): Whether or not to use bias.
+    """
 
     def __init__(self, patch_size=2, in_channels=4, embed_dim=768, bias=True):
         super().__init__()
@@ -584,6 +607,20 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
 
 
 def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
+    """
+    Get 2D RoPE from grid.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    grid (`np.ndarray`):
+        The grid of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
     assert embed_dim % 4 == 0
 
     # use half of dimensions to encode grid_h
@@ -604,6 +641,22 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
 
 
 def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
+    """
+    Get 2D RoPE from grid.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    grid (`np.ndarray`):
+        The grid of the positional embedding.
+    linear_factor (`float`):
+        The linear factor of the positional embedding, which is used to scale the positional embedding in the linear layer.
+    ntk_factor (`float`):
+        The ntk factor of the positional embedding, which is used to scale the positional embedding in the ntk layer.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
     assert embed_dim % 4 == 0
 
     emb_h = get_1d_rotary_pos_embed(

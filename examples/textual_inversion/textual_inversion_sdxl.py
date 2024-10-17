@@ -965,12 +965,12 @@ def main():
                 index_no_updates_2[min(placeholder_token_ids_2) : max(placeholder_token_ids_2) + 1] = False
 
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight[
-                        index_no_updates
-                    ] = orig_embeds_params[index_no_updates]
-                    accelerator.unwrap_model(text_encoder_2).get_input_embeddings().weight[
-                        index_no_updates_2
-                    ] = orig_embeds_params_2[index_no_updates_2]
+                    accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight[index_no_updates] = (
+                        orig_embeds_params[index_no_updates]
+                    )
+                    accelerator.unwrap_model(text_encoder_2).get_input_embeddings().weight[index_no_updates_2] = (
+                        orig_embeds_params_2[index_no_updates_2]
+                    )
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
