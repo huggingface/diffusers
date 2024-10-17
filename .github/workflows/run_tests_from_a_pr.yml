@@ -43,8 +43,8 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines) ]]; then
-            echo "Error: The input string must contain either 'models' or 'pipelines' after 'tests/'."
+          if [[ ! "$PY_TEST" =~ ^tests/(models|pipelines|lora) ]]; then
+            echo "Error: The input string must contain either 'models', 'pipelines', or 'lora' after 'tests/'."
             exit 1
           fi
 
@@ -53,6 +53,8 @@ jobs:
             exit 1
           fi
           echo "$PY_TEST"
+        
+        shell: bash -e {0}
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
