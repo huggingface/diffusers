@@ -4,6 +4,7 @@ import unittest
 import numpy as np
 import pytest
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
@@ -214,8 +215,15 @@ class FluxPipelineSlowTests(unittest.TestCase):
         else:
             generator = torch.Generator(device="cpu").manual_seed(seed)
 
+        prompt_embeds = hf_hub_download(
+            repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt"
+        )
+        pooled_prompt_embeds = hf_hub_download(
+            repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+        )
         return {
-            "prompt": "A photo of a cat",
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
             "num_inference_steps": 2,
             "guidance_scale": 0.0,
             "max_sequence_length": 256,
@@ -224,7 +232,9 @@ class FluxPipelineSlowTests(unittest.TestCase):
         }
 
     def test_flux_inference(self):
-        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        )
         pipe.enable_model_cpu_offload()
 
         inputs = self.get_inputs(torch_device)
