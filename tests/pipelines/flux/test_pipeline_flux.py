@@ -215,11 +215,13 @@ class FluxPipelineSlowTests(unittest.TestCase):
         else:
             generator = torch.Generator(device="cpu").manual_seed(seed)
 
-        prompt_embeds = hf_hub_download(
-            repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt"
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
         )
-        pooled_prompt_embeds = hf_hub_download(
-            repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
         )
         return {
             "prompt_embeds": prompt_embeds,
