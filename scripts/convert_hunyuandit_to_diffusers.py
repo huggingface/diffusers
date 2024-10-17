@@ -19,9 +19,9 @@ def main(args):
 
     device = "cuda"
     model_config = HunyuanDiT2DModel.load_config("Tencent-Hunyuan/HunyuanDiT-Diffusers", subfolder="transformer")
-    model_config["use_style_cond_and_image_meta_size"] = (
-        args.use_style_cond_and_image_meta_size
-    )  ### version <= v1.1: True; version >= v1.2: False
+    model_config[
+        "use_style_cond_and_image_meta_size"
+    ] = args.use_style_cond_and_image_meta_size  ### version <= v1.1: True; version >= v1.2: False
 
     # input_size -> sample_size, text_dim -> cross_attention_dim
     for key in state_dict:

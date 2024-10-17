@@ -92,8 +92,8 @@ def get_3d_sincos_pos_embed(
         embed_dim (`int`):
             The embedding dimension of inputs. It must be divisible by 16.
         spatial_size (`int` or `Tuple[int, int]`):
-            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied
-            to both spatial dimensions (height and width).
+            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
+            spatial dimensions (height and width).
         temporal_size (`int`):
             The temporal dimension of postional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
@@ -103,7 +103,8 @@ def get_3d_sincos_pos_embed(
 
     Returns:
         `np.ndarray`:
-            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1], embed_dim]`.
+            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
+            embed_dim]`.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
@@ -157,8 +158,8 @@ def get_2d_sincos_pos_embed(
 
     Returns:
         pos_embed (`np.ndarray`):
-            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or
-            `[1 + grid_size*grid_size, embed_dim]` if using cls_token
+            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or `[1 + grid_size*grid_size,
+            embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
@@ -704,7 +705,8 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
     grid (`np.ndarray`):
         The grid of the positional embedding.
     linear_factor (`float`):
-        The linear factor of the positional embedding, which is used to scale the positional embedding in the linear layer.
+        The linear factor of the positional embedding, which is used to scale the positional embedding in the linear
+        layer.
     ntk_factor (`float`):
         The ntk factor of the positional embedding, which is used to scale the positional embedding in the ntk layer.
 
