@@ -31,7 +31,6 @@ from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
@@ -240,7 +239,6 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        print_tensor_test(original_image)
 
         expected_image = np.array([0.7314, 0.7075, 0.6611, 0.7539, 0.7563, 0.6650, 0.6123, 0.7275, 0.7222])
 
@@ -274,7 +272,6 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        print_tensor_test(original_image)
         expected_image = np.array([0.9048, 0.8740, 0.8936, 0.8516, 0.8799, 0.9360, 0.8379, 0.8408, 0.8652])
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
@@ -307,7 +304,6 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        print_tensor_test(original_image)
         expected_image = np.array([0.6699, 0.6836, 0.6226, 0.6572, 0.7310, 0.6646, 0.6650, 0.6694, 0.6011])
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
@@ -342,7 +338,6 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        print_tensor_test(original_image)
         expected_image = np.array([0.7207, 0.7041, 0.6543, 0.7500, 0.7490, 0.6592, 0.6001, 0.7168, 0.7231])
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2

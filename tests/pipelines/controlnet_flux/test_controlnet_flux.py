@@ -32,7 +32,6 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
@@ -245,7 +244,6 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        print_tensor_test(original_image)
 
         expected_image = np.array([0.2734, 0.2852, 0.2852, 0.2734, 0.2754, 0.2891, 0.2617, 0.2637, 0.2773])
 
