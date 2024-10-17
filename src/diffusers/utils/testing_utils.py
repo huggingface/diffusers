@@ -54,7 +54,7 @@ _required_transformers_version = is_transformers_available() and version.parse(
 ) > version.parse("4.33")
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
-BIG_GPU_MEMORY = os.getenv("BIG_GPU_MEMORY", 40)
+BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
     import torch
