@@ -73,7 +73,7 @@ else:
 
 
 if is_accelerate_available():
-    import accelerate
+    from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
@@ -726,7 +726,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
-                with accelerate.init_empty_weights():
+                with init_empty_weights():
                     model = cls.from_config(config, **unused_kwargs)
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
@@ -771,7 +771,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         device_map = {"": "cpu"}
                         force_hook = False
                     try:
-                        accelerate.load_checkpoint_and_dispatch(
+                        load_checkpoint_and_dispatch(
                             model,
                             model_file if not is_sharded else index_file,
                             device_map,
@@ -801,7 +801,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                                 " please also re-upload it or open a PR on the original repository."
                             )
                             model._temp_convert_self_to_deprecated_attention_blocks()
-                            accelerate.load_checkpoint_and_dispatch(
+                            load_checkpoint_and_dispatch(
                                 model,
                                 model_file if not is_sharded else index_file,
                                 device_map,
