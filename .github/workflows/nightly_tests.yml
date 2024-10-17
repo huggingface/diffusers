@@ -185,7 +185,7 @@ jobs:
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_big_gpu_torch_tests:
-    name: Torch tests on big GPU (24GB)
+    name: Torch tests on big GPU
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -216,6 +216,7 @@ jobs:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
+          BIG_GPU_MEMORY: 40
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -m "big_gpu_with_torch_cuda" \
