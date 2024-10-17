@@ -913,7 +913,7 @@ class SDXLCustomPipeline(
         latents = init_latents
 
         return latents
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -998,8 +998,8 @@ class PipelineState:
     def add_intermediate(self, key: str, value: Any):
         self.intermediates[key] = value
 
-    def add_output(self, value: Any):
-        self.outputs = value
+    def add_output(self, key: str, value: Any):
+        self.outputs[key] = value
 
     def get_input(self, key: str, default: Any = None) -> Any:
         return self.inputs.get(key, default)
@@ -1007,26 +1007,38 @@ class PipelineState:
     def get_intermediate(self, key: str, default: Any = None) -> Any:
         return self.intermediates.get(key, default)
 
-    def get_output(self) -> Any:
-        return self.output
+    def get_output(self, key: str, default: Any = None) -> Any:
+        return self.outputs.get(key, default)
 
     def to_dict(self) -> Dict[str, Any]:
         return {**self.__dict__, "inputs": self.inputs, "intermediates": self.intermediates, "outputs": self.outputs}
 
+    def __repr__(self):
+        def format_value(v):
+            if hasattr(v, "shape") and hasattr(v, "dtype"):
+                return f"Tensor(\n      dtype={v.dtype}, shape={v.shape}\n      {v})"
+            elif isinstance(v, list) and len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
+                return f"[Tensor(\n      dtype={v[0].dtype}, shape={v[0].shape}\n      {v[0]}), ...]"
+            else:
+                return repr(v)
+
+        inputs = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.inputs.items())
+        intermediates = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.intermediates.items())
+        outputs = "\n".join(f"    {k}: {format_value(v)}" for k, v in self.outputs.items())
+
+        return (
+            f"PipelineState(\n"
+            f"  inputs={{\n{inputs}\n  }},\n"
+            f"  intermediates={{\n{intermediates}\n  }},\n"
+            f"  outputs={{\n{outputs}\n  }}\n"
+            f")"
+        )
+
 
 class PipelineBlock:
-
-    @property
-    def optional_components(self) -> List[str]:
-        return []
-    
-    @property
-    def required_components(self) -> List[str]:
-        return []
-
-    @property
-    def required_auxiliaries(self) -> List[str]:
-        return []
+    optional_components = []
+    required_components = []
+    required_auxiliaries = []
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -1055,6 +1067,45 @@ class PipelineBlock:
             else:
                 self.configs[key] = value
 
+    @classmethod
+    def from_pipe(cls, pipe: DiffusionPipeline):
+        """
+        Create a PipelineBlock instance from a diffusion pipeline object.
+
+        Args:
+            pipe: A `[DiffusionPipeline]` object.
+
+        Returns:
+            PipelineBlock: An instance initialized with the pipeline's components and configurations.
+        """
+        kwargs = {}
+
+        # Add components
+        for component_name, component in pipe.components.items():
+            if component_name in cls.required_components or component_name in cls.optional_components:
+                kwargs[component_name] = component
+
+        # Add config items that are in the __init__ signature
+        init_params = inspect.signature(cls.__init__).parameters
+        for config_name in pipe.config.keys():
+            if config_name in init_params and config_name not in kwargs:
+                kwargs[config_name] = pipe.config[config_name]
+        # Check for required auxiliaries
+        for aux_name in cls.required_auxiliaries:
+            if hasattr(pipe, aux_name):
+                kwargs[aux_name] = getattr(pipe, aux_name)
+
+        # Add any remaining relevant attributes
+        for attr_name in dir(pipe):
+            if (
+                not attr_name.startswith("_")
+                and attr_name not in kwargs
+                and attr_name not in ["components", "config"]
+                and attr_name in init_params
+            ):
+                kwargs[attr_name] = getattr(pipe, attr_name)
+
+        return cls(**kwargs)
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -1068,18 +1119,19 @@ class PipelineBlock:
         intermediates_inputs = ", ".join(self.intermediates_inputs)
         intermediates_outputs = ", ".join(self.intermediates_outputs)
 
-        return (f"{class_name}(\n"
-                f"  components: {components}\n"
-                f"  auxiliaries: {auxiliaries}\n"
-                f"  configs: {configs}\n"
-                f"  inputs: {inputs}\n"
-                f"  intermediates_inputs: {intermediates_inputs}\n"
-                f"  intermediates_outputs: {intermediates_outputs}\n"
-                f")")
+        return (
+            f"{class_name}(\n"
+            f"  components: {components}\n"
+            f"  auxiliaries: {auxiliaries}\n"
+            f"  configs: {configs}\n"
+            f"  inputs: {inputs}\n"
+            f"  intermediates_inputs: {intermediates_inputs}\n"
+            f"  intermediates_outputs: {intermediates_outputs}\n"
+            f")"
+        )
 
 
 class InputStep(PipelineBlock):
-    
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1109,6 +1161,8 @@ class InputStep(PipelineBlock):
 
 
 class TextEncoderStep(PipelineBlock):
+    optional_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1134,10 +1188,6 @@ class TextEncoderStep(PipelineBlock):
             "pooled_prompt_embeds",
             "negative_pooled_prompt_embeds",
         ]
-    
-    @property
-    def optional_components(self) -> List[str]:
-        return ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
 
     def __init__(
         self,
@@ -1279,6 +1329,8 @@ class TextEncoderStep(PipelineBlock):
 
 
 class SetTimestepsStep(PipelineBlock):
+    required_components = ["scheduler"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1287,10 +1339,6 @@ class SetTimestepsStep(PipelineBlock):
             ("sigmas", None),
             ("denoising_end", None),
         ]
-
-    @property
-    def required_components(self) -> List[str]:
-        return ["scheduler"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -1329,6 +1377,8 @@ class SetTimestepsStep(PipelineBlock):
 
 
 class Image2ImageSetTimestepsStep(PipelineBlock):
+    required_components = ["scheduler"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1340,10 +1390,6 @@ class Image2ImageSetTimestepsStep(PipelineBlock):
             ("denoising_start", None),
             ("num_images_per_prompt", 1),
         ]
-
-    @property
-    def required_components(self) -> List[str]:
-        return ["scheduler"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -1399,15 +1445,9 @@ class Image2ImageSetTimestepsStep(PipelineBlock):
 
 
 class Image2ImagePrepareLatentsStep(PipelineBlock):
-    
-    @property
-    def required_auxiliaries(self) -> List[str]:
-        return ["image_processor"]
-    
-    @property
-    def required_components(self) -> List[str]:
-        return ["vae"]
-    
+    required_components = ["vae"]
+    required_auxiliaries = ["image_processor"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1415,6 +1455,8 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
             ("num_images_per_prompt", 1),
             ("generator", None),
             ("latents", None),
+            ("device", None),
+            ("dtype", None),
         ]
 
     @property
@@ -1425,8 +1467,9 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents", "timesteps", "num_inference_steps"]
 
-    def __init__(self, vae=None, vae_scale_factor=8):
-        image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+    def __init__(self, vae=None, image_processor=None, vae_scale_factor=8):
+        if image_processor is None:
+            image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
         super().__init__(vae=vae, image_processor=image_processor, vae_scale_factor=vae_scale_factor)
 
     @torch.no_grad()
@@ -1436,15 +1479,17 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
         generator = state.get_input("generator")
         latents = state.get_input("latents")
         denoising_start = state.get_input("denoising_start")
+        device = state.get_input("device")
+        dtype = state.get_input("dtype")
+
         # get intermediates
         batch_size = state.get_intermediate("batch_size")
         latent_timestep = state.get_intermediate("latent_timestep")
 
-        device = pipeline._execution_device
-        dtype = pipeline.vae.dtype
+        device = pipeline._execution_device if device is None else device
+        dtype = pipeline.vae.dtype if dtype is None else dtype
 
         image = pipeline.image_processor.preprocess(image)
-
 
         add_noise = True if denoising_start is None else False
 
@@ -1466,7 +1511,8 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
 
 
 class PrepareLatentsStep(PipelineBlock):
-    
+    required_components = ["scheduler"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1475,16 +1521,14 @@ class PrepareLatentsStep(PipelineBlock):
             ("generator", None),
             ("latents", None),
             ("num_images_per_prompt", 1),
+            ("device", None),
+            ("dtype", None),
         ]
-    
-    @property
-    def required_components(self) -> List[str]:
-        return ["scheduler"]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return ["batch_size"]
-    
+
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
@@ -1506,12 +1550,19 @@ class PrepareLatentsStep(PipelineBlock):
         height = state.get_input("height")
         width = state.get_input("width")
         generator = state.get_input("generator")
+        device = state.get_input("device")
+        dtype = state.get_input("dtype")
 
         batch_size = state.get_intermediate("batch_size")
         prompt_embeds = state.get_intermediate("prompt_embeds", None)
 
-        dtype = prompt_embeds.dtype if prompt_embeds is not None else pipeline.dtype
-        device = pipeline._execution_device
+        if dtype is None and prompt_embeds is not None:
+            dtype = prompt_embeds.dtype
+        elif dtype is None:
+            dtype = pipeline.vae.dtype
+
+        if device is None:
+            device = pipeline._execution_device
 
         height = height or pipeline.default_sample_size * pipeline.vae_scale_factor
         width = width or pipeline.default_sample_size * pipeline.vae_scale_factor
@@ -1538,6 +1589,8 @@ class PrepareLatentsStep(PipelineBlock):
 
 
 class PrepareAdditionalConditioningStep(PipelineBlock):
+    required_components = ["unet"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1550,18 +1603,14 @@ class PrepareAdditionalConditioningStep(PipelineBlock):
             ("num_images_per_prompt", 1),
             ("guidance_scale", 5.0),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["latents"]
-    
+        return ["latents", "batch_size", "pooled_prompt_embeds"]
+
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-    
-    @property
-    def required_components(self) -> List[str]:
-        return ["unet"]
 
     def __init__(self, unet=None):
         super().__init__(unet=unet)
@@ -1635,10 +1684,12 @@ class PrepareAdditionalConditioningStep(PipelineBlock):
 
 
 class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
+    required_components = ["unet"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            ("original_size", None),
+            ("original_sizife", None),
             ("target_size", None),
             ("negative_original_size", None),
             ("negative_target_size", None),
@@ -1649,18 +1700,14 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
             ("aesthetic_score", 6.0),
             ("negative_aesthetic_score", 2.0),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return ["latents"]
-    
+
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-    
-    @property
-    def required_components(self) -> List[str]:
-        return ["unet"]
 
     def __init__(self, unet=None, requires_aesthetics_score=False):
         super().__init__(unet=unet, requires_aesthetics_score=requires_aesthetics_score)
@@ -1735,12 +1782,14 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
 
 
 class PrepareGuidance(PipelineBlock):
+    required_auxiliaries = ["guider"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             ("guidance_scale", 5.0),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
@@ -1751,17 +1800,14 @@ class PrepareGuidance(PipelineBlock):
             "pooled_prompt_embeds",
             "negative_pooled_prompt_embeds",
         ]
-    
+
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["add_text_embeds", "add_time_ids", "prompt_embeds"]
-    
-    @property
-    def required_auxiliaries(self) -> List[str]:
-        return ["guider"]
 
-    def __init__(self):
-        guider = CFGGuider()
+    def __init__(self, guider=None):
+        if guider is None:
+            guider = CFGGuider()
         super().__init__(guider=guider)
 
     @torch.no_grad()
@@ -1797,6 +1843,9 @@ class PrepareGuidance(PipelineBlock):
 
 
 class DenoiseStep(PipelineBlock):
+    required_components = ["unet", "scheduler"]
+    required_auxiliaries = ["guider"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -1806,7 +1855,7 @@ class DenoiseStep(PipelineBlock):
             ("generator", None),
             ("eta", 0.0),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return [
@@ -1817,18 +1866,16 @@ class DenoiseStep(PipelineBlock):
             "add_time_ids",
             "timestep_cond",
             "prompt_embeds",
-            ]
-    
+        ]
+
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
-    
-    @property
-    def required_components(self) -> List[str]:
-        return ["unet"]
 
-    def __init__(self, unet=None):
-        super().__init__(unet=unet)
+    def __init__(self, unet=None, scheduler=None, guider=None):
+        if guider is None:
+            guider = CFGGuider()
+        super().__init__(unet=unet, scheduler=scheduler, guider=guider)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1892,28 +1939,28 @@ class DenoiseStep(PipelineBlock):
 
 
 class DecodeLatentsStep(PipelineBlock):
+    optional_components = ["vae"]
+    required_auxiliaries = ["image_processor"]
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             ("output_type", "pil"),
             ("return_dict", True),
         ]
-    
+
     @property
     def intermediates_inputs(self) -> List[str]:
         return ["latents"]
-    
-    @property
-    def optional_components(self) -> List[str]:
-        return ["vae"]
-    
-    @property
-    def required_auxiliaries(self) -> List[str]:
-        return ["image_processor"]
 
-    def __init__(self, vae=None, vae_scale_factor=8):
-        image_processor = VaeImageProcessor(vae_scale_factor=8)
-        super().__init__(vae=vae, vae_scale_factor=vae_scale_factor, image_processor=image_processor)
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["images"]
+
+    def __init__(self, vae=None, image_processor=None, vae_scale_factor=8):
+        if image_processor is None:
+            image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+        super().__init__(vae=vae, image_processor=image_processor, vae_scale_factor=vae_scale_factor)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1973,7 +2020,7 @@ class DecodeLatentsStep(PipelineBlock):
             output = StableDiffusionXLPipelineOutput(images=image)
 
         state.add_intermediate("images", image)
-        state.add_output(output)
+        state.add_output("images", output)
 
         return pipeline, state
 
@@ -2047,7 +2094,44 @@ class CustomPipelineBuilder:
                         f"Cannot add block {block.__class__.__name__}: Required auxiliary {required_auxiliary} not found in pipeline"
                     )
 
-    def run_pipeline(self, return_pipeline_state=False, **kwargs):
+    def run_blocks(self, state: PipelineState = None, **kwargs):
+        """
+        Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
+        """
+        if state is None:
+            state = PipelineState()
+
+        pipeline = self.pipeline
+
+        # Make a copy of the input kwargs
+        input_params = kwargs.copy()
+
+        default_params = self.default_call_parameters
+
+        # user can pass the intermediate of the first block
+        for name in self.pipeline_blocks[0].intermediates_inputs:
+            if name in input_params:
+                state.add_intermediate(name, input_params.pop(name))
+
+        # Add inputs to state, using defaults if not provided
+        for name, default in default_params.items():
+            if name in input_params:
+                state.add_input(name, input_params.pop(name))
+            else:
+                state.add_input(name, default)
+
+        # Warn about unexpected inputs
+        if len(input_params) > 0:
+            logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
+
+        # Run the pipeline
+        with torch.no_grad():
+            for block in self.pipeline_blocks:
+                pipeline, state = block(pipeline, state)
+
+        return state
+
+    def run_pipeline(self, **kwargs):
         state = PipelineState()
         pipeline = self.pipeline
 
@@ -2072,11 +2156,7 @@ class CustomPipelineBuilder:
             for block in self.pipeline_blocks:
                 pipeline, state = block(pipeline, state)
 
-        if return_pipeline_state:
-            return state
-        else:
-            return state.outputs
-
+        return state.get_output("images")
 
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
@@ -2096,21 +2176,21 @@ class CustomPipelineBuilder:
         output += "----------------\n"
         for i, block in enumerate(self.pipeline_blocks, 1):
             output += f"{i}. {block.__class__.__name__}\n"
-            
+
             intermediates_str = ""
-            if hasattr(block, 'intermediates_inputs'):
+            if hasattr(block, "intermediates_inputs"):
                 intermediates_str += f"{', '.join(block.intermediates_inputs)}"
-            
-            if hasattr(block, 'intermediates_outputs'):
+
+            if hasattr(block, "intermediates_outputs"):
                 if intermediates_str:
                     intermediates_str += " -> "
                 else:
                     intermediates_str += "-> "
                 intermediates_str += f"{', '.join(block.intermediates_outputs)}"
-            
+
             if intermediates_str:
                 output += f"   {intermediates_str}\n"
-            
+
             output += "\n"
         output += "\n"
 
@@ -2127,6 +2207,14 @@ class CustomPipelineBuilder:
         params = self.default_call_parameters
         for name, default in params.items():
             output += f"{name}: {default!r}\n"
+
+        # Add a section for required call parameters:
+        # intermediate inputs for the first block
+        output += "\nRequired Call Parameters:\n"
+        output += "--------------------------\n"
+        for name in self.pipeline_blocks[0].intermediates_inputs:
+            output += f"{name}: \n"
+            params[name] = ""
 
         output += "\nNote: These are the default values. Actual values may be different when running the pipeline."
         return output
