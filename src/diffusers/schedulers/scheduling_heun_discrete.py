@@ -13,13 +13,38 @@
 # limitations under the License.
 
 import math
+from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from ..utils import BaseOutput, is_scipy_available
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
+
+
+if is_scipy_available():
+    import scipy.stats
+
+
+@dataclass
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->HeunDiscrete
+class HeunDiscreteSchedulerOutput(BaseOutput):
+    """
+    Output class for the scheduler's `step` function output.
+
+    Args:
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
+    """
+
+    prev_sample: torch.Tensor
+    pred_original_sample: Optional[torch.Tensor] = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -97,6 +122,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
+        use_beta_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
+            Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
         timestep_spacing (`str`, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
@@ -117,11 +147,19 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
+        use_beta_sigmas: Optional[bool] = False,
         clip_sample: Optional[bool] = False,
         clip_sample_range: float = 1.0,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if self.config.use_beta_sigmas and not is_scipy_available():
+            raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
+        if sum([self.config.use_beta_sigmas, self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError(
+                "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
+            )
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -251,6 +289,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
         if timesteps is not None and self.config.use_karras_sigmas:
             raise ValueError("Cannot use `timesteps` with `config.use_karras_sigmas = True`")
+        if timesteps is not None and self.config.use_exponential_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_exponential_sigmas = True`.")
+        if timesteps is not None and self.config.use_beta_sigmas:
+            raise ValueError("Cannot set `timesteps` with `config.use_beta_sigmas = True`.")
 
         num_inference_steps = num_inference_steps or len(timesteps)
         self.num_inference_steps = num_inference_steps
@@ -285,6 +327,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+        elif self.config.use_exponential_sigmas:
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+        elif self.config.use_beta_sigmas:
+            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
@@ -354,6 +402,60 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
+    def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
+        """Constructs an exponential noise schedule."""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = torch.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps).exp()
+        return sigmas
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
+    def _convert_to_beta(
+        self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
+    ) -> torch.Tensor:
+        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = torch.Tensor(
+            [
+                sigma_min + (ppf * (sigma_max - sigma_min))
+                for ppf in [
+                    scipy.stats.beta.ppf(timestep, alpha, beta)
+                    for timestep in 1 - np.linspace(0, 1, num_inference_steps)
+                ]
+            ]
+        )
+        return sigmas
+
     @property
     def state_in_first_order(self):
         return self.dt is None
@@ -373,7 +475,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.Tensor],
         sample: Union[torch.Tensor, np.ndarray],
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[HeunDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -386,12 +488,13 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or tuple.
+                Whether or not to return a [`~schedulers.scheduling_heun_discrete.HeunDiscreteSchedulerOutput`] or
+                tuple.
 
         Returns:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned, otherwise a
-                tuple is returned where the first element is the sample tensor.
+            [`~schedulers.scheduling_heun_discrete.HeunDiscreteSchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_heun_discrete.HeunDiscreteSchedulerOutput`] is
+                returned, otherwise a tuple is returned where the first element is the sample tensor.
         """
         if self.step_index is None:
             self._init_step_index(timestep)
@@ -462,9 +565,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index += 1
 
         if not return_dict:
-            return (prev_sample,)
+            return (
+                prev_sample,
+                pred_original_sample,
+            )
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return HeunDiscreteSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(

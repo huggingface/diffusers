@@ -73,7 +73,7 @@ body:
         - ControlNet @sayakpaul @yiyixuxu @DN6
         - T2I Adapter @sayakpaul @yiyixuxu @DN6
         - IF @DN6
-        - Text-to-Video / Video-to-Video @DN6 @sayakpaul
+        - Text-to-Video / Video-to-Video @DN6 @a-r-r-o-w
         - Wuerstchen @DN6
         - Other: @yiyixuxu @DN6
         - Improving generation quality: @asomoza

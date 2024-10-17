@@ -15,7 +15,8 @@ concurrency:
 jobs:
   setup_pr_tests:
     name: Setup PR Tests
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -73,7 +74,8 @@ jobs:
       max-parallel: 2
       matrix:
         modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
-    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
+    runs-on:
+      group: aws-general-8-plus
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -123,12 +125,13 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
     name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
     container:
       image: ${{ matrix.config.image }}
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
@@ -168,7 +171,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

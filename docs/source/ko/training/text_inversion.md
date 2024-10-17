@@ -21,7 +21,7 @@ specific language governing permissions and limitations under the License.
 ![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
 <small>By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation <a href="https://github.com/rinongal/textual_inversion">(image source)</a>.</small>
 
-이 가이드에서는 textual-inversion으로 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 모델을 학습하는 방법을 설명합니다. 이 가이드에서 사용된 모든 textual-inversion 학습 스크립트는 [여기](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion)에서 확인할 수 있습니다. 내부적으로 어떻게 작동하는지 자세히 살펴보고 싶으시다면 해당 링크를 참조해주시기 바랍니다.
+이 가이드에서는 textual-inversion으로 [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 모델을 학습하는 방법을 설명합니다. 이 가이드에서 사용된 모든 textual-inversion 학습 스크립트는 [여기](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion)에서 확인할 수 있습니다. 내부적으로 어떻게 작동하는지 자세히 살펴보고 싶으시다면 해당 링크를 참조해주시기 바랍니다.
 
 <Tip>
 
@@ -109,7 +109,7 @@ snapshot_download(
 <frameworkcontent>
 <pt>
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATA_DIR="./cat"
 
 accelerate launch textual_inversion.py \
@@ -199,13 +199,13 @@ textual-inversion 스크립트는 기본적으로 textual-inversion을 통해 �
 
 </Tip>
 
-textual-inversion 임베딩 벡터을 불러오기 위해서는, 먼저 해당 임베딩 벡터를 학습할 때 사용한 모델을 불러와야 합니다. 여기서는  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/docs/diffusers/training/runwayml/stable-diffusion-v1-5) 모델이 사용되었다고 가정하고 불러오겠습니다.
+textual-inversion 임베딩 벡터을 불러오기 위해서는, 먼저 해당 임베딩 벡터를 학습할 때 사용한 모델을 불러와야 합니다. 여기서는  [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/docs/diffusers/training/stable-diffusion-v1-5/stable-diffusion-v1-5) 모델이 사용되었다고 가정하고 불러오겠습니다.
 
 ```python
 from diffusers import StableDiffusionPipeline
 import torch
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 ```
 

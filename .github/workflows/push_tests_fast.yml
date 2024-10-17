@@ -18,6 +18,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
@@ -29,28 +30,29 @@ jobs:
         config:
           - name: Fast PyTorch CPU tests on Ubuntu
             framework: pytorch
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
           - name: Fast Flax CPU tests on Ubuntu
             framework: flax
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: aws-general-8-plus
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
             framework: onnxruntime
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: aws-general-8-plus
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
             framework: pytorch_examples
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
 
     container:
       image: ${{ matrix.config.image }}
@@ -118,7 +120,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

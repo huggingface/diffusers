@@ -143,9 +143,17 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
     def unk_token(self) -> str:
         return "<unk>"
 
+    @unk_token.setter
+    def unk_token(self, value: str):
+        self._unk_token = value
+
     @property
     def pad_token(self) -> str:
         return "<unk>"
+
+    @pad_token.setter
+    def pad_token(self, value: str):
+        self._pad_token = value
 
     @property
     def pad_token_id(self):
@@ -154,6 +162,10 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
     @property
     def eos_token(self) -> str:
         return "</s>"
+
+    @eos_token.setter
+    def eos_token(self, value: str):
+        self._eos_token = value
 
     @property
     def eos_token_id(self):
@@ -265,6 +277,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
         pad_to_multiple_of: Optional[int] = None,
         return_attention_mask: Optional[bool] = None,
+        padding_side: Optional[bool] = None,
     ) -> dict:
         """
         Pad encoded inputs (on left/right and up to predefined length or max length in the batch)
@@ -286,6 +299,9 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
             pad_to_multiple_of: (optional) Integer if set will pad the sequence to a multiple of the provided value.
                 This is especially useful to enable the use of Tensor Core on NVIDIA hardware with compute capability
                 `>= 7.5` (Volta).
+            padding_side (`str`, *optional*):
+                The side on which the model should have padding applied. Should be selected between ['right', 'left'].
+                Default value is picked from the class attribute of the same name.
             return_attention_mask:
                 (optional) Set to False to avoid returning attention mask (default: set to model specifics)
         """
