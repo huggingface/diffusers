@@ -270,8 +270,8 @@ pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev",
 pipe.load_lora_weights(repo_id, weight_name="pytorch_lora_weights.safetensors")
 ```
 2. now we load the pivotal tuning embeddings 
-💡note that if you didn't enable `--enable_t5_ti`, you only load the embeddings to the CLIP encoder
-
+> [!NOTE] #1 if `--enable_t5_ti` wasn't passed, we only load the embeddings to the CLIP encoder.
+> [!NOTE] #2 the number of tokens (i.e. <s0>,...,<si>) is either determined by --num_new_tokens_per_abstraction or by --initializer_concept. Make sure to update inference code accordingly :)
 ```python
 text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
 tokenizers = [pipe.tokenizer, pipe.tokenizer_2]
