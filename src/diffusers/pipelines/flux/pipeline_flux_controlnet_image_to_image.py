@@ -903,9 +903,12 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                guidance = (
-                    torch.tensor([guidance_scale], device=device) if self.controlnet.config.guidance_embeds else None
-                )
+                if isinstance(self.controlnet, FluxMultiControlNetModel):
+                    use_guidance = self.controlnet.nets[0].config.guidance_embeds
+                else:
+                    use_guidance = self.controlnet.config.guidance_embeds
+
+                guidance = torch.tensor([guidance_scale], device=device) if use_guidance else None
                 guidance = guidance.expand(latents.shape[0]) if guidance is not None else None
 
                 if isinstance(controlnet_keep[i], list):
