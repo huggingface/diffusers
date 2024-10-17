@@ -210,7 +210,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
         prompt = "A girl in city, 25 years old, cool, futuristic"
         control_image = load_image(
             "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Canny-alpha/resolve/main/canny.jpg"
-        )
+        ).resize((512, 512))
 
         output = pipe(
             prompt,
@@ -219,6 +219,8 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             num_inference_steps=2,
             guidance_scale=3.5,
             output_type="np",
+            height=512,
+            width=512,
             generator=generator,
         )
 
@@ -227,6 +229,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
+        print_tensor_test(original_image)
 
         expected_image = np.array(
             [0.33007812, 0.33984375, 0.33984375, 0.328125, 0.34179688, 0.33984375, 0.30859375, 0.3203125, 0.3203125]
