@@ -31,6 +31,7 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
