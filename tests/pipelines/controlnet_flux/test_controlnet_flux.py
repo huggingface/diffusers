@@ -219,6 +219,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             controlnet_conditioning_scale=0.6,
             num_inference_steps=2,
             guidance_scale=3.5,
+            max_sequence_length=256,
             output_type="np",
             height=512,
             width=512,
@@ -227,7 +228,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
 
         image = output.images[0]
 
-        assert image.shape == (1024, 1024, 3)
+        assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
         print_tensor_test(original_image)
