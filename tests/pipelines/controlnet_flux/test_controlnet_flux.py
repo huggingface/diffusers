@@ -19,6 +19,7 @@ import unittest
 import numpy as np
 import pytest
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from diffusers import (
@@ -202,19 +203,32 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
         )
         pipe = FluxControlNetPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", controlnet=controlnet, torch_dtype=torch.bfloat16
+            "black-forest-labs/FLUX.1-dev",
+            text_encoder=None,
+            text_encoder_2=None,
+            controlnet=controlnet,
+            torch_dtype=torch.bfloat16,
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "A girl in city, 25 years old, cool, futuristic"
         control_image = load_image(
             "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Canny-alpha/resolve/main/canny.jpg"
         ).resize((512, 512))
 
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
+        )
+
         output = pipe(
-            prompt,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
             control_image=control_image,
             controlnet_conditioning_scale=0.6,
             num_inference_steps=2,

@@ -10,6 +10,7 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
+    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
@@ -243,6 +244,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
+        print_tensor_test(image_slice)
         expected_slice = np.array(
             [
                 [0.36132812, 0.30004883, 0.25830078],
