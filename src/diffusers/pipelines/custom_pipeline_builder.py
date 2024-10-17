@@ -1015,26 +1015,81 @@ class PipelineState:
 
 
 class PipelineBlock:
-    components: Dict[str, Any] = {}
-    auxiliaries: Dict[str, Any] = {}
-    configs: Dict[str, Any] = {}
-    required_components: List[str] = []
-    required_auxiliaries: List[str] = []
-    inputs: List[Tuple[str, Any]] = []  # (input_name, default_value)
-    intermediates_inputs: List[str] = []
-    intermediates_outputs: List[str] = []
+
+    @property
+    def optional_components(self) -> List[str]:
+        return []
+    
+    @property
+    def required_components(self) -> List[str]:
+        return []
+
+    @property
+    def required_auxiliaries(self) -> List[str]:
+        return []
+
+    @property
+    def inputs(self) -> Tuple[Tuple[str, Any], ...]:
+        # (input_name, default_value)
+        return ()
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return []
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return []
+
+    def __init__(self, **kwargs):
+        self.components: Dict[str, Any] = {}
+        self.auxiliaries: Dict[str, Any] = {}
+        self.configs: Dict[str, Any] = {}
+
+        # Process kwargs
+        for key, value in kwargs.items():
+            if key in self.required_components or key in self.optional_components:
+                self.components[key] = value
+            elif key in self.required_auxiliaries:
+                self.auxiliaries[key] = value
+            else:
+                self.configs[key] = value
+
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
 
+    def __repr__(self):
+        class_name = self.__class__.__name__
+        components = ", ".join(f"{k}={type(v).__name__}" for k, v in self.components.items())
+        auxiliaries = ", ".join(f"{k}={type(v).__name__}" for k, v in self.auxiliaries.items())
+        configs = ", ".join(f"{k}={v}" for k, v in self.configs.items())
+        inputs = ", ".join(f"{name}={default}" for name, default in self.inputs)
+        intermediates_inputs = ", ".join(self.intermediates_inputs)
+        intermediates_outputs = ", ".join(self.intermediates_outputs)
+
+        return (f"{class_name}(\n"
+                f"  components: {components}\n"
+                f"  auxiliaries: {auxiliaries}\n"
+                f"  configs: {configs}\n"
+                f"  inputs: {inputs}\n"
+                f"  intermediates_inputs: {intermediates_inputs}\n"
+                f"  intermediates_outputs: {intermediates_outputs}\n"
+                f")")
+
 
 class InputStep(PipelineBlock):
-    inputs = [
-        ("prompt", None),
-        ("prompt_embeds", None),
-    ]
+    
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("prompt", None),
+            ("prompt_embeds", None),
+        ]
 
-    intermediates_outputs = ["batch_size"]
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["batch_size"]
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1054,27 +1109,35 @@ class InputStep(PipelineBlock):
 
 
 class TextEncoderStep(PipelineBlock):
-    inputs = [
-        ("prompt", None),
-        ("prompt_2", None),
-        ("negative_prompt", None),
-        ("negative_prompt_2", None),
-        ("cross_attention_kwargs", None),
-        ("prompt_embeds", None),
-        ("negative_prompt_embeds", None),
-        ("pooled_prompt_embeds", None),
-        ("negative_pooled_prompt_embeds", None),
-        ("num_images_per_prompt", 1),
-        ("guidance_scale", 5.0),
-        ("clip_skip", None),
-    ]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("prompt", None),
+            ("prompt_2", None),
+            ("negative_prompt", None),
+            ("negative_prompt_2", None),
+            ("cross_attention_kwargs", None),
+            ("prompt_embeds", None),
+            ("negative_prompt_embeds", None),
+            ("pooled_prompt_embeds", None),
+            ("negative_pooled_prompt_embeds", None),
+            ("num_images_per_prompt", 1),
+            ("guidance_scale", 5.0),
+            ("clip_skip", None),
+        ]
 
-    intermediates_outputs = [
-        "prompt_embeds",
-        "negative_prompt_embeds",
-        "pooled_prompt_embeds",
-        "negative_pooled_prompt_embeds",
-    ]
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return [
+            "prompt_embeds",
+            "negative_prompt_embeds",
+            "pooled_prompt_embeds",
+            "negative_pooled_prompt_embeds",
+        ]
+    
+    @property
+    def optional_components(self) -> List[str]:
+        return ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
 
     def __init__(
         self,
@@ -1084,16 +1147,13 @@ class TextEncoderStep(PipelineBlock):
         tokenizer_2: Optional[CLIPTokenizer] = None,
         force_zeros_for_empty_prompt: bool = True,
     ):
-        if text_encoder is not None:
-            self.components["text_encoder"] = text_encoder
-        if text_encoder_2 is not None:
-            self.components["text_encoder_2"] = text_encoder_2
-        if tokenizer is not None:
-            self.components["tokenizer"] = tokenizer
-        if tokenizer_2 is not None:
-            self.components["tokenizer_2"] = tokenizer_2
-
-        self.configs["force_zeros_for_empty_prompt"] = force_zeros_for_empty_prompt
+        super().__init__(
+            text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
+            tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
+            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt,
+        )
 
     @staticmethod
     def check_inputs(
@@ -1219,18 +1279,25 @@ class TextEncoderStep(PipelineBlock):
 
 
 class SetTimestepsStep(PipelineBlock):
-    inputs = [
-        ("num_inference_steps", 50),
-        ("timesteps", None),
-        ("sigmas", None),
-        ("denoising_end", None),
-    ]
-    required_components = ["scheduler"]
-    intermediates_outputs = ["timesteps", "num_inference_steps"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("num_inference_steps", 50),
+            ("timesteps", None),
+            ("sigmas", None),
+            ("denoising_end", None),
+        ]
+
+    @property
+    def required_components(self) -> List[str]:
+        return ["scheduler"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["timesteps", "num_inference_steps"]
 
     def __init__(self, scheduler=None):
-        if scheduler is not None:
-            self.components["scheduler"] = scheduler
+        super().__init__(scheduler=scheduler)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1260,22 +1327,30 @@ class SetTimestepsStep(PipelineBlock):
 
         return pipeline, state
 
+
 class Image2ImageSetTimestepsStep(PipelineBlock):
-    inputs = [
-        ("num_inference_steps", 50),
-        ("timesteps", None),
-        ("sigmas", None),
-        ("denoising_end", None),
-        ("strength", 0.3),
-        ("denoising_start", None),
-        ("num_images_per_prompt", 1),
-    ]
-    required_components = ["scheduler"]
-    intermediates_outputs = ["timesteps", "num_inference_steps", "latent_timestep"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("num_inference_steps", 50),
+            ("timesteps", None),
+            ("sigmas", None),
+            ("denoising_end", None),
+            ("strength", 0.3),
+            ("denoising_start", None),
+            ("num_images_per_prompt", 1),
+        ]
+
+    @property
+    def required_components(self) -> List[str]:
+        return ["scheduler"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["timesteps", "num_inference_steps", "latent_timestep"]
 
     def __init__(self, scheduler=None):
-        if scheduler is not None:
-            self.components["scheduler"] = scheduler
+        super().__init__(scheduler=scheduler)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1324,19 +1399,35 @@ class Image2ImageSetTimestepsStep(PipelineBlock):
 
 
 class Image2ImagePrepareLatentsStep(PipelineBlock):
-    inputs = [
-        ("image", None),
-        ("num_images_per_prompt", 1),
-        ("generator", None),
-        ("latents", None),
-    ]
-    intermediates_inputs = ["batch_size", "timesteps", "num_inference_steps"]
-    intermediates_outputs = ["latents", "timesteps", "num_inference_steps"]
+    
+    @property
+    def required_auxiliaries(self) -> List[str]:
+        return ["image_processor"]
+    
+    @property
+    def required_components(self) -> List[str]:
+        return ["vae"]
+    
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("image", None),
+            ("num_images_per_prompt", 1),
+            ("generator", None),
+            ("latents", None),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size", "timesteps", "num_inference_steps"]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["latents", "timesteps", "num_inference_steps"]
 
     def __init__(self, vae=None, vae_scale_factor=8):
-        if vae is not None:
-            self.components["vae"] = vae
-        self.image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+        image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+        super().__init__(vae=vae, image_processor=image_processor, vae_scale_factor=vae_scale_factor)
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1375,20 +1466,31 @@ class Image2ImagePrepareLatentsStep(PipelineBlock):
 
 
 class PrepareLatentsStep(PipelineBlock):
-    inputs = [
-        ("height", None),
-        ("width", None),
-        ("generator", None),
-        ("latents", None),
-        ("num_images_per_prompt", 1),
-    ]
-    required_components = ["scheduler"]
-    intermediates_inputs = ["batch_size"]
-    intermediates_outputs = ["latents"]
+    
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("height", None),
+            ("width", None),
+            ("generator", None),
+            ("latents", None),
+            ("num_images_per_prompt", 1),
+        ]
+    
+    @property
+    def required_components(self) -> List[str]:
+        return ["scheduler"]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size"]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["latents"]
 
     def __init__(self, scheduler=None):
-        if scheduler is not None:
-            self.components["scheduler"] = scheduler
+        super().__init__(scheduler=scheduler)
 
     @staticmethod
     def check_inputs(pipeline, height, width):
@@ -1436,23 +1538,33 @@ class PrepareLatentsStep(PipelineBlock):
 
 
 class PrepareAdditionalConditioningStep(PipelineBlock):
-    inputs = [
-        ("original_size", None),
-        ("target_size", None),
-        ("negative_original_size", None),
-        ("negative_target_size", None),
-        ("crops_coords_top_left", (0, 0)),
-        ("negative_crops_coords_top_left", (0, 0)),
-        ("num_images_per_prompt", 1),
-        ("guidance_scale", 5.0),
-    ]
-    intermediates_inputs = ["latents"]
-    intermediates_outputs = ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-    required_components = ["unet"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("original_size", None),
+            ("target_size", None),
+            ("negative_original_size", None),
+            ("negative_target_size", None),
+            ("crops_coords_top_left", (0, 0)),
+            ("negative_crops_coords_top_left", (0, 0)),
+            ("num_images_per_prompt", 1),
+            ("guidance_scale", 5.0),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["latents"]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
+    
+    @property
+    def required_components(self) -> List[str]:
+        return ["unet"]
 
     def __init__(self, unet=None):
-        if unet is not None:
-            self.components["unet"] = unet
+        super().__init__(unet=unet)
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1521,28 +1633,37 @@ class PrepareAdditionalConditioningStep(PipelineBlock):
         state.add_intermediate("timestep_cond", timestep_cond)
         return pipeline, state
 
+
 class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
-    inputs = [
-        ("original_size", None),
-        ("target_size", None),
-        ("negative_original_size", None),
-        ("negative_target_size", None),
-        ("crops_coords_top_left", (0, 0)),
-        ("negative_crops_coords_top_left", (0, 0)),
-        ("num_images_per_prompt", 1),
-        ("guidance_scale", 5.0),
-        ("aesthetic_score", 6.0),
-        ("negative_aesthetic_score", 2.0),
-    ]
-    intermediates_inputs = ["latents"]
-    intermediates_outputs = ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-    required_components = ["unet"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("original_size", None),
+            ("target_size", None),
+            ("negative_original_size", None),
+            ("negative_target_size", None),
+            ("crops_coords_top_left", (0, 0)),
+            ("negative_crops_coords_top_left", (0, 0)),
+            ("num_images_per_prompt", 1),
+            ("guidance_scale", 5.0),
+            ("aesthetic_score", 6.0),
+            ("negative_aesthetic_score", 2.0),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["latents"]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
+    
+    @property
+    def required_components(self) -> List[str]:
+        return ["unet"]
 
     def __init__(self, unet=None, requires_aesthetics_score=False):
-        if unet is not None:
-            self.components["unet"] = unet
-        if requires_aesthetics_score is not None:
-            self.configs["requires_aesthetics_score"] = requires_aesthetics_score
+        super().__init__(unet=unet, requires_aesthetics_score=requires_aesthetics_score)
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1612,23 +1733,36 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
         state.add_intermediate("timestep_cond", timestep_cond)
         return pipeline, state
 
+
 class PrepareGuidance(PipelineBlock):
-    inputs = [
-        ("guidance_scale", 5.0),
-    ]
-    intermediates_inputs = [
-        "add_time_ids",
-        "negative_add_time_ids",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-        "pooled_prompt_embeds",
-        "negative_pooled_prompt_embeds",
-    ]
-    intermediates_outputs = ["add_text_embeds", "add_time_ids", "prompt_embeds"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("guidance_scale", 5.0),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return [
+            "add_time_ids",
+            "negative_add_time_ids",
+            "prompt_embeds",
+            "negative_prompt_embeds",
+            "pooled_prompt_embeds",
+            "negative_pooled_prompt_embeds",
+        ]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["add_text_embeds", "add_time_ids", "prompt_embeds"]
+    
+    @property
+    def required_auxiliaries(self) -> List[str]:
+        return ["guider"]
 
     def __init__(self):
         guider = CFGGuider()
-        self.auxiliaries["guider"] = guider
+        super().__init__(guider=guider)
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -1663,28 +1797,38 @@ class PrepareGuidance(PipelineBlock):
 
 
 class DenoiseStep(PipelineBlock):
-    inputs = [
-        ("guidance_scale", 5.0),
-        ("guidance_rescale", 0.0),
-        ("cross_attention_kwargs", None),
-        ("generator", None),
-        ("eta", 0.0),
-    ]
-    intermediates_inputs = [
-        "latents",
-        "timesteps",
-        "num_inference_steps",
-        "add_text_embeds",
-        "add_time_ids",
-        "timestep_cond",
-        "prompt_embeds",
-    ]
-    intermediates_outputs = ["latents"]
-    required_components = ["unet"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("guidance_scale", 5.0),
+            ("guidance_rescale", 0.0),
+            ("cross_attention_kwargs", None),
+            ("generator", None),
+            ("eta", 0.0),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return [
+            "latents",
+            "timesteps",
+            "num_inference_steps",
+            "add_text_embeds",
+            "add_time_ids",
+            "timestep_cond",
+            "prompt_embeds",
+            ]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["latents"]
+    
+    @property
+    def required_components(self) -> List[str]:
+        return ["unet"]
 
     def __init__(self, unet=None):
-        if unet is not None:
-            self.components["unet"] = unet
+        super().__init__(unet=unet)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1748,17 +1892,28 @@ class DenoiseStep(PipelineBlock):
 
 
 class DecodeLatentsStep(PipelineBlock):
-    inputs = [
-        ("output_type", "pil"),
-        ("return_dict", True),
-    ]
-    intermediates_inputs = ["latents"]
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("output_type", "pil"),
+            ("return_dict", True),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["latents"]
+    
+    @property
+    def optional_components(self) -> List[str]:
+        return ["vae"]
+    
+    @property
+    def required_auxiliaries(self) -> List[str]:
+        return ["image_processor"]
 
     def __init__(self, vae=None, vae_scale_factor=8):
-        if vae is not None:
-            self.components["vae"] = vae
         image_processor = VaeImageProcessor(vae_scale_factor=8)
-        self.auxiliaries["image_processor"] = image_processor
+        super().__init__(vae=vae, vae_scale_factor=vae_scale_factor, image_processor=image_processor)
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -1863,7 +2018,12 @@ class CustomPipelineBuilder:
 
         for block in pipeline_blocks:
             self.pipeline_blocks.append(block)
-            self.pipeline.register_modules(**block.components)
+            # filter out components that already exist in the pipeline
+            components_to_register = {}
+            for k, v in block.components.items():
+                if not hasattr(self.pipeline, k) or v is not None:
+                    components_to_register[k] = v
+            self.pipeline.register_modules(**components_to_register)
             self.pipeline.register_to_config(**block.configs)
             # Add auxiliaries as attributes to the pipeline
             for key, value in block.auxiliaries.items():
@@ -1916,6 +2076,7 @@ class CustomPipelineBuilder:
             return state
         else:
             return state.outputs
+
 
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
