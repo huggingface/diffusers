@@ -63,6 +63,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Debug PR Info
+        run: |
+          echo "PR Repository: ${{ github.event.pull_request.head.repo.full_name }}"
+          echo "PR Branch: ${{ github.event.pull_request.head.ref }}"
+
 
       - name: Install pytest
         run: |
