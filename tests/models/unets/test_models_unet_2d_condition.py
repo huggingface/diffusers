@@ -15,7 +15,6 @@
 
 import copy
 import gc
-import math
 import os
 import tempfile
 import unittest
@@ -407,32 +406,26 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
     def test_attention_mask_padding(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        encoder_hidden_states = inputs_dict["encoder_hidden_states"]
-        query_tokens = encoder_hidden_states.shape[1]
-        attention_mask = torch.ones((2, query_tokens, 22), dtype=torch.bfloat16, device="cuda")
-
-        attention_mask_shape_before = attention_mask.shape[-1]
-        if attention_mask.dtype == torch.bfloat16 and attention_mask.shape[-1] % 8 != 0:
-            padded_length = math.ceil(attention_mask.shape[-1] / 8) * 8
-            mask = torch.zeros(
-                (attention_mask.shape[0], attention_mask.shape[1], padded_length),
-                device=attention_mask.device,
-                dtype=attention_mask.dtype,
-            )
-            mask[:, :, : attention_mask.shape[-1]] = attention_mask
-            attention_mask = mask
-
-        assert attention_mask.shape[-1] % 8 == 0, "Attention mask not padded to a multiple of 8"
-        assert attention_mask[:, :, :attention_mask_shape_before].equal(
-            attention_mask[:, :, :attention_mask_shape_before]
-        ), "Original values in attention mask are not preserved"
-
-        expanded_attention_mask = attention_mask.expand(-1, query_tokens, -1)
-
-        assert expanded_attention_mask.shape[1] == query_tokens, "Attention mask expansion for query tokens failed"
+        model = self.model_class(init_dict)
+        model.to(torch_device, dtype=torch.bfloat16)
+        encoder_hidden_states = inputs_dict["encoder_hidden_states"].to(dtype=torch.bfloat16, device=torch_device)
+        attention_mask = torch.ones((2, 1, 22), dtype=torch.bfloat16, device=torch_device)
+        model.enable_xformers_memory_efficient_attention()
+        time_step = inputs_dict["timestep"].to(torch_device, dtype=torch.bfloat16)
+        noise = inputs_dict["sample"].to(torch_device, dtype=torch.bfloat16)
+        output_hidden_states = model(
+            attention_mask=attention_mask,
+            timestep=time_step,
+            encoder_hidden_states=encoder_hidden_states,
+            sample=noise,
+        )
+        assert output_hidden_states.sample.shape == encoder_hidden_states.shape, "Output hidden states shape mismatch"
 
     @require_torch_accelerator_with_training
     def test_gradient_checkpointing(self):
