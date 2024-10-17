@@ -577,6 +577,8 @@ class StableDiffusionPipeline(
         deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
 
         latents = 1 / self.vae.config.scaling_factor * latents
+        if torch.cuda.is_available() and torch.version.hip:
+            latents = latents.to(dtype=self.vae.dtype)
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
@@ -1048,6 +1050,8 @@ class StableDiffusionPipeline(
                     xm.mark_step()
 
         if not output_type == "latent":
+            if torch.cuda.is_available() and torch.version.hip:
+                latents = latents.to(dtype=self.vae.dtype)
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                 0
             ]
