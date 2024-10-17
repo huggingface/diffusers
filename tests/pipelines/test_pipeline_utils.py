@@ -18,7 +18,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_utils import is_safetensors_compatible
+from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible
 from diffusers.utils.testing_utils import torch_device
 
 

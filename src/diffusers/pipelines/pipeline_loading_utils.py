@@ -838,3 +838,108 @@ def _update_init_kwargs_with_connected_pipeline(
         )
 
     return init_kwargs
+
+
+def _get_custom_components_and_folders(
+    pretrained_model_name: str,
+    config_dict: Dict[str, Any],
+    filenames: Optional[List[str]] = None,
+    variant_filenames: Optional[List[str]] = None,
+    variant: Optional[str] = None,
+):
+    config_dict = config_dict.copy()
+
+    # retrieve all folder_names that contain relevant files
+    folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
+
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    pipelines = getattr(diffusers_module, "pipelines")
+
+    # optionally create a custom component <> custom file mapping
+    custom_components = {}
+    for component in folder_names:
+        module_candidate = config_dict[component][0]
+
+        if module_candidate is None or not isinstance(module_candidate, str):
+            continue
+
+        # We compute candidate file path on the Hub. Do not use `os.path.join`.
+        candidate_file = f"{component}/{module_candidate}.py"
+
+        if candidate_file in filenames:
+            custom_components[component] = module_candidate
+        elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+            raise ValueError(
+                f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
+            )
+
+    if len(variant_filenames) == 0 and variant is not None:
+        error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+        raise ValueError(error_message)
+
+    return custom_components, folder_names
+
+
+def _get_ignore_patterns(
+    passed_components,
+    model_folder_names: List[str],
+    model_filenames: List[str],
+    variant_filenames: List[str],
+    use_safetensors: bool,
+    from_flax: bool,
+    allow_pickle: bool,
+    use_onnx: bool,
+    is_onnx: bool,
+    variant: Optional[str] = None,
+) -> List[str]:
+    if (
+        use_safetensors
+        and not allow_pickle
+        and not is_safetensors_compatible(
+            model_filenames, passed_components=passed_components, folder_names=model_folder_names
+        )
+    ):
+        raise EnvironmentError(
+            f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
+        )
+
+    if from_flax:
+        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
+
+    elif use_safetensors and is_safetensors_compatible(
+        model_filenames, passed_components=passed_components, folder_names=model_folder_names
+    ):
+        ignore_patterns = ["*.bin", "*.msgpack"]
+
+        use_onnx = use_onnx if use_onnx is not None else is_onnx
+        if not use_onnx:
+            ignore_patterns += ["*.onnx", "*.pb"]
+
+        safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
+        safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
+        if len(safetensors_variant_filenames) > 0 and safetensors_model_filenames != safetensors_variant_filenames:
+            logger.warning(
+                f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
+                f"[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
+                f"[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not "
+                f"expected, please check your folder structure."
+            )
+
+    else:
+        ignore_patterns = ["*.safetensors", "*.msgpack"]
+
+        use_onnx = use_onnx if use_onnx is not None else is_onnx
+        if not use_onnx:
+            ignore_patterns += ["*.onnx", "*.pb"]
+
+        bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
+        bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
+        if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
+            logger.warning(
+                f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n"
+                f"[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n"
+                f"[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check "
+                f"your folder structure."
+            )
+
+    return ignore_patterns
