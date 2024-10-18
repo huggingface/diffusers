@@ -23,12 +23,18 @@ import inspect
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import cv2
 import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
 from bert_tokenizer import BasicTokenizer
-from text_embedding_module import TextEmbeddingModule
+from embedding_manager import EmbeddingManager
+from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
+from PIL import Image, ImageDraw, ImageFont
+from recognizer import TextRecognizer, create_predictor
+from safetensors.torch import load_file
+from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -98,23 +104,6 @@ EXAMPLE_DOC_STRING = """
         >>> image
         ```
 """
-
-
-import cv2
-import numpy as np
-import torch
-from embedding_manager import EmbeddingManager
-from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
-from PIL import Image, ImageDraw, ImageFont
-from recognizer import TextRecognizer, create_predictor
-from torch import nn
-
-from diffusers.utils import (
-    logging,
-)
-
-
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class TextEmbeddingModule(nn.Module):
@@ -403,21 +392,6 @@ class TextEmbeddingModule(nn.Module):
         return self
 
 
-from typing import Optional
-
-import cv2
-import numpy as np
-import torch
-from PIL import ImageFont
-from safetensors.torch import load_file
-from torch import nn
-
-from diffusers.utils import logging
-
-
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -587,7 +561,6 @@ class AuxiliaryLatentModule(nn.Module):
         self.fuse_block = self.fuse_block.to(device)
         self.vae = self.vae.to(device)
         return self
-
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
