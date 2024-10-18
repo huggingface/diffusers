@@ -17,33 +17,42 @@ import argparse
 import logging
 import math
 import os
+import random
 import shutil
+from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-import torchvision.transforms as TT
 import transformers
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
+from accelerate.utils import DistributedDataParallelKwargs, InitProcessGroupKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms.functional import resize
+from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, T5EncoderModel, T5Tokenizer
 
 import diffusers
-from diffusers import AutoencoderKLCogVideoX, CogVideoXDPMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
-from diffusers.image_processor import VaeImageProcessor
+from diffusers import (
+    AutoencoderKLCogVideoX,
+    CogVideoXDPMScheduler,
+    CogVideoXImageToVideoPipeline,
+    CogVideoXTransformer3DModel,
+)
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.cogvideo.pipeline_cogvideox import get_resize_crop_region_for_grid
 from diffusers.training_utils import cast_training_params, free_memory
-from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft, export_to_video, is_wandb_available
+from diffusers.utils import (
+    check_min_version,
+    convert_unet_state_dict_to_peft,
+    export_to_video,
+    is_wandb_available,
+    load_image,
+)
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -143,6 +152,12 @@ def get_args():
         help="One or more prompt(s) that is used during validation to verify that the model is learning. Multiple validation prompts should be separated by the '--validation_prompt_seperator' string.",
     )
     parser.add_argument(
+        "--validation_images",
+        type=str,
+        default=None,
+        help="One or more image path(s) that is used during validation to verify that the model is learning. Multiple validation paths should be separated by the '--validation_prompt_seperator' string. These should correspond to the order of the validation prompts.",
+    )
+    parser.add_argument(
         "--validation_prompt_separator",
         type=str,
         default=":::",
@@ -203,7 +218,7 @@ def get_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="cogvideox-lora",
+        default="cogvideox-i2v-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -217,12 +232,6 @@ def get_args():
         type=int,
         default=720,
         help="All input videos are resized to this width.",
-    )
-    parser.add_argument(
-        "--video_reshape_mode",
-        type=str,
-        default="center",
-        help="All input videos are reshaped to this mode. Choose between ['center', 'random', 'none']",
     )
     parser.add_argument("--fps", type=int, default=8, help="All input videos will be used at this FPS.")
     parser.add_argument(
@@ -334,6 +343,12 @@ def get_args():
         default=False,
         help="Whether or not to use VAE tiling for saving memory.",
     )
+    parser.add_argument(
+        "--noised_image_dropout",
+        type=float,
+        default=0.05,
+        help="Image condition dropout probability.",
+    )
 
     # Optimizer
     parser.add_argument(
@@ -409,6 +424,7 @@ def get_args():
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
     )
+    parser.add_argument("--nccl_timeout", type=int, default=600, help="NCCL backend timeout in seconds.")
 
     return parser.parse_args()
 
@@ -423,7 +439,6 @@ class VideoDataset(Dataset):
         video_column: str = "video",
         height: int = 480,
         width: int = 720,
-        video_reshape_mode: str = "center",
         fps: int = 8,
         max_num_frames: int = 49,
         skip_frames_start: int = 0,
@@ -440,7 +455,6 @@ class VideoDataset(Dataset):
         self.video_column = video_column
         self.height = height
         self.width = width
-        self.video_reshape_mode = video_reshape_mode
         self.fps = fps
         self.max_num_frames = max_num_frames
         self.skip_frames_start = skip_frames_start
@@ -452,6 +466,8 @@ class VideoDataset(Dataset):
             self.instance_prompts, self.instance_video_paths = self._load_dataset_from_hub()
         else:
             self.instance_prompts, self.instance_video_paths = self._load_dataset_from_local_path()
+
+        self.instance_prompts = [self.id_token + prompt for prompt in self.instance_prompts]
 
         self.num_instance_videos = len(self.instance_video_paths)
         if self.num_instance_videos != len(self.instance_prompts):
@@ -466,7 +482,7 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, index):
         return {
-            "instance_prompt": self.id_token + self.instance_prompts[index],
+            "instance_prompt": self.instance_prompts[index],
             "instance_video": self.instance_videos[index],
         }
 
@@ -544,38 +560,6 @@ class VideoDataset(Dataset):
 
         return instance_prompts, instance_videos
 
-    def _resize_for_rectangle_crop(self, arr):
-        image_size = self.height, self.width
-        reshape_mode = self.video_reshape_mode
-        if arr.shape[3] / arr.shape[2] > image_size[1] / image_size[0]:
-            arr = resize(
-                arr,
-                size=[image_size[0], int(arr.shape[3] * image_size[0] / arr.shape[2])],
-                interpolation=InterpolationMode.BICUBIC,
-            )
-        else:
-            arr = resize(
-                arr,
-                size=[int(arr.shape[2] * image_size[1] / arr.shape[3]), image_size[1]],
-                interpolation=InterpolationMode.BICUBIC,
-            )
-
-        h, w = arr.shape[2], arr.shape[3]
-        arr = arr.squeeze(0)
-
-        delta_h = h - image_size[0]
-        delta_w = w - image_size[1]
-
-        if reshape_mode == "random" or reshape_mode == "none":
-            top = np.random.randint(0, delta_h + 1)
-            left = np.random.randint(0, delta_w + 1)
-        elif reshape_mode == "center":
-            top, left = delta_h // 2, delta_w // 2
-        else:
-            raise NotImplementedError
-        arr = TT.functional.crop(arr, top=top, left=left, height=image_size[0], width=image_size[1])
-        return arr
-
     def _preprocess_data(self):
         try:
             import decord
@@ -586,14 +570,15 @@ class VideoDataset(Dataset):
 
         decord.bridge.set_bridge("torch")
 
-        progress_dataset_bar = tqdm(
-            range(0, len(self.instance_video_paths)),
-            desc="Loading progress resize and crop videos",
-        )
         videos = []
+        train_transforms = transforms.Compose(
+            [
+                transforms.Lambda(lambda x: x / 255.0 * 2.0 - 1.0),
+            ]
+        )
 
         for filename in self.instance_video_paths:
-            video_reader = decord.VideoReader(uri=filename.as_posix())
+            video_reader = decord.VideoReader(uri=filename.as_posix(), width=self.width, height=self.height)
             video_num_frames = len(video_reader)
 
             start_frame = min(self.skip_frames_start, video_num_frames)
@@ -619,16 +604,10 @@ class VideoDataset(Dataset):
             assert (selected_num_frames - 1) % 4 == 0
 
             # Training transforms
-            frames = (frames - 127.5) / 127.5
-            frames = frames.permute(0, 3, 1, 2)  # [F, C, H, W]
-            progress_dataset_bar.set_description(
-                f"Loading progress Resizing video from {frames.shape[2]}x{frames.shape[3]} to {self.height}x{self.width}"
-            )
-            frames = self._resize_for_rectangle_crop(frames)
-            videos.append(frames.contiguous())  # [F, C, H, W]
-            progress_dataset_bar.update(1)
+            frames = frames.float()
+            frames = torch.stack([train_transforms(frame) for frame in frames], dim=0)
+            videos.append(frames.permute(0, 3, 1, 2).contiguous())  # [F, C, H, W]
 
-        progress_dataset_bar.close()
         return videos
 
 
@@ -643,9 +622,10 @@ def save_model_card(
     widget_dict = []
     if videos is not None:
         for i, video in enumerate(videos):
-            export_to_video(video, os.path.join(repo_folder, f"final_video_{i}.mp4", fps=fps))
+            video_path = f"final_video_{i}.mp4"
+            export_to_video(video, os.path.join(repo_folder, video_path, fps=fps))
             widget_dict.append(
-                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"video_{i}.mp4"}}
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": video_path}},
             )
 
     model_description = f"""
@@ -657,7 +637,7 @@ def save_model_card(
 
 These are {repo_id} LoRA weights for {base_model}.
 
-The weights were trained using the [CogVideoX Diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/cogvideo/train_cogvideox_lora.py).
+The weights were trained using the [CogVideoX Diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/cogvideo/train_cogvideox_image_to_video_lora.py).
 
 Was LoRA for the text encoder enabled? No.
 
@@ -668,26 +648,29 @@ Was LoRA for the text encoder enabled? No.
 ## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
 ```py
-from diffusers import CogVideoXPipeline
 import torch
+from diffusers import CogVideoXImageToVideoPipeline
+from diffusers.utils import load_image, export_to_video
 
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16).to("cuda")
-pipe.load_lora_weights("{repo_id}", weight_name="pytorch_lora_weights.safetensors", adapter_name=["cogvideox-lora"])
+pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("{repo_id}", weight_name="pytorch_lora_weights.safetensors", adapter_name=["cogvideox-i2v-lora"])
 
 # The LoRA adapter weights are determined by what was used for training.
 # In this case, we assume `--lora_alpha` is 32 and `--rank` is 64.
 # It can be made lower or higher from what was used in training to decrease or amplify the effect
 # of the LoRA upto a tolerance, beyond which one might notice no effect at all or overflows.
-pipe.set_adapters(["cogvideox-lora"], [32 / 64])
+pipe.set_adapters(["cogvideox-i2v-lora"], [32 / 64])
 
-video = pipe("{validation_prompt}", guidance_scale=6, use_dynamic_cfg=True).frames[0]
+image = load_image("/path/to/image")
+video = pipe(image=image, "{validation_prompt}", guidance_scale=6, use_dynamic_cfg=True).frames[0]
+export_to_video(video, "output.mp4", fps=8)
 ```
 
 For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
 
 ## License
 
-Please adhere to the licensing terms as described [here](https://huggingface.co/THUDM/CogVideoX-5b/blob/main/LICENSE) and [here](https://huggingface.co/THUDM/CogVideoX-2b/blob/main/LICENSE).
+Please adhere to the licensing terms as described [here](https://huggingface.co/THUDM/CogVideoX-5b-I2V/blob/main/LICENSE).
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -699,7 +682,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         widget=widget_dict,
     )
     tags = [
-        "text-to-video",
+        "image-to-video",
         "diffusers-training",
         "diffusers",
         "lora",
@@ -743,13 +726,8 @@ def log_validation(
 
     videos = []
     for _ in range(args.num_validation_videos):
-        pt_images = pipe(**pipeline_args, generator=generator, output_type="pt").frames[0]
-        pt_images = torch.stack([pt_images[i] for i in range(pt_images.shape[0])])
-
-        image_np = VaeImageProcessor.pt_to_numpy(pt_images)
-        image_pil = VaeImageProcessor.numpy_to_pil(image_np)
-
-        videos.append(image_pil)
+        video = pipe(**pipeline_args, generator=generator, output_type="np").frames[0]
+        videos.append(video)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -998,13 +976,14 @@ def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
-    kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    init_kwargs = InitProcessGroupKwargs(backend="nccl", timeout=timedelta(seconds=args.nccl_timeout))
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
-        kwargs_handlers=[kwargs],
+        kwargs_handlers=[ddp_kwargs, init_kwargs],
     )
 
     # Disable AMP for MPS.
@@ -1142,7 +1121,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            CogVideoXPipeline.save_lora_weights(
+            CogVideoXImageToVideoPipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
             )
@@ -1158,7 +1137,7 @@ def main(args):
             else:
                 raise ValueError(f"Unexpected save model: {model.__class__}")
 
-        lora_state_dict = CogVideoXPipeline.lora_state_dict(input_dir)
+        lora_state_dict = CogVideoXImageToVideoPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f'{k.replace("transformer.", "")}': v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1225,7 +1204,6 @@ def main(args):
         video_column=args.video_column,
         height=args.height,
         width=args.width,
-        video_reshape_mode=args.video_reshape_mode,
         fps=args.fps,
         max_num_frames=args.max_num_frames,
         skip_frames_start=args.skip_frames_start,
@@ -1234,32 +1212,65 @@ def main(args):
         id_token=args.id_token,
     )
 
-    def encode_video(video, bar):
-        bar.update(1)
+    def encode_video(video):
         video = video.to(accelerator.device, dtype=vae.dtype).unsqueeze(0)
         video = video.permute(0, 2, 1, 3, 4)  # [B, C, F, H, W]
-        latent_dist = vae.encode(video).latent_dist
-        return latent_dist
+        image = video[:, :, :1].clone()
 
-    progress_encode_bar = tqdm(
-        range(0, len(train_dataset.instance_videos)),
-        desc="Loading Encode videos",
-    )
-    train_dataset.instance_videos = [
-        encode_video(video, progress_encode_bar) for video in train_dataset.instance_videos
+        latent_dist = vae.encode(video).latent_dist
+
+        image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
+        image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
+        noisy_image = image + torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
+        image_latent_dist = vae.encode(noisy_image).latent_dist
+
+        return latent_dist, image_latent_dist
+
+    train_dataset.instance_prompts = [
+        compute_prompt_embeddings(
+            tokenizer,
+            text_encoder,
+            [prompt],
+            transformer.config.max_text_seq_length,
+            accelerator.device,
+            weight_dtype,
+            requires_grad=False,
+        )
+        for prompt in train_dataset.instance_prompts
     ]
-    progress_encode_bar.close()
+    train_dataset.instance_videos = [encode_video(video) for video in train_dataset.instance_videos]
 
     def collate_fn(examples):
-        videos = [example["instance_video"].sample() * vae.config.scaling_factor for example in examples]
-        prompts = [example["instance_prompt"] for example in examples]
+        videos = []
+        images = []
+        for example in examples:
+            latent_dist, image_latent_dist = example["instance_video"]
+
+            video_latents = latent_dist.sample() * vae.config.scaling_factor
+            image_latents = image_latent_dist.sample() * vae.config.scaling_factor
+            video_latents = video_latents.permute(0, 2, 1, 3, 4)
+            image_latents = image_latents.permute(0, 2, 1, 3, 4)
+
+            padding_shape = (video_latents.shape[0], video_latents.shape[1] - 1, *video_latents.shape[2:])
+            latent_padding = image_latents.new_zeros(padding_shape)
+            image_latents = torch.cat([image_latents, latent_padding], dim=1)
+
+            if random.random() < args.noised_image_dropout:
+                image_latents = torch.zeros_like(image_latents)
+
+            videos.append(video_latents)
+            images.append(image_latents)
 
         videos = torch.cat(videos)
-        videos = videos.permute(0, 2, 1, 3, 4)
+        images = torch.cat(images)
         videos = videos.to(memory_format=torch.contiguous_format).float()
+        images = images.to(memory_format=torch.contiguous_format).float()
+
+        prompts = [example["instance_prompt"] for example in examples]
+        prompts = torch.cat(prompts)
 
         return {
-            "videos": videos,
+            "videos": (videos, images),
             "prompts": prompts,
         }
 
@@ -1312,7 +1323,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = args.tracker_name or "cogvideox-lora"
+        tracker_name = args.tracker_name or "cogvideox-i2v-lora"
         accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
@@ -1377,29 +1388,27 @@ def main(args):
             models_to_accumulate = [transformer]
 
             with accelerator.accumulate(models_to_accumulate):
-                model_input = batch["videos"].to(dtype=weight_dtype)  # [B, F, C, H, W]
-                prompts = batch["prompts"]
+                video_latents, image_latents = batch["videos"]
+                prompt_embeds = batch["prompts"]
 
-                # encode prompts
-                prompt_embeds = compute_prompt_embeddings(
-                    tokenizer,
-                    text_encoder,
-                    prompts,
-                    model_config.max_text_seq_length,
-                    accelerator.device,
-                    weight_dtype,
-                    requires_grad=False,
-                )
+                video_latents = video_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
+                image_latents = image_latents.to(dtype=weight_dtype)  # [B, F, C, H, W]
 
-                # Sample noise that will be added to the latents
-                noise = torch.randn_like(model_input)
-                batch_size, num_frames, num_channels, height, width = model_input.shape
+                batch_size, num_frames, num_channels, height, width = video_latents.shape
 
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
-                    0, scheduler.config.num_train_timesteps, (batch_size,), device=model_input.device
+                    0, scheduler.config.num_train_timesteps, (batch_size,), device=video_latents.device
                 )
                 timesteps = timesteps.long()
+
+                # Sample noise that will be added to the latents
+                noise = torch.randn_like(video_latents)
+
+                # Add noise to the model input according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_video_latents = scheduler.add_noise(video_latents, noise, timesteps)
+                noisy_model_input = torch.cat([noisy_video_latents, image_latents], dim=2)
 
                 # Prepare rotary embeds
                 image_rotary_emb = (
@@ -1416,10 +1425,6 @@ def main(args):
                     else None
                 )
 
-                # Add noise to the model input according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_model_input = scheduler.add_noise(model_input, noise, timesteps)
-
                 # Predict the noise residual
                 model_output = transformer(
                     hidden_states=noisy_model_input,
@@ -1428,14 +1433,14 @@ def main(args):
                     image_rotary_emb=image_rotary_emb,
                     return_dict=False,
                 )[0]
-                model_pred = scheduler.get_velocity(model_output, noisy_model_input, timesteps)
+                model_pred = scheduler.get_velocity(model_output, noisy_video_latents, timesteps)
 
                 alphas_cumprod = scheduler.alphas_cumprod[timesteps]
                 weights = 1 / (1 - alphas_cumprod)
                 while len(weights.shape) < len(model_pred.shape):
                     weights = weights.unsqueeze(-1)
 
-                target = model_input
+                target = video_latents
 
                 loss = torch.mean((weights * (model_pred - target) ** 2).reshape(batch_size, -1), dim=1)
                 loss = loss.mean()
@@ -1492,10 +1497,9 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and (epoch + 1) % args.validation_epochs == 0:
                 # Create pipeline
-                pipe = CogVideoXPipeline.from_pretrained(
+                pipe = CogVideoXImageToVideoPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     transformer=unwrap_model(transformer),
-                    text_encoder=unwrap_model(text_encoder),
                     scheduler=scheduler,
                     revision=args.revision,
                     variant=args.variant,
@@ -1503,8 +1507,11 @@ def main(args):
                 )
 
                 validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
-                for validation_prompt in validation_prompts:
+                validation_images = args.validation_images.split(args.validation_prompt_separator)
+
+                for validation_image, validation_prompt in zip(validation_images, validation_prompts):
                     pipeline_args = {
+                        "image": load_image(validation_image),
                         "prompt": validation_prompt,
                         "guidance_scale": args.guidance_scale,
                         "use_dynamic_cfg": args.use_dynamic_cfg,
@@ -1534,7 +1541,7 @@ def main(args):
         transformer = transformer.to(dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
 
-        CogVideoXPipeline.save_lora_weights(
+        CogVideoXImageToVideoPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
         )
@@ -1544,7 +1551,7 @@ def main(args):
         free_memory()
 
         # Final test inference
-        pipe = CogVideoXPipeline.from_pretrained(
+        pipe = CogVideoXImageToVideoPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             revision=args.revision,
             variant=args.variant,
@@ -1559,15 +1566,18 @@ def main(args):
 
         # Load LoRA weights
         lora_scaling = args.lora_alpha / args.rank
-        pipe.load_lora_weights(args.output_dir, adapter_name="cogvideox-lora")
-        pipe.set_adapters(["cogvideox-lora"], [lora_scaling])
+        pipe.load_lora_weights(args.output_dir, adapter_name="cogvideox-i2v-lora")
+        pipe.set_adapters(["cogvideox-i2v-lora"], [lora_scaling])
 
         # Run inference
         validation_outputs = []
         if args.validation_prompt and args.num_validation_videos > 0:
             validation_prompts = args.validation_prompt.split(args.validation_prompt_separator)
-            for validation_prompt in validation_prompts:
+            validation_images = args.validation_images.split(args.validation_prompt_separator)
+
+            for validation_image, validation_prompt in zip(validation_images, validation_prompts):
                 pipeline_args = {
+                    "image": load_image(validation_image),
                     "prompt": validation_prompt,
                     "guidance_scale": args.guidance_scale,
                     "use_dynamic_cfg": args.use_dynamic_cfg,
@@ -1586,11 +1596,13 @@ def main(args):
                 validation_outputs.extend(video)
 
         if args.push_to_hub:
+            validation_prompt = args.validation_prompt or ""
+            validation_prompt = validation_prompt.split(args.validation_prompt_separator)[0]
             save_model_card(
                 repo_id,
                 videos=validation_outputs,
                 base_model=args.pretrained_model_name_or_path,
-                validation_prompt=args.validation_prompt,
+                validation_prompt=validation_prompt,
                 repo_folder=args.output_dir,
                 fps=args.fps,
             )

@@ -36,6 +36,10 @@ There are two models available that can be used with the text-to-video and video
 There is one model available that can be used with the image-to-video CogVideoX pipeline:
 - [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V): The recommended dtype for running this model is `bf16`.
 
+There are two models that support pose controllable generation (by the [Alibaba-PAI](https://huggingface.co/alibaba-pai) team):
+- [`alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose`](https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose): The recommended dtype for running this model is `bf16`.
+- [`alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose`](https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose): The recommended dtype for running this model is `bf16`.
+
 ## Inference
 
 Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
@@ -115,6 +119,12 @@ It is also worth noting that torchao quantization is fully compatible with [torc
 ## CogVideoXVideoToVideoPipeline
 
 [[autodoc]] CogVideoXVideoToVideoPipeline
+  - all
+  - __call__
+
+## CogVideoXFunControlPipeline
+
+[[autodoc]] CogVideoXFunControlPipeline
   - all
   - __call__
 
