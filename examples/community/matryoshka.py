@@ -420,6 +420,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
         self.scales = None
+        self.schedule_shifted_power = 1.0
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
@@ -532,6 +533,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def get_schedule_shifted(self, alpha_prod, scale_factor=None):
         if (scale_factor is not None) and (scale_factor > 1):  # rescale noise schedule
+            scale_factor = scale_factor ** self.schedule_shifted_power
             snr = alpha_prod / (1 - alpha_prod)
             scaled_snr = snr / scale_factor
             alpha_prod = 1 / (1 + 1 / scaled_snr)
@@ -3816,6 +3818,8 @@ class MatryoshkaPipeline(
 
         if hasattr(unet, "nest_ratio"):
             scheduler.scales = unet.nest_ratio + [1]
+            if nesting_level == 2:
+                scheduler.schedule_shifted_power = 2.0
 
         self.register_modules(
             text_encoder=text_encoder,
