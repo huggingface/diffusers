@@ -7,9 +7,11 @@ import torch
 from diffusers import EulerDiscreteScheduler, StableDiffusionPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from .single_file_testing_utils import (
@@ -23,7 +25,7 @@ enable_full_determinism()
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = (
@@ -37,12 +39,12 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
@@ -95,12 +97,12 @@ class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFi
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
