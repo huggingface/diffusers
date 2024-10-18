@@ -439,8 +439,7 @@ class SlowBnb4BitTests(Base4bitTests):
                 self.model_name, transformer=model_4bit, torch_dtype=torch.float16
             ).to("cpu")
         assert (
-            "Pipelines loaded with `dtype=torch.float16` and containing modules that have int weights"
-            in cap_logger.out
+            "Pipelines loaded with `dtype=torch.float16` or containing modules that have int weights" in cap_logger.out
         )
 
 

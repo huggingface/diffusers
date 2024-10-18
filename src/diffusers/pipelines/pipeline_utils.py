@@ -467,7 +467,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 and not is_offloaded
             ):
                 logger.warning(
-                    "Pipelines loaded with `dtype=torch.float16` and containing modules that have int weights"
+                    "Pipelines loaded with `dtype=torch.float16` or containing modules that have int weights"
                     " cannot run with `cpu` device. It is not recommended to move them to `cpu` as running them"
                     " will fail. Please make sure to use an accelerator to run the pipeline in inference, due to"
                     " the lack of support for`float16` operations on this device in PyTorch. Please, remove the"

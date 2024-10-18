@@ -393,8 +393,7 @@ class SlowBnb8bitTests(Base8bitTests):
             ).to("cpu")
 
         assert (
-            "Pipelines loaded with `dtype=torch.float16` and containing modules that have int weights"
-            in cap_logger.out
+            "Pipelines loaded with `dtype=torch.float16` or containing modules that have int weights" in cap_logger.out
         )
 
     def test_generate_quality_dequantize(self):
