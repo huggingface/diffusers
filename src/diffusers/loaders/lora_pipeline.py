@@ -1326,17 +1326,14 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
-        if transformer_present:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=None,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2159,14 +2156,17 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
-        transformer.load_lora_adapter(
-            state_dict,
-            network_alphas=network_alphas,
-            adapter_name=adapter_name,
-            _pipeline=_pipeline,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+        keys = list(state_dict.keys())
+        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
+        if transformer_present:
+            logger.info(f"Loading {cls.transformer_name}.")
+            transformer.load_lora_adapter(
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
