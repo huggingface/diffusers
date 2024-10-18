@@ -260,7 +260,7 @@ class BnB4BitBasicTests(Base4bitTests):
     def test_device_and_dtype_assignment(self):
         r"""
         Test whether trying to cast (or assigning a device to) a model after converting it in 4-bit will throw an error.
-        Checks also if other models are casted correctly.
+        Checks also if other models are casted correctly. Device placement, however, is supported.
         """
         with self.assertRaises(ValueError):
             # Tries with a `dtype`
@@ -277,6 +277,9 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             # Tries with a cast
             self.model_4bit.half()
+
+        # This should work
+        self.model_4bit.to("cuda")
 
         # Test if we did not break anything
         self.model_fp16 = self.model_fp16.to(dtype=torch.float32, device=torch_device)

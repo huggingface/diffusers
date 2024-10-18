@@ -450,7 +450,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
             if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
                 module.to(device=device)
-            elif not is_loaded_in_8bit_bnb:
+            elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
             module_has_int_weights = any(
