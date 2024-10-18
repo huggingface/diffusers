@@ -16,17 +16,31 @@ import inspect
 from functools import partial
 from typing import Dict, List, Optional, Union
 
+import torch.nn as nn
+
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
+    get_adapter_name,
+    get_peft_kwargs,
+    is_accelerate_available,
     is_peft_available,
+    is_peft_version,
+    logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from .lora_base import _fetch_state_dict
 from .unet_loader_utils import _maybe_expand_lora_scales
 
+
+if is_accelerate_available():
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+
+logger = logging.get_logger(__name__)
 
 _SET_ADAPTER_SCALE_FN_MAPPING = {
     "UNet2DConditionModel": _maybe_expand_lora_scales,
@@ -52,6 +66,165 @@ class PeftAdapterMixin:
     """
 
     _hf_peft_config_loaded = False
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
+    def _optionally_disable_offloading(cls, _pipeline):
+        """
+        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+        Args:
+            _pipeline (`DiffusionPipeline`):
+                The pipeline to disable offloading for.
+
+        Returns:
+            tuple:
+                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+        """
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+
+        if _pipeline is not None and _pipeline.hf_device_map is None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                    if not is_model_cpu_offload:
+                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                    if not is_sequential_cpu_offload:
+                        is_sequential_cpu_offload = (
+                            isinstance(component._hf_hook, AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
+
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+    def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        adapter_name = kwargs.pop("adapter_name", None)
+        _pipeline = kwargs.pop("_pipeline", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        state_dict = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        keys = list(state_dict.keys())
+        transformer_keys = [k for k in keys if k.startswith(prefix)]
+        if len(transformer_keys) > 0:
+            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in transformer_keys}
+
+        if len(state_dict.keys()) > 0:
+            # check with first key if is not in peft format
+            first_key = next(iter(state_dict.keys()))
+            if "lora_A" not in first_key:
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
+
+            if adapter_name in getattr(self, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
+                )
+
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+                else:
+                    lora_config_kwargs.pop("use_dora")
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(self)
+
+            # <Unsafe code
+            # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+            # Now we remove any existing hooks to `_pipeline`.
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+
+            warn_msg = ""
+            if incompatible_keys is not None:
+                # Check only for unexpected keys.
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+                    if lora_unexpected_keys:
+                        warn_msg = (
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}. "
+                        )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+                    if lora_missing_keys:
+                        warn_msg += (
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
+
+            if warn_msg:
+                logger.warning(warn_msg)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
 
     def set_adapters(
         self,
