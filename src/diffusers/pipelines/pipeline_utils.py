@@ -50,7 +50,6 @@ from ..utils import (
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
@@ -58,7 +57,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -72,15 +71,16 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
+    _get_custom_components_and_folders,
     _get_custom_pipeline_class,
     _get_final_device_map,
+    _get_ignore_patterns,
     _get_pipeline_class,
     _identify_model_variants,
     _maybe_raise_warning_for_inpainting,
     _resolve_custom_pipeline_and_cls,
     _unwrap_model,
     _update_init_kwargs_with_connected_pipeline,
-    is_safetensors_compatible,
     load_sub_model,
     maybe_raise_or_warn,
     variant_compatible_siblings,
@@ -735,6 +735,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
+        # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+        # a warning if detected.
+        if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
+            warn_msg = (
+                f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                "Please check your files carefully:\n\n"
+                "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                "If you find any files in the deprecated format:\n"
+                "1. Remove all existing checkpoint files for this variant.\n"
+                "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                "This will ensure you're using the most up-to-date and compatible checkpoint format."
+            )
+            logger.warning(warn_msg)
+
         config_dict = cls.load_config(cached_folder)
 
         # pop out "_ignore_files" as it is only needed for download
@@ -745,6 +760,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
         # with variant being `"fp16"`.
         model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
+        if len(model_variants) == 0 and variant is not None:
+            error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+            raise ValueError(error_message)
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -888,6 +906,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
+                    use_safetensors=use_safetensors,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1251,6 +1270,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            filenames = {sibling.rfilename for sibling in info.siblings}
+            if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
+                warn_msg = (
+                    f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                    "Please check your files carefully:\n\n"
+                    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                    "If you find any files in the deprecated format:\n"
+                    "1. Remove all existing checkpoint files for this variant.\n"
+                    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                    "This will ensure you're using the most up-to-date and compatible checkpoint format."
+                )
+                logger.warning(warn_msg)
+
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1264,52 +1299,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             config_dict = cls._dict_from_json_file(config_file)
             ignore_filenames = config_dict.pop("_ignore_files", [])
 
-            # retrieve all folder_names that contain relevant files
-            folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
-
-            filenames = {sibling.rfilename for sibling in info.siblings}
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-
-            diffusers_module = importlib.import_module(__name__.split(".")[0])
-            pipelines = getattr(diffusers_module, "pipelines")
-
-            # optionally create a custom component <> custom file mapping
-            custom_components = {}
-            for component in folder_names:
-                module_candidate = config_dict[component][0]
-
-                if module_candidate is None or not isinstance(module_candidate, str):
-                    continue
-
-                # We compute candidate file path on the Hub. Do not use `os.path.join`.
-                candidate_file = f"{component}/{module_candidate}.py"
-
-                if candidate_file in filenames:
-                    custom_components[component] = module_candidate
-                elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
-                    raise ValueError(
-                        f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
-                    )
-
-            if len(variant_filenames) == 0 and variant is not None:
-                deprecation_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
-                    "modeling files is deprecated."
-                )
-                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
-
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
             variant_filenames = set(variant_filenames) - set(ignore_filenames)
 
-            # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
             ) >= version.parse("0.22.0"):
                 warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, model_filenames)
 
+            custom_components, folder_names = _get_custom_components_and_folders(
+                pretrained_model_name, config_dict, filenames, variant_filenames, variant
+            )
             model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             custom_class_name = None
@@ -1369,49 +1370,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
-            if (
-                use_safetensors
-                and not allow_pickle
-                and not is_safetensors_compatible(
-                    model_filenames, passed_components=passed_components, folder_names=model_folder_names
-                )
-            ):
-                raise EnvironmentError(
-                    f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
-                )
-            if from_flax:
-                ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors and is_safetensors_compatible(
-                model_filenames, passed_components=passed_components, folder_names=model_folder_names
-            ):
-                ignore_patterns = ["*.bin", "*.msgpack"]
-
-                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
-                if not use_onnx:
-                    ignore_patterns += ["*.onnx", "*.pb"]
-
-                safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
-                safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-                if (
-                    len(safetensors_variant_filenames) > 0
-                    and safetensors_model_filenames != safetensors_variant_filenames
-                ):
-                    logger.warning(
-                        f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
-                    )
-            else:
-                ignore_patterns = ["*.safetensors", "*.msgpack"]
-
-                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
-                if not use_onnx:
-                    ignore_patterns += ["*.onnx", "*.pb"]
-
-                bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
-                bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
-                if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                    logger.warning(
-                        f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
-                    )
+            # retrieve all patterns that should not be downloaded and error out when needed
+            ignore_patterns = _get_ignore_patterns(
+                passed_components,
+                model_folder_names,
+                model_filenames,
+                variant_filenames,
+                use_safetensors,
+                from_flax,
+                allow_pickle,
+                use_onnx,
+                pipeline_class._is_onnx,
+                variant,
+            )
 
             # Don't download any objects that are passed
             allow_patterns = [
