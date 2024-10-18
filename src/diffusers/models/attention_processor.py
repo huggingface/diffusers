@@ -252,7 +252,7 @@ class Attention(nn.Module):
                 self.norm_added_k = RMSNorm(dim_head, eps=eps)
             else:
                 raise ValueError(
-                    f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'"
+                    f"unknown qk_norm: {qk_norm}. Should be one of `None,'layer_norm','fp32_layer_norm','rms_norm'`"
                 )
         else:
             self.norm_added_q = None
