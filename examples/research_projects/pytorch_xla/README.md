@@ -5,15 +5,7 @@ The `train_text_to_image_xla.py` script shows how to fine-tune stable diffusion 
 It has been tested on v4 and v5p TPU versions. Training code has been tested on multi-host. 
 
 This script implements Distributed Data Parallel using GSPMD feature in XLA compiler
-where we shard the input batches over the TPU devices. 
-
-As of 9-11-2024, these are some expected step times.
-
-| accelerator | global batch size | step time (seconds) |
-| ----------- | ----------------- | --------- |
-| v5p-128 | 1024 | 0.245 |
-| v5p-256 | 2048 | 0.234 |
-| v5p-512 | 4096 | 0.2498 |
+where we shard the input batches over the TPU devices. The script works on single and multi-host.
 
 ## Create TPU
 
@@ -93,7 +85,7 @@ export PROFILE_DIR=/tmp/
 export CACHE_DIR=/tmp/
 export DATASET_NAME=lambdalabs/naruto-blip-captions
 export PER_HOST_BATCH_SIZE=32 # This is known to work on TPU v4. Can set this to 64 for TPU v5p
-export TRAIN_STEPS=50
+export TRAIN_STEPS=200
 export OUTPUT_DIR=/tmp/trained-model/
 python diffusers/examples/research_projects/pytorch_xla/train_text_to_image_xla.py --pretrained_model_name_or_path=stabilityai/stable-diffusion-2-base --dataset_name=$DATASET_NAME --resolution=512 --center_crop --random_flip --train_batch_size=$PER_HOST_BATCH_SIZE  --max_train_steps=$TRAIN_STEPS --learning_rate=1e-06 --mixed_precision=bf16 --profile_duration=80000 --output_dir=$OUTPUT_DIR --dataloader_num_workers=4 --loader_prefetch_size=4 --device_prefetch_size=4'
    
