@@ -185,17 +185,17 @@ class PatchEmbed(nn.Module):
 
     def __init__(
         self,
-        height=224,
-        width=224,
-        patch_size=16,
-        in_channels=3,
-        embed_dim=768,
-        layer_norm=False,
-        flatten=True,
-        bias=True,
-        interpolation_scale=1,
-        pos_embed_type="sincos",
-        pos_embed_max_size=None,  # For SD3 cropping
+        height: int = 224,
+        width: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 768,
+        layer_norm: bool = False,
+        flatten: bool = True,
+        bias: bool = True,
+        interpolation_scale: float = 1,
+        pos_embed_type: str = "sincos",
+        pos_embed_max_size: Optional[int] = None,  # For SD3 cropping
     ):
         super().__init__()
 
