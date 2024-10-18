@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
@@ -21,13 +20,9 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
-from diffusers.utils import load_image
+from diffusers import AutoencoderKLCogVideoX, CogVideoXFunControlPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -43,10 +38,10 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = CogVideoXImageToVideoPipeline
+class CogVideoXFunControlPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = CogVideoXFunControlPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"image"})
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"control_video"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
@@ -67,11 +62,8 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             # Product of num_attention_heads * attention_head_dim must be divisible by 16 for 3D positional embeddings
             # But, since we are using tiny-random-t5 here, we need the internal dim of CogVideoXTransformer3DModel
             # to be 32. The internal dim is product of num_attention_heads and attention_head_dim
-            # Note: The num_attention_heads and attention_head_dim is different from the T2V and I2V tests because
-            # attention_head_dim must be divisible by 16 for RoPE to work. We also need to maintain a product of 32 as
-            # detailed above.
-            num_attention_heads=2,
-            attention_head_dim=16,
+            num_attention_heads=4,
+            attention_head_dim=8,
             in_channels=8,
             out_channels=4,
             time_embed_dim=2,
@@ -83,8 +75,6 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             patch_size=2,
             temporal_compression_ratio=4,
             max_text_seq_length=16,
-            use_rotary_positional_embeddings=True,
-            use_learned_positional_embeddings=True,
         )
 
         torch.manual_seed(0)
@@ -124,27 +114,27 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed: int = 0, num_frames: int = 8):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        # Cannot reduce below 16 because convolution kernel becomes bigger than sample
-        # Cannot reduce below 32 because 3D RoPE errors out
-        image_height = 16
-        image_width = 16
-        image = Image.new("RGB", (image_width, image_height))
+        # Cannot reduce because convolution kernel becomes bigger than sample
+        height = 16
+        width = 16
+
+        control_video = [Image.new("RGB", (width, height))] * num_frames
+
         inputs = {
-            "image": image,
             "prompt": "dance monkey",
             "negative_prompt": "",
+            "control_video": control_video,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "height": image_height,
-            "width": image_width,
-            "num_frames": 8,
+            "height": height,
+            "width": width,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -264,19 +254,10 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
                 "Attention slicing should not affect the inference results",
             )
 
-    def test_vae_tiling(self, expected_diff_max: float = 0.3):
-        # Note(aryan): Investigate why this needs a bit higher tolerance
+    def test_vae_tiling(self, expected_diff_max: float = 0.5):
+        # NOTE(aryan): This requires a higher expected_max_diff than other CogVideoX pipelines
         generator_device = "cpu"
         components = self.get_dummy_components()
-
-        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initalization.
-        # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
-        # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
-        components["transformer"] = CogVideoXTransformer3DModel.from_config(
-            components["transformer"].config,
-            sample_height=16,
-            sample_width=16,
-        )
 
         pipe = self.pipeline_class(**components)
         pipe.to("cpu")
@@ -341,47 +322,3 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         assert np.allclose(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
-
-
-@slow
-@require_torch_gpu
-class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A painting of a squirrel eating a burger."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def test_cogvideox(self):
-        generator = torch.Generator("cpu").manual_seed(0)
-
-        pipe = CogVideoXImageToVideoPipeline.from_pretrained("THUDM/CogVideoX-5b-I2V", torch_dtype=torch.bfloat16)
-        pipe.enable_model_cpu_offload()
-
-        prompt = self.prompt
-        image = load_image(
-            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
-        )
-
-        videos = pipe(
-            image=image,
-            prompt=prompt,
-            height=480,
-            width=720,
-            num_frames=16,
-            generator=generator,
-            num_inference_steps=2,
-            output_type="pt",
-        ).frames
-
-        video = videos[0]
-        expected_video = torch.randn(1, 16, 480, 720, 3).numpy()
-
-        max_diff = numpy_cosine_similarity_distance(video, expected_video)
-        assert max_diff < 1e-3, f"Max diff is too high. got {video}"
