@@ -116,6 +116,7 @@ class PeftAdapterMixin:
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         adapter_name = kwargs.pop("adapter_name", None)
+        network_alphas = kwargs.pop("network_alphas", None)
         _pipeline = kwargs.pop("_pipeline", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         allow_pickle = False
@@ -166,7 +167,11 @@ class PeftAdapterMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if network_alphas is not None and len(network_alphas) >= 1:
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
                     raise ValueError(
@@ -187,6 +192,7 @@ class PeftAdapterMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
