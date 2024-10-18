@@ -964,9 +964,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
             )
         # When using `use_keep_in_fp32_modules` if we do a global `to()` here, then we will
-        # completely lose the effectivity of `use_keep_in_fp32_modules`. `transformers` does
-        # a global dtype setting (see: https://github.com/huggingface/transformers/blob/fa3f2db5c7405a742fcb8f686d3754f70db00977/src/transformers/modeling_utils.py#L4021),
-        # but this would prevent us from doing things like https://github.com/huggingface/diffusers/pull/9177/.
+        # completely lose the effectivity of `use_keep_in_fp32_modules`.
         elif torch_dtype is not None and hf_quantizer is None and not use_keep_in_fp32_modules:
             model = model.to(torch_dtype)
 
