@@ -3,7 +3,7 @@ import sys
 
 import pandas as pd
 from huggingface_hub import hf_hub_download, upload_file
-from huggingface_hub.utils._errors import EntryNotFoundError
+from huggingface_hub.utils import EntryNotFoundError
 
 
 sys.path.append(".")

@@ -144,7 +144,9 @@ else:
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
         "CogVideoXVideoToVideoPipeline",
+        "CogVideoXFunControlPipeline",
     ]
+    _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -164,6 +166,7 @@ else:
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
             "StableDiffusionPAGPipeline",
+            "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
@@ -468,7 +471,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
-        from .cogvideo import CogVideoXImageToVideoPipeline, CogVideoXPipeline, CogVideoXVideoToVideoPipeline
+        from .cogvideo import (
+            CogVideoXFunControlPipeline,
+            CogVideoXImageToVideoPipeline,
+            CogVideoXPipeline,
+            CogVideoXVideoToVideoPipeline,
+        )
+        from .cogview3 import CogView3PlusPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -569,6 +578,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
+            StableDiffusionPAGImg2ImgPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGImg2ImgPipeline,
             StableDiffusionXLControlNetPAGPipeline,
