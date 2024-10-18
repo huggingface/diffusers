@@ -406,6 +406,27 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_attention_mask_padding(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(init_dict)
+        model.to(torch_device, dtype=torch.bfloat16)
+        encoder_hidden_states = inputs_dict["encoder_hidden_states"].to(dtype=torch.bfloat16, device=torch_device)
+        attention_mask = torch.ones((2, 1, 22), dtype=torch.bfloat16, device=torch_device)
+        model.enable_xformers_memory_efficient_attention()
+        time_step = inputs_dict["timestep"].to(torch_device, dtype=torch.bfloat16)
+        noise = inputs_dict["sample"].to(torch_device, dtype=torch.bfloat16)
+        output_hidden_states = model(
+            attention_mask=attention_mask,
+            timestep=time_step,
+            encoder_hidden_states=encoder_hidden_states,
+            sample=noise,
+        )
+        assert output_hidden_states.sample.shape == encoder_hidden_states.shape, "Output hidden states shape mismatch"
+
     @require_torch_accelerator_with_training
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
