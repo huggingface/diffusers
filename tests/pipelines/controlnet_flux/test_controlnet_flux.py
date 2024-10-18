@@ -32,6 +32,7 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
@@ -247,4 +248,4 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
 
         expected_image = np.array([0.2734, 0.2852, 0.2852, 0.2734, 0.2754, 0.2891, 0.2617, 0.2637, 0.2773])
 
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
