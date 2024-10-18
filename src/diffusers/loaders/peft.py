@@ -104,6 +104,9 @@ class PeftAdapterMixin:
         return (is_model_cpu_offload, is_sequential_cpu_offload)
 
     def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
+        """
+        TODO
+        """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         cache_dir = kwargs.pop("cache_dir", None)
