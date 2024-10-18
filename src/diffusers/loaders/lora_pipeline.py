@@ -1327,8 +1327,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
+        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
+        if transformer_present:
             logger.info(f"Loading {cls.transformer_name}.")
             transformer.load_lora_adapter(
                 state_dict,
@@ -1795,14 +1795,18 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            network_alphas=network_alphas,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
+        if len(transformer_state_dict) > 0:
+            self.load_lora_into_transformer(
+                state_dict,
+                network_alphas=network_alphas,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
@@ -1849,8 +1853,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         # Load the layers corresponding to transformer.
         keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
+        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
+        if transformer_present:
             logger.info(f"Loading {cls.transformer_name}.")
             transformer.load_lora_adapter(
                 state_dict,
@@ -2155,17 +2159,14 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=network_alphas,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=network_alphas,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2546,17 +2547,14 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
-            logger.info(f"Loading {cls.transformer_name}.")
-            transformer.load_lora_adapter(
-                state_dict,
-                network_alphas=None,
-                adapter_name=adapter_name,
-                _pipeline=_pipeline,
-                low_cpu_mem_usage=low_cpu_mem_usage,
-            )
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Adapted from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights without support for text encoder
