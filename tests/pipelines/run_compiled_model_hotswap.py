@@ -22,6 +22,7 @@ recompilation.
 """
 
 import os
+import sys
 import tempfile
 
 import torch
@@ -36,7 +37,7 @@ torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def get_small_unet():
-    # from  UNet2DConditionModelTests
+    # from UNet2DConditionModelTests
     torch.manual_seed(0)
     init_dict = {
         "block_out_channels": (4, 8),
@@ -147,5 +148,6 @@ def check_hotswap(do_hotswap):
 
 
 if __name__ == "__main__":
-    # check_hotswap(False) will trigger recompilation
-    check_hotswap(True)
+    # check_hotswap(True) does not trigger recompilation
+    # check_hotswap(False) triggers recompilation
+    check_hotswap(do_hotswap=sys.argv[1] == "1")

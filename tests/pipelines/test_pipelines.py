@@ -2080,14 +2080,14 @@ class TestLoraHotSwapping:
     @require_torch_gpu
     @require_peft_backend
     def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
-        # TODO: kinda slow, should it get a slow marker?
         env = os.environ.copy()
         env["TORCH_LOGS"] = "guards,recompiles"
         here = os.path.dirname(__file__)
         file_name = os.path.join(here, "run_compiled_model_hotswap.py")
 
+        # first test with hotswapping: should not trigger recompilation
         process = subprocess.Popen(
-            [sys.executable, file_name], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            [sys.executable, file_name, "1"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
 
         # Communicate will read the output and error streams, preventing deadlock
@@ -2099,3 +2099,18 @@ class TestLoraHotSwapping:
 
         # check that the recompilation message is not present
         assert "__recompiles" not in stderr.decode()
+
+        # next, contingency check: without hotswapping, we *do* get recompilation
+        process = subprocess.Popen(
+            [sys.executable, file_name, "0"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+        # Communicate will read the output and error streams, preventing deadlock
+        stdout, stderr = process.communicate()
+        exit_code = process.returncode
+
+        # sanity check:
+        assert exit_code == 0
+
+        # check that the recompilation message is not present
+        assert "__recompiles" in stderr.decode()
