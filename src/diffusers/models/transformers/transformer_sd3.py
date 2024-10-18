@@ -69,7 +69,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
-        add_attn2_layers: Tuple[int, ...] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
+        dual_attention_layers: Tuple[
+            int, ...
+        ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
         qk_norm: Optional[str] = None,
     ):
         super().__init__()
@@ -100,7 +102,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=i == num_layers - 1,
                     qk_norm=qk_norm,
-                    add_attn2=True if i in add_attn2_layers else False,
+                    use_dual_attention=True if i in dual_attention_layers else False,
                 )
                 for i in range(self.config.num_layers)
             ]

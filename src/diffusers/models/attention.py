@@ -101,15 +101,21 @@ class JointTransformerBlock(nn.Module):
     """
 
     def __init__(
-        self, dim, num_attention_heads, attention_head_dim, context_pre_only=False, qk_norm=None, add_attn2=False
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        context_pre_only: bool = False,
+        qk_norm: Optional[str] = None,
+        use_dual_attention: bool = False,
     ):
         super().__init__()
 
-        self.add_attn2 = add_attn2
+        self.use_dual_attention = use_dual_attention
         self.context_pre_only = context_pre_only
         context_norm_type = "ada_norm_continous" if context_pre_only else "ada_norm_zero"
 
-        if add_attn2:
+        if use_dual_attention:
             self.norm1 = SD35AdaLayerNormZeroX(dim)
         else:
             self.norm1 = AdaLayerNormZero(dim)
@@ -124,12 +130,14 @@ class JointTransformerBlock(nn.Module):
             raise ValueError(
                 f"Unknown context_norm_type: {context_norm_type}, currently only support `ada_norm_continous`, `ada_norm_zero`"
             )
+
         if hasattr(F, "scaled_dot_product_attention"):
             processor = JointAttnProcessor2_0()
         else:
             raise ValueError(
                 "The current PyTorch version does not support the `scaled_dot_product_attention` function."
             )
+
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -144,7 +152,7 @@ class JointTransformerBlock(nn.Module):
             eps=1e-6,
         )
 
-        if add_attn2:
+        if use_dual_attention:
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=None,
@@ -182,7 +190,7 @@ class JointTransformerBlock(nn.Module):
     def forward(
         self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor
     ):
-        if self.add_attn2:
+        if self.use_dual_attention:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(
                 hidden_states, emb=temb
             )
@@ -205,7 +213,7 @@ class JointTransformerBlock(nn.Module):
         attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = hidden_states + attn_output
 
-        if self.add_attn2:
+        if self.use_dual_attention:
             attn_output2 = self.attn2(hidden_states=norm_hidden_states2)
             attn_output2 = gate_msa2.unsqueeze(1) * attn_output2
             hidden_states = hidden_states + attn_output2

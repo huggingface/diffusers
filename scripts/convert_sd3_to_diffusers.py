@@ -40,7 +40,7 @@ def swap_scale_shift(weight, dim):
 
 
 def convert_sd3_transformer_checkpoint_to_diffusers(
-    original_state_dict, num_layers, caption_projection_dim, add_attn2_layers, has_qk_norm
+    original_state_dict, num_layers, caption_projection_dim, dual_attention_layers, has_qk_norm
 ):
     converted_state_dict = {}
 
@@ -142,7 +142,7 @@ def convert_sd3_transformer_checkpoint_to_diffusers(
             )
 
         # attn2
-        if i in add_attn2_layers:
+        if i in dual_attention_layers:
             # Q, K, V
             sample_q2, sample_k2, sample_v2 = torch.chunk(
                 original_state_dict.pop(f"joint_blocks.{i}.x_block.attn2.qkv.weight"), 3, dim=0
@@ -244,14 +244,14 @@ def is_vae_in_checkpoint(original_state_dict):
     )
 
 
-def get_add_attn2_layers(state_dict):
-    add_attn2_layers = []
+def get_attn2_layers(state_dict):
+    attn2_layers = []
     for key in state_dict.keys():
         if "attn2." in key:
             # Extract the layer number from the key
             layer_num = int(key.split(".")[1])
-            add_attn2_layers.append(layer_num)
-    return tuple(sorted(set(add_attn2_layers)))
+            attn2_layers.append(layer_num)
+    return tuple(sorted(set(attn2_layers)))
 
 
 def get_pos_embed_max_size(state_dict):
@@ -284,14 +284,16 @@ def main(args):
         raise ValueError(f"Unsupported dtype: {args.dtype}")
 
     if dtype != original_dtype:
-        print(f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}. This can lead to unexpected results, proceed with caution.")
+        print(
+            f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}. This can lead to unexpected results, proceed with caution."
+        )
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in original_ckpt if "joint_blocks" in k))[-1] + 1  # noqa: C401
 
     caption_projection_dim = get_caption_projection_dim(original_ckpt)
 
     # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
-    add_attn2_layers = get_add_attn2_layers(original_ckpt)
+    attn2_layers = get_attn2_layers(original_ckpt)
 
     # sd3.5 use qk norm("rms_norm")
     has_qk_norm = any("ln_q" in key for key in original_ckpt.keys())
@@ -300,7 +302,7 @@ def main(args):
     pos_embed_max_size = get_pos_embed_max_size(original_ckpt)
 
     converted_transformer_state_dict = convert_sd3_transformer_checkpoint_to_diffusers(
-        original_ckpt, num_layers, caption_projection_dim, add_attn2_layers, has_qk_norm
+        original_ckpt, num_layers, caption_projection_dim, attn2_layers, has_qk_norm
     )
 
     with CTX():
@@ -314,7 +316,7 @@ def main(args):
             num_attention_heads=num_layers,
             pos_embed_max_size=pos_embed_max_size,
             qk_norm="rms_norm" if has_qk_norm else None,
-            add_attn2_layers=add_attn2_layers,
+            dual_attention_layers=attn2_layers,
         )
     if is_accelerate_available():
         load_model_dict_into_meta(transformer, converted_transformer_state_dict)
