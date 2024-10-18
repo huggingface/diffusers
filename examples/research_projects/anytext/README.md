@@ -22,11 +22,13 @@ import torch
 from pipeline_anytext import AnyTextPipeline
 from text_controlnet import TextControlNetModel
 from diffusers import DDIMScheduler
+from diffusers.utils import load_image
 
 
-controlnet = TextControlNetModel.from_pretrained("a/b", subfolder="controlnet", torch_dtype=torch.float16)
-model_id = "path-to-model"
-pipe = AnyTextPipeline.from_pretrained("a/b", subfolder="base", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16")
+controlnet = TextControlNetModel.from_pretrained("tolgacangoz/anytext-controlnet", torch_dtype=torch.float16,
+                                                  variant="fp16")
+pipe = AnyTextPipeline.from_pretrained("tolgacangoz/anytext", controlnet=controlnet,
+                                        torch_dtype=torch.float16, variant="fp16")
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -34,7 +36,10 @@ pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 #pipe.enable_xformers_memory_efficient_attention()
 pipe.enable_model_cpu_offload()
 # generate image
-generator = torch.Generator("cpu").manual_seed(0)
-image = pipe("photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream", num_inference_steps=20, generator=generator).images[0]
+generator = torch.Generator("cpu").manual_seed(66273235)
+prompt = 'photo of caramel macchiato coffee on the table, top-down perspective, with "Any" "Text" written on it using cream'
+draw_pos = load_image("www.huggingface.co/a/AnyText/tree/main/examples/gen9.png")
+image = pipe(prompt, num_inference_steps=20, generator=generator, mode="generate", draw_pos=draw_pos,
+            ).images[0]
 image
 ```
