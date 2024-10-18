@@ -284,7 +284,7 @@ def main(args):
         raise ValueError(f"Unsupported dtype: {args.dtype}")
 
     if dtype != original_dtype:
-        print(f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}")
+        print(f"Checkpoint dtype {original_dtype} does not match requested dtype {dtype}. This can lead to unexpected results, proceed with caution.")
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in original_ckpt if "joint_blocks" in k))[-1] + 1  # noqa: C401
 
