@@ -20,7 +20,6 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
-from diffusers import FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     SD3Transformer2DModel,
@@ -30,13 +29,12 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    is_flaky,
     is_peft_available,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
     torch_device,
-    is_flaky,
-    is_peft_available,
 )
 
 
@@ -135,6 +133,7 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @is_flaky
     def test_multiple_wrong_adapter_name_raises_error(self):
         super().test_multiple_wrong_adapter_name_raises_error()
+
 
 @require_torch_gpu
 @require_peft_backend
