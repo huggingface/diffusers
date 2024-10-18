@@ -284,6 +284,43 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 315.5757) < 1e-2, f" expected result sum 315.5757, but get {result_sum}"
         assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"
 
+    def test_convert_model_output(self):
+        for prediction_type in ["epsilon", "sample"]:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(prediction_type=prediction_type)
+            scheduler = scheduler_class(**scheduler_config)
+
+            num_inference_steps = 10
+            model = self.dummy_model()
+            sample = self.dummy_sample_deter
+            scheduler.set_timesteps(num_inference_steps)
+
+            for i, t in enumerate(scheduler.timesteps):
+                residual = model(sample, t)
+                pred_x0 = scheduler.convert_model_output(residual, sample=sample, predict_x0=True, step_index=i)
+                pred_noise = scheduler.convert_model_output(pred_x0, sample=sample, predict_x0=False, step_index=i)
+                assert (
+                    abs(torch.mean(torch.abs(pred_noise)).item() - torch.mean(torch.abs(residual)).item()) < 1e-4
+                ), prediction_type
+                sample = scheduler.step(residual, t, sample).prev_sample
+
+        scheduler_class = self.scheduler_classes[0]
+        prediction_type = "v_prediction"
+        scheduler_config = self.get_scheduler_config(prediction_type=prediction_type)
+        scheduler = scheduler_class(**scheduler_config)
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+        for i, t in enumerate(scheduler.timesteps):
+            residual = model(sample, t)
+            pred_x0 = scheduler.convert_model_output(residual, sample=sample, predict_x0=True, step_index=i)
+            pred_noise = scheduler.convert_model_output(pred_x0, sample=sample, predict_x0=False, step_index=i)
+            sample = scheduler.step(residual, t, sample).prev_sample
+        assert (
+            abs(torch.mean(torch.abs(pred_noise)).item() - torch.mean(torch.abs(residual)).item()) < 2e-2
+        ), prediction_type
+
 
 class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
     @property
