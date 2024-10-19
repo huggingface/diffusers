@@ -410,12 +410,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
 
         # device-mapped modules should not go through any device placements.
-        pipeline_has_device_mapped_modules = any(
-            model_has_device_map(component) for _, component in self.components.items()
-        )
-        if pipeline_has_device_mapped_modules:
+        device_mapped_components = [
+            key for key, component in self.components.items() if model_has_device_map(component)
+        ]
+        if device_mapped_components:
             raise ValueError(
-                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `to()`."
+                "The following pipeline components have been found to use a device map: "
+                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `to()`."
             )
 
         # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
@@ -1016,12 +1017,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return getattr(model, "hf_device_map", None) is not None
 
         # device-mapped modules should not go through any device placements.
-        pipeline_has_device_mapped_modules = any(
-            model_has_device_map(component) for _, component in self.components.items()
-        )
-        if pipeline_has_device_mapped_modules:
+        device_mapped_components = [
+            key for key, component in self.components.items() if model_has_device_map(component)
+        ]
+        if device_mapped_components:
             raise ValueError(
-                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `enable_model_cpu_offload()`."
+                "The following pipeline components have been found to use a device map: "
+                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `enable_model_cpu_offload()`."
             )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
@@ -1124,12 +1126,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return getattr(model, "hf_device_map", None) is not None
 
         # device-mapped modules should not go through any device placements.
-        pipeline_has_device_mapped_modules = any(
-            model_has_device_map(component) for _, component in self.components.items()
-        )
-        if pipeline_has_device_mapped_modules:
+        device_mapped_components = [
+            key for key, component in self.components.items() if model_has_device_map(component)
+        ]
+        if device_mapped_components:
             raise ValueError(
-                "It seems like you have device-mapped modules in the pipeline which doesn't allow explicit device placement using `enable_sequential_cpu_offload()`."
+                "The following pipeline components have been found to use a device map: "
+                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `enable_sequential_cpu_offload()`."
             )
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
