@@ -453,24 +453,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
-            module_has_int_weights = any(
-                module
-                for _, module in module.named_modules()
-                if isinstance(module, torch.nn.Linear) and module.weight.dtype in [torch.uint8, torch.int8]
-            )
-
             if (
                 module.dtype == torch.float16
-                or module_has_int_weights
                 and str(device) in ["cpu"]
                 and not silence_dtype_warnings
                 and not is_offloaded
             ):
                 logger.warning(
-                    "Pipelines loaded with `dtype=torch.float16` or containing modules that have int weights"
-                    " cannot run with `cpu` device. It is not recommended to move them to `cpu` as running them"
-                    " will fail. Please make sure to use an accelerator to run the pipeline in inference, due to"
-                    " the lack of support for`float16` operations on this device in PyTorch. Please, remove the"
+                    "Pipelines loaded with `dtype=torch.float16` cannot run with `cpu` device. It"
+                    " is not recommended to move them to `cpu` as running them will fail. Please make"
+                    " sure to use an accelerator to run the pipeline in inference, due to the lack of"
+                    " support for`float16` operations on this device in PyTorch. Please, remove the"
                     " `torch_dtype=torch.float16` argument, or use another device for inference."
                 )
         return self

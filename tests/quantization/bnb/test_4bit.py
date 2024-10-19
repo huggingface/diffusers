@@ -435,12 +435,13 @@ class SlowBnb4BitTests(Base4bitTests):
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
+            # Because `model.dtype` will return torch.float16 as SD3 transformer has
+            # a conv layer as the first layer.
             _ = DiffusionPipeline.from_pretrained(
                 self.model_name, transformer=model_4bit, torch_dtype=torch.float16
             ).to("cpu")
-        assert (
-            "Pipelines loaded with `dtype=torch.float16` or containing modules that have int weights" in cap_logger.out
-        )
+
+        assert "Pipelines loaded with `dtype=torch.float16`" in cap_logger.out
 
 
 @require_transformers_version_greater("4.44.0")
