@@ -1023,7 +1023,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if device_mapped_components:
             raise ValueError(
                 "The following pipeline components have been found to use a device map: "
-                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `enable_model_cpu_offload()`."
+                f"{device_mapped_components}. This is incompatible with `enable_model_cpu_offload()`."
             )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
@@ -1132,7 +1132,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if device_mapped_components:
             raise ValueError(
                 "The following pipeline components have been found to use a device map: "
-                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `enable_sequential_cpu_offload()`."
+                f"{device_mapped_components}. This is incompatible with `enable_sequential_cpu_offload()`."
             )
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
