@@ -258,7 +258,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
         """
         internal note: test was run on `audace`.
         """
-        
+
         ckpt_id = "black-forest-labs/FLUX.1-dev"
         dtype = torch.bfloat16
         prompt = "a photo of a cat with tiger-like look"
