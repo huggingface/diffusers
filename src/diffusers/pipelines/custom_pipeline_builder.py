@@ -25,7 +25,7 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 from ..configuration_utils import ConfigMixin
 from ..image_processor import VaeImageProcessor
 from ..loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ..models import ImageProjection
+from ..models import ImageProjection, ControlNetModel
 from ..models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ..models.lora import adjust_lora_scale_text_encoder
 from ..utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
@@ -1156,6 +1156,103 @@ class InputStep(PipelineBlock):
             batch_size = prompt_embeds.shape[0]
 
         state.add_intermediate("batch_size", batch_size)
+
+        return pipeline, state
+
+
+from ..utils import is_compiled_module
+from ..models import MultiControlNetModel, ControlNetModel
+class ControlNetStep(PipelineBlock):
+
+    def __init__(self, controlnet: ControlNetModel):
+        super().__init__(controlnet=controlnet)
+
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+
+        control_guide_start = state.get_input("control_guide_start")
+        control_guide_end = state.get_input("control_guide_end")
+        controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
+        guess_mode = state.get_input("guess_mode")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        guidance_scale = state.get_input("guidance_scale")
+
+        batch_size = state.get_intermediate("batch_size")
+        timesteps = state.get_intermediate("timesteps")
+
+        do_classifier_free_guidance = guidance_scale > 1.0
+        device = pipeline._execution_device
+
+
+        controlnet = pipeline.controlnet._orig_mod if is_compiled_module(pipeline.controlnet) else pipeline.controlnet
+
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
+        global_pool_conditions = (
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetModel)
+            else controlnet.nets[0].config.global_pool_conditions
+        )
+        guess_mode = guess_mode or global_pool_conditions
+
+
+        # 4. Prepare image
+        if isinstance(controlnet, ControlNetModel):
+            image = pipeline.prepare_controlnet_image(
+                image=image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+            height, width = image.shape[-2:]
+        elif isinstance(controlnet, MultiControlNetModel):
+            images = []
+
+            for image_ in image:
+                image_ = pipeline.prepare_controlnet_image(
+                    image=image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                images.append(image_)
+
+            image = images
+            height, width = image[0].shape[-2:]
+        else:
+            assert False
+
+        # 7.1 Create tensor stating which controlnets to keep
+        controlnet_keep = []
+        for i in range(len(timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         return pipeline, state
 
