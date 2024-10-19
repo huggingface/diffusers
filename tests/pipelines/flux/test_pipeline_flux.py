@@ -255,6 +255,10 @@ class FluxPipelineSlowTests(unittest.TestCase):
     @require_torch_multi_gpu
     @torch.no_grad()
     def test_flux_component_sharding(self):
+        """
+        internal note: test was run on `audace`.
+        """
+        
         ckpt_id = "black-forest-labs/FLUX.1-dev"
         dtype = torch.bfloat16
         prompt = "a photo of a cat with tiger-like look"
