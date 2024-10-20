@@ -67,13 +67,10 @@ def compute_snr(noise_scheduler, timesteps):
             An object containing the noise schedule parameters, specifically `alphas_cumprod`, which is used
             to compute the SNR values.
         timesteps (`torch.Tensor`):
-            A tensor of timesteps for which the SNR is computed. The device and shape of this tensor is used
-            to adjust and expand the calculated values.
+            A tensor of timesteps for which the SNR is computed. 
 
     Returns:
-        `torch.Tensor`:
-            A tensor containing the computed SNR values for each timestep.    
-    
+        `torch.Tensor`: A tensor containing the computed SNR values for each timestep.     
     """
     alphas_cumprod = noise_scheduler.alphas_cumprod
     sqrt_alphas_cumprod = alphas_cumprod**0.5
