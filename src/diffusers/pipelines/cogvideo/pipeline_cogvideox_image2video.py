@@ -604,7 +604,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             num_frames (`int`, defaults to `48`):
                 Number of frames to generate. Must be divisible by self.vae_scale_factor_temporal. Generated video will
                 contain 1 extra frame because CogVideoX is conditioned with (num_seconds * fps + 1) frames where
-                num_seconds is 6 and fps is 4. However, since videos can be saved at any fps, the only condition that
+                num_seconds is 6 and fps is 8. However, since videos can be saved at any fps, the only condition that
                 needs to be satisfied is that of divisibility mentioned above.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
