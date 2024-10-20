@@ -192,6 +192,8 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         ],
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = SD3MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
