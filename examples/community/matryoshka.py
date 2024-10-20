@@ -642,16 +642,16 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         if self.config.thresholding:
             if len(model_output) > 1:
                 pred_original_sample = [
-                    self._threshold_sample(p_o_s * scale) / scale
-                    for p_o_s, scale in zip(pred_original_sample, self.scales)
+                    self._threshold_sample(p_o_s)
+                    for p_o_s in pred_original_sample
                 ]
             else:
                 pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
             if len(model_output) > 1:
                 pred_original_sample = [
-                    (p_o_s * scale).clamp(-self.config.clip_sample_range, self.config.clip_sample_range) / scale
-                    for p_o_s, scale in zip(pred_original_sample, self.scales)
+                    p_o_s.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
+                    for p_o_s in pred_original_sample
                 ]
             else:
                 pred_original_sample = pred_original_sample.clamp(
@@ -3846,12 +3846,14 @@ class MatryoshkaPipeline(
             ).to(self.device)
             self.config.nesting_level = 1
             self.scheduler.scales = self.unet.nest_ratio + [1]
+            self.scheduler.schedule_shifted_power = 1.0
         elif nesting_level == 2:
             self.unet = NestedUNet2DConditionModel.from_pretrained(
                 "tolgacangoz/matryoshka-diffusion-models", subfolder="unet/nesting_level_2"
             ).to(self.device)
             self.config.nesting_level = 2
             self.scheduler.scales = self.unet.nest_ratio + [1]
+            self.scheduler.schedule_shifted_power = 2.0
         else:
             raise ValueError("Currently, nesting levels 0, 1, and 2 are supported.")
 
@@ -4631,8 +4633,8 @@ class MatryoshkaPipeline(
         image = latents
 
         if self.scheduler.scales is not None:
-            for i, (img, scale) in enumerate(zip(image, self.scheduler.scales)):
-                image[i] = self.image_processor.postprocess(img * scale, output_type=output_type)[0]
+            for i, img in enumerate(image):
+                image[i] = self.image_processor.postprocess(img, output_type=output_type)[0]
         else:
             image = self.image_processor.postprocess(image, output_type=output_type)
 
