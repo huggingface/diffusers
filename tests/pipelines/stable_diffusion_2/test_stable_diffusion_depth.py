@@ -43,6 +43,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    require_non_cpu,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -194,7 +195,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @require_non_cpu
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -226,7 +227,6 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -247,8 +247,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
     )
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
@@ -259,7 +259,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(torch_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(torch_device)
         output_with_offload = pipe(**inputs)[0]
 
