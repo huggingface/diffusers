@@ -29,13 +29,14 @@ from ..models import ImageProjection, ControlNetModel
 from ..models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ..models.lora import adjust_lora_scale_text_encoder
 from ..utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..utils.torch_utils import randn_tensor
+from ..utils.torch_utils import randn_tensor, is_compiled_module
 from .pipeline_loading_utils import _fetch_class_library_tuple
 from .pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
     StableDiffusionXLPipelineOutput,
 )
+from .controlnet.multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -77,11 +78,6 @@ class CustomPipeline(ConfigMixin):
         super().__init__()
         self.register_to_config()
         self.builder = None
-
-    def __repr__(self):
-        if self.builder:
-            return repr(self.builder)
-        return "CustomPipeline (not fully initialized)"
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline.register_modules
     def register_modules(self, **kwargs):
@@ -165,12 +161,6 @@ class CustomPipeline(ConfigMixin):
         components = {}
         for block in self.builder.pipeline_blocks:
             components.update(block.components)
-
-        # Check if all items in config that are also in any block's components are included
-        for key in self.config.keys():
-            if any(key in block.components for block in self.builder.pipeline_blocks):
-                if key not in components:
-                    components[key] = getattr(self, key, None)
 
         return components
 
@@ -1068,7 +1058,7 @@ class PipelineBlock:
                 self.configs[key] = value
 
     @classmethod
-    def from_pipe(cls, pipe: DiffusionPipeline):
+    def from_pipe(cls, pipe: DiffusionPipeline, **kwargs):
         """
         Create a PipelineBlock instance from a diffusion pipeline object.
 
@@ -1078,34 +1068,49 @@ class PipelineBlock:
         Returns:
             PipelineBlock: An instance initialized with the pipeline's components and configurations.
         """
-        kwargs = {}
-
-        # Add components
+        kwargs = kwargs.copy()
+        # add components
+        expected_components = set(cls.required_components + cls.optional_components)
+        # - components that are passed in kwargs
+        components_to_add = {component_name: kwargs.pop(component_name) for component_name in expected_components if component_name in kwargs}
+        # - components that are in the pipeline
         for component_name, component in pipe.components.items():
-            if component_name in cls.required_components or component_name in cls.optional_components:
-                kwargs[component_name] = component
+            if component_name in expected_components and component_name not in components_to_add:
+                components_to_add[component_name] = component
 
-        # Add config items that are in the __init__ signature
-        init_params = inspect.signature(cls.__init__).parameters
-        for config_name in pipe.config.keys():
-            if config_name in init_params and config_name not in kwargs:
-                kwargs[config_name] = pipe.config[config_name]
-        # Check for required auxiliaries
+        # add auxiliaries
+        # - auxiliaries that are passed in kwargs
+        auxiliaries_to_add = {k: kwargs.pop(k) for k in cls.required_auxiliaries if k in kwargs}
+        # - auxiliaries that are in the pipeline
         for aux_name in cls.required_auxiliaries:
-            if hasattr(pipe, aux_name):
-                kwargs[aux_name] = getattr(pipe, aux_name)
+            if hasattr(pipe, aux_name) and aux_name not in auxiliaries_to_add:
+                auxiliaries_to_add[aux_name] = getattr(pipe, aux_name)
+        block_kwargs = {**components_to_add, **auxiliaries_to_add}
 
-        # Add any remaining relevant attributes
+        # add pipeline configs
+        init_params = inspect.signature(cls.__init__).parameters
+        # modules info are also registered in the config as tuples, e.g. {'tokenizer': ('transformers', 'CLIPTokenizer')}
+        # we need to exclude them for block_kwargs otherwise it will override the actual module
+        expected_configs = {k for k in pipe.config.keys() if k in init_params and k not in expected_components and k not in cls.required_auxiliaries}
+
+        for config_name in expected_configs:
+            if config_name not in block_kwargs:
+                if config_name in kwargs:
+                    # - configs that are passed in kwargs
+                    block_kwargs[config_name] = kwargs.pop(config_name)
+                else:
+                    # - configs that are in the pipeline
+                    block_kwargs[config_name] = pipe.config[config_name]
+        
+
+        # Add any remaining relevant pipeline attributes
         for attr_name in dir(pipe):
-            if (
-                not attr_name.startswith("_")
-                and attr_name not in kwargs
-                and attr_name not in ["components", "config"]
+            if (attr_name not in block_kwargs
                 and attr_name in init_params
             ):
-                kwargs[attr_name] = getattr(pipe, attr_name)
+                block_kwargs[attr_name] = getattr(pipe, attr_name)
 
-        return cls(**kwargs)
+        return cls(**block_kwargs)
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -1160,21 +1165,50 @@ class InputStep(PipelineBlock):
         return pipeline, state
 
 
-from ..utils import is_compiled_module
-from ..models import MultiControlNetModel, ControlNetModel
 class ControlNetStep(PipelineBlock):
 
-    def __init__(self, controlnet: ControlNetModel):
-        super().__init__(controlnet=controlnet)
+    required_components = ["controlnet"]
+    required_auxiliaries = ["control_image_processor"]
 
+    def __init__(self, controlnet: ControlNetModel, control_image_processor=None, vae_scale_factor: float = 8.0):
+        if control_image_processor is None:
+            control_image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor, do_normalize=False, do_convert_rgb=True)
+        super().__init__(controlnet=controlnet, control_image_processor=control_image_processor, vae_scale_factor=vae_scale_factor)
+    
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("control_image", None),
+            ("control_guidance_start", 0.0),
+            ("control_guidance_end", 1.0),
+            ("controlnet_conditioning_scale", 1.0),
+            ("guess_mode", False),
+            ("num_images_per_prompt", 1),
+            ("guidance_scale", 5.0),
+            ("width", None),
+            ("height", None),
+        ]
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size", "timesteps"]
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["controlnet_keep", "controlnet_image", "controlnet_conditioning_scale", "guess_mode"]
+
+    
+    @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-
-        control_guide_start = state.get_input("control_guide_start")
-        control_guide_end = state.get_input("control_guide_end")
+        control_image = state.get_input("control_image")
+        control_guidance_start = state.get_input("control_guidance_start")
+        control_guidance_end = state.get_input("control_guidance_end")
         controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
         guess_mode = state.get_input("guess_mode")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
         guidance_scale = state.get_input("guidance_scale")
+        width = state.get_input("width")
+        height = state.get_input("height")
 
         batch_size = state.get_intermediate("batch_size")
         timesteps = state.get_intermediate("timesteps")
@@ -1210,8 +1244,8 @@ class ControlNetStep(PipelineBlock):
 
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
-            image = pipeline.prepare_controlnet_image(
-                image=image,
+            control_image = pipeline.prepare_control_image(
+                image=control_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -1221,13 +1255,12 @@ class ControlNetStep(PipelineBlock):
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-            height, width = image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
-            images = []
+            control_images = []
 
-            for image_ in image:
-                image_ = pipeline.prepare_controlnet_image(
-                    image=image_,
+            for control_image_ in control_image:
+                control_image = pipeline.prepare_control_image(
+                    image=control_image_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -1238,10 +1271,9 @@ class ControlNetStep(PipelineBlock):
                     guess_mode=guess_mode,
                 )
 
-                images.append(image_)
+                control_images.append(control_image)
 
-            image = images
-            height, width = image[0].shape[-2:]
+            control_image = control_images
         else:
             assert False
 
@@ -1253,6 +1285,13 @@ class ControlNetStep(PipelineBlock):
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+        
+
+        state.add_intermediate("controlnet_keep", controlnet_keep)
+        state.add_intermediate("control_image", control_image)
+        state.add_intermediate("controlnet_conditioning_scale", controlnet_conditioning_scale)
+        state.add_intermediate("guess_mode", guess_mode)
+
 
         return pipeline, state
 
@@ -2035,6 +2074,155 @@ class DenoiseStep(PipelineBlock):
         return pipeline, state
 
 
+class ControlNetDenoiseStep(PipelineBlock):
+    required_components = ["unet", "controlnet", "scheduler"]
+    required_auxiliaries = ["guider"]
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            ("guidance_scale", 5.0),
+            ("guidance_rescale", 0.0),
+            ("cross_attention_kwargs", None),
+            ("generator", None),
+            ("eta", 0.0),
+        ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return [
+            "latents",
+            "timesteps",
+            "num_inference_steps",
+            "add_text_embeds",
+            "add_time_ids",
+            "timestep_cond",
+            "prompt_embeds",
+            "guess_mode",
+            "controlnet_conditioning_scale",
+            "controlnet_keep",
+            "control_image",
+        ]
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return ["latents"]
+
+    def __init__(self, unet=None, controlnet=None, scheduler=None, guider=None):
+        if guider is None:
+            guider = CFGGuider()
+        super().__init__(unet=unet, controlnet=controlnet, scheduler=scheduler, guider=guider)
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        guidance_scale = state.get_input("guidance_scale")
+        guidance_rescale = state.get_input("guidance_rescale")
+        cross_attention_kwargs = state.get_input("cross_attention_kwargs")
+        generator = state.get_input("generator")
+        eta = state.get_input("eta")
+
+        latents = state.get_intermediate("latents")
+        timesteps = state.get_intermediate("timesteps")
+        num_inference_steps = state.get_intermediate("num_inference_steps")
+
+        add_text_embeds = state.get_intermediate("add_text_embeds")
+        add_time_ids = state.get_intermediate("add_time_ids")
+        timestep_cond = state.get_intermediate("timestep_cond")
+        prompt_embeds = state.get_intermediate("prompt_embeds")
+        guess_mode = state.get_intermediate("guess_mode")
+        controlnet_conditioning_scale = state.get_intermediate("controlnet_conditioning_scale")
+        controlnet_keep = state.get_intermediate("controlnet_keep")
+        control_image = state.get_intermediate("control_image")
+
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = pipeline.prepare_extra_step_kwargs(generator, eta)
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * pipeline.scheduler.order, 0)
+
+        with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = pipeline.guider.prepare_inputs_for_cfg(
+                    latents, latents, do_classifier_free_guidance
+                )
+                latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
+                # predict the noise residual
+                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+                # controlnet(s) inference
+                if guess_mode and do_classifier_free_guidance:
+                    # Infer ControlNet only for the conditional batch.
+                    control_model_input = latents
+                    control_model_input = pipeline.scheduler.scale_model_input(control_model_input, t)
+                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                    controlnet_added_cond_kwargs = {
+                        "text_embeds": add_text_embeds.chunk(2)[1],
+                        "time_ids": add_time_ids.chunk(2)[1],
+                    }
+                else:
+                    control_model_input = latent_model_input
+                    controlnet_prompt_embeds = prompt_embeds
+                    controlnet_added_cond_kwargs = added_cond_kwargs
+
+                if isinstance(controlnet_keep[i], list):
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                else:
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+                down_block_res_samples, mid_block_res_sample = pipeline.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=control_image,
+                    conditioning_scale=cond_scale,
+                    guess_mode=guess_mode,
+                    added_cond_kwargs=controlnet_added_cond_kwargs,
+                    return_dict=False,
+                )
+
+                if guess_mode and do_classifier_free_guidance:
+                    # Inferred ControlNet only for the conditional batch.
+                    # To apply the output of ControlNet to both the unconditional and conditional batches,
+                    # add 0 to the unconditional batch to keep it unchanged.
+                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+        
+                noise_pred = pipeline.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    timestep_cond=timestep_cond,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
+                    return_dict=False,
+                )[0]
+                # perform guidance
+                noise_pred = pipeline.guider.apply_guidance(
+                    noise_pred, guidance_scale, do_classifier_free_guidance, guidance_rescale
+                )
+                # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
+                latents = pipeline.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0):
+                    progress_bar.update()
+
+        state.add_intermediate("latents", latents)
+
+        return pipeline, state
+
+
+
+
 class DecodeLatentsStep(PipelineBlock):
     optional_components = ["vae"]
     required_auxiliaries = ["image_processor"]
@@ -2155,7 +2343,7 @@ class CustomPipelineBuilder:
             raise ValueError(f"Pipeline class {pipeline_class} not supported")
         self.pipeline_blocks = []
         self.pipeline.builder = self
-
+    
     def add_blocks(self, pipeline_blocks: Union[PipelineBlock, List[PipelineBlock]]):
         if not isinstance(pipeline_blocks, list):
             pipeline_blocks = [pipeline_blocks]
@@ -2224,9 +2412,14 @@ class CustomPipelineBuilder:
         # Run the pipeline
         with torch.no_grad():
             for block in self.pipeline_blocks:
-                pipeline, state = block(pipeline, state)
+                try:
+                    pipeline, state = block(pipeline, state)
+                except Exception as e:
+                    error_msg = f"Error in block: ({block.__class__.__name__}):\n"
+                    logger.error(error_msg)
+                    raise  
 
-        return state
+        return state    
 
     def run_pipeline(self, **kwargs):
         state = PipelineState()
