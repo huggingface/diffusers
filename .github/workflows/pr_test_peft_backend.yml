@@ -93,11 +93,12 @@ jobs:
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
-            python -m pip install -U peft@git+https://github.com/huggingface/peft.git
+            python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
             python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
             pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         else
-            python -m uv pip install -U peft transformers accelerate
+            python -m uv pip install -U peft --no-deps
+            python -m uv pip install -U transformers accelerate
         fi
 
     - name: Environment
