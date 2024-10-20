@@ -533,7 +533,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def get_schedule_shifted(self, alpha_prod, scale_factor=None):
         if (scale_factor is not None) and (scale_factor > 1):  # rescale noise schedule
-            scale_factor = scale_factor ** self.schedule_shifted_power
+            scale_factor = scale_factor**self.schedule_shifted_power
             snr = alpha_prod / (1 - alpha_prod)
             scaled_snr = snr / scale_factor
             alpha_prod = 1 / (1 + 1 / scaled_snr)
@@ -641,10 +641,7 @@ class MatryoshkaDDIMScheduler(SchedulerMixin, ConfigMixin):
         # 4. Clip or threshold "predicted x_0"
         if self.config.thresholding:
             if len(model_output) > 1:
-                pred_original_sample = [
-                    self._threshold_sample(p_o_s)
-                    for p_o_s in pred_original_sample
-                ]
+                pred_original_sample = [self._threshold_sample(p_o_s) for p_o_s in pred_original_sample]
             else:
                 pred_original_sample = self._threshold_sample(pred_original_sample)
         elif self.config.clip_sample:
