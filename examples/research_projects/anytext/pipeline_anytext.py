@@ -33,7 +33,6 @@ from embedding_manager import EmbeddingManager
 from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
 from PIL import Image, ImageDraw, ImageFont
 from recognizer import TextRecognizer, create_predictor
-from safetensors.torch import load_file
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -410,9 +409,6 @@ class AuxiliaryLatentModule(nn.Module):
     def __init__(
         self,
         font_path,
-        glyph_channels=1,
-        position_channels=1,
-        model_channels=320,
         vae=None,
         device="cpu",
         use_fp16=False,
@@ -422,56 +418,7 @@ class AuxiliaryLatentModule(nn.Module):
         self.use_fp16 = use_fp16
         self.device = device
 
-        self.glyph_block = nn.Sequential(
-            nn.Conv2d(glyph_channels, 8, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(8, 8, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(8, 16, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(16, 16, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(32, 32, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(96, 96, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-        )
-
-        self.position_block = nn.Sequential(
-            nn.Conv2d(position_channels, 8, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(8, 8, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(8, 16, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(16, 16, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(32, 32, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(32, 64, 3, padding=1, stride=2),
-            nn.SiLU(),
-        )
-
         self.vae = vae.eval() if vae is not None else None
-
-        self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
-
-        self.glyph_block.load_state_dict(load_file("glyph_block.safetensors", device=str(self.device)))
-        self.position_block.load_state_dict(load_file("position_block.safetensors", device=str(self.device)))
-        self.fuse_block.load_state_dict(load_file("fuse_block.safetensors", device=str(self.device)))
-
-        if use_fp16:
-            self.glyph_block = self.glyph_block.to(dtype=torch.float16)
-            self.position_block = self.position_block.to(dtype=torch.float16)
-            self.fuse_block = self.fuse_block.to(dtype=torch.float16)
 
     @torch.no_grad()
     def forward(
@@ -518,11 +465,8 @@ class AuxiliaryLatentModule(nn.Module):
 
         glyphs = torch.cat(text_info["glyphs"], dim=1).sum(dim=1, keepdim=True)
         positions = torch.cat(text_info["positions"], dim=1).sum(dim=1, keepdim=True)
-        enc_glyph = self.glyph_block(glyphs)
-        enc_pos = self.position_block(positions)
-        guided_hint = self.fuse_block(torch.cat([enc_glyph, enc_pos, text_info["masked_x"]], dim=1))
 
-        return guided_hint
+        return glyphs, positions, text_info
 
     def check_channels(self, image):
         channels = image.shape[2] if len(image.shape) == 3 else 1

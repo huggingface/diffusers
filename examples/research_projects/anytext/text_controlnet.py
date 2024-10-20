@@ -14,7 +14,6 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from diffusers.configuration_utils import register_to_config
@@ -40,37 +39,67 @@ class AnyTextControlNetConditioningEmbedding(nn.Module):
 
     def __init__(
         self,
-        conditioning_embedding_channels: int,
-        conditioning_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+        glyph_channels=1,
+        position_channels=1,
+        model_channels=320,
     ):
         super().__init__()
 
-        self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
-
-        self.blocks = nn.ModuleList([])
-
-        for i in range(len(block_out_channels) - 1):
-            channel_in = block_out_channels[i]
-            channel_out = block_out_channels[i + 1]
-            self.blocks.append(nn.Conv2d(channel_in, channel_in, kernel_size=3, padding=1))
-            self.blocks.append(nn.Conv2d(channel_in, channel_out, kernel_size=3, padding=1, stride=2))
-
-        self.conv_out = zero_module(
-            nn.Conv2d(block_out_channels[-1], conditioning_embedding_channels, kernel_size=3, padding=1)
+        self.glyph_block = nn.Sequential(
+            nn.Conv2d(glyph_channels, 8, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(8, 8, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(8, 16, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(16, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(32, 96, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(96, 96, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(96, 256, 3, padding=1, stride=2),
+            nn.SiLU(),
         )
 
-    def forward(self, conditioning):
-        embedding = self.conv_in(conditioning)
-        embedding = F.silu(embedding)
+        self.position_block = nn.Sequential(
+            nn.Conv2d(position_channels, 8, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(8, 8, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(8, 16, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(16, 16, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
+            nn.SiLU(),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(32, 64, 3, padding=1, stride=2),
+            nn.SiLU(),
+        )
 
-        for block in self.blocks:
-            embedding = block(embedding)
-            embedding = F.silu(embedding)
+        self.fuse_block = nn.Conv2d(256 + 64 + 4, model_channels, 3, padding=1)
 
-        embedding = self.conv_out(embedding)
+        # self.glyph_block.load_state_dict(load_file("glyph_block.safetensors", device=str(self.device)))
+        # self.position_block.load_state_dict(load_file("position_block.safetensors", device=str(self.device)))
+        # self.fuse_block.load_state_dict(load_file("fuse_block.safetensors", device=str(self.device)))
 
-        return embedding
+        # if use_fp16:
+        #     self.glyph_block = self.glyph_block.to(dtype=torch.float16)
+        #     self.position_block = self.position_block.to(dtype=torch.float16)
+        #     self.fuse_block = self.fuse_block.to(dtype=torch.float16)
+
+    def forward(self, glyphs, positions, text_info):
+        glyph_embedding = self.glyph_block(glyphs)
+        position_embedding = self.position_block(positions)
+        guided_hint = self.fuse_block(torch.cat([glyph_embedding, position_embedding, text_info["masked_x"]], dim=1))
+
+        return guided_hint
 
 
 class AnyTextControlNetModel(ControlNetModel):
