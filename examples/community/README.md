@@ -4362,7 +4362,7 @@ pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-model
 
 prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
 prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
-image = pipe(prompt=prompt, num_inference_steps=50).images
+image = pipe(prompt, num_inference_steps=50).images
 make_image_grid(image, rows=1, cols=len(image))
 
 # pipe.change_nesting_level(<int>)  # 0, 1, or 2

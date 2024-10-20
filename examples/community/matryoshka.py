@@ -107,15 +107,16 @@ EXAMPLE_DOC_STRING = """
 
         >>> # nesting_level=0 -> 64x64; nesting_level=1 -> 256x256 - 64x64; nesting_level=2 -> 1024x1024 - 256x256 - 64x64
         >>> pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
-        >>>                                          custom_pipeline="matryoshka").to("cuda")
+        ...                                         nesting_level=0,
+        ...                                         trust_remote_code=False,  # One needs to give permission for this code to run
+        ...                                         ).to("cuda")
 
         >>> prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
         >>> prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
-        >>> negative_prompt = "deformed, mutated, ugly, disfigured, blur, blurry, noise, noisy"
-        >>> image = pipe(prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=50).images
+        >>> image = pipe(prompt, num_inference_steps=50).images
         >>> make_image_grid(image, rows=1, cols=len(image))
 
-        >>> pipe.change_nesting_level(<int>)  # 0, 1, or 2
+        >>> # pipe.change_nesting_level(<int>)  # 0, 1, or 2
         >>> # 50+, 100+, and 250+ num_inference_steps are recommended for nesting levels 0, 1, and 2 respectively.
         ```
 """
