@@ -25,18 +25,18 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 from ..configuration_utils import ConfigMixin
 from ..image_processor import VaeImageProcessor
 from ..loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ..models import ImageProjection, ControlNetModel
+from ..models import ControlNetModel, ImageProjection
 from ..models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ..models.lora import adjust_lora_scale_text_encoder
 from ..utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..utils.torch_utils import randn_tensor, is_compiled_module
+from ..utils.torch_utils import is_compiled_module, randn_tensor
+from .controlnet.multicontrolnet import MultiControlNetModel
 from .pipeline_loading_utils import _fetch_class_library_tuple
 from .pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
     StableDiffusionXLPipelineOutput,
 )
-from .controlnet.multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1072,7 +1072,11 @@ class PipelineBlock:
         # add components
         expected_components = set(cls.required_components + cls.optional_components)
         # - components that are passed in kwargs
-        components_to_add = {component_name: kwargs.pop(component_name) for component_name in expected_components if component_name in kwargs}
+        components_to_add = {
+            component_name: kwargs.pop(component_name)
+            for component_name in expected_components
+            if component_name in kwargs
+        }
         # - components that are in the pipeline
         for component_name, component in pipe.components.items():
             if component_name in expected_components and component_name not in components_to_add:
@@ -1091,7 +1095,11 @@ class PipelineBlock:
         init_params = inspect.signature(cls.__init__).parameters
         # modules info are also registered in the config as tuples, e.g. {'tokenizer': ('transformers', 'CLIPTokenizer')}
         # we need to exclude them for block_kwargs otherwise it will override the actual module
-        expected_configs = {k for k in pipe.config.keys() if k in init_params and k not in expected_components and k not in cls.required_auxiliaries}
+        expected_configs = {
+            k
+            for k in pipe.config.keys()
+            if k in init_params and k not in expected_components and k not in cls.required_auxiliaries
+        }
 
         for config_name in expected_configs:
             if config_name not in block_kwargs:
@@ -1101,13 +1109,10 @@ class PipelineBlock:
                 else:
                     # - configs that are in the pipeline
                     block_kwargs[config_name] = pipe.config[config_name]
-        
 
         # Add any remaining relevant pipeline attributes
         for attr_name in dir(pipe):
-            if (attr_name not in block_kwargs
-                and attr_name in init_params
-            ):
+            if attr_name not in block_kwargs and attr_name in init_params:
                 block_kwargs[attr_name] = getattr(pipe, attr_name)
 
         return cls(**block_kwargs)
@@ -1161,137 +1166,6 @@ class InputStep(PipelineBlock):
             batch_size = prompt_embeds.shape[0]
 
         state.add_intermediate("batch_size", batch_size)
-
-        return pipeline, state
-
-
-class ControlNetStep(PipelineBlock):
-
-    required_components = ["controlnet"]
-    required_auxiliaries = ["control_image_processor"]
-
-    def __init__(self, controlnet: ControlNetModel, control_image_processor=None, vae_scale_factor: float = 8.0):
-        if control_image_processor is None:
-            control_image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor, do_normalize=False, do_convert_rgb=True)
-        super().__init__(controlnet=controlnet, control_image_processor=control_image_processor, vae_scale_factor=vae_scale_factor)
-    
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("control_image", None),
-            ("control_guidance_start", 0.0),
-            ("control_guidance_end", 1.0),
-            ("controlnet_conditioning_scale", 1.0),
-            ("guess_mode", False),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("width", None),
-            ("height", None),
-        ]
-    
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "timesteps"]
-    
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["controlnet_keep", "controlnet_image", "controlnet_conditioning_scale", "guess_mode"]
-
-    
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        control_image = state.get_input("control_image")
-        control_guidance_start = state.get_input("control_guidance_start")
-        control_guidance_end = state.get_input("control_guidance_end")
-        controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
-        guess_mode = state.get_input("guess_mode")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        guidance_scale = state.get_input("guidance_scale")
-        width = state.get_input("width")
-        height = state.get_input("height")
-
-        batch_size = state.get_intermediate("batch_size")
-        timesteps = state.get_intermediate("timesteps")
-
-        do_classifier_free_guidance = guidance_scale > 1.0
-        device = pipeline._execution_device
-
-
-        controlnet = pipeline.controlnet._orig_mod if is_compiled_module(pipeline.controlnet) else pipeline.controlnet
-
-        # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
-            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
-        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
-            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = (
-                mult * [control_guidance_start],
-                mult * [control_guidance_end],
-            )
-
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
-
-        global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, ControlNetModel)
-            else controlnet.nets[0].config.global_pool_conditions
-        )
-        guess_mode = guess_mode or global_pool_conditions
-
-
-        # 4. Prepare image
-        if isinstance(controlnet, ControlNetModel):
-            control_image = pipeline.prepare_control_image(
-                image=control_image,
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=controlnet.dtype,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-                guess_mode=guess_mode,
-            )
-        elif isinstance(controlnet, MultiControlNetModel):
-            control_images = []
-
-            for control_image_ in control_image:
-                control_image = pipeline.prepare_control_image(
-                    image=control_image_,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    do_classifier_free_guidance=do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                )
-
-                control_images.append(control_image)
-
-            control_image = control_images
-        else:
-            assert False
-
-        # 7.1 Create tensor stating which controlnets to keep
-        controlnet_keep = []
-        for i in range(len(timesteps)):
-            keeps = [
-                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
-                for s, e in zip(control_guidance_start, control_guidance_end)
-            ]
-            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
-        
-
-        state.add_intermediate("controlnet_keep", controlnet_keep)
-        state.add_intermediate("control_image", control_image)
-        state.add_intermediate("controlnet_conditioning_scale", controlnet_conditioning_scale)
-        state.add_intermediate("guess_mode", guess_mode)
-
 
         return pipeline, state
 
@@ -2076,11 +1950,17 @@ class DenoiseStep(PipelineBlock):
 
 class ControlNetDenoiseStep(PipelineBlock):
     required_components = ["unet", "controlnet", "scheduler"]
-    required_auxiliaries = ["guider"]
+    required_auxiliaries = ["guider", "control_image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
+            ("control_image", None),
+            ("control_guidance_start", 0.0),
+            ("control_guidance_end", 1.0),
+            ("controlnet_conditioning_scale", 1.0),
+            ("guess_mode", False),
+            ("num_images_per_prompt", 1),
             ("guidance_scale", 5.0),
             ("guidance_rescale", 0.0),
             ("cross_attention_kwargs", None),
@@ -2092,6 +1972,7 @@ class ControlNetDenoiseStep(PipelineBlock):
     def intermediates_inputs(self) -> List[str]:
         return [
             "latents",
+            "batch_size",
             "timesteps",
             "num_inference_steps",
             "add_text_embeds",
@@ -2108,10 +1989,27 @@ class ControlNetDenoiseStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, unet=None, controlnet=None, scheduler=None, guider=None):
+    def __init__(
+        self,
+        unet=None,
+        controlnet=None,
+        scheduler=None,
+        guider=None,
+        control_image_processor=None,
+        vae_scale_factor=8.0,
+    ):
         if guider is None:
             guider = CFGGuider()
-        super().__init__(unet=unet, controlnet=controlnet, scheduler=scheduler, guider=guider)
+        if control_image_processor is None:
+            control_image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+        super().__init__(
+            unet=unet,
+            controlnet=controlnet,
+            scheduler=scheduler,
+            guider=guider,
+            control_image_processor=control_image_processor,
+            vae_scale_factor=vae_scale_factor,
+        )
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
@@ -2120,7 +2018,14 @@ class ControlNetDenoiseStep(PipelineBlock):
         cross_attention_kwargs = state.get_input("cross_attention_kwargs")
         generator = state.get_input("generator")
         eta = state.get_input("eta")
+        control_image = state.get_input("control_image")
+        control_guidance_start = state.get_input("control_guidance_start")
+        control_guidance_end = state.get_input("control_guidance_end")
+        controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
+        guess_mode = state.get_input("guess_mode")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
 
+        batch_size = state.get_intermediate("batch_size")
         latents = state.get_intermediate("latents")
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
@@ -2129,12 +2034,82 @@ class ControlNetDenoiseStep(PipelineBlock):
         add_time_ids = state.get_intermediate("add_time_ids")
         timestep_cond = state.get_intermediate("timestep_cond")
         prompt_embeds = state.get_intermediate("prompt_embeds")
-        guess_mode = state.get_intermediate("guess_mode")
-        controlnet_conditioning_scale = state.get_intermediate("controlnet_conditioning_scale")
-        controlnet_keep = state.get_intermediate("controlnet_keep")
-        control_image = state.get_intermediate("control_image")
 
         do_classifier_free_guidance = guidance_scale > 1.0
+        device = pipeline._execution_device
+
+        height, width = latents.shape[-2:]
+        height = height * pipeline.vae_scale_factor
+        width = width * pipeline.vae_scale_factor
+
+        # prepare controlnet inputs
+        controlnet = pipeline.controlnet._orig_mod if is_compiled_module(pipeline.controlnet) else pipeline.controlnet
+
+        # align format for control guidance
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
+            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
+
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+
+        global_pool_conditions = (
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetModel)
+            else controlnet.nets[0].config.global_pool_conditions
+        )
+        guess_mode = guess_mode or global_pool_conditions
+
+        # 4. Prepare image
+        if isinstance(controlnet, ControlNetModel):
+            control_image = pipeline.prepare_control_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+        elif isinstance(controlnet, MultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image = pipeline.prepare_control_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                control_images.append(control_image)
+
+            control_image = control_images
+        else:
+            assert False
+
+        # 7.1 Create tensor stating which controlnets to keep
+        controlnet_keep = []
+        for i in range(len(timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = pipeline.prepare_extra_step_kwargs(generator, eta)
@@ -2189,7 +2164,7 @@ class ControlNetDenoiseStep(PipelineBlock):
                     # add 0 to the unconditional batch to keep it unchanged.
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
-        
+
                 noise_pred = pipeline.unet(
                     latent_model_input,
                     t,
@@ -2219,8 +2194,6 @@ class ControlNetDenoiseStep(PipelineBlock):
         state.add_intermediate("latents", latents)
 
         return pipeline, state
-
-
 
 
 class DecodeLatentsStep(PipelineBlock):
@@ -2343,7 +2316,7 @@ class CustomPipelineBuilder:
             raise ValueError(f"Pipeline class {pipeline_class} not supported")
         self.pipeline_blocks = []
         self.pipeline.builder = self
-    
+
     def add_blocks(self, pipeline_blocks: Union[PipelineBlock, List[PipelineBlock]]):
         if not isinstance(pipeline_blocks, list):
             pipeline_blocks = [pipeline_blocks]
@@ -2414,12 +2387,12 @@ class CustomPipelineBuilder:
             for block in self.pipeline_blocks:
                 try:
                     pipeline, state = block(pipeline, state)
-                except Exception as e:
+                except Exception:
                     error_msg = f"Error in block: ({block.__class__.__name__}):\n"
                     logger.error(error_msg)
-                    raise  
+                    raise
 
-        return state    
+        return state
 
     def run_pipeline(self, **kwargs):
         state = PipelineState()
