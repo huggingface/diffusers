@@ -80,10 +80,12 @@ else:
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
+            "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
             "AutoencoderTiny",
+            "AllegroTransformer3DModel",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
             "ConsistencyDecoderVAE",
@@ -237,6 +239,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(
         [
+            "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
             "AmusedImg2ImgPipeline",
@@ -558,7 +561,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
+            AllegroTransformer3DModel,
             AutoencoderKL,
+            AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
@@ -697,6 +702,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipelines import (
+            AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
             AmusedImg2ImgPipeline,

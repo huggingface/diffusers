@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from ..utils import is_torch_version
 from .activations import get_activation
 from .embeddings import (
+    AllegroCombinedTimestepSizeEmbeddings,
     CombinedTimestepLabelEmbeddings,
     PixArtAlphaCombinedTimestepSizeEmbeddings,
 )
@@ -353,6 +354,41 @@ class LuminaLayerNormContinuous(nn.Module):
             x = self.linear_2(x)
 
         return x
+
+
+class AllegroAdaLayerNormSingle(nn.Module):
+    r"""
+    Norm layer adaptive layer norm single (adaLN-single).
+
+    As proposed in PixArt-Alpha (see: https://arxiv.org/abs/2310.00426; Section 2.3).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        use_additional_conditions (`bool`): To use additional conditions for normalization or not.
+    """
+
+    def __init__(self, embedding_dim: int, use_additional_conditions: bool = False):
+        super().__init__()
+
+        self.emb = AllegroCombinedTimestepSizeEmbeddings(
+            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
+        )
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        added_cond_kwargs: Dict[str, torch.Tensor] = None,
+        batch_size: int = None,
+        hidden_dtype: Optional[torch.dtype] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # No modulation happening here.
+        embedded_timestep = self.emb(
+            timestep, batch_size=batch_size, hidden_dtype=hidden_dtype, resolution=None, aspect_ratio=None
+        )
+        return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
 
 class CogView3PlusAdaLayerNormZeroTextImage(nn.Module):
