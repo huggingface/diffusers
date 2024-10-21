@@ -312,6 +312,35 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
 
+    def test_bnb_4bit_raises_warning_when_types_mismatch(self):
+        r"""
+        Test if loading with a different compute dtype raises a warning.
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            bnb_4bit_compute_dtype = torch.float16
+            requested_torch_dtype = torch.bfloat16
+
+            nf4_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=bnb_4bit_compute_dtype,
+            )
+            model_4bit = SD3Transformer2DModel.from_pretrained(
+                self.model_name, subfolder="transformer", quantization_config=nf4_config
+            )
+            model_4bit.save_pretrained(tmpdirname)
+            del model_4bit
+
+            logger = logging.get_logger("diffusers.quantizers.bitsandbytes.bnb_quantizer")
+            logger.setLevel(30)
+            with CaptureLogger(logger) as cap_logger:
+                _ = SD3Transformer2DModel.from_pretrained(tmpdirname, torch_dtype=requested_torch_dtype)
+
+            assert (
+                f"bnb_4bit_compute_dtype was set as {bnb_4bit_compute_dtype}" in cap_logger.out
+                and f"{requested_torch_dtype}" in cap_logger.out
+            )
+
 
 class BnB4BitTrainingTests(Base4bitTests):
     def setUp(self):
