@@ -342,7 +342,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if self.quantization_config.llm_int8_skip_modules is not None:
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.validate_environment with 4-bit->8-bit
     def validate_environment(self, *args, **kwargs):
         if not torch.cuda.is_available():
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
