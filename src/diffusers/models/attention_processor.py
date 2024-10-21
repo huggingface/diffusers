@@ -2144,6 +2144,19 @@ class XFormersAttnProcessor:
             #   [batch*heads, query_tokens, key_tokens]
             # we do this explicitly because xformers doesn't broadcast the singleton dimension for us.
             _, query_tokens, _ = hidden_states.shape
+            # Pad attention mask to the next multiple of 8 for bfloat16 alignment.
+            if attention_mask.dtype == torch.bfloat16 and attention_mask.shape[-1] % 8 != 0:
+                mask_shape = attention_mask.shape
+                # Create a new mask with padded sequence length.
+                mask = torch.zeros(
+                    (mask_shape[0], mask_shape[1], math.ceil(mask_shape[-1] / 8) * 8),
+                    device=attention_mask.device,
+                    dtype=attention_mask.dtype,
+                )
+                # Copy original attention mask values to the padded mask.
+                mask[:, :, : mask_shape[-1]] = attention_mask
+                # Restore the original shape from the padded mask.
+                attention_mask = mask[:, :, : mask_shape[-1]]
             attention_mask = attention_mask.expand(-1, query_tokens, -1)
 
         if attn.group_norm is not None:
