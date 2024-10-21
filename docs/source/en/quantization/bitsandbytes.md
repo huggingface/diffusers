@@ -131,7 +131,7 @@ from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
 model_4bit = FluxTransformer2DModel.from_pretrained(
-    "sayakpaul/flux.1-dev-nf4-pkg", subfolder="transformer"
+    "hf-internal-testing/flux.1-dev-nf4-pkg", subfolder="transformer"
 )
 ```
 
