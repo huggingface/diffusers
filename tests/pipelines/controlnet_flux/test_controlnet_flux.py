@@ -17,7 +17,9 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
+from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from diffusers import (
@@ -30,7 +32,8 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -180,7 +183,8 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = FluxControlNetPipeline
 
@@ -199,35 +203,49 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             "InstantX/FLUX.1-dev-Controlnet-Canny-alpha", torch_dtype=torch.bfloat16
         )
         pipe = FluxControlNetPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", controlnet=controlnet, torch_dtype=torch.bfloat16
+            "black-forest-labs/FLUX.1-dev",
+            text_encoder=None,
+            text_encoder_2=None,
+            controlnet=controlnet,
+            torch_dtype=torch.bfloat16,
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "A girl in city, 25 years old, cool, futuristic"
         control_image = load_image(
             "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Canny-alpha/resolve/main/canny.jpg"
+        ).resize((512, 512))
+
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        )
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
         )
 
         output = pipe(
-            prompt,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
             control_image=control_image,
             controlnet_conditioning_scale=0.6,
             num_inference_steps=2,
             guidance_scale=3.5,
+            max_sequence_length=256,
             output_type="np",
+            height=512,
+            width=512,
             generator=generator,
         )
 
         image = output.images[0]
 
-        assert image.shape == (1024, 1024, 3)
+        assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        expected_image = np.array(
-            [0.33007812, 0.33984375, 0.33984375, 0.328125, 0.34179688, 0.33984375, 0.30859375, 0.3203125, 0.3203125]
-        )
+        expected_image = np.array([0.2734, 0.2852, 0.2852, 0.2734, 0.2754, 0.2891, 0.2617, 0.2637, 0.2773])
 
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2

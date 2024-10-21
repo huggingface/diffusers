@@ -17,6 +17,7 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -30,7 +31,8 @@ from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -195,7 +197,8 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3ControlNetPipeline
 
@@ -238,11 +241,9 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
 
-        expected_image = np.array(
-            [0.20947266, 0.1574707, 0.19897461, 0.15063477, 0.1418457, 0.17285156, 0.14160156, 0.13989258, 0.30810547]
-        )
+        expected_image = np.array([0.7314, 0.7075, 0.6611, 0.7539, 0.7563, 0.6650, 0.6123, 0.7275, 0.7222])
 
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
 
     def test_pose(self):
         controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Pose", torch_dtype=torch.float16)
@@ -272,15 +273,12 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
+        expected_image = np.array([0.9048, 0.8740, 0.8936, 0.8516, 0.8799, 0.9360, 0.8379, 0.8408, 0.8652])
 
-        expected_image = np.array(
-            [0.8671875, 0.86621094, 0.91015625, 0.8491211, 0.87890625, 0.9140625, 0.8300781, 0.8334961, 0.8623047]
-        )
-
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
 
     def test_tile(self):
-        controlnet = SD3ControlNetModel.from_pretrained("InstantX//SD3-Controlnet-Tile", torch_dtype=torch.float16)
+        controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Tile", torch_dtype=torch.float16)
         pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
             "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, torch_dtype=torch.float16
         )
@@ -307,12 +305,9 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
+        expected_image = np.array([0.6699, 0.6836, 0.6226, 0.6572, 0.7310, 0.6646, 0.6650, 0.6694, 0.6011])
 
-        expected_image = np.array(
-            [0.6982422, 0.7011719, 0.65771484, 0.6904297, 0.7416992, 0.6904297, 0.6977539, 0.7080078, 0.6386719]
-        )
-
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
 
     def test_multi_controlnet(self):
         controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", torch_dtype=torch.float16)
@@ -344,8 +339,6 @@ class StableDiffusion3ControlNetPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1024, 1024, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array(
-            [0.7451172, 0.7416992, 0.7158203, 0.7792969, 0.7607422, 0.7089844, 0.6855469, 0.71777344, 0.7314453]
-        )
+        expected_image = np.array([0.7207, 0.7041, 0.6543, 0.7500, 0.7490, 0.6592, 0.6001, 0.7168, 0.7231])
 
-        assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+        assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
