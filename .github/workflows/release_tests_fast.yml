@@ -139,6 +139,14 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
+        # DeprecatedAttentionBlockTests::test_conversion_when_using_device_map fails 
+        # without this. `DeprecatedAttentionBlockTests` aren't used anyway, so this should
+        # be okay.
+        if [[ "${{ matrix.module }}" != "models" ]]; then
+          PYTEST_ARGS="-n 1 --dist=loadfile"
+        else
+          PYTEST_ARGS=""
+        fi
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
