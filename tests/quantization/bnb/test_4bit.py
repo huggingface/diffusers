@@ -118,6 +118,9 @@ class Base4bitTests(unittest.TestCase):
 
 class BnB4BitBasicTests(Base4bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         # Models
         self.model_fp16 = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", torch_dtype=torch.float16
@@ -232,7 +235,7 @@ class BnB4BitBasicTests(Base4bitTests):
 
     def test_config_from_pretrained(self):
         transformer_4bit = FluxTransformer2DModel.from_pretrained(
-            "sayakpaul/flux.1-dev-nf4-pkg", subfolder="transformer"
+            "hf-internal-testing/flux.1-dev-nf4-pkg", subfolder="transformer"
         )
         linear = get_some_linear_layer(transformer_4bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Params4bit)
@@ -344,6 +347,9 @@ class BnB4BitBasicTests(Base4bitTests):
 
 class BnB4BitTrainingTests(Base4bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -389,6 +395,9 @@ class BnB4BitTrainingTests(Base4bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb4BitTests(Base4bitTests):
     def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -476,8 +485,10 @@ class SlowBnb4BitTests(Base4bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb4BitFluxTests(Base4bitTests):
     def setUp(self) -> None:
-        # TODO: Copy sayakpaul/flux.1-dev-nf4-pkg to testing repo.
-        model_id = "sayakpaul/flux.1-dev-nf4-pkg"
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        model_id = "hf-internal-testing/flux.1-dev-nf4-pkg"
         t5_4bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
         transformer_4bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
         self.pipeline_4bit = DiffusionPipeline.from_pretrained(
