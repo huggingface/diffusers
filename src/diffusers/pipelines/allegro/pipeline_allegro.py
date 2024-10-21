@@ -36,6 +36,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
+from ...models.embeddings import get_3d_rotary_pos_embed_allegro
 from .pipeline_output import AllegroPipelineOutput
 from ...video_processor import VideoProcessor
 
@@ -104,6 +105,25 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
+
+# Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.get_resize_crop_region_for_grid
+def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
+    tw = tgt_width
+    th = tgt_height
+    h, w = src
+    r = h / w
+    if r > (th / tw):
+        resize_height = th
+        resize_width = int(round(th / h * w))
+    else:
+        resize_width = tw
+        resize_height = int(round(tw / w * h))
+
+    crop_top = int(round((th - resize_height) / 2.0))
+    crop_left = int(round((tw - resize_width) / 2.0))
+
+    return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
 
 
 class AllegroPipeline(DiffusionPipeline):
@@ -563,10 +583,51 @@ class AllegroPipeline(DiffusionPipeline):
 
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = 1 / self.vae.config.scaling_factor * latents
-
         frames = self.vae.decode(latents).sample
         frames = frames.permute(0, 2, 1, 3, 4)  # [batch_size, channels, num_frames, height, width]
         return frames
+    
+    def _prepare_rotary_positional_embeddings(
+        self,
+        batch_size: int,
+        height: int,
+        width: int,
+        num_frames: int,
+        device: torch.device,
+    ):
+        attention_head_dim = 96
+        vae_scale_factor_spatial = 8
+        patch_size = 2
+
+        grid_height = height // (vae_scale_factor_spatial * patch_size)
+        grid_width = width // (vae_scale_factor_spatial * patch_size)
+        base_size_width = 1280 // (vae_scale_factor_spatial * patch_size)
+        base_size_height = 720 // (vae_scale_factor_spatial * patch_size)
+
+        grid_crops_coords = get_resize_crop_region_for_grid(
+            (grid_height, grid_width), base_size_width, base_size_height
+        )
+        freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w = get_3d_rotary_pos_embed_allegro(
+            embed_dim=attention_head_dim,
+            crops_coords=grid_crops_coords,
+            grid_size=(grid_height, grid_width),
+            temporal_size=num_frames,
+            interpolation_scale=(self.transformer.config.interpolation_scale_t, self.transformer.config.interpolation_scale_h, self.transformer.config.interpolation_scale_w)
+        )
+
+        grid_t = torch.from_numpy(grid_t).to(device=device, dtype=torch.long)
+        grid_h = torch.from_numpy(grid_h).to(device=device, dtype=torch.long)
+        grid_w = torch.from_numpy(grid_w).to(device=device, dtype=torch.long)
+
+        pos = torch.cartesian_prod(grid_t, grid_h, grid_w)
+        pos = pos.reshape(-1, 3).transpose(0, 1).reshape(3, 1, -1).contiguous().expand(3, batch_size, -1)
+        grid_t, grid_h, grid_w = pos
+
+        freqs_t = (freqs_t[0].to(device=device), freqs_t[1].to(device=device))
+        freqs_h = (freqs_h[0].to(device=device), freqs_h[1].to(device=device))
+        freqs_w = (freqs_w[0].to(device=device), freqs_w[1].to(device=device))
+
+        return (freqs_t, freqs_h, freqs_w), (grid_t, grid_h, grid_w)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -750,6 +811,8 @@ class AllegroPipeline(DiffusionPipeline):
         # 6.1 Prepare micro-conditions.
         added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
 
+        image_rotary_emb = self._prepare_rotary_positional_embeddings(batch_size, height, width, latents.size(2), device)
+
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -778,9 +841,11 @@ class AllegroPipeline(DiffusionPipeline):
                 prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
             if prompt_attention_mask.ndim == 2:
                 prompt_attention_mask = prompt_attention_mask.unsqueeze(1)  # b l -> b 1 l
+            
             # prepare attention_mask.
             # b c t h w -> b t h w
             attention_mask = torch.ones_like(latent_model_input)[:, 0]
+            
             # predict noise model_output
             noise_pred = self.transformer(
                 latent_model_input,
@@ -789,6 +854,7 @@ class AllegroPipeline(DiffusionPipeline):
                 encoder_attention_mask=prompt_attention_mask,
                 timestep=current_timestep,
                 added_cond_kwargs=added_cond_kwargs,
+                image_rotary_emb=image_rotary_emb,
                 return_dict=False,
             )[0]
 
