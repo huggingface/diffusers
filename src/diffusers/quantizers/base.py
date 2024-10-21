@@ -134,7 +134,7 @@ class DiffusersQuantizer(ABC):
         """adjust max_memory argument for infer_auto_device_map() if extra memory is needed for quantization"""
         return max_memory
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",
@@ -152,7 +152,7 @@ class DiffusersQuantizer(ABC):
         """
         takes needed components from state_dict and creates quantized param.
         """
-        if not hasattr(self, "check_quantized_param"):
+        if not hasattr(self, "check_if_quantized_param"):
             raise AttributeError(
                 f"`.create_quantized_param()` method is not supported by quantizer class {self.__class__.__name__}."
             )

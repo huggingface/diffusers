@@ -118,7 +118,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         else:
             raise ValueError(f"Wrong `target_dtype` ({target_dtype}) provided.")
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",
@@ -415,7 +415,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             logger.info("target_dtype {target_dtype} is replaced by `torch.int8` for 8-bit BnB quantization")
         return torch.int8
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",

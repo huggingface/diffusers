@@ -218,7 +218,7 @@ def load_model_dict_into_meta(
             )
 
         if not is_quantized or (
-            not hf_quantizer.check_quantized_param(model, param, param_name, state_dict, param_device=device)
+            not hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
         ):
             if accepts_dtype:
                 set_module_tensor_to_device(model, param_name, device, value=param, **set_module_kwargs)
