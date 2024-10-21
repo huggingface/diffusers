@@ -118,6 +118,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         num_train_timesteps: Optional[int] = None,
+        set_W_to_weight: Optional[bool] = True,
     ):
         super().__init__()
 
@@ -140,7 +141,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         # time
         if time_embedding_type == "fourier":
-            self.time_proj = GaussianFourierProjection(embedding_size=block_out_channels[0], scale=16)
+            self.time_proj = GaussianFourierProjection(embedding_size=block_out_channels[0], scale=16, set_W_to_weight=set_W_to_weight)
             timestep_input_dim = 2 * block_out_channels[0]
         elif time_embedding_type == "positional":
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
