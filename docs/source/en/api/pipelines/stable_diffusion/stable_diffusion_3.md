@@ -56,8 +56,8 @@ image.save("sd3_hello_world.png")
 
 **Note:** Stable Diffusion 3.5 can also be run using the SD3 pipeline, and all mentioned optimizations and techniques apply to it as well. In total there are three official models in the SD3 family:
 - [`stabilityai/stable-diffusion-3-medium-diffusers`](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers)
-- [`stabilityai/stable-diffusion-3.5-medium-diffusers`](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium-diffusers)
-- [`stabilityai/stable-diffusion-3.5-large-diffusers`](https://huggingface.co/stabilityai/stable-diffusion-3.5-large-diffusers)
+- [`stabilityai/stable-diffusion-3.5-large`](https://huggingface.co/stabilityai/stable-diffusion-3-5-large)
+- [`stabilityai/stable-diffusion-3.5-large-turbo`](https://huggingface.co/stabilityai/stable-diffusion-3-5-large-turbo)
 
 ## Memory Optimisations for SD3
 
