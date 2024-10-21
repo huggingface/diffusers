@@ -40,14 +40,17 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 </Tip>
 
 ## StableDiffusion3ControlNetPipeline
+
 [[autodoc]] StableDiffusion3ControlNetPipeline
 	- all
 	- __call__
 
 ## StableDiffusion3ControlNetInpaintingPipeline
-[[autodoc]] pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet_inpainting.StableDiffusion3ControlNetInpaintingPipeline
+
+[[autodoc]] StableDiffusion3ControlNetInpaintingPipeline
 	- all
 	- __call__
 
 ## StableDiffusion3PipelineOutput
+
 [[autodoc]] pipelines.stable_diffusion_3.pipeline_output.StableDiffusion3PipelineOutput
