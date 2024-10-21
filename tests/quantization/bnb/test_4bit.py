@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
+import os
 import tempfile
 import unittest
 
 import numpy as np
+import safetensors.torch
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.utils import logging
@@ -315,34 +317,35 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
 
-    def test_bnb_4bit_raises_warning_when_types_mismatch(self):
+    def test_bnb_4bit_errors_loading_incorrect_state_dict(self):
         r"""
-        Test if loading with a different compute dtype raises a warning.
+        Test if loading with an incorrect state dict raises an error.
         """
         with tempfile.TemporaryDirectory() as tmpdirname:
-            bnb_4bit_compute_dtype = torch.float16
-            requested_torch_dtype = torch.bfloat16
-
-            nf4_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=bnb_4bit_compute_dtype,
-            )
+            nf4_config = BitsAndBytesConfig(load_in_4bit=True)
             model_4bit = SD3Transformer2DModel.from_pretrained(
                 self.model_name, subfolder="transformer", quantization_config=nf4_config
             )
             model_4bit.save_pretrained(tmpdirname)
             del model_4bit
 
-            logger = logging.get_logger("diffusers.quantizers.bitsandbytes.bnb_quantizer")
-            logger.setLevel(30)
-            with CaptureLogger(logger) as cap_logger:
-                _ = SD3Transformer2DModel.from_pretrained(tmpdirname, torch_dtype=requested_torch_dtype)
+            with self.assertRaises(ValueError) as err_context:
+                state_dict = safetensors.torch.load_file(
+                    os.path.join(tmpdirname, "diffusion_pytorch_model.safetensors")
+                )
 
-            assert (
-                f"bnb_4bit_compute_dtype was set as {bnb_4bit_compute_dtype}" in cap_logger.out
-                and f"{requested_torch_dtype}" in cap_logger.out
-            )
+                # corrupt the state dict
+                key_to_target = "context_embedder.weight"  # can be other keys too.
+                compatible_param = state_dict[key_to_target]
+                corrupted_param = torch.randn(compatible_param.shape[0] - 1, 1)
+                state_dict[key_to_target] = bnb.nn.Params4bit(corrupted_param, requires_grad=False)
+                safetensors.torch.save_file(
+                    state_dict, os.path.join(tmpdirname, "diffusion_pytorch_model.safetensors")
+                )
+
+                _ = SD3Transformer2DModel.from_pretrained(tmpdirname)
+
+            assert key_to_target in str(err_context.exception)
 
 
 class BnB4BitTrainingTests(Base4bitTests):

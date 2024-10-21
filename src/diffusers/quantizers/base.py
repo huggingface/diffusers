@@ -157,6 +157,16 @@ class DiffusersQuantizer(ABC):
                 f"`.create_quantized_param()` method is not supported by quantizer class {self.__class__.__name__}."
             )
 
+    def check_quantized_param_shape(self, *args, **kwargs):
+        """
+        checks if the quantized param has expected shape.
+        """
+        if not hasattr(self, "check_quantized_param_shape"):
+            raise AttributeError(
+                f"`.check_quantized_param_shape()` method is not supported by quantizer class {self.__class__.__name__}."
+            )
+        return True
+
     def validate_environment(self, *args, **kwargs):
         """
         This method is used to potentially check for potential conflicts with arguments that are passed in

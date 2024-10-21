@@ -61,7 +61,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
     def validate_environment(self, *args, **kwargs):
-        print("I am here.")
         if not torch.cuda.is_available():
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
@@ -97,17 +96,6 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
                     "https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu "
                     "for more details. "
                 )
-
-        original_compute_dtype = (
-            getattr(torch, self.quantization_config.bnb_4bit_compute_dtype)
-            if isinstance(self.quantization_config.bnb_4bit_compute_dtype, str)
-            else self.quantization_config.bnb_4bit_compute_dtype
-        )
-        requested_torch_dtype = kwargs.get("torch_dtype")
-        if original_compute_dtype != requested_torch_dtype:
-            logger.warning(
-                f"bnb_4bit_compute_dtype was set as {original_compute_dtype}, however requested `torch_dtype` is {requested_torch_dtype}. This can lead to problems. In most cases, these two should be the same."
-            )
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         if target_dtype != torch.int8:
@@ -215,6 +203,16 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             new_value = bnb.nn.Params4bit(new_value, requires_grad=False, **kwargs).to(target_device)
 
         module._parameters[tensor_name] = new_value
+
+    def check_quantized_param_shape(self, param_name, current_param_shape, loaded_param_shape):
+        n = current_param_shape.numel()
+        inferred_shape = (n,) if "bias" in param_name else ((n + 1) // 2, 1)
+        if loaded_param_shape != inferred_shape:
+            raise ValueError(
+                f"Expected the flattened shape of the current param ({param_name}) to be {loaded_param_shape} but is {inferred_shape}."
+            )
+        else:
+            return True
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
