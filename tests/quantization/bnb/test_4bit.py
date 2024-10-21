@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
+import os
 import tempfile
 import unittest
 
 import numpy as np
+import safetensors.torch
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.utils import logging
@@ -118,6 +120,9 @@ class Base4bitTests(unittest.TestCase):
 
 class BnB4BitBasicTests(Base4bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         # Models
         self.model_fp16 = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", torch_dtype=torch.float16
@@ -232,7 +237,7 @@ class BnB4BitBasicTests(Base4bitTests):
 
     def test_config_from_pretrained(self):
         transformer_4bit = FluxTransformer2DModel.from_pretrained(
-            "sayakpaul/flux.1-dev-nf4-pkg", subfolder="transformer"
+            "hf-internal-testing/flux.1-dev-nf4-pkg", subfolder="transformer"
         )
         linear = get_some_linear_layer(transformer_4bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Params4bit)
@@ -312,9 +317,42 @@ class BnB4BitBasicTests(Base4bitTests):
         with self.assertRaises(ValueError):
             _ = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_storage="add")
 
+    def test_bnb_4bit_errors_loading_incorrect_state_dict(self):
+        r"""
+        Test if loading with an incorrect state dict raises an error.
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            nf4_config = BitsAndBytesConfig(load_in_4bit=True)
+            model_4bit = SD3Transformer2DModel.from_pretrained(
+                self.model_name, subfolder="transformer", quantization_config=nf4_config
+            )
+            model_4bit.save_pretrained(tmpdirname)
+            del model_4bit
+
+            with self.assertRaises(ValueError) as err_context:
+                state_dict = safetensors.torch.load_file(
+                    os.path.join(tmpdirname, "diffusion_pytorch_model.safetensors")
+                )
+
+                # corrupt the state dict
+                key_to_target = "context_embedder.weight"  # can be other keys too.
+                compatible_param = state_dict[key_to_target]
+                corrupted_param = torch.randn(compatible_param.shape[0] - 1, 1)
+                state_dict[key_to_target] = bnb.nn.Params4bit(corrupted_param, requires_grad=False)
+                safetensors.torch.save_file(
+                    state_dict, os.path.join(tmpdirname, "diffusion_pytorch_model.safetensors")
+                )
+
+                _ = SD3Transformer2DModel.from_pretrained(tmpdirname)
+
+            assert key_to_target in str(err_context.exception)
+
 
 class BnB4BitTrainingTests(Base4bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -360,6 +398,9 @@ class BnB4BitTrainingTests(Base4bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb4BitTests(Base4bitTests):
     def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -447,8 +488,10 @@ class SlowBnb4BitTests(Base4bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb4BitFluxTests(Base4bitTests):
     def setUp(self) -> None:
-        # TODO: Copy sayakpaul/flux.1-dev-nf4-pkg to testing repo.
-        model_id = "sayakpaul/flux.1-dev-nf4-pkg"
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        model_id = "hf-internal-testing/flux.1-dev-nf4-pkg"
         t5_4bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
         transformer_4bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
         self.pipeline_4bit = DiffusionPipeline.from_pretrained(
