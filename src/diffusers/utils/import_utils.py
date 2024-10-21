@@ -339,6 +339,14 @@ if _imageio_available:
     except importlib_metadata.PackageNotFoundError:
         _imageio_available = False
 
+_is_gguf_available = importlib.util.find_spec("gguf") is not None
+if _is_gguf_available:
+    try:
+        _gguf_version = importlib_metadata.version("gguf")
+        logger.debug(f"Successfully import gguf version {_gguf_version}")
+    except importlib_metadata.PackageNotFoundError:
+        _is_gguf_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -458,6 +466,10 @@ def is_sentencepiece_available():
 
 def is_imageio_available():
     return _imageio_available
+
+
+def is_gguf_available():
+    return _is_gguf_available
 
 
 # docstyle-ignore
@@ -593,6 +605,11 @@ IMAGEIO_IMPORT_ERROR = """
 {0} requires the imageio library and ffmpeg but it was not found in your environment. You can install it with pip: `pip install imageio imageio-ffmpeg`
 """
 
+# docstyle-ignore
+GGUF_IMPORT_ERROR = """
+{0} requires the gguf library but it was not found in your environment. You can install it with pip: `pip install gguf`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -618,6 +635,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
         ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
         ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
+        ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
     ]
 )
 
