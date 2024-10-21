@@ -808,12 +808,10 @@ class AllegroPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 6.1 Prepare micro-conditions.
-        added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
-
+        # 7. Prepare rotary embeddings
         image_rotary_emb = self._prepare_rotary_positional_embeddings(batch_size, height, width, latents.size(2), device)
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         progress_wrap = tqdm.tqdm if verbose else (lambda x: x)
@@ -853,7 +851,6 @@ class AllegroPipeline(DiffusionPipeline):
                 encoder_hidden_states=prompt_embeds,
                 encoder_attention_mask=prompt_attention_mask,
                 timestep=current_timestep,
-                added_cond_kwargs=added_cond_kwargs,
                 image_rotary_emb=image_rotary_emb,
                 return_dict=False,
             )[0]

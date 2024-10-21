@@ -314,14 +314,12 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         interpolation_scale_h: float = 2.0,
         interpolation_scale_w: float = 2.0,
         interpolation_scale_t: float = 2.2,
-        use_additional_conditions: Optional[bool] = None,
         use_rotary_positional_embeddings: bool = True,
         model_max_length: int = 300,
     ):
         super().__init__()
         
         self.inner_dim = num_attention_heads * attention_head_dim
-        self.out_channels = in_channels if out_channels is None else out_channels
         
         interpolation_scale_t = (
             interpolation_scale_t if interpolation_scale_t is not None else ((sample_frames - 1) // 16 + 1) if sample_frames % 2 == 1 else sample_frames // 16
@@ -329,6 +327,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         interpolation_scale_h = interpolation_scale_h if interpolation_scale_h is not None else sample_height / 30
         interpolation_scale_w = interpolation_scale_w if interpolation_scale_w is not None else sample_width / 40
         
+        # 1. Patch embedding
         self.pos_embed = PatchEmbed2D(
             height=sample_height,
             width=sample_width,
@@ -337,9 +336,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             embed_dim=self.inner_dim,
             # pos_embed_type=None,
         )
-        interpolation_scale_thw = (interpolation_scale_t, interpolation_scale_h, interpolation_scale_w)
 
-        # 3. Define transformers blocks, spatial attention
+        # 2. Transformer blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 AllegroTransformerBlock(
@@ -358,19 +356,18 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        # 4. Define output layers
+        # 3. Output projection & norm
         self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
 
-        # 5. PixArt-Alpha blocks.
+        # 4. Timestep embeddings
         self.adaln_single = AllegroAdaLayerNormSingle(self.inner_dim, use_additional_conditions=False)
 
-        self.caption_projection = None
-        if caption_channels is not None:
-            self.caption_projection = PixArtAlphaTextProjection(
-                in_features=caption_channels, hidden_size=self.inner_dim
-            )
+        # 5. Caption projection
+        self.caption_projection = PixArtAlphaTextProjection(
+            in_features=caption_channels, hidden_size=self.inner_dim
+        )
         
         self.gradient_checkpointing = False
 
@@ -382,15 +379,14 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         timestep: Optional[torch.LongTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
-        batch_size, c, frame, h, w = hidden_states.shape
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p_t = self.config.patch_size_temporal
+        p = self.config.patch_size
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
@@ -409,112 +405,61 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             #   (keep = +0,     discard = -10000.0)
             # b, frame+use_image_num, h, w -> a video with images
             # b, 1, h, w -> only images
-            attention_mask = attention_mask.to(self.dtype)
-            attention_mask_vid = attention_mask[:, :frame]  # b, frame, h, w
+            attention_mask = attention_mask.to(hidden_states.dtype)
+            attention_mask = attention_mask[:, :num_frames]  # [batch_size, num_frames, height, width]
 
-            if attention_mask_vid.numel() > 0:
-                attention_mask_vid = attention_mask_vid.unsqueeze(1)  # b 1 t h w
-                attention_mask_vid = F.max_pool3d(attention_mask_vid, kernel_size=(self.config.patch_size_temporal, self.config.patch_size, self.config.patch_size), stride=(self.config.patch_size_temporal, self.config.patch_size, self.config.patch_size))
-                attention_mask_vid = rearrange(attention_mask_vid, 'b 1 t h w -> (b 1) 1 (t h w)') 
+            if attention_mask.numel() > 0:
+                attention_mask = attention_mask.unsqueeze(1)  # [batch_size, 1, num_frames, height, width]
+                attention_mask = F.max_pool3d(attention_mask, kernel_size=(p_t, p, p), stride=(p_t, p, p))
+                attention_mask = attention_mask.flatten(1).view(batch_size, 1, -1)
 
-            attention_mask_vid = (1 - attention_mask_vid.bool().to(self.dtype)) * -10000.0 if attention_mask_vid.numel() > 0 else None
+            attention_mask = (1 - attention_mask.bool().to(hidden_states.dtype)) * -10000.0 if attention_mask.numel() > 0 else None
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 3:  
             # b, 1+use_image_num, l -> a video with images
             # b, 1, l -> only images
             encoder_attention_mask = (1 - encoder_attention_mask.to(self.dtype)) * -10000.0
-            encoder_attention_mask_vid = rearrange(encoder_attention_mask, 'b 1 l -> (b 1) 1 l') if encoder_attention_mask.numel() > 0 else None
+            encoder_attention_mask = rearrange(encoder_attention_mask, 'b 1 l -> (b 1) 1 l') if encoder_attention_mask.numel() > 0 else None
 
         # 1. Input
-        frame = frame // self.config.patch_size_temporal
-        height = hidden_states.shape[-2] // self.config.patch_size
-        width = hidden_states.shape[-1] // self.config.patch_size
+        post_patch_num_frames = num_frames // self.config.patch_size_temporal
+        post_patch_height = height // self.config.patch_size
+        post_patch_width = width // self.config.patch_size
 
-        added_cond_kwargs = {"resolution": None, "aspect_ratio": None} if added_cond_kwargs is None else added_cond_kwargs
-        hidden_states, encoder_hidden_states_vid, timestep_vid, embedded_timestep_vid = self._operate_on_patched_inputs(
-            hidden_states, encoder_hidden_states, timestep, added_cond_kwargs, batch_size,
-        )
+        timestep, embedded_timestep = self.adaln_single(timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype)
+        
+        hidden_states = self.pos_embed(hidden_states)  # TODO(aryan): remove dtype conversion here and move to pipeline if needed
 
-        for _, block in enumerate(self.transformer_blocks):
+        encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, encoder_hidden_states.shape[-1])
+
+        for i, block in enumerate(self.transformer_blocks):
             # TODO(aryan): Implement gradient checkpointing
-            block: AllegroTransformerBlock
-            hidden_states = block.forward(
+            hidden_states = block(
                 hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states_vid,
-                temb=timestep_vid,
-                attention_mask=attention_mask_vid,
-                encoder_attention_mask=encoder_attention_mask_vid,
+                encoder_hidden_states=encoder_hidden_states,
+                temb=timestep,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
                 image_rotary_emb=image_rotary_emb,
             )
 
         # 3. Output
-        output = None 
-        if hidden_states is not None:
-            output = self._get_output_for_patched_inputs(
-                hidden_states=hidden_states,
-                timestep=timestep_vid,
-                class_labels=class_labels,
-                embedded_timestep=embedded_timestep_vid,
-                num_frames=frame, 
-                height=height,
-                width=width,
-            )  # b c t h w
+        shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
+        hidden_states = self.norm_out(hidden_states)
+
+        # Modulation
+        hidden_states = hidden_states * (1 + scale) + shift
+        hidden_states = self.proj_out(hidden_states)
+        hidden_states = hidden_states.squeeze(1)
+
+        # unpatchify
+        hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p, p, -1)
+        hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
+        output = hidden_states.reshape(batch_size, -1, num_frames, height, width)
 
         if not return_dict:
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
-
-    def _operate_on_patched_inputs(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, timestep: torch.LongTensor, added_cond_kwargs: Dict[str, Any], batch_size: int):
-        hidden_states = self.pos_embed(hidden_states.to(self.dtype))  # TODO(aryan): remove dtype conversion here and move to pipeline if needed
-        
-        timestep_vid = None
-        embedded_timestep_vid = None
-        encoder_hidden_states_vid = None
-
-        if self.adaln_single is not None:
-            if self.config.use_additional_conditions and added_cond_kwargs is None:
-                raise ValueError(
-                    "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
-                )
-            timestep, embedded_timestep = self.adaln_single(
-                timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=self.dtype
-            )  # b 6d, b d
-
-            timestep_vid = timestep
-            embedded_timestep_vid = embedded_timestep
-
-        if self.caption_projection is not None:
-            encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # b, 1+use_image_num, l, d or b, 1, l, d
-            encoder_hidden_states_vid = rearrange(encoder_hidden_states[:, :1], 'b 1 l d -> (b 1) l d')
-
-        return hidden_states, encoder_hidden_states_vid, timestep_vid, embedded_timestep_vid
-
-    def _get_output_for_patched_inputs(
-        self, hidden_states, timestep, class_labels, embedded_timestep, num_frames, height=None, width=None
-    ) -> torch.Tensor:
-        if self.config.norm_type != "ada_norm_single":
-            conditioning = self.transformer_blocks[0].norm1.emb(
-                timestep, class_labels, hidden_dtype=self.dtype
-            )
-            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-            hidden_states = self.proj_out_2(hidden_states)
-        elif self.config.norm_type == "ada_norm_single":
-            shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states)
-            # Modulation
-            hidden_states = hidden_states * (1 + scale) + shift
-            hidden_states = self.proj_out(hidden_states)
-            hidden_states = hidden_states.squeeze(1)
-
-        # unpatchify
-        if self.adaln_single is None:
-            height = width = int(hidden_states.shape[1] ** 0.5)
-        hidden_states = hidden_states.reshape(
-            shape=(-1, num_frames, height, width, self.config.patch_size_temporal, self.config.patch_size, self.config.patch_size, self.out_channels)
-        )
-        hidden_states = torch.einsum("nthwopqc->nctohpwq", hidden_states)
-        output = hidden_states.reshape(-1, self.out_channels, num_frames * self.config.patch_size_temporal, height * self.config.patch_size, width * self.config.patch_size)
-        return output
