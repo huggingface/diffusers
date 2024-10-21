@@ -330,6 +330,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             # Clipping the minimum of all lambda(t) for numerical stability.
             # This is critical for cosine (squaredcos_cap_v2) noise schedule.
             clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
+            clipped_idx = clipped_idx.item()
             timesteps = (
                 np.linspace(0, self.config.num_train_timesteps - 1 - clipped_idx, num_inference_steps + 1)
                 .round()[::-1][:-1]
