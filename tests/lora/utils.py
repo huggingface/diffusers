@@ -1119,6 +1119,41 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters("adapter-1")
         _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        scheduler_cls = self.scheduler_classes[0]
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        if self.has_two_text_encoders or self.has_three_text_encoders:
+            if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+        scale_with_wrong_components = {"foo": 0.0, "bar": 0.0, "tik": 0.0}
+        with self.assertRaises(ValueError) as err_context:
+            pipe.set_adapters("adapter-1", adapter_weights=scale_with_wrong_components)
+
+        wrong_components = sorted(set(scale_with_wrong_components.keys()))
+        msg = f"The following components in `adapter_weights` are not part of the pipeline: {wrong_components}"
+        self.assertTrue(msg in str(err_context.exception))
+
+        # test this works.
+        pipe.set_adapters("adapter-1")
+        _ = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
