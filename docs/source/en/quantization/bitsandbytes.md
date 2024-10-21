@@ -59,19 +59,7 @@ model_8bit = FluxTransformer2DModel.from_pretrained(
 model_8bit.transformer_blocks.layers[-1].norm2.weight.dtype
 ```
 
-Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights.
-
-```py
-from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
-
-quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-
-model_8bit = FluxTransformer2DModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", 
-    subfolder="transformer",
-    quantization_config=quantization_config
-)
-```
+Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 4-bit models locally with [`~ModelMixin.save_pretrained`].
 
 </hfoption>
 <hfoption id="4-bit">
