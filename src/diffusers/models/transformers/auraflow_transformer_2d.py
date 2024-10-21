@@ -374,7 +374,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
         Sets the attention processor to use to compute attention.
 
         Args:
-            processor (Union[`dict`, `dict[`AttentionProcessor`]`]):
+            processor (`AttentionProcessor` or `Dict[str, AttentionProcessor]`]):
                 The instantiated processor class or a dictionary of processor classes to be set as the processor
                 for **all** `Attention` layers.
 
