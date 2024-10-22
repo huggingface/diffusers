@@ -64,6 +64,10 @@ if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
 
 
+from .multicontrolnet import MultiControlNetModel
+from .safety_checker import StableDiffusionSafetyChecker
+
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -215,6 +219,12 @@ class StableDiffusionXLControlNetPipeline(
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"True"`):
             Whether the negative prompt embeddings should always be set to 0. Also see the config of
             `stabilityai/stable-diffusion-xl-base-1-0`.
@@ -233,7 +243,9 @@ class StableDiffusionXLControlNetPipeline(
         "text_encoder_2",
         "feature_extractor",
         "image_encoder",
+        "safety_checker",
     ]
+    _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
@@ -255,10 +267,12 @@ class StableDiffusionXLControlNetPipeline(
         unet: UNet2DConditionModel,
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
+        safety_checker: StableDiffusionSafetyChecker,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -274,6 +288,7 @@ class StableDiffusionXLControlNetPipeline(
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
+            safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
@@ -289,7 +304,23 @@ class StableDiffusionXLControlNetPipeline(
         else:
             self.watermark = None
 
-        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+        
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt, requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
@@ -597,6 +628,20 @@ class StableDiffusionXLControlNetPipeline(
 
         return ip_adapter_image_embeds
 
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        return image, has_nsfw_concept
+    
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -1191,6 +1236,13 @@ class StableDiffusionXLControlNetPipeline(
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned containing the output images.
+
+        Returns:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images and the
+                second element is a list of `bool`s indicating whether the corresponding generated image contains
+                "not-safe-for-work" (nsfw) content.
         """
 
         callback = kwargs.pop("callback", None)
@@ -1575,24 +1627,30 @@ class StableDiffusionXLControlNetPipeline(
                 latents = latents / self.vae.config.scaling_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
-
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
             # cast back to fp16 if needed
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
         else:
             image = latents
+            has_nsfw_concept = None
 
         if not output_type == "latent":
             # apply watermark if available
             if self.watermark is not None:
                 image = self.watermark.apply_watermark(image)
 
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            if has_nsfw_concept is None:
+                do_denormalize = [True] * image.shape[0]
+            else:
+                do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+                
+            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return (image, has_nsfw_concept)
 
-        return StableDiffusionXLPipelineOutput(images=image)
+        return StableDiffusionXLPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
