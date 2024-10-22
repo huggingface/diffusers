@@ -37,7 +37,7 @@ class AllegroTransformerTests(ModelTesterMixin, unittest.TestCase):
     def dummy_input(self):
         batch_size = 2
         num_channels = 4
-        num_frames = 8
+        num_frames = 2
         height = 8
         width = 8
         embedding_dim = 16
@@ -55,11 +55,11 @@ class AllegroTransformerTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 8, 8, 8)
+        return (4, 2, 8, 8)
 
     @property
     def output_shape(self):
-        return (4, 8, 8, 8)
+        return (4, 2, 8, 8)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
