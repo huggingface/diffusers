@@ -986,7 +986,7 @@ def main(args):
         controlnet = SD3ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from transformer")
-        controlnet = SD3ControlNetModel.from_transformer(transformer)
+        controlnet = SD3ControlNetModel.from_transformer(transformer, num_extra_conditioning_channels=0)
 
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
