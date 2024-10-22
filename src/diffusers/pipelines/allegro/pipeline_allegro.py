@@ -211,7 +211,7 @@ class AllegroPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
-        max_sequence_length: int = 300,
+        max_sequence_length: int = 512,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -237,7 +237,8 @@ class AllegroPipeline(DiffusionPipeline):
                 string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to `512`):
+                Maximum sequence length to use for the prompt.
         """
 
         if device is None:
@@ -684,7 +685,7 @@ class AllegroPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         clean_caption: bool = True,
-        max_sequence_length: int = 300,
+        max_sequence_length: int = 512,
     ) -> Union[AllegroPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -751,7 +752,8 @@ class AllegroPipeline(DiffusionPipeline):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to `512`):
+                Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -767,9 +769,9 @@ class AllegroPipeline(DiffusionPipeline):
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
-        num_frames = num_frames or self.transformer.config.sample_size_t * self.vae_scale_factor_temporal
-        height = height or self.transformer.config.sample_size[0] * self.vae_scale_factor_spatial
-        width = width or self.transformer.config.sample_size[1] * self.vae_scale_factor_spatial
+        num_frames = num_frames or self.transformer.config.sample_frames * self.vae_scale_factor_temporal
+        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
+        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
 
         self.check_inputs(
             prompt,

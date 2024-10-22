@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils.accelerate_utils import apply_forward_hook
 from ..attention_processor import Attention, SpatialNorm
 from ..autoencoders.vae import DecoderOutput, DiagonalGaussianDistribution
 from ..downsampling import Downsample2D
@@ -89,40 +90,43 @@ class AllegroTemporalConvLayer(nn.Module):
             nn.SiLU(),
             nn.Conv3d(out_dim, in_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_h)),
         )
+    
+    @staticmethod
+    def _pad_temporal_dim(hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
+        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
+        return hidden_states
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        identity = hidden_states
+    def forward(self, hidden_states: torch.Tensor, batch_size: int) -> torch.Tensor:
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
 
         if self.down_sample:
-            identity = identity[:, :, ::2]
+            identity = hidden_states[:, :, ::2]
         elif self.up_sample:
-            hidden_states_new = torch.cat((hidden_states, hidden_states), dim=2)
-            hidden_states_new[:, :, 0::2] = hidden_states
-            hidden_states_new[:, :, 1::2] = hidden_states
-            identity = hidden_states_new
-            del hidden_states_new
+            identity = hidden_states.repeat_interleave(2, dim=2)
+        else:
+            identity = hidden_states
 
         if self.down_sample or self.up_sample:
             hidden_states = self.conv1(hidden_states)
         else:
-            hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
-            hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
+            hidden_states = self._pad_temporal_dim(hidden_states)
             hidden_states = self.conv1(hidden_states)
 
         if self.up_sample:
             hidden_states = hidden_states.unflatten(1, (2, -1)).permute(0, 2, 3, 1, 4, 5).flatten(2, 3)
 
-        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
+        hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv2(hidden_states)
-        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
+        
+        hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv3(hidden_states)
-        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
+        
+        hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv4(hidden_states)
 
         hidden_states = identity + hidden_states
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         return hidden_states
 
@@ -139,10 +143,10 @@ class AllegroDownBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        output_scale_factor=1.0,
-        add_downsample=True,
-        add_temp_downsample=False,
-        downsample_padding=1,
+        output_scale_factor: float = 1.0,
+        spatial_downsample: bool = True,
+        temporal_downsample: bool = False,
+        downsample_padding: int = 1,
     ):
         super().__init__()
 
@@ -177,13 +181,13 @@ class AllegroDownBlock3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
 
-        if add_temp_downsample:
+        if temporal_downsample:
             self.temp_convs_down = AllegroTemporalConvLayer(
                 out_channels, out_channels, dropout=0.1, norm_num_groups=resnet_groups, down_sample=True, stride=3
             )
-        self.add_temp_downsample = add_temp_downsample
+        self.add_temp_downsample = temporal_downsample
 
-        if add_downsample:
+        if spatial_downsample:
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
@@ -196,22 +200,21 @@ class AllegroDownBlock3D(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
+        
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             hidden_states = resnet(hidden_states, temb=None)
-            hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-            hidden_states = temp_conv(hidden_states)
+            hidden_states = temp_conv(hidden_states, batch_size=batch_size)
 
         if self.add_temp_downsample:
-            hidden_states = self.temp_convs_down(hidden_states)
+            hidden_states = self.temp_convs_down(hidden_states, batch_size=batch_size)
 
         if self.downsamplers is not None:
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
-            hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
+            
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return hidden_states
 
 
@@ -227,13 +230,12 @@ class AllegroUpBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        output_scale_factor=1.0,
-        add_upsample=True,
-        add_temp_upsample=False,
-        temb_channels=None,
+        output_scale_factor: float = 1.0,
+        spatial_upsample: bool = True,
+        temporal_upsample: bool = False,
+        temb_channels: Optional[int] = None,
     ):
         super().__init__()
-        self.add_upsample = add_upsample
 
         resnets = []
         temp_convs = []
@@ -267,35 +269,34 @@ class AllegroUpBlock3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
 
-        self.add_temp_upsample = add_temp_upsample
-        if add_temp_upsample:
+        self.add_temp_upsample = temporal_upsample
+        if temporal_upsample:
             self.temp_conv_up = AllegroTemporalConvLayer(
                 out_channels, out_channels, dropout=0.1, norm_num_groups=resnet_groups, up_sample=True, stride=3
             )
 
-        if self.add_upsample:
+        if spatial_upsample:
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
+        
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             hidden_states = resnet(hidden_states, temb=None)
-            hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-            hidden_states = temp_conv(hidden_states)
+            hidden_states = temp_conv(hidden_states, batch_size=batch_size)
 
         if self.add_temp_upsample:
-            hidden_states = self.temp_conv_up(hidden_states)
+            hidden_states = self.temp_conv_up(hidden_states, batch_size=batch_size)
 
         if self.upsamplers is not None:
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
-            hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
+            
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return hidden_states
 
 
@@ -312,12 +313,10 @@ class UNetMidBlock3DConv(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
-        attention_head_dim=1,
-        output_scale_factor=1.0,
+        attention_head_dim: int = 1,
+        output_scale_factor: float = 1.0,
     ):
         super().__init__()
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-        self.add_attention = add_attention
 
         # there is always at least one resnet
         resnets = [
@@ -348,7 +347,7 @@ class UNetMidBlock3DConv(nn.Module):
             attention_head_dim = in_channels
 
         for _ in range(num_layers):
-            if self.add_attention:
+            if add_attention:
                 attentions.append(
                     Attention(
                         in_channels,
@@ -395,21 +394,20 @@ class UNetMidBlock3DConv(nn.Module):
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
 
-    def forward(self, hidden_states: torch.Tensor):
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
 
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.resnets[0](hidden_states, temb=None)
-        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        hidden_states = self.temp_convs[0](hidden_states)
-        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        
+        hidden_states = self.temp_convs[0](hidden_states, batch_size=batch_size)
 
         for attn, resnet, temp_conv in zip(self.attentions, self.resnets[1:], self.temp_convs[1:]):
             hidden_states = attn(hidden_states)
             hidden_states = resnet(hidden_states, temb=None)
-            hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-            hidden_states = temp_conv(hidden_states)
+            hidden_states = temp_conv(hidden_states, batch_size=batch_size)
 
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return hidden_states
 
 
@@ -424,17 +422,14 @@ class AllegroEncoder3D(nn.Module):
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
         ),
-        blocks_temp_li=[False, False, False, False],
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        temporal_downsample_blocks: Tuple[bool, ...] = [True, True, False, False],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
         double_z: bool = True,
     ):
         super().__init__()
-
-        self.layers_per_block = layers_per_block
-        self.blocks_temp_li = blocks_temp_li
 
         self.conv_in = nn.Conv2d(
             in_channels,
@@ -462,11 +457,11 @@ class AllegroEncoder3D(nn.Module):
 
             if down_block_type == "AllegroDownBlock3D":
                 down_block = AllegroDownBlock3D(
-                    num_layers=self.layers_per_block,
+                    num_layers=layers_per_block,
                     in_channels=input_channel,
                     out_channels=output_channel,
-                    add_downsample=not is_final_block,
-                    add_temp_downsample=blocks_temp_li[i],
+                    spatial_downsample=not is_final_block,
+                    temporal_downsample=temporal_downsample_blocks[i],
                     resnet_eps=1e-6,
                     downsample_padding=0,
                     resnet_act_fn=act_fn,
@@ -496,7 +491,6 @@ class AllegroEncoder3D(nn.Module):
         conv_out_channels = 2 * out_channels if double_z else out_channels
 
         self.temp_conv_out = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3, 1, 1), padding=(1, 0, 0))
-
         self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
         self.gradient_checkpointing = False
@@ -508,7 +502,6 @@ class AllegroEncoder3D(nn.Module):
         sample = self.conv_in(sample)
 
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
         residual = sample
         sample = self.temp_conv_in(sample)
         sample = sample + residual
@@ -539,16 +532,16 @@ class AllegroEncoder3D(nn.Module):
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
+        
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
         residual = sample
         sample = self.temp_conv_out(sample)
         sample = sample + residual
+        
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
-
         sample = self.conv_out(sample)
+        
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
         return sample
 
 
@@ -563,7 +556,7 @@ class AllegroDecoder3D(nn.Module):
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
         ),
-        blocks_temp_li=[False, False, False, False],
+        temporal_upsample_blocks: Tuple[bool, ...] = [False, True, True, False],
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
@@ -571,9 +564,6 @@ class AllegroDecoder3D(nn.Module):
         norm_type: str = "group",  # group, spatial
     ):
         super().__init__()
-
-        self.layers_per_block = layers_per_block
-        self.blocks_temp_li = blocks_temp_li
 
         self.conv_in = nn.Conv2d(
             in_channels,
@@ -613,11 +603,11 @@ class AllegroDecoder3D(nn.Module):
 
             if up_block_type == "AllegroUpBlock3D":
                 up_block = AllegroUpBlock3D(
-                    num_layers=self.layers_per_block + 1,
+                    num_layers=layers_per_block + 1,
                     in_channels=prev_output_channel,
                     out_channels=output_channel,
-                    add_upsample=not is_final_block,
-                    add_temp_upsample=blocks_temp_li[i],
+                    spatial_upsample=not is_final_block,
+                    temporal_upsample=temporal_upsample_blocks[i],
                     resnet_eps=1e-6,
                     resnet_act_fn=act_fn,
                     resnet_groups=norm_num_groups,
@@ -648,8 +638,8 @@ class AllegroDecoder3D(nn.Module):
 
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_in(sample)
-        sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
 
+        sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         residual = sample
         sample = self.temp_conv_in(sample)
         sample = sample + residual
@@ -684,16 +674,16 @@ class AllegroDecoder3D(nn.Module):
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
+        
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
         residual = sample
         sample = self.temp_conv_out(sample)
         sample = sample + residual
 
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_out(sample)
+        
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-
         return sample
 
 
@@ -706,17 +696,30 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
     for all models (such as downloading or saving).
 
     Parameters:
-        in_channels (int, defaults to `3`): Number of channels in the input image.
-        out_channels (int, defaults to `3`): Number of channels in the output.
+        in_channels (int, defaults to `3`):
+            Number of channels in the input image.
+        out_channels (int, defaults to `3`):
+            Number of channels in the output.
         down_block_types (`Tuple[str, ...]`, defaults to `("AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D")`):
-            Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, defaults to `("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D")`):
-            Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, defaults to `(128, 256, 512, 512)`):
-            Tuple of block output channels.
+            Tuple of strings denoting which types of down blocks to use.
+        up_block_types (`Tuple[str, ...]`, defaults to `("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D")`):
+            Tuple of strings denoting which types of up blocks to use.
+        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            Tuple of integers denoting number of output channels in each block.
+        temporal_downsample_blocks (`Tuple[bool, ...]`, defaults to `(True, True, False, False)`):
+            Tuple of booleans denoting which blocks to enable temporal downsampling in.
+        latent_channels (`int`, defaults to `4`):
+            Number of channels in latents.
+        layers_per_block (`int`, defaults to `2`):
+            Number of resnet or attention or temporal convolution layers per down/up block.
         act_fn (`str`, defaults to `"silu"`):
             The activation function to use.
-        sample_size (`int`, *optional*, defaults to `32`): Sample input size.
+        norm_num_groups (`int`, defaults to `32`):
+            Number of groups to use in normalization layers.
+        temporal_compression_ratio (`int`, defaults to `4`):
+            Ratio by which temporal dimension of samples are compressed.
+        sample_size (`int`, defaults to `320`):
+            Default latent size.
         scaling_factor (`float`, defaults to `0.13235`):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
             training set. This is used to scale the latent space to have unit variance when training the diffusion
@@ -728,7 +731,6 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
             can be fine-tuned / trained to a lower range without loosing too much precision in which case
             `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
-        TODO(aryan): docs
     """
 
     _supports_gradient_checkpointing = True
@@ -751,30 +753,24 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             "AllegroUpBlock3D",
         ),
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        temporal_downsample_blocks: Tuple[bool, ...] = (True, True, False, False),
+        temporal_upsample_blocks: Tuple[bool, ...] = (False, True, True, False),
         latent_channels: int = 4,
         layers_per_block: int = 2,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
         temporal_compression_ratio: float = 4,
         sample_size: int = 320,
-        scaling_factor: float = 0.13235,
+        scaling_factor: float = 0.13,
         force_upcast: bool = True,
-        tile_overlap: tuple = (120, 80),
-        chunk_len: int = 24,
-        t_over: int = 8,
-        blocks_tempdown_li=[True, True, False, False],
-        blocks_tempup_li=[False, True, True, False],
     ) -> None:
         super().__init__()
-
-        self.blocks_tempdown_li = blocks_tempdown_li
-        self.blocks_tempup_li = blocks_tempup_li
 
         self.encoder = AllegroEncoder3D(
             in_channels=in_channels,
             out_channels=latent_channels,
             down_block_types=down_block_types,
-            blocks_temp_li=blocks_tempdown_li,
+            temporal_downsample_blocks=temporal_downsample_blocks,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
             act_fn=act_fn,
@@ -785,7 +781,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             in_channels=latent_channels,
             out_channels=out_channels,
             up_block_types=up_block_types,
-            blocks_temp_li=blocks_tempup_li,
+            temporal_upsample_blocks=temporal_upsample_blocks,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
             norm_num_groups=norm_num_groups,
@@ -794,40 +790,175 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
 
+        # TODO(aryan): For the 1.0.0 refactor, `temporal_compression_ratio` can be inferred directly and we don't need
+        # to use a specific parameter here or in other VAEs.
+
         self.use_slicing = False
         self.use_tiling = False
 
         # only relevant if vae tiling is enabled
         sample_size = sample_size[0] if isinstance(sample_size, (list, tuple)) else sample_size
-        self.tile_overlap = tile_overlap
         self.vae_scale_factor = [4, 8, 8]
-        self.sample_size = sample_size
-        self.chunk_len = chunk_len
-        self.t_over = t_over
 
-        self.latent_chunk_len = self.chunk_len // 4
-        self.latent_t_over = self.t_over // 4
-        self.kernel = (self.chunk_len, self.sample_size, self.sample_size)  # (24, 256, 256)
+        # TODO(aryan): refactor tiling implementation
+        chunk_len = 24
+        t_over = 8
+        tile_overlap = (120, 80)
+        
+        self.latent_chunk_len = chunk_len // 4
+        self.latent_t_over = t_over // 4
+        self.kernel = (chunk_len, sample_size, sample_size)  # (24, 256, 256)
         self.stride = (
-            self.chunk_len - self.t_over,
-            self.sample_size - self.tile_overlap[0],
-            self.sample_size - self.tile_overlap[1],
+            chunk_len - t_over,
+            sample_size - tile_overlap[0],
+            sample_size - tile_overlap[1],
         )  # (16, 112, 192)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
             module.gradient_checkpointing = value
+    
+    def enable_tiling(
+        self,
+        # tile_sample_min_height: Optional[int] = None,
+        # tile_sample_min_width: Optional[int] = None,
+        # tile_overlap_factor_height: Optional[float] = None,
+        # tile_overlap_factor_width: Optional[float] = None,
+    ) -> None:
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
 
-    def encode(
-        self, input_imgs: torch.Tensor, return_dict: bool = True, local_batch_size=1
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+        Args:
+            tile_sample_min_height (`int`, *optional*):
+                The minimum height required for a sample to be separated into tiles across the height dimension.
+            tile_sample_min_width (`int`, *optional*):
+                The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_overlap_factor_height (`int`, *optional*):
+                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
+                no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
+            tile_overlap_factor_width (`int`, *optional*):
+                The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
+                are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
+                value might cause more tiles to be processed leading to slow down of the decoding process.
+        """
+        self.use_tiling = True
+
+        # TODO(aryan): refactor tiling implementation
+        # self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        # self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        # self.tile_latent_min_height = int(
+        #     self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
+        # )
+        # self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
+        # self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
+        # self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
+
+    def disable_tiling(self) -> None:
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_tiling = False
+
+    def enable_slicing(self) -> None:
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.use_slicing = True
+
+    def disable_slicing(self) -> None:
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_slicing = False
+    
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        # TODO(aryan)
+        # if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+        if self.use_tiling:
+            return self.tiled_encode(x)
+        
+        raise NotImplementedError("Encoding without tiling has not been implemented yet.")
+    
+    @apply_forward_hook
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+        r"""
+        Encode a batch of videos into latents.
+
+        Args:
+            x (`torch.Tensor`):
+                Input batch of videos.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+
+        Returns:
+                The latent representations of the encoded videos. If `return_dict` is True, a
+                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+        """
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
+            h = torch.cat(encoded_slices)
+        else:
+            h = self._encode(x)
+
+        posterior = DiagonalGaussianDistribution(h)
+
+        if not return_dict:
+            return (posterior,)
+        return AutoencoderKLOutput(latent_dist=posterior)
+
+    def _decode(self, z: torch.Tensor) -> torch.Tensor:
+        # TODO(aryan): refactor tiling implementation
+        # if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
+        if self.use_tiling:
+            return self.tiled_decode(z)
+
+        raise NotImplementedError("Decoding without tiling has not been implemented yet.")
+    
+    @apply_forward_hook
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        """
+        Decode a batch of videos.
+
+        Args:
+            z (`torch.Tensor`):
+                Input batch of latent vectors.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        if self.use_slicing and z.shape[0] > 1:
+            decoded_slices = [self._decode(z_slice) for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = self._decode(z)
+
+        if not return_dict:
+            return (decoded,)
+        return DecoderOutput(sample=decoded)
+
+    def tiled_encode(
+        self, x: torch.Tensor
+    ) -> torch.Tensor:
+        # TODO(aryan): parameterize this in enable_tiling
+        local_batch_size = 1
+        
         # TODO(aryan): rewrite to encode and tiled_encode
         KERNEL = self.kernel
         STRIDE = self.stride
         LOCAL_BS = local_batch_size
         OUT_C = 8
 
-        B, C, N, H, W = input_imgs.shape
+        B, C, N, H, W = x.shape
 
         out_n = math.floor((N - KERNEL[0]) / STRIDE[0]) + 1
         out_h = math.floor((H - KERNEL[1]) / STRIDE[1]) + 1
@@ -838,11 +969,11 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         out_latent = torch.zeros(
             (out_n * out_h * out_w, OUT_C, KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8),
-            device=input_imgs.device,
-            dtype=input_imgs.dtype,
+            device=x.device,
+            dtype=x.dtype,
         )
         vae_batch_input = torch.zeros(
-            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=input_imgs.device, dtype=input_imgs.dtype
+            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=x.device, dtype=x.dtype
         )
 
         for i in range(out_n):
@@ -851,7 +982,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     n_start, n_end = i * STRIDE[0], i * STRIDE[0] + KERNEL[0]
                     h_start, h_end = j * STRIDE[1], j * STRIDE[1] + KERNEL[1]
                     w_start, w_end = k * STRIDE[2], k * STRIDE[2] + KERNEL[2]
-                    video_cube = input_imgs[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
+                    video_cube = x[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
                     vae_batch_input[num % LOCAL_BS] = video_cube
 
                     if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
@@ -863,16 +994,16 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                             out_latent[num - LOCAL_BS + 1 : num + 1] = latent
                         vae_batch_input = torch.zeros(
                             (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]),
-                            device=input_imgs.device,
-                            dtype=input_imgs.dtype,
+                            device=x.device,
+                            dtype=x.dtype,
                         )
                     num += 1
 
         ## flatten the batched out latent to videos and supress the overlapped parts
-        B, C, N, H, W = input_imgs.shape
+        B, C, N, H, W = x.shape
 
         out_video_cube = torch.zeros(
-            (B, OUT_C, N // 4, H // 8, W // 8), device=input_imgs.device, dtype=input_imgs.dtype
+            (B, OUT_C, N // 4, H // 8, W // 8), device=x.device, dtype=x.dtype
         )
         OUT_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
         OUT_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
@@ -897,16 +1028,14 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         out_video_cube = self.quant_conv(out_video_cube)
         out_video_cube = out_video_cube.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
 
-        posterior = DiagonalGaussianDistribution(out_video_cube)
+        return out_video_cube
 
-        if not return_dict:
-            return (posterior,)
+    def tiled_decode(
+        self, z: torch.Tensor
+    ) -> torch.Tensor:
+        # TODO(aryan): parameterize this in enable_tiling
+        local_batch_size = 1
 
-        return AutoencoderKLOutput(latent_dist=posterior)
-
-    def decode(
-        self, input_latents: torch.Tensor, return_dict: bool = True, local_batch_size=1
-    ) -> Union[DecoderOutput, torch.Tensor]:
         # TODO(aryan): rewrite to decode and tiled_decode
         KERNEL = self.kernel
         STRIDE = self.stride
@@ -916,12 +1045,12 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         IN_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
         IN_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
 
-        B, C, N, H, W = input_latents.shape
+        B, C, N, H, W = z.shape
 
         ## post quant conv (a mapping)
-        input_latents = input_latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
-        input_latents = self.post_quant_conv(input_latents)
-        input_latents = input_latents.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
+        z = z.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        z = self.post_quant_conv(z)
+        z = z.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
 
         ## out tensor shape
         out_n = math.floor((N - IN_KERNEL[0]) / IN_STRIDE[0]) + 1
@@ -932,13 +1061,13 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         num = 0
         decoded_cube = torch.zeros(
             (out_n * out_h * out_w, OUT_C, KERNEL[0], KERNEL[1], KERNEL[2]),
-            device=input_latents.device,
-            dtype=input_latents.dtype,
+            device=z.device,
+            dtype=z.dtype,
         )
         vae_batch_input = torch.zeros(
             (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
-            device=input_latents.device,
-            dtype=input_latents.dtype,
+            device=z.device,
+            dtype=z.dtype,
         )
         for i in range(out_n):
             for j in range(out_h):
@@ -946,7 +1075,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     n_start, n_end = i * IN_STRIDE[0], i * IN_STRIDE[0] + IN_KERNEL[0]
                     h_start, h_end = j * IN_STRIDE[1], j * IN_STRIDE[1] + IN_KERNEL[1]
                     w_start, w_end = k * IN_STRIDE[2], k * IN_STRIDE[2] + IN_KERNEL[2]
-                    latent_cube = input_latents[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
+                    latent_cube = z[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
                     vae_batch_input[num % LOCAL_BS] = latent_cube
                     if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
                         latent = self.decoder(vae_batch_input)
@@ -957,14 +1086,14 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                             decoded_cube[num - LOCAL_BS + 1 : num + 1] = latent
                         vae_batch_input = torch.zeros(
                             (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
-                            device=input_latents.device,
-                            dtype=input_latents.dtype,
+                            device=z.device,
+                            dtype=z.dtype,
                         )
                     num += 1
-        B, C, N, H, W = input_latents.shape
+        B, C, N, H, W = z.shape
 
         out_video = torch.zeros(
-            (B, OUT_C, N * 4, H * 8, W * 8), device=input_latents.device, dtype=input_latents.dtype
+            (B, OUT_C, N * 4, H * 8, W * 8), device=z.device, dtype=z.dtype
         )
         OVERLAP = KERNEL[0] - STRIDE[0], KERNEL[1] - STRIDE[1], KERNEL[2] - STRIDE[2]
         for i in range(out_n):
@@ -983,11 +1112,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         out_video = out_video.permute(0, 2, 1, 3, 4).contiguous()
 
-        decoded = out_video
-        if not return_dict:
-            return (decoded,)
-
-        return DecoderOutput(sample=decoded)
+        return out_video
 
     def forward(
         self,
