@@ -152,19 +152,12 @@ class DiffusersQuantizer(ABC):
         """
         takes needed components from state_dict and creates quantized param.
         """
-        if not hasattr(self, "check_if_quantized_param"):
-            raise AttributeError(
-                f"`.create_quantized_param()` method is not supported by quantizer class {self.__class__.__name__}."
-            )
+        return
 
     def check_quantized_param_shape(self, *args, **kwargs):
         """
         checks if the quantized param has expected shape.
         """
-        if not hasattr(self, "check_quantized_param_shape"):
-            raise AttributeError(
-                f"`.check_quantized_param_shape()` method is not supported by quantizer class {self.__class__.__name__}."
-            )
         return True
 
     def validate_environment(self, *args, **kwargs):
