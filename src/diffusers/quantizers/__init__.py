@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .auto import DiffusersAutoQuantizationConfig, DiffusersAutoQuantizer
+from .auto import DiffusersAutoQuantizer
 from .base import DiffusersQuantizer
