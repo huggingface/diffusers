@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import List, Union
 
 import numpy as np
-import torch
 import PIL
+import torch
 
 from diffusers.utils import BaseOutput
 

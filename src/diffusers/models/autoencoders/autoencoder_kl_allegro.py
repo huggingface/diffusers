@@ -14,24 +14,20 @@
 # limitations under the License.
 
 import math
-from dataclasses import dataclass
-import os
-from typing import Dict, Optional, Tuple, Union
-from einops import rearrange
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
-from ..modeling_outputs import AutoencoderKLOutput
+from ..attention_processor import Attention, SpatialNorm
 from ..autoencoders.vae import DecoderOutput, DiagonalGaussianDistribution
-from ..attention_processor import Attention
+from ..downsampling import Downsample2D
+from ..modeling_outputs import AutoencoderKLOutput
+from ..modeling_utils import ModelMixin
 from ..resnet import ResnetBlock2D
 from ..upsampling import Upsample2D
-from ..downsampling import Downsample2D
-from ..attention_processor import SpatialNorm
 
 
 class AllegroTemporalConvBlock(nn.Module):
@@ -40,9 +36,17 @@ class AllegroTemporalConvBlock(nn.Module):
     https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/models/multi_modal/video_synthesis/unet_sd.py#L1016
     """
 
-    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0, up_sample: bool = False, down_sample: bool = False, stride: int = 1) -> None:
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: Optional[int] = None,
+        dropout: float = 0.0,
+        up_sample: bool = False,
+        down_sample: bool = False,
+        stride: int = 1,
+    ) -> None:
         super().__init__()
-        
+
         out_dim = out_dim or in_dim
         pad_h = pad_w = int((stride - 1) * 0.5)
         pad_t = 0
@@ -52,21 +56,21 @@ class AllegroTemporalConvBlock(nn.Module):
 
         if down_sample:
             self.conv1 = nn.Sequential(
-                nn.GroupNorm(32, in_dim), 
-                nn.SiLU(), 
-                nn.Conv3d(in_dim, out_dim, (2, stride, stride), stride=(2,1,1), padding=(0, pad_h, pad_w))
+                nn.GroupNorm(32, in_dim),
+                nn.SiLU(),
+                nn.Conv3d(in_dim, out_dim, (2, stride, stride), stride=(2, 1, 1), padding=(0, pad_h, pad_w)),
             )
         elif up_sample:
             self.conv1 = nn.Sequential(
-                nn.GroupNorm(32, in_dim), 
-                nn.SiLU(), 
-                nn.Conv3d(in_dim, out_dim*2, (1, stride, stride), padding=(0, pad_h, pad_w))
+                nn.GroupNorm(32, in_dim),
+                nn.SiLU(),
+                nn.Conv3d(in_dim, out_dim * 2, (1, stride, stride), padding=(0, pad_h, pad_w)),
             )
         else:
             self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), 
-            nn.SiLU(), 
-            nn.Conv3d(in_dim, out_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_w))
+                nn.GroupNorm(32, in_dim),
+                nn.SiLU(),
+                nn.Conv3d(in_dim, out_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_w)),
             )
         self.conv2 = nn.Sequential(
             nn.GroupNorm(32, out_dim),
@@ -94,38 +98,38 @@ class AllegroTemporalConvBlock(nn.Module):
         identity = hidden_states
 
         if self.down_sample:
-            identity = identity[:,:,::2]
+            identity = identity[:, :, ::2]
         elif self.up_sample:
-            hidden_states_new = torch.cat((hidden_states,hidden_states),dim=2)
+            hidden_states_new = torch.cat((hidden_states, hidden_states), dim=2)
             hidden_states_new[:, :, 0::2] = hidden_states
             hidden_states_new[:, :, 1::2] = hidden_states
             identity = hidden_states_new
             del hidden_states_new
-        
+
         if self.down_sample or self.up_sample:
             hidden_states = self.conv1(hidden_states)
         else:
-            hidden_states = torch.cat((hidden_states[:,:,0:1], hidden_states), dim=2)
-            hidden_states = torch.cat((hidden_states,hidden_states[:,:,-1:]), dim=2)
+            hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
+            hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
             hidden_states = self.conv1(hidden_states)
 
         if self.up_sample:
-            hidden_states = rearrange(hidden_states, 'b (d c) f h w -> b c (f d) h w', d=2)
+            hidden_states = rearrange(hidden_states, "b (d c) f h w -> b c (f d) h w", d=2)
 
-        hidden_states = torch.cat((hidden_states[:,:,0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states,hidden_states[:,:,-1:]), dim=2)
+        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
+        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
         hidden_states = self.conv2(hidden_states)
-        hidden_states = torch.cat((hidden_states[:,:,0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states,hidden_states[:,:,-1:]), dim=2)
+        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
+        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
         hidden_states = self.conv3(hidden_states)
-        hidden_states = torch.cat((hidden_states[:,:,0:1], hidden_states), dim=2)
-        hidden_states = torch.cat((hidden_states,hidden_states[:,:,-1:]), dim=2)
+        hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
+        hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
         hidden_states = self.conv4(hidden_states)
 
         hidden_states = identity + hidden_states
 
         return hidden_states
-    
+
 
 class AllegroDownBlock3D(nn.Module):
     def __init__(
@@ -178,11 +182,7 @@ class AllegroDownBlock3D(nn.Module):
 
         if add_temp_downsample:
             self.temp_convs_down = AllegroTemporalConvBlock(
-                out_channels,
-                out_channels,
-                dropout=0.1,
-                down_sample=True,
-                stride=3
+                out_channels, out_channels, dropout=0.1, down_sample=True, stride=3
             )
         self.add_temp_downsample = add_temp_downsample
 
@@ -196,16 +196,16 @@ class AllegroDownBlock3D(nn.Module):
             )
         else:
             self.downsamplers = None
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
-        
+
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
             hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             hidden_states = resnet(hidden_states, temb=None)
             hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
             hidden_states = temp_conv(hidden_states)
-        
+
         if self.add_temp_downsample:
             hidden_states = self.temp_convs_down(hidden_states)
 
@@ -214,7 +214,7 @@ class AllegroDownBlock3D(nn.Module):
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
             hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         return hidden_states
 
 
@@ -259,24 +259,20 @@ class AllegroUpBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                    AllegroTemporalConvBlock(
+                AllegroTemporalConvBlock(
                     out_channels,
                     out_channels,
                     dropout=0.1,
                 )
             )
-        
+
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
 
         self.add_temp_upsample = add_temp_upsample
         if add_temp_upsample:
             self.temp_conv_up = AllegroTemporalConvBlock(
-                out_channels,
-                out_channels,
-                dropout=0.1,
-                up_sample=True,
-                stride=3
+                out_channels, out_channels, dropout=0.1, up_sample=True, stride=3
             )
 
         if self.add_upsample:
@@ -286,13 +282,13 @@ class AllegroUpBlock3D(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
-        
+
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
             hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
             hidden_states = resnet(hidden_states, temb=None)
             hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
             hidden_states = temp_conv(hidden_states)
-        
+
         if self.add_temp_upsample:
             hidden_states = self.temp_conv_up(hidden_states)
 
@@ -301,10 +297,10 @@ class AllegroUpBlock3D(nn.Module):
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
             hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         return hidden_states
 
-    
+
 class UNetMidBlock3DConv(nn.Module):
     def __init__(
         self,
@@ -399,35 +395,35 @@ class UNetMidBlock3DConv(nn.Module):
         self.temp_convs = nn.ModuleList(temp_convs)
         self.attentions = nn.ModuleList(attentions)
 
-    def forward(
-        self, 
-        hidden_states: torch.Tensor
-    ):
+    def forward(self, hidden_states: torch.Tensor):
         batch_size = hidden_states.shape[0]
-        
+
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.resnets[0](hidden_states, temb=None)
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         hidden_states = self.temp_convs[0](hidden_states)
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
-        for attn, resnet, temp_conv in zip(
-            self.attentions, self.resnets[1:], self.temp_convs[1:]
-        ):
+        for attn, resnet, temp_conv in zip(self.attentions, self.resnets[1:], self.temp_convs[1:]):
             hidden_states = attn(hidden_states)
             hidden_states = resnet(hidden_states, temb=None)
             hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
             hidden_states = temp_conv(hidden_states)
-        
+
         return hidden_states
-    
+
 
 class AllegroEncoder3D(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D"),
+        down_block_types: Tuple[str, ...] = (
+            "AllegroDownBlock3D",
+            "AllegroDownBlock3D",
+            "AllegroDownBlock3D",
+            "AllegroDownBlock3D",
+        ),
         blocks_temp_li=[False, False, False, False],
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
@@ -452,7 +448,7 @@ class AllegroEncoder3D(nn.Module):
             in_channels=block_out_channels[0],
             out_channels=block_out_channels[0],
             kernel_size=(3, 1, 1),
-            padding=(1, 0, 0)
+            padding=(1, 0, 0),
         )
 
         self.down_blocks = nn.ModuleList([])
@@ -478,7 +474,7 @@ class AllegroEncoder3D(nn.Module):
                 )
             else:
                 raise ValueError("Invalid `down_block_type` encountered. Must be `AllegroDownBlock3D`")
-            
+
             self.down_blocks.append(down_block)
 
         # mid
@@ -499,7 +495,7 @@ class AllegroEncoder3D(nn.Module):
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
 
-        self.temp_conv_out = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3,1,1), padding = (1, 0, 0))
+        self.temp_conv_out = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3, 1, 1), padding=(1, 0, 0))
 
         self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
@@ -507,20 +503,20 @@ class AllegroEncoder3D(nn.Module):
 
     def forward(self, sample: torch.Tensor) -> torch.Tensor:
         batch_size = sample.shape[0]
-        
+
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_in(sample)
 
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         residual = sample
-        sample = self.temp_conv_in(sample) 
+        sample = self.temp_conv_in(sample)
         sample = sample + residual
-        
+
         # Down blocks
         for down_block in self.down_blocks:
             sample = down_block(sample)
-        
+
         # Mid block
         sample = self.mid_block(sample)
 
@@ -531,13 +527,13 @@ class AllegroEncoder3D(nn.Module):
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
 
         residual = sample
-        sample = self.temp_conv_out(sample) 
+        sample = self.temp_conv_out(sample)
         sample = sample + residual
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         sample = self.conv_out(sample)
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         return sample
 
 
@@ -546,7 +542,12 @@ class AllegroDecoder3D(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D"),
+        up_block_types: Tuple[str, ...] = (
+            "AllegroUpBlock3D",
+            "AllegroUpBlock3D",
+            "AllegroUpBlock3D",
+            "AllegroUpBlock3D",
+        ),
         blocks_temp_li=[False, False, False, False],
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
@@ -567,12 +568,7 @@ class AllegroDecoder3D(nn.Module):
             padding=1,
         )
 
-        self.temp_conv_in = nn.Conv3d(
-            block_out_channels[-1],
-            block_out_channels[-1],
-            (3,1,1),
-            padding = (1, 0, 0)
-        )
+        self.temp_conv_in = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3, 1, 1), padding=(1, 0, 0))
 
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
@@ -615,7 +611,7 @@ class AllegroDecoder3D(nn.Module):
                 )
             else:
                 raise ValueError("Invalid `UP_block_type` encountered. Must be `AllegroUpBlock3D`")
-            
+
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
@@ -624,10 +620,10 @@ class AllegroDecoder3D(nn.Module):
             self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
         else:
             self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
-        
+
         self.conv_act = nn.SiLU()
 
-        self.temp_conv_out = nn.Conv3d(block_out_channels[0], block_out_channels[0], (3,1,1), padding = (1, 0, 0))
+        self.temp_conv_out = nn.Conv3d(block_out_channels[0], block_out_channels[0], (3, 1, 1), padding=(1, 0, 0))
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
         # TODO(aryan): implement gradient checkpointing
@@ -639,13 +635,13 @@ class AllegroDecoder3D(nn.Module):
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_in(sample)
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         residual = sample
-        sample = self.temp_conv_in(sample) 
+        sample = self.temp_conv_in(sample)
         sample = sample + residual
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        
+
         # Mid block
         sample = self.mid_block(sample)
         sample = sample.to(upscale_dtype)
@@ -659,17 +655,17 @@ class AllegroDecoder3D(nn.Module):
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         residual = sample
         sample = self.temp_conv_out(sample)
         sample = sample + residual
-        
+
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_out(sample)
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
-        
+
         return sample
-    
+
 
 class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
     r"""
@@ -743,7 +739,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         self.blocks_tempdown_li = blocks_tempdown_li
         self.blocks_tempup_li = blocks_tempup_li
-        
+
         self.encoder = AllegroEncoder3D(
             in_channels=in_channels,
             out_channels=latent_channels,
@@ -772,23 +768,25 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
         # only relevant if vae tiling is enabled
-        sample_size = (
-            sample_size[0]
-            if isinstance(sample_size, (list, tuple))
-            else sample_size
-        )
+        sample_size = sample_size[0] if isinstance(sample_size, (list, tuple)) else sample_size
         self.tile_overlap = tile_overlap
-        self.vae_scale_factor=[4, 8, 8]
+        self.vae_scale_factor = [4, 8, 8]
         self.sample_size = sample_size
         self.chunk_len = chunk_len
         self.t_over = t_over
 
-        self.latent_chunk_len = self.chunk_len//4
-        self.latent_t_over = self.t_over//4 
-        self.kernel = (self.chunk_len, self.sample_size, self.sample_size) #(24, 256, 256)
-        self.stride = (self.chunk_len - self.t_over, self.sample_size-self.tile_overlap[0], self.sample_size-self.tile_overlap[1])  # (16, 112, 192)
+        self.latent_chunk_len = self.chunk_len // 4
+        self.latent_t_over = self.t_over // 4
+        self.kernel = (self.chunk_len, self.sample_size, self.sample_size)  # (24, 256, 256)
+        self.stride = (
+            self.chunk_len - self.t_over,
+            self.sample_size - self.tile_overlap[0],
+            self.sample_size - self.tile_overlap[1],
+        )  # (16, 112, 192)
 
-    def encode(self, input_imgs: torch.Tensor, return_dict: bool = True, local_batch_size=1) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    def encode(
+        self, input_imgs: torch.Tensor, return_dict: bool = True, local_batch_size=1
+    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         # TODO(aryan): rewrite to encode and tiled_encode
         KERNEL = self.kernel
         STRIDE = self.stride
@@ -796,16 +794,22 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         OUT_C = 8
 
         B, C, N, H, W = input_imgs.shape
-        
+
         out_n = math.floor((N - KERNEL[0]) / STRIDE[0]) + 1
         out_h = math.floor((H - KERNEL[1]) / STRIDE[1]) + 1
         out_w = math.floor((W - KERNEL[2]) / STRIDE[2]) + 1
-        
+
         ## cut video into overlapped small cubes and batch forward
         num = 0
 
-        out_latent = torch.zeros((out_n*out_h*out_w, OUT_C, KERNEL[0]//4, KERNEL[1]//8, KERNEL[2]//8), device=input_imgs.device, dtype=input_imgs.dtype) 
-        vae_batch_input = torch.zeros((LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=input_imgs.device, dtype=input_imgs.dtype)
+        out_latent = torch.zeros(
+            (out_n * out_h * out_w, OUT_C, KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8),
+            device=input_imgs.device,
+            dtype=input_imgs.dtype,
+        )
+        vae_batch_input = torch.zeros(
+            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=input_imgs.device, dtype=input_imgs.dtype
+        )
 
         for i in range(out_n):
             for j in range(out_h):
@@ -814,39 +818,50 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     h_start, h_end = j * STRIDE[1], j * STRIDE[1] + KERNEL[1]
                     w_start, w_end = k * STRIDE[2], k * STRIDE[2] + KERNEL[2]
                     video_cube = input_imgs[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
-                    vae_batch_input[num%LOCAL_BS] = video_cube
-                    
-                    if num%LOCAL_BS == LOCAL_BS-1 or num == out_n*out_h*out_w-1:                        
+                    vae_batch_input[num % LOCAL_BS] = video_cube
+
+                    if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
                         latent = self.encoder(vae_batch_input)
-                        
-                        if num == out_n*out_h*out_w-1 and num%LOCAL_BS != LOCAL_BS-1:
-                            out_latent[num-num%LOCAL_BS:] = latent[:num%LOCAL_BS+1]
+
+                        if num == out_n * out_h * out_w - 1 and num % LOCAL_BS != LOCAL_BS - 1:
+                            out_latent[num - num % LOCAL_BS :] = latent[: num % LOCAL_BS + 1]
                         else:
-                            out_latent[num-LOCAL_BS+1:num+1] = latent
-                        vae_batch_input = torch.zeros((LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=input_imgs.device, dtype=input_imgs.dtype)
-                    num+=1
-        
+                            out_latent[num - LOCAL_BS + 1 : num + 1] = latent
+                        vae_batch_input = torch.zeros(
+                            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]),
+                            device=input_imgs.device,
+                            dtype=input_imgs.dtype,
+                        )
+                    num += 1
+
         ## flatten the batched out latent to videos and supress the overlapped parts
         B, C, N, H, W = input_imgs.shape
 
-        out_video_cube = torch.zeros((B, OUT_C, N//4, H//8, W//8), device=input_imgs.device, dtype=input_imgs.dtype)
-        OUT_KERNEL = KERNEL[0]//4, KERNEL[1]//8, KERNEL[2]//8
-        OUT_STRIDE = STRIDE[0]//4, STRIDE[1]//8, STRIDE[2]//8
-        OVERLAP = OUT_KERNEL[0]-OUT_STRIDE[0], OUT_KERNEL[1]-OUT_STRIDE[1], OUT_KERNEL[2]-OUT_STRIDE[2]
-        
+        out_video_cube = torch.zeros(
+            (B, OUT_C, N // 4, H // 8, W // 8), device=input_imgs.device, dtype=input_imgs.dtype
+        )
+        OUT_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
+        OUT_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
+        OVERLAP = OUT_KERNEL[0] - OUT_STRIDE[0], OUT_KERNEL[1] - OUT_STRIDE[1], OUT_KERNEL[2] - OUT_STRIDE[2]
+
         for i in range(out_n):
             n_start, n_end = i * OUT_STRIDE[0], i * OUT_STRIDE[0] + OUT_KERNEL[0]
             for j in range(out_h):
                 h_start, h_end = j * OUT_STRIDE[1], j * OUT_STRIDE[1] + OUT_KERNEL[1]
                 for k in range(out_w):
                     w_start, w_end = k * OUT_STRIDE[2], k * OUT_STRIDE[2] + OUT_KERNEL[2]
-                    latent_mean_blend = prepare_for_blend((i, out_n, OVERLAP[0]), (j, out_h, OVERLAP[1]), (k, out_w, OVERLAP[2]), out_latent[i*out_h*out_w+j*out_w+k].unsqueeze(0))
+                    latent_mean_blend = prepare_for_blend(
+                        (i, out_n, OVERLAP[0]),
+                        (j, out_h, OVERLAP[1]),
+                        (k, out_w, OVERLAP[2]),
+                        out_latent[i * out_h * out_w + j * out_w + k].unsqueeze(0),
+                    )
                     out_video_cube[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += latent_mean_blend
-        
+
         ## final conv
-        out_video_cube = rearrange(out_video_cube, 'b c n h w -> (b n) c h w')
+        out_video_cube = rearrange(out_video_cube, "b c n h w -> (b n) c h w")
         out_video_cube = self.quant_conv(out_video_cube)
-        out_video_cube = rearrange(out_video_cube, '(b n) c h w -> b c n h w', b=B)
+        out_video_cube = rearrange(out_video_cube, "(b n) c h w -> b c n h w", b=B)
 
         posterior = DiagonalGaussianDistribution(out_video_cube)
 
@@ -854,24 +869,26 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             return (posterior,)
 
         return AutoencoderKLOutput(latent_dist=posterior)
-    
-    def decode(self, input_latents: torch.Tensor, return_dict: bool = True, local_batch_size=1) -> Union[DecoderOutput, torch.Tensor]:
+
+    def decode(
+        self, input_latents: torch.Tensor, return_dict: bool = True, local_batch_size=1
+    ) -> Union[DecoderOutput, torch.Tensor]:
         # TODO(aryan): rewrite to decode and tiled_decode
         KERNEL = self.kernel
         STRIDE = self.stride
-        
+
         LOCAL_BS = local_batch_size
         OUT_C = 3
-        IN_KERNEL = KERNEL[0]//4, KERNEL[1]//8, KERNEL[2]//8
-        IN_STRIDE = STRIDE[0]//4, STRIDE[1]//8, STRIDE[2]//8
+        IN_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
+        IN_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
 
         B, C, N, H, W = input_latents.shape
 
         ## post quant conv (a mapping)
-        input_latents = rearrange(input_latents, 'b c n h w -> (b n) c h w')
+        input_latents = rearrange(input_latents, "b c n h w -> (b n) c h w")
         input_latents = self.post_quant_conv(input_latents)
-        input_latents = rearrange(input_latents, '(b n) c h w -> b c n h w', b=B)
-        
+        input_latents = rearrange(input_latents, "(b n) c h w -> b c n h w", b=B)
+
         ## out tensor shape
         out_n = math.floor((N - IN_KERNEL[0]) / IN_STRIDE[0]) + 1
         out_h = math.floor((H - IN_KERNEL[1]) / IN_STRIDE[1]) + 1
@@ -879,8 +896,16 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         ## cut latent into overlapped small cubes and batch forward
         num = 0
-        decoded_cube = torch.zeros((out_n*out_h*out_w, OUT_C, KERNEL[0], KERNEL[1], KERNEL[2]), device=input_latents.device, dtype=input_latents.dtype) 
-        vae_batch_input = torch.zeros((LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]), device=input_latents.device, dtype=input_latents.dtype)
+        decoded_cube = torch.zeros(
+            (out_n * out_h * out_w, OUT_C, KERNEL[0], KERNEL[1], KERNEL[2]),
+            device=input_latents.device,
+            dtype=input_latents.dtype,
+        )
+        vae_batch_input = torch.zeros(
+            (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
+            device=input_latents.device,
+            dtype=input_latents.dtype,
+        )
         for i in range(out_n):
             for j in range(out_h):
                 for k in range(out_w):
@@ -888,38 +913,48 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     h_start, h_end = j * IN_STRIDE[1], j * IN_STRIDE[1] + IN_KERNEL[1]
                     w_start, w_end = k * IN_STRIDE[2], k * IN_STRIDE[2] + IN_KERNEL[2]
                     latent_cube = input_latents[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
-                    vae_batch_input[num%LOCAL_BS] = latent_cube
-                    if num%LOCAL_BS == LOCAL_BS-1 or num == out_n*out_h*out_w-1:
-                        
+                    vae_batch_input[num % LOCAL_BS] = latent_cube
+                    if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
                         latent = self.decoder(vae_batch_input)
-                        
-                        if num == out_n*out_h*out_w-1 and num%LOCAL_BS != LOCAL_BS-1:
-                            decoded_cube[num-num%LOCAL_BS:] = latent[:num%LOCAL_BS+1]
+
+                        if num == out_n * out_h * out_w - 1 and num % LOCAL_BS != LOCAL_BS - 1:
+                            decoded_cube[num - num % LOCAL_BS :] = latent[: num % LOCAL_BS + 1]
                         else:
-                            decoded_cube[num-LOCAL_BS+1:num+1] = latent
-                        vae_batch_input = torch.zeros((LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]), device=input_latents.device, dtype=input_latents.dtype)
-                    num+=1
+                            decoded_cube[num - LOCAL_BS + 1 : num + 1] = latent
+                        vae_batch_input = torch.zeros(
+                            (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
+                            device=input_latents.device,
+                            dtype=input_latents.dtype,
+                        )
+                    num += 1
         B, C, N, H, W = input_latents.shape
-        
-        out_video = torch.zeros((B, OUT_C, N*4, H*8, W*8), device=input_latents.device, dtype=input_latents.dtype)
-        OVERLAP = KERNEL[0]-STRIDE[0], KERNEL[1]-STRIDE[1], KERNEL[2]-STRIDE[2]
+
+        out_video = torch.zeros(
+            (B, OUT_C, N * 4, H * 8, W * 8), device=input_latents.device, dtype=input_latents.dtype
+        )
+        OVERLAP = KERNEL[0] - STRIDE[0], KERNEL[1] - STRIDE[1], KERNEL[2] - STRIDE[2]
         for i in range(out_n):
             n_start, n_end = i * STRIDE[0], i * STRIDE[0] + KERNEL[0]
             for j in range(out_h):
                 h_start, h_end = j * STRIDE[1], j * STRIDE[1] + KERNEL[1]
                 for k in range(out_w):
                     w_start, w_end = k * STRIDE[2], k * STRIDE[2] + KERNEL[2]
-                    out_video_blend = prepare_for_blend((i, out_n, OVERLAP[0]), (j, out_h, OVERLAP[1]), (k, out_w, OVERLAP[2]), decoded_cube[i*out_h*out_w+j*out_w+k].unsqueeze(0))
+                    out_video_blend = prepare_for_blend(
+                        (i, out_n, OVERLAP[0]),
+                        (j, out_h, OVERLAP[1]),
+                        (k, out_w, OVERLAP[2]),
+                        decoded_cube[i * out_h * out_w + j * out_w + k].unsqueeze(0),
+                    )
                     out_video[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += out_video_blend
-       
-        out_video = rearrange(out_video, 'b c t h w -> b t c h w').contiguous()
+
+        out_video = rearrange(out_video, "b c t h w -> b t c h w").contiguous()
 
         decoded = out_video
         if not return_dict:
             return (decoded,)
 
         return DecoderOutput(sample=decoded)
-    
+
     def forward(
         self,
         sample: torch.Tensor,
@@ -936,7 +971,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
-            generator (`torch.Generator`, *optional*): 
+            generator (`torch.Generator`, *optional*):
                 PyTorch random number generator.
             encoder_local_batch_size (`int`, *optional*, defaults to 2):
                 Local batch size for the encoder's batch inference.
@@ -962,16 +997,28 @@ def prepare_for_blend(n_param, h_param, w_param, x):
     h, h_max, overlap_h = h_param
     w, w_max, overlap_w = w_param
     if overlap_n > 0:
-        if n > 0: # the head overlap part decays from 0 to 1
-            x[:,:,0:overlap_n,:,:] = x[:,:,0:overlap_n,:,:] * (torch.arange(0, overlap_n).float().to(x.device) / overlap_n).reshape(overlap_n,1,1)
-        if n < n_max-1:  # the tail overlap part decays from 1 to 0
-            x[:,:,-overlap_n:,:,:] = x[:,:,-overlap_n:,:,:] * (1 - torch.arange(0, overlap_n).float().to(x.device) / overlap_n).reshape(overlap_n,1,1)
+        if n > 0:  # the head overlap part decays from 0 to 1
+            x[:, :, 0:overlap_n, :, :] = x[:, :, 0:overlap_n, :, :] * (
+                torch.arange(0, overlap_n).float().to(x.device) / overlap_n
+            ).reshape(overlap_n, 1, 1)
+        if n < n_max - 1:  # the tail overlap part decays from 1 to 0
+            x[:, :, -overlap_n:, :, :] = x[:, :, -overlap_n:, :, :] * (
+                1 - torch.arange(0, overlap_n).float().to(x.device) / overlap_n
+            ).reshape(overlap_n, 1, 1)
     if h > 0:
-        x[:,:,:,0:overlap_h,:] = x[:,:,:,0:overlap_h,:] * (torch.arange(0, overlap_h).float().to(x.device) / overlap_h).reshape(overlap_h,1)
-    if h < h_max-1:
-        x[:,:,:,-overlap_h:,:] = x[:,:,:,-overlap_h:,:] * (1 - torch.arange(0, overlap_h).float().to(x.device) / overlap_h).reshape(overlap_h,1)
+        x[:, :, :, 0:overlap_h, :] = x[:, :, :, 0:overlap_h, :] * (
+            torch.arange(0, overlap_h).float().to(x.device) / overlap_h
+        ).reshape(overlap_h, 1)
+    if h < h_max - 1:
+        x[:, :, :, -overlap_h:, :] = x[:, :, :, -overlap_h:, :] * (
+            1 - torch.arange(0, overlap_h).float().to(x.device) / overlap_h
+        ).reshape(overlap_h, 1)
     if w > 0:
-        x[:,:,:,:,0:overlap_w] = x[:,:,:,:,0:overlap_w] * (torch.arange(0, overlap_w).float().to(x.device) / overlap_w)
-    if w < w_max-1:
-        x[:,:,:,:,-overlap_w:] = x[:,:,:,:,-overlap_w:] * (1 - torch.arange(0, overlap_w).float().to(x.device) / overlap_w)
+        x[:, :, :, :, 0:overlap_w] = x[:, :, :, :, 0:overlap_w] * (
+            torch.arange(0, overlap_w).float().to(x.device) / overlap_w
+        )
+    if w < w_max - 1:
+        x[:, :, :, :, -overlap_w:] = x[:, :, :, :, -overlap_w:] * (
+            1 - torch.arange(0, overlap_w).float().to(x.device) / overlap_w
+        )
     return x

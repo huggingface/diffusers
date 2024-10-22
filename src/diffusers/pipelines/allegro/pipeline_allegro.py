@@ -19,11 +19,13 @@ import math
 import re
 import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
-import torch
-from dataclasses import dataclass
-from transformers import T5EncoderModel, T5Tokenizer
-import tqdm
 
+import torch
+import tqdm
+from transformers import T5EncoderModel, T5Tokenizer
+
+from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
+from ...models.embeddings import get_3d_rotary_pos_embed_allegro
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -32,13 +34,11 @@ from ...utils import (
     is_ftfy_available,
     logging,
     replace_example_docstring,
-    BaseOutput
 )
 from ...utils.torch_utils import randn_tensor
-from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
-from ...models.embeddings import get_3d_rotary_pos_embed_allegro
-from .pipeline_output import AllegroPipelineOutput
 from ...video_processor import VideoProcessor
+from .pipeline_output import AllegroPipelineOutput
+
 
 logger = logging.get_logger(__name__)
 
@@ -55,12 +55,15 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> # You can replace the your_path_to_model with your own path.
-        >>> pipe = AllegroPipeline.from_pretrained(your_path_to_model, torch_dtype=torch.float16, trust_remote_code=True)
+        >>> pipe = AllegroPipeline.from_pretrained(
+        ...     your_path_to_model, torch_dtype=torch.float16, trust_remote_code=True
+        ... )
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
         >>> image = pipe(prompt).video[0]
         ```
 """
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -148,8 +151,21 @@ class AllegroPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
+        r"["
+        + "#®•©™&@·º½¾¿¡§~"
+        + r"\)"
+        + r"\("
+        + r"\]"
+        + r"\["
+        + r"\}"
+        + r"\{"
+        + r"\|"
+        + "\\"
+        + r"\/"
+        + r"\*"
+        + r"]{1,}"
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "vae", "transformer", "scheduler"]
@@ -219,7 +235,6 @@ class AllegroPipeline(DiffusionPipeline):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
         """
-        embeds_initially_provided = prompt_embeds is not None and negative_prompt_embeds is not None
 
         if device is None:
             device = self._execution_device
@@ -339,7 +354,7 @@ class AllegroPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        num_frames, 
+        num_frames,
         height,
         width,
         negative_prompt,
@@ -349,7 +364,6 @@ class AllegroPipeline(DiffusionPipeline):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
-
         if num_frames <= 0:
             raise ValueError(f"`num_frames` have to be positive but is {num_frames}.")
         if height % 8 != 0 or width % 8 != 0:
@@ -406,7 +420,6 @@ class AllegroPipeline(DiffusionPipeline):
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
-    
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
@@ -549,7 +562,7 @@ class AllegroPipeline(DiffusionPipeline):
         caption = re.sub(r"[\'\_,\-\:\-\+]$", r"", caption)
         caption = re.sub(r"^\.\S+$", "", caption)
         return caption.strip()
-    
+
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
@@ -558,7 +571,7 @@ class AllegroPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        
+
         if num_frames % 2 == 0:
             num_frames = math.ceil(num_frames / self.vae_scale_factor_temporal)
         else:
@@ -586,7 +599,7 @@ class AllegroPipeline(DiffusionPipeline):
         frames = self.vae.decode(latents).sample
         frames = frames.permute(0, 2, 1, 3, 4)  # [batch_size, channels, num_frames, height, width]
         return frames
-    
+
     def _prepare_rotary_positional_embeddings(
         self,
         batch_size: int,
@@ -612,7 +625,11 @@ class AllegroPipeline(DiffusionPipeline):
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
             temporal_size=num_frames,
-            interpolation_scale=(self.transformer.config.interpolation_scale_t, self.transformer.config.interpolation_scale_h, self.transformer.config.interpolation_scale_w)
+            interpolation_scale=(
+                self.transformer.config.interpolation_scale_t,
+                self.transformer.config.interpolation_scale_h,
+                self.transformer.config.interpolation_scale_w,
+            ),
         )
 
         grid_t = torch.from_numpy(grid_t).to(device=device, dtype=torch.long)
@@ -738,7 +755,7 @@ class AllegroPipeline(DiffusionPipeline):
 
         self.check_inputs(
             prompt,
-            num_frames, 
+            num_frames,
             height,
             width,
             negative_prompt,
@@ -796,7 +813,7 @@ class AllegroPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             latent_channels,
-            num_frames, 
+            num_frames,
             height,
             width,
             prompt_embeds.dtype,
@@ -809,14 +826,15 @@ class AllegroPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Prepare rotary embeddings
-        image_rotary_emb = self._prepare_rotary_positional_embeddings(batch_size, height, width, latents.size(2), device)
+        image_rotary_emb = self._prepare_rotary_positional_embeddings(
+            batch_size, height, width, latents.size(2), device
+        )
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         progress_wrap = tqdm.tqdm if verbose else (lambda x: x)
         for i, t in progress_wrap(list(enumerate(timesteps))):
-
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -839,15 +857,15 @@ class AllegroPipeline(DiffusionPipeline):
                 prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
             if prompt_attention_mask.ndim == 2:
                 prompt_attention_mask = prompt_attention_mask.unsqueeze(1)  # b l -> b 1 l
-            
+
             # prepare attention_mask.
             # b c t h w -> b t h w
             attention_mask = torch.ones_like(latent_model_input)[:, 0]
-            
+
             # predict noise model_output
             noise_pred = self.transformer(
                 latent_model_input,
-                attention_mask=attention_mask, 
+                attention_mask=attention_mask,
                 encoder_hidden_states=prompt_embeds,
                 encoder_attention_mask=prompt_attention_mask,
                 timestep=current_timestep,

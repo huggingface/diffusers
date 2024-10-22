@@ -77,6 +77,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models"].extend(
         [
+            "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
@@ -85,7 +86,6 @@ else:
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
             "AutoencoderTiny",
-            "AllegroTransformer3DModel",
             "CogVideoXTransformer3DModel",
             "CogView3PlusTransformer2DModel",
             "ConsistencyDecoderVAE",
@@ -559,9 +559,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
+            AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
-            AllegroTransformer3DModel,
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,

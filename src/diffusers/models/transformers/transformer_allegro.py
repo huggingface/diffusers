@@ -13,35 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import os
-from dataclasses import dataclass
-from functools import partial
-from importlib import import_module
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-import numpy as np
 import torch
-import collections
-import torch.nn.functional as F
-from torch.nn.attention import SDPBackend, sdpa_kernel
-from ...configuration_utils import ConfigMixin, register_to_config
-from ..activations import GEGLU, GELU, ApproximateGELU
-from ..attention_processor import (
-    Attention,
-    AllegroAttnProcessor2_0,
-)
-from ..embeddings import PixArtAlphaTextProjection, SinusoidalPositionalEmbedding, TimestepEmbedding, Timesteps, PatchEmbed
-from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm, AdaLayerNormZero
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, is_xformers_available
-from ...utils.torch_utils import maybe_allow_in_graph
-from einops import rearrange, repeat
 import torch.nn as nn
-from ..normalization import AllegroAdaLayerNormSingle
-from ..modeling_outputs import Transformer2DModelOutput
-from ..attention import FeedForward
+import torch.nn.functional as F
+from einops import rearrange
+
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import FeedForward
+from ..attention_processor import (
+    AllegroAttnProcessor2_0,
+    Attention,
+)
+from ..embeddings import PixArtAlphaTextProjection
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import AllegroAdaLayerNormSingle
+
 
 logger = logging.get_logger(__name__)
 
@@ -51,7 +42,7 @@ class PatchEmbed2D(nn.Module):
 
     def __init__(
         self,
-        num_frames=1, 
+        num_frames=1,
         height=224,
         width=224,
         patch_size_t=1,
@@ -61,7 +52,7 @@ class PatchEmbed2D(nn.Module):
         layer_norm=False,
         flatten=True,
         bias=True,
-        use_abs_pos=False, 
+        use_abs_pos=False,
     ):
         super().__init__()
         self.use_abs_pos = use_abs_pos
@@ -83,7 +74,7 @@ class PatchEmbed2D(nn.Module):
         b, _, _, _, _ = latent.shape
         video_latent = None
 
-        latent = rearrange(latent, 'b c t h w -> (b t) c h w')
+        latent = rearrange(latent, "b c t h w -> (b t) c h w")
 
         latent = self.proj(latent)
         if self.flatten:
@@ -91,7 +82,7 @@ class PatchEmbed2D(nn.Module):
         if self.layer_norm:
             latent = self.norm(latent)
 
-        latent = rearrange(latent, '(b t) n c -> b (t n) c', b=b)
+        latent = rearrange(latent, "(b t) n c -> b (t n) c", b=b)
         video_latent = latent
 
         return video_latent
@@ -167,7 +158,7 @@ class AllegroTransformerBlock(nn.Module):
         temb: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb = None,
+        image_rotary_emb=None,
     ) -> torch.Tensor:
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
@@ -178,7 +169,7 @@ class AllegroTransformerBlock(nn.Module):
         norm_hidden_states = self.norm1(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
         norm_hidden_states = norm_hidden_states.squeeze(1)
-        
+
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=None,
@@ -249,46 +240,45 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
 
-#     {
-#   "_class_name": "AllegroTransformer3DModel",
-#   "_diffusers_version": "0.30.3",
-#   "_name_or_path": "/cpfs/data/user/larrytsai/Projects/Yi-VG/allegro/transformer",
-#   "activation_fn": "gelu-approximate",
-#   "attention_bias": true,
-#   "attention_head_dim": 96,
-#   "ca_attention_mode": "xformers",
-#   "caption_channels": 4096,
-#   "cross_attention_dim": 2304,
-#   "double_self_attention": false,
-#   "downsampler": null,
-#   "dropout": 0.0,
-#   "in_channels": 4,
-#   "interpolation_scale_h": 2.0,
-#   "interpolation_scale_t": 2.2,
-#   "interpolation_scale_w": 2.0,
-#   "model_max_length": 300,
-#   "norm_elementwise_affine": false,
-#   "norm_eps": 1e-06,
-#   "norm_type": "ada_norm_single",
-#   "num_attention_heads": 24,
-#   "num_embeds_ada_norm": 1000,
-#   "num_layers": 32,
-#   "only_cross_attention": false,
-#   "out_channels": 4,
-#   "patch_size": 2,
-#   "patch_size_t": 1,
-#   "sa_attention_mode": "flash",
-#   "sample_size": [
-#     90,
-#     160
-#   ],
-#   "sample_size_t": 22,
-#   "upcast_attention": false,
-#   "use_additional_conditions": null,
-#   "use_linear_projection": false,
-#   "use_rope": true
-# }
-
+    #     {
+    #   "_class_name": "AllegroTransformer3DModel",
+    #   "_diffusers_version": "0.30.3",
+    #   "_name_or_path": "/cpfs/data/user/larrytsai/Projects/Yi-VG/allegro/transformer",
+    #   "activation_fn": "gelu-approximate",
+    #   "attention_bias": true,
+    #   "attention_head_dim": 96,
+    #   "ca_attention_mode": "xformers",
+    #   "caption_channels": 4096,
+    #   "cross_attention_dim": 2304,
+    #   "double_self_attention": false,
+    #   "downsampler": null,
+    #   "dropout": 0.0,
+    #   "in_channels": 4,
+    #   "interpolation_scale_h": 2.0,
+    #   "interpolation_scale_t": 2.2,
+    #   "interpolation_scale_w": 2.0,
+    #   "model_max_length": 300,
+    #   "norm_elementwise_affine": false,
+    #   "norm_eps": 1e-06,
+    #   "norm_type": "ada_norm_single",
+    #   "num_attention_heads": 24,
+    #   "num_embeds_ada_norm": 1000,
+    #   "num_layers": 32,
+    #   "only_cross_attention": false,
+    #   "out_channels": 4,
+    #   "patch_size": 2,
+    #   "patch_size_t": 1,
+    #   "sa_attention_mode": "flash",
+    #   "sample_size": [
+    #     90,
+    #     160
+    #   ],
+    #   "sample_size_t": 22,
+    #   "upcast_attention": false,
+    #   "use_additional_conditions": null,
+    #   "use_linear_projection": false,
+    #   "use_rope": true
+    # }
 
     @register_to_config
     def __init__(
@@ -318,15 +308,19 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         model_max_length: int = 300,
     ):
         super().__init__()
-        
+
         self.inner_dim = num_attention_heads * attention_head_dim
-        
+
         interpolation_scale_t = (
-            interpolation_scale_t if interpolation_scale_t is not None else ((sample_frames - 1) // 16 + 1) if sample_frames % 2 == 1 else sample_frames // 16
+            interpolation_scale_t
+            if interpolation_scale_t is not None
+            else ((sample_frames - 1) // 16 + 1)
+            if sample_frames % 2 == 1
+            else sample_frames // 16
         )
         interpolation_scale_h = interpolation_scale_h if interpolation_scale_h is not None else sample_height / 30
         interpolation_scale_w = interpolation_scale_w if interpolation_scale_w is not None else sample_width / 40
-        
+
         # 1. Patch embedding
         self.pos_embed = PatchEmbed2D(
             height=sample_height,
@@ -365,10 +359,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         self.adaln_single = AllegroAdaLayerNormSingle(self.inner_dim, use_additional_conditions=False)
 
         # 5. Caption projection
-        self.caption_projection = PixArtAlphaTextProjection(
-            in_features=caption_channels, hidden_size=self.inner_dim
-        )
-        
+        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=self.inner_dim)
+
         self.gradient_checkpointing = False
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -413,23 +405,31 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
                 attention_mask = F.max_pool3d(attention_mask, kernel_size=(p_t, p, p), stride=(p_t, p, p))
                 attention_mask = attention_mask.flatten(1).view(batch_size, 1, -1)
 
-            attention_mask = (1 - attention_mask.bool().to(hidden_states.dtype)) * -10000.0 if attention_mask.numel() > 0 else None
+            attention_mask = (
+                (1 - attention_mask.bool().to(hidden_states.dtype)) * -10000.0 if attention_mask.numel() > 0 else None
+            )
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
-        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 3:  
+        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 3:
             # b, 1+use_image_num, l -> a video with images
             # b, 1, l -> only images
             encoder_attention_mask = (1 - encoder_attention_mask.to(self.dtype)) * -10000.0
-            encoder_attention_mask = rearrange(encoder_attention_mask, 'b 1 l -> (b 1) 1 l') if encoder_attention_mask.numel() > 0 else None
+            encoder_attention_mask = (
+                rearrange(encoder_attention_mask, "b 1 l -> (b 1) 1 l") if encoder_attention_mask.numel() > 0 else None
+            )
 
         # 1. Input
         post_patch_num_frames = num_frames // self.config.patch_size_temporal
         post_patch_height = height // self.config.patch_size
         post_patch_width = width // self.config.patch_size
 
-        timestep, embedded_timestep = self.adaln_single(timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype)
-        
-        hidden_states = self.pos_embed(hidden_states)  # TODO(aryan): remove dtype conversion here and move to pipeline if needed
+        timestep, embedded_timestep = self.adaln_single(
+            timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+        )
+
+        hidden_states = self.pos_embed(
+            hidden_states
+        )  # TODO(aryan): remove dtype conversion here and move to pipeline if needed
 
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, encoder_hidden_states.shape[-1])
@@ -455,7 +455,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.squeeze(1)
 
         # unpatchify
-        hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p, p, -1)
+        hidden_states = hidden_states.reshape(
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p, p, -1
+        )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.reshape(batch_size, -1, num_frames, height, width)
 

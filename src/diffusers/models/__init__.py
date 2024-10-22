@@ -100,8 +100,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
-            AuraFlowTransformer2DModel,
             AllegroTransformer3DModel,
+            AuraFlowTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             DiTTransformer2DModel,

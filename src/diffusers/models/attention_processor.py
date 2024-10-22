@@ -1514,7 +1514,9 @@ class AllegroAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AllegroAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "AllegroAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -1569,7 +1571,7 @@ class AllegroAttnProcessor2_0:
         # Apply RoPE if needed
         if image_rotary_emb is not None and not attn.is_cross_attention:
             from .embeddings import apply_rotary_emb_allegro
-            
+
             query = apply_rotary_emb_allegro(query, image_rotary_emb[0], image_rotary_emb[1])
             key = apply_rotary_emb_allegro(key, image_rotary_emb[0], image_rotary_emb[1])
 

@@ -565,7 +565,12 @@ def get_3d_rotary_pos_embed(
 
 
 def get_3d_rotary_pos_embed_allegro(
-    embed_dim, crops_coords, grid_size, temporal_size, interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0), theta: int = 10000
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    theta: int = 10000,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     # TODO(aryan): docs
     start, stop = crops_coords
@@ -581,10 +586,16 @@ def get_3d_rotary_pos_embed_allegro(
     dim_w = embed_dim // 3
 
     # Temporal frequencies
-    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t / interpolation_scale_t, theta=theta, use_real=True, repeat_interleave_real=False)
+    freqs_t = get_1d_rotary_pos_embed(
+        dim_t, grid_t / interpolation_scale_t, theta=theta, use_real=True, repeat_interleave_real=False
+    )
     # Spatial frequencies for height and width
-    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h / interpolation_scale_h, theta=theta, use_real=True, repeat_interleave_real=False)
-    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w / interpolation_scale_w, theta=theta, use_real=True, repeat_interleave_real=False)
+    freqs_h = get_1d_rotary_pos_embed(
+        dim_h, grid_h / interpolation_scale_h, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+    freqs_w = get_1d_rotary_pos_embed(
+        dim_w, grid_w / interpolation_scale_w, theta=theta, use_real=True, repeat_interleave_real=False
+    )
 
     return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
 
@@ -773,7 +784,7 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     def apply_1d_rope(tokens, pos, cos, sin):
         cos = F.embedding(pos, cos)[:, None, :, :]
         sin = F.embedding(pos, sin)[:, None, :, :]
-        x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2:]
+        x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2 :]
         tokens_rotated = torch.cat((-x2, x1), dim=-1)
         return (tokens.float() * cos + tokens_rotated.float() * sin).to(tokens.dtype)
 
