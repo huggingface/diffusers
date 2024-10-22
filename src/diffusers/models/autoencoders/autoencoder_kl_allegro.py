@@ -512,12 +512,26 @@ class AllegroEncoder3D(nn.Module):
         sample = self.temp_conv_in(sample)
         sample = sample + residual
 
-        # Down blocks
-        for down_block in self.down_blocks:
-            sample = down_block(sample)
+        if self.gradient_checkpointing:
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
 
-        # Mid block
-        sample = self.mid_block(sample)
+                return custom_forward
+
+            # Down blocks
+            for down_block in self.down_blocks:
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
+
+            # Mid block
+            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+        else:
+            # Down blocks
+            for down_block in self.down_blocks:
+                sample = down_block(sample)
+
+            # Mid block
+            sample = self.mid_block(sample)
 
         # Post process
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
@@ -625,7 +639,6 @@ class AllegroDecoder3D(nn.Module):
         self.temp_conv_out = nn.Conv3d(block_out_channels[0], block_out_channels[0], (3, 1, 1), padding=(1, 0, 0))
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
-        # TODO(aryan): implement gradient checkpointing
         self.gradient_checkpointing = False
 
     def forward(self, sample: torch.Tensor) -> torch.Tensor:
@@ -641,13 +654,34 @@ class AllegroDecoder3D(nn.Module):
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
 
-        # Mid block
-        sample = self.mid_block(sample)
-        sample = sample.to(upscale_dtype)
+        if self.gradient_checkpointing:
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
 
-        # Up blocks
-        for up_block in self.up_blocks:
-            sample = up_block(sample)
+                return custom_forward
+
+            # Mid block
+            sample = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.mid_block),
+                sample
+            )
+
+            # Up blocks
+            for up_block in self.up_blocks:
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(up_block),
+                    sample
+                )
+
+        else:
+            # Mid block
+            sample = self.mid_block(sample)
+            sample = sample.to(upscale_dtype)
+
+            # Up blocks
+            for up_block in self.up_blocks:
+                sample = up_block(sample)
 
         # Post process
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
@@ -782,6 +816,10 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             self.sample_size - self.tile_overlap[0],
             self.sample_size - self.tile_overlap[1],
         )  # (16, 112, 192)
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
+            module.gradient_checkpointing = value
 
     def encode(
         self, input_imgs: torch.Tensor, return_dict: bool = True, local_batch_size=1

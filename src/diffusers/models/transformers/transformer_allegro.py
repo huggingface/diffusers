@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import AllegroAttnProcessor2_0, Attention
@@ -335,14 +335,34 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
 
         for i, block in enumerate(self.transformer_blocks):
             # TODO(aryan): Implement gradient checkpointing
-            hidden_states = block(
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=timestep,
-                attention_mask=attention_mask,
-                encoder_attention_mask=encoder_attention_mask,
-                image_rotary_emb=image_rotary_emb,
-            )
+            if self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep,
+                    attention_mask,
+                    encoder_attention_mask,
+                    image_rotary_emb,
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=timestep,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    image_rotary_emb=image_rotary_emb,
+                )
 
         # 3. Output
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
