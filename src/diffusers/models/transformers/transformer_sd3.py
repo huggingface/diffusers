@@ -33,24 +33,26 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
-    """
+    r"""
     The Transformer model introduced in Stable Diffusion 3.
 
     Reference: https://arxiv.org/abs/2403.03206
 
     Parameters:
-        sample_size (`int`): The width of the latent images. This is fixed during training since
-            it is used to learn a number of position embeddings.
-        patch_size (`int`): Patch size to turn the input data into small patches.
-        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of Transformer blocks to use.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        caption_projection_dim (`int`): Number of dimensions to use when projecting the `encoder_hidden_states`.
-        pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        out_channels (`int`, defaults to 16): Number of output channels.
-
+        sample_size (`int`, defaults to `128`):
+            The width of the latent images. This is fixed during training since it is used to learn a number of
+            position embeddings.
+        patch_size (`int`, defaults to `2`): Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `16`): The number of channels in the input.
+        num_layers (`int`, defaults to `18`): The number of layers of Transformer blocks to use.
+        attention_head_dim (`int`, defaults to `64`): The number of channels in each head.
+        num_attention_heads (`int`, defaults to `18`): The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, defaults to `4096`): Input dimension of `encoder_hidden_states` before projection.
+        caption_projection_dim (`int`, defaults to `1152`):
+            Output dimension when projecting the `encoder_hidden_states`.
+        pooled_projection_dim (`int`, defaults to `2048`): Output dimension when projecting the `pooled_projections`.
+        out_channels (`int`, *optional*, defaults to `16`): Number of output channels.
+        pos_embed_max_size (`int`, *optional*, defaults to `96`): Max size for positional embeddings.
     """
 
     _supports_gradient_checkpointing = True
@@ -67,7 +69,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         joint_attention_dim: int = 4096,
         caption_projection_dim: int = 1152,
         pooled_projection_dim: int = 2048,
-        out_channels: int = 16,
+        out_channels: Optional[int] = 16,
         pos_embed_max_size: int = 96,
         dual_attention_layers: Tuple[
             int, ...
@@ -75,22 +77,21 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         qk_norm: Optional[str] = None,
     ):
         super().__init__()
-        default_out_channels = in_channels
-        self.out_channels = out_channels if out_channels is not None else default_out_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.out_channels = out_channels or in_channels
+        self.inner_dim = num_attention_heads * attention_head_dim
 
         self.pos_embed = PatchEmbed(
-            height=self.config.sample_size,
-            width=self.config.sample_size,
-            patch_size=self.config.patch_size,
-            in_channels=self.config.in_channels,
+            height=sample_size,
+            width=sample_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
             embed_dim=self.inner_dim,
             pos_embed_max_size=pos_embed_max_size,  # hard-code for now.
         )
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.config.caption_projection_dim)
+        self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
         # `attention_head_dim` is doubled to account for the mixing.
         # It needs to crafted when we get the actual checkpoints.
@@ -98,18 +99,18 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             [
                 JointTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=self.config.num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
                     context_pre_only=i == num_layers - 1,
                     qk_norm=qk_norm,
                     use_dual_attention=True if i in dual_attention_layers else False,
                 )
-                for i in range(self.config.num_layers)
+                for i in range(num_layers)
             ]
         )
 
         self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels, bias=True)
 
         self.gradient_checkpointing = False
 
