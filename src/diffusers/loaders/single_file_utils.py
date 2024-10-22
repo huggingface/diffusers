@@ -115,10 +115,10 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
     },
     "sd35_large": {
-        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-5-large",
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large",
     },
     "sd35_large_turbo": {
-        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-5-large-turbo",
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large-turbo",
     },
     "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
     "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},

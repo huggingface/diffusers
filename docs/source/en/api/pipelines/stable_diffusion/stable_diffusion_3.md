@@ -320,11 +320,11 @@ import torch
 from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
 
 transformer = SD3Transformer2DModel.from_single_file(
-    "https://huggingface.co/stabilityai/stable-diffusion-3-5-large/blob/main/sd3.5_large.safetensors",
+    "https://huggingface.co/stabilityai/stable-diffusion-3.5-large-turbo/blob/main/sd3.5_large.safetensors",
     torch_dtype=torch.bfloat16,
 )
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-5-large",
+    "stabilityai/stable-diffusion-3.5-large",
     transformer=transformer,
     torch_dtype=torch.bfloat16,
 )
