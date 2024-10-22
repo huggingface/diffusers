@@ -197,6 +197,18 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
         ]
         self.assertTrue(is_safetensors_compatible(filenames))
 
+    def test_diffusers_is_compatible_no_components(self):
+        filenames = [
+            "diffusion_pytorch_model.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_compatible_no_components_only_variants(self):
+        filenames = [
+            "diffusion_pytorch_model.fp16.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
+
 
 class ProgressBarTests(unittest.TestCase):
     def get_dummy_components_image_generation(self):

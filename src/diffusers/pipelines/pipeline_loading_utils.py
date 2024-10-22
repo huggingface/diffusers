@@ -118,6 +118,10 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
         components.setdefault(component, [])
         components[component].append(component_filename)
 
+    # If there are no component folders check the main directory for safetensors files
+    if not components:
+        return any(".safetensors" in filename for filename in filenames)
+
     # iterate over all files of a component
     # check if safetensor files exist for that component
     # if variant is provided check if the variant of the safetensors exists
