@@ -313,6 +313,26 @@ image = pipe("a picture of a cat holding a sign that says hello world").images[0
 image.save('sd3-single-file-t5-fp8.png')
 ```
 
+### Loading the single file checkpoint for the Stable Diffusion 3.5 Transformer Model
+
+```python
+import torch
+from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
+
+transformer = SD3Transformer2DModel.from_single_file(
+    "https://huggingface.co/stabilityai/stable-diffusion-3.5-large-turbo/blob/main/sd3.5_large.safetensors",
+    torch_dtype=torch.bfloat16,
+)
+pipe = StableDiffusion3Pipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-large",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
+)
+pipe.enable_model_cpu_offload()
+image = pipe("a cat holding a sign that says hello world").images[0]
+image.save("sd35.png")
+```
+
 ## StableDiffusion3Pipeline
 
 [[autodoc]] StableDiffusion3Pipeline
