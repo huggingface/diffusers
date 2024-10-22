@@ -645,6 +645,18 @@ class AllegroPipeline(DiffusionPipeline):
 
         return (freqs_t, freqs_h, freqs_w), (grid_t, grid_h, grid_w)
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(

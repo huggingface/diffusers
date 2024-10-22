@@ -29,7 +29,7 @@ from ..resnet import ResnetBlock2D
 from ..upsampling import Upsample2D
 
 
-class AllegroTemporalConvBlock(nn.Module):
+class AllegroTemporalConvLayer(nn.Module):
     r"""
     Temporal convolutional layer that can be used for video (sequence of images) input. Code adapted from:
     https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/models/multi_modal/video_synthesis/unet_sd.py#L1016
@@ -40,6 +40,7 @@ class AllegroTemporalConvBlock(nn.Module):
         in_dim: int,
         out_dim: Optional[int] = None,
         dropout: float = 0.0,
+        norm_num_groups: int = 32,
         up_sample: bool = False,
         down_sample: bool = False,
         stride: int = 1,
@@ -55,43 +56,39 @@ class AllegroTemporalConvBlock(nn.Module):
 
         if down_sample:
             self.conv1 = nn.Sequential(
-                nn.GroupNorm(32, in_dim),
+                nn.GroupNorm(norm_num_groups, in_dim),
                 nn.SiLU(),
                 nn.Conv3d(in_dim, out_dim, (2, stride, stride), stride=(2, 1, 1), padding=(0, pad_h, pad_w)),
             )
         elif up_sample:
             self.conv1 = nn.Sequential(
-                nn.GroupNorm(32, in_dim),
+                nn.GroupNorm(norm_num_groups, in_dim),
                 nn.SiLU(),
                 nn.Conv3d(in_dim, out_dim * 2, (1, stride, stride), padding=(0, pad_h, pad_w)),
             )
         else:
             self.conv1 = nn.Sequential(
-                nn.GroupNorm(32, in_dim),
+                nn.GroupNorm(norm_num_groups, in_dim),
                 nn.SiLU(),
                 nn.Conv3d(in_dim, out_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_w)),
             )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_w)),
         )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_h)),
         )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Conv3d(out_dim, in_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_h)),
         )
-
-        # zero out the last layer params, so the conv block is identity
-        nn.init.zeros_(self.conv4[-1].weight)
-        nn.init.zeros_(self.conv4[-1].bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         identity = hidden_states
@@ -169,10 +166,11 @@ class AllegroDownBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                AllegroTemporalConvBlock(
+                AllegroTemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -180,8 +178,8 @@ class AllegroDownBlock3D(nn.Module):
         self.temp_convs = nn.ModuleList(temp_convs)
 
         if add_temp_downsample:
-            self.temp_convs_down = AllegroTemporalConvBlock(
-                out_channels, out_channels, dropout=0.1, down_sample=True, stride=3
+            self.temp_convs_down = AllegroTemporalConvLayer(
+                out_channels, out_channels, dropout=0.1, norm_num_groups=resnet_groups, down_sample=True, stride=3
             )
         self.add_temp_downsample = add_temp_downsample
 
@@ -258,10 +256,11 @@ class AllegroUpBlock3D(nn.Module):
                 )
             )
             temp_convs.append(
-                AllegroTemporalConvBlock(
+                AllegroTemporalConvLayer(
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -270,8 +269,8 @@ class AllegroUpBlock3D(nn.Module):
 
         self.add_temp_upsample = add_temp_upsample
         if add_temp_upsample:
-            self.temp_conv_up = AllegroTemporalConvBlock(
-                out_channels, out_channels, dropout=0.1, up_sample=True, stride=3
+            self.temp_conv_up = AllegroTemporalConvLayer(
+                out_channels, out_channels, dropout=0.1, norm_num_groups=resnet_groups, up_sample=True, stride=3
             )
 
         if self.add_upsample:
@@ -336,10 +335,11 @@ class UNetMidBlock3DConv(nn.Module):
             )
         ]
         temp_convs = [
-            AllegroTemporalConvBlock(
+            AllegroTemporalConvLayer(
                 in_channels,
                 in_channels,
                 dropout=0.1,
+                norm_num_groups=resnet_groups,
             )
         ]
         attentions = []
@@ -383,10 +383,11 @@ class UNetMidBlock3DConv(nn.Module):
             )
 
             temp_convs.append(
-                AllegroTemporalConvBlock(
+                AllegroTemporalConvLayer(
                     in_channels,
                     in_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -513,6 +514,7 @@ class AllegroEncoder3D(nn.Module):
         sample = sample + residual
 
         if self.gradient_checkpointing:
+
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     return module(*inputs)
@@ -655,6 +657,7 @@ class AllegroDecoder3D(nn.Module):
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
 
         if self.gradient_checkpointing:
+
             def create_custom_forward(module):
                 def custom_forward(*inputs):
                     return module(*inputs)
@@ -662,17 +665,11 @@ class AllegroDecoder3D(nn.Module):
                 return custom_forward
 
             # Mid block
-            sample = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.mid_block),
-                sample
-            )
+            sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
 
             # Up blocks
             for up_block in self.up_blocks:
-                sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block),
-                    sample
-                )
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
 
         else:
             # Mid block
