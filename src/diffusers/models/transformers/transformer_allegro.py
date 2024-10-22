@@ -239,7 +239,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
-    
+
     @register_to_config
     def __init__(
         self,
