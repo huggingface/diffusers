@@ -18,74 +18,19 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import (
-    AllegroAttnProcessor2_0,
-    Attention,
-)
-from ..embeddings import PixArtAlphaTextProjection
+from ..attention_processor import AllegroAttnProcessor2_0, Attention
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AllegroAdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)
-
-
-class PatchEmbed2D(nn.Module):
-    """2D Image to Patch Embedding"""
-
-    def __init__(
-        self,
-        num_frames=1,
-        height=224,
-        width=224,
-        patch_size_t=1,
-        patch_size=16,
-        in_channels=3,
-        embed_dim=768,
-        layer_norm=False,
-        flatten=True,
-        bias=True,
-        use_abs_pos=False,
-    ):
-        super().__init__()
-        self.use_abs_pos = use_abs_pos
-        self.flatten = flatten
-        self.layer_norm = layer_norm
-
-        self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=(patch_size, patch_size), bias=bias
-        )
-        if layer_norm:
-            self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6)
-        else:
-            self.norm = None
-
-        self.patch_size_t = patch_size_t
-        self.patch_size = patch_size
-
-    def forward(self, latent):
-        b, _, _, _, _ = latent.shape
-        video_latent = None
-
-        latent = rearrange(latent, "b c t h w -> (b t) c h w")
-
-        latent = self.proj(latent)
-        if self.flatten:
-            latent = latent.flatten(2).transpose(1, 2)  # BT C H W -> BT N C
-        if self.layer_norm:
-            latent = self.norm(latent)
-
-        latent = rearrange(latent, "(b t) n c -> b (t n) c", b=b)
-        video_latent = latent
-
-        return video_latent
 
 
 @maybe_allow_in_graph
@@ -280,13 +225,13 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         interpolation_scale_w = interpolation_scale_w if interpolation_scale_w is not None else sample_width / 40
 
         # 1. Patch embedding
-        self.pos_embed = PatchEmbed2D(
+        self.pos_embed = PatchEmbed(
             height=sample_height,
             width=sample_width,
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=self.inner_dim,
-            # pos_embed_type=None,
+            pos_embed_type=None,
         )
 
         # 2. Transformer blocks
@@ -327,8 +272,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        encoder_hidden_states: torch.Tensor,
+        timestep: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
@@ -368,13 +313,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             )
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
-        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 3:
-            # b, 1+use_image_num, l -> a video with images
-            # b, 1, l -> only images
+        if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
             encoder_attention_mask = (1 - encoder_attention_mask.to(self.dtype)) * -10000.0
-            encoder_attention_mask = (
-                rearrange(encoder_attention_mask, "b 1 l -> (b 1) 1 l") if encoder_attention_mask.numel() > 0 else None
-            )
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # 1. Input
         post_patch_num_frames = num_frames // self.config.patch_size_temporal
@@ -385,9 +326,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
         )
 
-        hidden_states = self.pos_embed(
-            hidden_states
-        )  # TODO(aryan): remove dtype conversion here and move to pipeline if needed
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        hidden_states = self.pos_embed(hidden_states)
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
 
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, encoder_hidden_states.shape[-1])

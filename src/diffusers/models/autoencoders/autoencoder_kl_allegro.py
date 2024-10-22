@@ -18,7 +18,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention_processor import Attention, SpatialNorm
@@ -114,7 +113,7 @@ class AllegroTemporalConvBlock(nn.Module):
             hidden_states = self.conv1(hidden_states)
 
         if self.up_sample:
-            hidden_states = rearrange(hidden_states, "b (d c) f h w -> b c (f d) h w", d=2)
+            hidden_states = hidden_states.unflatten(1, (2, -1)).permute(0, 2, 3, 1, 4, 5).flatten(2, 3)
 
         hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
         hidden_states = torch.cat((hidden_states, hidden_states[:, :, -1:]), dim=2)
@@ -858,10 +857,10 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     )
                     out_video_cube[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += latent_mean_blend
 
-        ## final conv
-        out_video_cube = rearrange(out_video_cube, "b c n h w -> (b n) c h w")
+        # final conv
+        out_video_cube = out_video_cube.permute(0, 2, 1, 3, 4).flatten(0, 1)
         out_video_cube = self.quant_conv(out_video_cube)
-        out_video_cube = rearrange(out_video_cube, "(b n) c h w -> b c n h w", b=B)
+        out_video_cube = out_video_cube.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
 
         posterior = DiagonalGaussianDistribution(out_video_cube)
 
@@ -885,9 +884,9 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         B, C, N, H, W = input_latents.shape
 
         ## post quant conv (a mapping)
-        input_latents = rearrange(input_latents, "b c n h w -> (b n) c h w")
+        input_latents = input_latents.permute(0, 2, 1, 3, 4).flatten(0, 1)
         input_latents = self.post_quant_conv(input_latents)
-        input_latents = rearrange(input_latents, "(b n) c h w -> b c n h w", b=B)
+        input_latents = input_latents.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
 
         ## out tensor shape
         out_n = math.floor((N - IN_KERNEL[0]) / IN_STRIDE[0]) + 1
@@ -947,7 +946,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     )
                     out_video[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += out_video_blend
 
-        out_video = rearrange(out_video, "b c t h w -> b t c h w").contiguous()
+        out_video = out_video.permute(0, 2, 1, 3, 4).contiguous()
 
         decoded = out_video
         if not return_dict:

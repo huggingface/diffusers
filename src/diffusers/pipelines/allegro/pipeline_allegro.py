@@ -836,25 +836,11 @@ class AllegroPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-            current_timestep = t
-            if not torch.is_tensor(current_timestep):
-                # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-                # This would be a good case for the `match` statement (Python 3.10+)
-                is_mps = latent_model_input.device.type == "mps"
-                if isinstance(current_timestep, float):
-                    dtype = torch.float32 if is_mps else torch.float64
-                else:
-                    dtype = torch.int32 if is_mps else torch.int64
-                current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
-            elif len(current_timestep.shape) == 0:
-                current_timestep = current_timestep[None].to(latent_model_input.device)
             # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-            current_timestep = current_timestep.expand(latent_model_input.shape[0])
+            timestep = t.expand(latent_model_input.shape[0])
 
             if prompt_embeds.ndim == 3:
                 prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
-            if prompt_attention_mask.ndim == 2:
-                prompt_attention_mask = prompt_attention_mask.unsqueeze(1)  # b l -> b 1 l
 
             # prepare attention_mask.
             # b c t h w -> b t h w
@@ -866,7 +852,7 @@ class AllegroPipeline(DiffusionPipeline):
                 attention_mask=attention_mask,
                 encoder_hidden_states=prompt_embeds,
                 encoder_attention_mask=prompt_attention_mask,
-                timestep=current_timestep,
+                timestep=timestep,
                 image_rotary_emb=image_rotary_emb,
                 return_dict=False,
             )[0]
@@ -875,12 +861,6 @@ class AllegroPipeline(DiffusionPipeline):
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            # learned sigma
-            if latent_channels == self.transformer.config.out_channels // 2:
-                noise_pred = noise_pred.chunk(2, dim=1)[0]
-            else:
-                noise_pred = noise_pred
 
             # compute previous image: x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
