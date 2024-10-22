@@ -445,8 +445,10 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor} but are {height} and {width}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
