@@ -22,10 +22,7 @@ import torch.nn.functional as F
 
 from ..utils import is_torch_version
 from .activations import get_activation
-from .embeddings import (
-    CombinedTimestepLabelEmbeddings,
-    PixArtAlphaCombinedTimestepSizeEmbeddings
-)
+from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):

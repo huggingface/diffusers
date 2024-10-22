@@ -90,7 +90,7 @@ class AllegroTemporalConvLayer(nn.Module):
             nn.SiLU(),
             nn.Conv3d(out_dim, in_dim, (3, stride, stride), padding=(pad_t, pad_h, pad_h)),
         )
-    
+
     @staticmethod
     def _pad_temporal_dim(hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = torch.cat((hidden_states[:, :, 0:1], hidden_states), dim=2)
@@ -118,10 +118,10 @@ class AllegroTemporalConvLayer(nn.Module):
 
         hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv2(hidden_states)
-        
+
         hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv3(hidden_states)
-        
+
         hidden_states = self._pad_temporal_dim(hidden_states)
         hidden_states = self.conv4(hidden_states)
 
@@ -200,7 +200,7 @@ class AllegroDownBlock3D(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
-        
+
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
@@ -213,7 +213,7 @@ class AllegroDownBlock3D(nn.Module):
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
-            
+
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return hidden_states
 
@@ -282,7 +282,7 @@ class AllegroUpBlock3D(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
-        
+
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
@@ -295,7 +295,7 @@ class AllegroUpBlock3D(nn.Module):
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
-            
+
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return hidden_states
 
@@ -399,7 +399,7 @@ class UNetMidBlock3DConv(nn.Module):
 
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.resnets[0](hidden_states, temb=None)
-        
+
         hidden_states = self.temp_convs[0](hidden_states, batch_size=batch_size)
 
         for attn, resnet, temp_conv in zip(self.attentions, self.resnets[1:], self.temp_convs[1:]):
@@ -532,15 +532,15 @@ class AllegroEncoder3D(nn.Module):
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
-        
+
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         residual = sample
         sample = self.temp_conv_out(sample)
         sample = sample + residual
-        
+
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_out(sample)
-        
+
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return sample
 
@@ -674,7 +674,7 @@ class AllegroDecoder3D(nn.Module):
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
-        
+
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         residual = sample
         sample = self.temp_conv_out(sample)
@@ -682,7 +682,7 @@ class AllegroDecoder3D(nn.Module):
 
         sample = sample.permute(0, 2, 1, 3, 4).flatten(0, 1)
         sample = self.conv_out(sample)
-        
+
         sample = sample.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
         return sample
 
@@ -804,7 +804,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         chunk_len = 24
         t_over = 8
         tile_overlap = (120, 80)
-        
+
         self.latent_chunk_len = chunk_len // 4
         self.latent_t_over = t_over // 4
         self.kernel = (chunk_len, sample_size, sample_size)  # (24, 256, 256)
@@ -817,7 +817,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
             module.gradient_checkpointing = value
-    
+
     def enable_tiling(
         self,
         # tile_sample_min_height: Optional[int] = None,
@@ -876,17 +876,19 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         decoding in one step.
         """
         self.use_slicing = False
-    
+
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         # TODO(aryan)
         # if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
         if self.use_tiling:
             return self.tiled_encode(x)
-        
+
         raise NotImplementedError("Encoding without tiling has not been implemented yet.")
-    
+
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    def encode(
+        self, x: torch.Tensor, return_dict: bool = True
+    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         r"""
         Encode a batch of videos into latents.
 
@@ -919,7 +921,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             return self.tiled_decode(z)
 
         raise NotImplementedError("Decoding without tiling has not been implemented yet.")
-    
+
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         """
@@ -946,12 +948,10 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def tiled_encode(
-        self, x: torch.Tensor
-    ) -> torch.Tensor:
+    def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         # TODO(aryan): parameterize this in enable_tiling
         local_batch_size = 1
-        
+
         # TODO(aryan): rewrite to encode and tiled_encode
         KERNEL = self.kernel
         STRIDE = self.stride
@@ -972,9 +972,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             device=x.device,
             dtype=x.dtype,
         )
-        vae_batch_input = torch.zeros(
-            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=x.device, dtype=x.dtype
-        )
+        vae_batch_input = torch.zeros((LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=x.device, dtype=x.dtype)
 
         for i in range(out_n):
             for j in range(out_h):
@@ -1002,9 +1000,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         ## flatten the batched out latent to videos and supress the overlapped parts
         B, C, N, H, W = x.shape
 
-        out_video_cube = torch.zeros(
-            (B, OUT_C, N // 4, H // 8, W // 8), device=x.device, dtype=x.dtype
-        )
+        out_video_cube = torch.zeros((B, OUT_C, N // 4, H // 8, W // 8), device=x.device, dtype=x.dtype)
         OUT_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
         OUT_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
         OVERLAP = OUT_KERNEL[0] - OUT_STRIDE[0], OUT_KERNEL[1] - OUT_STRIDE[1], OUT_KERNEL[2] - OUT_STRIDE[2]
@@ -1030,9 +1026,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         return out_video_cube
 
-    def tiled_decode(
-        self, z: torch.Tensor
-    ) -> torch.Tensor:
+    def tiled_decode(self, z: torch.Tensor) -> torch.Tensor:
         # TODO(aryan): parameterize this in enable_tiling
         local_batch_size = 1
 
@@ -1092,9 +1086,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     num += 1
         B, C, N, H, W = z.shape
 
-        out_video = torch.zeros(
-            (B, OUT_C, N * 4, H * 8, W * 8), device=z.device, dtype=z.dtype
-        )
+        out_video = torch.zeros((B, OUT_C, N * 4, H * 8, W * 8), device=z.device, dtype=z.dtype)
         OVERLAP = KERNEL[0] - STRIDE[0], KERNEL[1] - STRIDE[1], KERNEL[2] - STRIDE[2]
         for i in range(out_n):
             n_start, n_end = i * STRIDE[0], i * STRIDE[0] + KERNEL[0]
