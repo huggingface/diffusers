@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -16,9 +16,13 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
         images (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+        nsfw_content_detected (`List[bool]`)
+            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            `None` if safety checking could not be performed.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[List[bool]]
 
 
 if is_flax_available():
@@ -32,6 +36,10 @@ if is_flax_available():
         Args:
             images (`np.ndarray`)
                 Array of shape `(batch_size, height, width, num_channels)` with images from the diffusion pipeline.
+            nsfw_content_detected (`List[bool]`):
+                List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content
+                or `None` if safety checking could not be performed.
         """
 
         images: np.ndarray
+        nsfw_content_detected: Optional[List[bool]]
