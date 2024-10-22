@@ -649,8 +649,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             height,
             width,
             prompt_embeds.dtype,
-            generator,
             device,
+            generator,
             latents,
         )
 
