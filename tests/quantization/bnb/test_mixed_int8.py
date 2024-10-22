@@ -117,6 +117,9 @@ class Base8bitTests(unittest.TestCase):
 
 class BnB8bitBasicTests(Base8bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         # Models
         self.model_fp16 = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", torch_dtype=torch.float16
@@ -238,7 +241,7 @@ class BnB8bitBasicTests(Base8bitTests):
 
     def test_config_from_pretrained(self):
         transformer_8bit = FluxTransformer2DModel.from_pretrained(
-            "sayakpaul/flux.1-dev-int8-pkg", subfolder="transformer"
+            "hf-internal-testing/flux.1-dev-int8-pkg", subfolder="transformer"
         )
         linear = get_some_linear_layer(transformer_8bit)
         self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
@@ -296,6 +299,9 @@ class BnB8bitBasicTests(Base8bitTests):
 
 class BnB8bitTrainingTests(Base8bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         self.model_8bit = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
@@ -337,6 +343,9 @@ class BnB8bitTrainingTests(Base8bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb8bitTests(Base8bitTests):
     def setUp(self) -> None:
+        gc.collect()
+        torch.cuda.empty_cache()
+
         mixed_int8_config = BitsAndBytesConfig(load_in_8bit=True)
         model_8bit = SD3Transformer2DModel.from_pretrained(
             self.model_name, subfolder="transformer", quantization_config=mixed_int8_config
@@ -427,8 +436,10 @@ class SlowBnb8bitTests(Base8bitTests):
 @require_transformers_version_greater("4.44.0")
 class SlowBnb8bitFluxTests(Base8bitTests):
     def setUp(self) -> None:
-        # TODO: Copy sayakpaul/flux.1-dev-int8-pkg to testing repo.
-        model_id = "sayakpaul/flux.1-dev-int8-pkg"
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        model_id = "hf-internal-testing/flux.1-dev-int8-pkg"
         t5_8bit = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
         transformer_8bit = FluxTransformer2DModel.from_pretrained(model_id, subfolder="transformer")
         self.pipeline_8bit = DiffusionPipeline.from_pretrained(
@@ -466,6 +477,9 @@ class SlowBnb8bitFluxTests(Base8bitTests):
 @slow
 class BaseBnb8bitSerializationTests(Base8bitTests):
     def setUp(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
         quantization_config = BitsAndBytesConfig(
             load_in_8bit=True,
         )
