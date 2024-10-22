@@ -18,12 +18,12 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import tqdm
 from transformers import T5EncoderModel, T5Tokenizer
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AllegroTransformer3DModel, AutoencoderKLAllegro
 from ...models.embeddings import get_3d_rotary_pos_embed_allegro
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -171,6 +171,12 @@ class AllegroPipeline(DiffusionPipeline):
     _optional_components = ["tokenizer", "text_encoder", "vae", "transformer", "scheduler"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+    ]
+
     def __init__(
         self,
         tokenizer: T5Tokenizer,
@@ -198,7 +204,7 @@ class AllegroPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
-        num_images_per_prompt: int = 1,
+        num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -286,10 +292,10 @@ class AllegroPipeline(DiffusionPipeline):
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
         prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -320,11 +326,11 @@ class AllegroPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
             negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_videos_per_prompt, 1)
         else:
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
@@ -355,8 +361,8 @@ class AllegroPipeline(DiffusionPipeline):
         num_frames,
         height,
         width,
-        negative_prompt,
-        callback_steps,
+        callback_on_step_end_tensor_inputs,
+        negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
@@ -367,12 +373,11 @@ class AllegroPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -606,20 +611,16 @@ class AllegroPipeline(DiffusionPipeline):
         num_frames: int,
         device: torch.device,
     ):
-        attention_head_dim = 96
-        vae_scale_factor_spatial = 8
-        patch_size = 2
-
-        grid_height = height // (vae_scale_factor_spatial * patch_size)
-        grid_width = width // (vae_scale_factor_spatial * patch_size)
-        base_size_width = 1280 // (vae_scale_factor_spatial * patch_size)
-        base_size_height = 720 // (vae_scale_factor_spatial * patch_size)
+        grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_width = 1280 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_height = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height
         )
         freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w = get_3d_rotary_pos_embed_allegro(
-            embed_dim=attention_head_dim,
+            embed_dim=self.transformer.config.attention_head_dim,
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
             temporal_size=num_frames,
@@ -653,10 +654,10 @@ class AllegroPipeline(DiffusionPipeline):
         num_inference_steps: int = 100,
         timesteps: List[int] = None,
         guidance_scale: float = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -666,11 +667,12 @@ class AllegroPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         clean_caption: bool = True,
         max_sequence_length: int = 300,
-        verbose: bool = True,
     ) -> Union[AllegroPipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -746,6 +748,12 @@ class AllegroPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
+        num_videos_per_prompt = 1
+
         # 1. Check inputs. Raise error if not correct
         num_frames = num_frames or self.transformer.config.sample_size_t * self.vae_scale_factor_temporal
         height = height or self.transformer.config.sample_size[0] * self.vae_scale_factor_spatial
@@ -756,13 +764,15 @@ class AllegroPipeline(DiffusionPipeline):
             num_frames,
             height,
             width,
+            callback_on_step_end_tensor_inputs,
             negative_prompt,
-            callback_steps,
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
         )
+        self._guidance_scale = guidance_scale
+        self._interrupt = False
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
@@ -789,7 +799,7 @@ class AllegroPipeline(DiffusionPipeline):
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
-            num_images_per_prompt=num_images_per_prompt,
+            num_videos_per_prompt=num_videos_per_prompt,
             device=device,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -809,7 +819,7 @@ class AllegroPipeline(DiffusionPipeline):
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
+            batch_size * num_videos_per_prompt,
             latent_channels,
             num_frames,
             height,
@@ -831,45 +841,56 @@ class AllegroPipeline(DiffusionPipeline):
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        progress_wrap = tqdm.tqdm if verbose else (lambda x: x)
-        for i, t in progress_wrap(list(enumerate(timesteps))):
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
 
-            # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-            timestep = t.expand(latent_model_input.shape[0])
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-            if prompt_embeds.ndim == 3:
-                prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latent_model_input.shape[0])
 
-            # prepare attention_mask.
-            # b c t h w -> b t h w
-            attention_mask = torch.ones_like(latent_model_input)[:, 0]
+                if prompt_embeds.ndim == 3:
+                    prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
 
-            # predict noise model_output
-            noise_pred = self.transformer(
-                latent_model_input,
-                attention_mask=attention_mask,
-                encoder_hidden_states=prompt_embeds,
-                encoder_attention_mask=prompt_attention_mask,
-                timestep=timestep,
-                image_rotary_emb=image_rotary_emb,
-                return_dict=False,
-            )[0]
+                # prepare attention_mask.
+                # b c t h w -> b t h w
+                attention_mask = torch.ones_like(latent_model_input)[:, 0]
 
-            # perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                # predict noise model_output
+                noise_pred = self.transformer(
+                    latent_model_input,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_attention_mask,
+                    timestep=timestep,
+                    image_rotary_emb=image_rotary_emb,
+                    return_dict=False,
+                )[0]
 
-            # compute previous image: x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-            # call the callback, if provided
-            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                if callback is not None and i % callback_steps == 0:
-                    step_idx = i // getattr(self.scheduler, "order", 1)
-                    callback(step_idx, t, latents)
+                # compute previous image: x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                # call the callback, if provided
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
