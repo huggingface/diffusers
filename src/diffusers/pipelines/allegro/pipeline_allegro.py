@@ -193,7 +193,6 @@ class AllegroPipeline(DiffusionPipeline):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-    # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -207,7 +206,6 @@ class AllegroPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
         max_sequence_length: int = 300,
-        **kwargs,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.

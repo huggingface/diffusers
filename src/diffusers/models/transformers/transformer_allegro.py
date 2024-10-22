@@ -239,47 +239,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
-
-    #     {
-    #   "_class_name": "AllegroTransformer3DModel",
-    #   "_diffusers_version": "0.30.3",
-    #   "_name_or_path": "/cpfs/data/user/larrytsai/Projects/Yi-VG/allegro/transformer",
-    #   "activation_fn": "gelu-approximate",
-    #   "attention_bias": true,
-    #   "attention_head_dim": 96,
-    #   "ca_attention_mode": "xformers",
-    #   "caption_channels": 4096,
-    #   "cross_attention_dim": 2304,
-    #   "double_self_attention": false,
-    #   "downsampler": null,
-    #   "dropout": 0.0,
-    #   "in_channels": 4,
-    #   "interpolation_scale_h": 2.0,
-    #   "interpolation_scale_t": 2.2,
-    #   "interpolation_scale_w": 2.0,
-    #   "model_max_length": 300,
-    #   "norm_elementwise_affine": false,
-    #   "norm_eps": 1e-06,
-    #   "norm_type": "ada_norm_single",
-    #   "num_attention_heads": 24,
-    #   "num_embeds_ada_norm": 1000,
-    #   "num_layers": 32,
-    #   "only_cross_attention": false,
-    #   "out_channels": 4,
-    #   "patch_size": 2,
-    #   "patch_size_t": 1,
-    #   "sa_attention_mode": "flash",
-    #   "sample_size": [
-    #     90,
-    #     160
-    #   ],
-    #   "sample_size_t": 22,
-    #   "upcast_attention": false,
-    #   "use_additional_conditions": null,
-    #   "use_linear_projection": false,
-    #   "use_rope": true
-    # }
-
+    
     @register_to_config
     def __init__(
         self,
@@ -304,8 +264,6 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         interpolation_scale_h: float = 2.0,
         interpolation_scale_w: float = 2.0,
         interpolation_scale_t: float = 2.2,
-        use_rotary_positional_embeddings: bool = True,
-        model_max_length: int = 300,
     ):
         super().__init__()
 
@@ -369,8 +327,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        timestep: Optional[torch.LongTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
