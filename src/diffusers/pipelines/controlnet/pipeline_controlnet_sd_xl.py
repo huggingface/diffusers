@@ -332,7 +332,6 @@ class StableDiffusionXLControlNetPipeline(
         #        "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
         #        " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
         #    )
-
         
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt, requires_safety_checker=requires_safety_checker)
 
