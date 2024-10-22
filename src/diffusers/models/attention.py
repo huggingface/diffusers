@@ -22,7 +22,7 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, SwiGLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
-from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
+from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
 
 
 logger = logging.get_logger(__name__)
@@ -100,13 +100,25 @@ class JointTransformerBlock(nn.Module):
             processing of `context` conditions.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, context_pre_only=False):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        context_pre_only: bool = False,
+        qk_norm: Optional[str] = None,
+        use_dual_attention: bool = False,
+    ):
         super().__init__()
 
+        self.use_dual_attention = use_dual_attention
         self.context_pre_only = context_pre_only
         context_norm_type = "ada_norm_continous" if context_pre_only else "ada_norm_zero"
 
-        self.norm1 = AdaLayerNormZero(dim)
+        if use_dual_attention:
+            self.norm1 = SD35AdaLayerNormZeroX(dim)
+        else:
+            self.norm1 = AdaLayerNormZero(dim)
 
         if context_norm_type == "ada_norm_continous":
             self.norm1_context = AdaLayerNormContinuous(
@@ -118,12 +130,14 @@ class JointTransformerBlock(nn.Module):
             raise ValueError(
                 f"Unknown context_norm_type: {context_norm_type}, currently only support `ada_norm_continous`, `ada_norm_zero`"
             )
+
         if hasattr(F, "scaled_dot_product_attention"):
             processor = JointAttnProcessor2_0()
         else:
             raise ValueError(
                 "The current PyTorch version does not support the `scaled_dot_product_attention` function."
             )
+
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -134,7 +148,24 @@ class JointTransformerBlock(nn.Module):
             context_pre_only=context_pre_only,
             bias=True,
             processor=processor,
+            qk_norm=qk_norm,
+            eps=1e-6,
         )
+
+        if use_dual_attention:
+            self.attn2 = Attention(
+                query_dim=dim,
+                cross_attention_dim=None,
+                dim_head=attention_head_dim,
+                heads=num_attention_heads,
+                out_dim=dim,
+                bias=True,
+                processor=processor,
+                qk_norm=qk_norm,
+                eps=1e-6,
+            )
+        else:
+            self.attn2 = None
 
         self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
@@ -159,7 +190,12 @@ class JointTransformerBlock(nn.Module):
     def forward(
         self, hidden_states: torch.FloatTensor, encoder_hidden_states: torch.FloatTensor, temb: torch.FloatTensor
     ):
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        if self.use_dual_attention:
+            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(
+                hidden_states, emb=temb
+            )
+        else:
+            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         if self.context_pre_only:
             norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
@@ -176,6 +212,11 @@ class JointTransformerBlock(nn.Module):
         # Process attention outputs for the `hidden_states`.
         attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = hidden_states + attn_output
+
+        if self.use_dual_attention:
+            attn_output2 = self.attn2(hidden_states=norm_hidden_states2)
+            attn_output2 = gate_msa2.unsqueeze(1) * attn_output2
+            hidden_states = hidden_states + attn_output2
 
         norm_hidden_states = self.norm2(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
@@ -972,15 +1013,32 @@ class FreeNoiseTransformerBlock(nn.Module):
         return frame_indices
 
     def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
-        if weighting_scheme == "pyramid":
+        if weighting_scheme == "flat":
+            weights = [1.0] * num_frames
+
+        elif weighting_scheme == "pyramid":
             if num_frames % 2 == 0:
                 # num_frames = 4 => [1, 2, 2, 1]
-                weights = list(range(1, num_frames // 2 + 1))
+                mid = num_frames // 2
+                weights = list(range(1, mid + 1))
                 weights = weights + weights[::-1]
             else:
                 # num_frames = 5 => [1, 2, 3, 2, 1]
-                weights = list(range(1, num_frames // 2 + 1))
-                weights = weights + [num_frames // 2 + 1] + weights[::-1]
+                mid = (num_frames + 1) // 2
+                weights = list(range(1, mid))
+                weights = weights + [mid] + weights[::-1]
+
+        elif weighting_scheme == "delayed_reverse_sawtooth":
+            if num_frames % 2 == 0:
+                # num_frames = 4 => [0.01, 2, 2, 1]
+                mid = num_frames // 2
+                weights = [0.01] * (mid - 1) + [mid]
+                weights = weights + list(range(mid, 0, -1))
+            else:
+                # num_frames = 5 => [0.01, 0.01, 3, 2, 1]
+                mid = (num_frames + 1) // 2
+                weights = [0.01] * mid
+                weights = weights + list(range(mid, 0, -1))
         else:
             raise ValueError(f"Unsupported value for weighting_scheme={weighting_scheme}")
 
@@ -1087,8 +1145,26 @@ class FreeNoiseTransformerBlock(nn.Module):
                 accumulated_values[:, frame_start:frame_end] += hidden_states_chunk * weights
                 num_times_accumulated[:, frame_start:frame_end] += weights
 
-        hidden_states = torch.where(
-            num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        # TODO(aryan): Maybe this could be done in a better way.
+        #
+        # Previously, this was:
+        # hidden_states = torch.where(
+        #    num_times_accumulated > 0, accumulated_values / num_times_accumulated, accumulated_values
+        # )
+        #
+        # The reasoning for the change here is `torch.where` became a bottleneck at some point when golfing memory
+        # spikes. It is particularly noticeable when the number of frames is high. My understanding is that this comes
+        # from tensors being copied - which is why we resort to spliting and concatenating here. I've not particularly
+        # looked into this deeply because other memory optimizations led to more pronounced reductions.
+        hidden_states = torch.cat(
+            [
+                torch.where(num_times_split > 0, accumulated_split / num_times_split, accumulated_split)
+                for accumulated_split, num_times_split in zip(
+                    accumulated_values.split(self.context_length, dim=1),
+                    num_times_accumulated.split(self.context_length, dim=1),
+                )
+            ],
+            dim=1,
         ).to(dtype)
 
         # 3. Feed-forward

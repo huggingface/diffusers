@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -51,7 +50,7 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
+from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils import (
     check_min_version,
     is_wandb_available,
@@ -119,7 +118,7 @@ Please adhere to the licensing terms as described `[here](https://huggingface.co
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="other",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -157,6 +156,7 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
@@ -189,8 +189,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -1064,8 +1063,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1385,9 +1383,7 @@ def main(args):
         del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
         del text_encoder_one, text_encoder_two, text_encoder_three
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1707,6 +1703,9 @@ def main(args):
                     text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
                         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
                     )
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
+                    text_encoder_three.to(weight_dtype)
                 pipeline = StableDiffusion3Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1725,11 +1724,11 @@ def main(args):
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
                     epoch=epoch,
+                    torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two, text_encoder_three
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -1775,6 +1774,7 @@ def main(args):
                 pipeline_args=pipeline_args,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:

@@ -33,7 +33,6 @@ from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
-    print_tensor_test,
     torch_device,
 )
 
@@ -173,7 +172,6 @@ class PixArtSigmaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe_pag(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (
             1,

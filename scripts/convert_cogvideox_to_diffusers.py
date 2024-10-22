@@ -4,7 +4,13 @@ from typing import Any, Dict
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLCogVideoX, CogVideoXDDIMScheduler, CogVideoXPipeline, CogVideoXTransformer3DModel
+from diffusers import (
+    AutoencoderKLCogVideoX,
+    CogVideoXDDIMScheduler,
+    CogVideoXImageToVideoPipeline,
+    CogVideoXPipeline,
+    CogVideoXTransformer3DModel,
+)
 
 
 def reassign_query_key_value_inplace(key: str, state_dict: Dict[str, Any]):
@@ -78,6 +84,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "mixins.final_layer.norm_final": "norm_out.norm",
     "mixins.final_layer.linear": "proj_out",
     "mixins.final_layer.adaLN_modulation.1": "norm_out.linear",
+    "mixins.pos_embed.pos_embedding": "patch_embed.pos_embedding",  # Specific to CogVideoX-5b-I2V
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
@@ -131,15 +138,18 @@ def convert_transformer(
     num_layers: int,
     num_attention_heads: int,
     use_rotary_positional_embeddings: bool,
+    i2v: bool,
     dtype: torch.dtype,
 ):
     PREFIX_KEY = "model.diffusion_model."
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
     transformer = CogVideoXTransformer3DModel(
+        in_channels=32 if i2v else 16,
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
+        use_learned_positional_embeddings=i2v,
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
@@ -153,7 +163,6 @@ def convert_transformer(
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
-
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
@@ -205,6 +214,7 @@ def get_args():
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
     parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
+    parser.add_argument("--i2v", action="store_true", default=False, help="Whether to save the model weights in fp16")
     return parser.parse_args()
 
 
@@ -225,6 +235,7 @@ if __name__ == "__main__":
             args.num_layers,
             args.num_attention_heads,
             args.use_rotary_positional_embeddings,
+            args.i2v,
             dtype,
         )
     if args.vae_ckpt_path is not None:
@@ -234,7 +245,7 @@ if __name__ == "__main__":
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
 
-    # Apparently, the conversion does not work any more without this :shrug:
+    # Apparently, the conversion does not work anymore without this :shrug:
     for param in text_encoder.parameters():
         param.data = param.data.contiguous()
 
@@ -252,9 +263,17 @@ if __name__ == "__main__":
             "timestep_spacing": "trailing",
         }
     )
+    if args.i2v:
+        pipeline_cls = CogVideoXImageToVideoPipeline
+    else:
+        pipeline_cls = CogVideoXPipeline
 
-    pipe = CogVideoXPipeline(
-        tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+    pipe = pipeline_cls(
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        vae=vae,
+        transformer=transformer,
+        scheduler=scheduler,
     )
 
     if args.fp16:
@@ -265,4 +284,7 @@ if __name__ == "__main__":
     # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
     # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
     # is either fp16/bf16 here).
-    pipe.save_pretrained(args.output_path, safe_serialization=True, push_to_hub=args.push_to_hub)
+
+    # This is necessary This is necessary for users with insufficient memory,
+    # such as those using Colab and notebooks, as it can save some memory used for model loading.
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", push_to_hub=args.push_to_hub)

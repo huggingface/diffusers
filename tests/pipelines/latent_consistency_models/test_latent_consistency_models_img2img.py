@@ -119,11 +119,11 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         }
         return inputs
 
-    def test_ip_adapter_single(self):
+    def test_ip_adapter(self):
         expected_pipe_slice = None
         if torch_device == "cpu":
             expected_pipe_slice = np.array([0.4003, 0.3718, 0.2863, 0.5500, 0.5587, 0.3772, 0.4617, 0.4961, 0.4417])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
 
     def test_lcm_onestep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator

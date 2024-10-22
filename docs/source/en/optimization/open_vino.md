@@ -29,7 +29,7 @@ To load and run inference, use the [`~optimum.intel.OVStableDiffusionPipeline`].
 ```python
 from optimum.intel import OVStableDiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = OVStableDiffusionPipeline.from_pretrained(model_id, export=True)
 prompt = "sailing ship in storm by Rembrandt"
 image = pipeline(prompt).images[0]

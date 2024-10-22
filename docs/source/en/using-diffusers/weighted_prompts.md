@@ -366,7 +366,7 @@ from diffusers import StableDiffusionPipeline
 from compel import Compel, DiffusersTextualInversionManager
 
 pipe = StableDiffusionPipeline.from_pretrained(
-  "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16,
+  "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16,
   use_safetensors=True, variant="fp16").to("cuda")
 pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
 ```

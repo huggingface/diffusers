@@ -20,7 +20,7 @@ env:
 
 jobs:
   check_code_quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -40,7 +40,7 @@ jobs:
 
   check_repository_consistency:
     needs: check_code_quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -92,12 +92,14 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
+        # TODO (sayakpaul, DN6): revisit `--no-deps`
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
-            python -m pip install -U peft@git+https://github.com/huggingface/peft.git
-            python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-            python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+            python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
+            python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+            pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
         else
-            python -m uv pip install -U peft transformers accelerate
+            python -m uv pip install -U peft --no-deps
+            python -m uv pip install -U transformers accelerate --no-deps
         fi
 
     - name: Environment
@@ -110,23 +112,23 @@ jobs:
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
-          --make-reports=tests_${{ matrix.config.report }} \
+          --make-reports=tests_${{ matrix.lib-versions }} \
           tests/lora/
         python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
-          --make-reports=tests_models_lora_${{ matrix.config.report }} \
+          --make-reports=tests_models_lora_${{ matrix.lib-versions }} \
           tests/models/ -k "lora"
 
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_${{ matrix.config.report }}_failures_short.txt
-        cat reports/tests_models_lora_${{ matrix.config.report }}_failures_short.txt
+        cat reports/tests_${{ matrix.lib-versions }}_failures_short.txt
+        cat reports/tests_models_lora_${{ matrix.lib-versions }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: pr_${{ matrix.config.report }}_test_reports
+        name: pr_${{ matrix.lib-versions }}_test_reports
         path: reports
