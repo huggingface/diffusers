@@ -6,7 +6,6 @@ import PIL.Image
 
 from ...utils import BaseOutput, is_flax_available
 
-
 @dataclass
 class StableDiffusionXLPipelineOutput(BaseOutput):
     """
