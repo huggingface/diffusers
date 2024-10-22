@@ -55,6 +55,10 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
+        dual_attention_layers: Tuple[
+            int, ...
+        ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
+        qk_norm: Optional[str] = None,
         extra_conditioning_channels: int = 0,
     ):
         super().__init__()
@@ -84,6 +88,8 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=False,
+                    qk_norm=qk_norm,
+                    use_dual_attention=True if i in dual_attention_layers else False,
                 )
                 for i in range(num_layers)
             ]
