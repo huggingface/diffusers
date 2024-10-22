@@ -253,3 +253,8 @@ double_quant_model = SD3Transformer2DModel.from_pretrained(
 )
 model.dequantize()
 ```
+
+## Resources
+
+* [End-to-end notebook showing Flux.1 Dev inference in a free-tier Colab](https://gist.github.com/sayakpaul/c76bd845b48759e11687ac550b99d8b4)
+* [Training](https://gist.github.com/sayakpaul/05afd428bc089b47af7c016e42004527)
