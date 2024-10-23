@@ -317,9 +317,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         p_t = self.config.patch_size_t
         p = self.config.patch_size
 
-        post_patch_num_frames = num_frames // self.config.patch_size_temporal
-        post_patch_height = height // self.config.patch_size
-        post_patch_width = width // self.config.patch_size
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p
+        post_patch_width = width // p
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
