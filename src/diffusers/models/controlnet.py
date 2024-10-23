@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from ..utils import deprecate
-from .controlnets.controlnet import ControlNetConditioningEmbedding, ControlNetModel, ControlNetOutput
+from .controlnets.controlnet import (
+    ControlNetConditioningEmbedding,
+    ControlNetModel,
+    ControlNetOutput,
+)
 
 
 class ControlNetOutput(ControlNetOutput):
