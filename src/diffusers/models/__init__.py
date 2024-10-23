@@ -34,8 +34,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
-    _import_structure["controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
     _import_structure["controlnets.controlnet_hunyuan"] = [
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
@@ -91,12 +91,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
-        from .controlnet import ControlNetModel
-        from .controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
-        from .controlnet_sparsectrl import SparseControlNetModel
         from .controlnets import (
             ControlNetModel,
             ControlNetXSAdapter,
+            FluxControlNetModel,
+            FluxMultiControlNetModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DMultiControlNetModel,
             SD3ControlNetModel,
