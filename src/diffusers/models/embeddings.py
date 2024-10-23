@@ -1302,6 +1302,28 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         return conditioning
 
 
+class MochiCombinedTimestepCaptionEmbedding(nn.Module):
+    def __init__(self, embedding_dim: int, pooled_projection_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8) -> None:
+        super().__init__()
+        
+        self.time_proj = Timesteps(
+            num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0
+        )
+        self.timestep_embedder = TimestepEmbedding(in_channels=time_embed_dim, time_embed_dim=embedding_dim)
+        self.pooler = MochiAttentionPool(num_attention_heads=num_attention_heads, embed_dim=pooled_projection_dim, output_dim=embedding_dim)
+        self.caption_proj = nn.Linear(embedding_dim, pooled_projection_dim)
+
+    def forward(self, timestep: torch.LongTensor, encoder_hidden_states: torch.Tensor, encoder_attention_mask: torch.Tensor, hidden_dtype: Optional[torch.dtype] = None):
+        time_proj = self.time_proj(timestep)
+        time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
+
+        pooled_projections = self.pooler(encoder_hidden_states, encoder_attention_mask)
+        caption_proj = self.caption_proj(encoder_hidden_states)
+
+        conditioning = time_emb + pooled_projections
+        return conditioning, caption_proj
+
+
 class TextTimeEmbedding(nn.Module):
     def __init__(self, encoder_dim: int, time_embed_dim: int, num_heads: int = 64):
         super().__init__()
