@@ -85,7 +85,7 @@ pip install -Uq deepspeed
 And then launch:
 
 ```bash
-!accelerate launch --config_file=ds2.yaml \
+accelerate launch --config_file=ds2.yaml \
   train_dreambooth_lora_flux_miniature.py \
   --pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev" \
   --data_df_path="embeddings.parquet" \
