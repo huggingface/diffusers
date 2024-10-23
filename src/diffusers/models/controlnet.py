@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from ..utils import deprecate
-from .controlnets.controlnet import (
+from .controlnets.controlnet import (  # noqa
+    BaseOutput,
     ControlNetConditioningEmbedding,
     ControlNetModel,
     ControlNetOutput,
+    zero_module,
 )
 
 
