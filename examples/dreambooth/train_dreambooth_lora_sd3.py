@@ -89,7 +89,7 @@ def save_model_card(
     if "large" in base_model:
         model_variant = "SD3.5-Large"
         license_url = "https://huggingface.co/stabilityai/stable-diffusion-3.5-large/blob/main/LICENSE.md"
-        variant_tags = ["sd3.5-large", "sd3.5","sd3.5-diffusers"]
+        variant_tags = ["sd3.5-large", "sd3.5", "sd3.5-diffusers"]
     else:
         model_variant = "SD3"
         license_url = "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE.md"
