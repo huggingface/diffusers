@@ -540,35 +540,3 @@ class DCAE_HF(DCAE, PyTorchModelHubMixin):
     def __init__(self, model_name: str):
         cfg = create_dc_ae_model_cfg(model_name)
         DCAE.__init__(self, cfg)
-
-
-def main():
-    dc_ae_f32c32_sana = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0")
-
-    from PIL import Image
-    import torch
-    import torchvision.transforms as transforms
-    from torchvision.utils import save_image
-
-    device = torch.device("cuda")
-    dc_ae_f32c32_sana = dc_ae_f32c32_sana.to(device).eval()
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-    image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
-    x = transform(image)[None].to(device)
-    latent = dc_ae_f32c32_sana.encode(x)
-    print(latent.shape)
-
-    # decode
-    y = dc_ae_f32c32_sana.decode(latent)
-    save_image(y * 0.5 + 0.5, "demo_dc_ae.png")
-
-if __name__ == "__main__":
-    main()
-
-"""
-python -m src.diffusers.models.autoencoders.dc_ae
-"""
