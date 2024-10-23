@@ -9,6 +9,11 @@ if is_torch_available():
         HunyuanDiT2DMultiControlNetModel,
     )
     from .controlnet_sd3 import SD3ControlNetModel, SD3ControlNetOutput, SD3MultiControlNetModel
+    from .controlnet_sparsectrl import (
+        SparseControlNetConditioningEmbedding,
+        SparseControlNetModel,
+        SparseControlNetOutput,
+    )
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
 
 if is_flax_available():
