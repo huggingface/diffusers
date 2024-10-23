@@ -2,7 +2,7 @@ import collections
 import functools
 import itertools
 import math
-from typing import Any, Callable, Dict, Optional, List
+from typing import Callable, Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -19,7 +19,9 @@ def _ntuple(n):
 
     return parse
 
+
 to_2tuple = _ntuple(2)
+
 
 def centers(start: float, stop, num, dtype=None, device=None):
     """linspace through bin centers.
@@ -94,8 +96,7 @@ def compute_mixed_rotation(
         num_heads: int
 
     Returns:
-        freqs_cos: [N, num_heads, num_freqs] - cosine components
-        freqs_sin: [N, num_heads, num_freqs] - sine components
+        freqs_cos: [N, num_heads, num_freqs] - cosine components freqs_sin: [N, num_heads, num_freqs] - sine components
     """
     with torch.autocast("cuda", enabled=False):
         assert freqs.ndim == 3
@@ -132,9 +133,7 @@ class TimestepEmbedder(nn.Module):
         args = t[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
-            )
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
         return embedding
 
     def forward(self, t):
@@ -220,15 +219,17 @@ class PatchEmbed(nn.Module):
             device=device,
         )
         assert norm_layer is None
-        self.norm = (
-            norm_layer(embed_dim, device=device) if norm_layer else nn.Identity()
-        )
+        self.norm = norm_layer(embed_dim, device=device) if norm_layer else nn.Identity()
 
     def forward(self, x):
         B, _C, T, H, W = x.shape
         if not self.dynamic_img_pad:
-            assert H % self.patch_size[0] == 0, f"Input height ({H}) should be divisible by patch size ({self.patch_size[0]})."
-            assert W % self.patch_size[1] == 0, f"Input width ({W}) should be divisible by patch size ({self.patch_size[1]})."
+            assert (
+                H % self.patch_size[0] == 0
+            ), f"Input height ({H}) should be divisible by patch size ({self.patch_size[0]})."
+            assert (
+                W % self.patch_size[1] == 0
+            ), f"Input width ({W}) should be divisible by patch size ({self.patch_size[1]})."
         else:
             pad_h = (self.patch_size[0] - H % self.patch_size[0]) % self.patch_size[0]
             pad_w = (self.patch_size[1] - W % self.patch_size[1]) % self.patch_size[1]
@@ -337,9 +338,7 @@ class AttentionPool(nn.Module):
         q = q.unsqueeze(2)  # (B, H, 1, head_dim)
 
         # Compute attention.
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, dropout_p=0.0
-        )  # (B, H, 1, head_dim)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)  # (B, H, 1, head_dim)
 
         # Concatenate heads and run output.
         x = x.squeeze(2).flatten(1, 2)  # (B, D = H * head_dim)
@@ -470,8 +469,7 @@ class AsymmetricJointBlock(nn.Module):
             num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
         Returns:
-            x: (B, N, dim) tensor of visual tokens after block
-            y: (B, L, dim) tensor of text tokens after block
+            x: (B, N, dim) tensor of visual tokens after block y: (B, L, dim) tensor of text tokens after block
         """
         N = x.size(1)
 
@@ -540,9 +538,7 @@ class AsymmetricAttention(nn.Module):
         self.update_y = update_y
         self.softmax_scale = softmax_scale
         if dim_x % num_heads != 0:
-            raise ValueError(
-                f"dim_x={dim_x} should be divisible by num_heads={num_heads}"
-            )
+            raise ValueError(f"dim_x={dim_x} should be divisible by num_heads={num_heads}")
 
         # Input layers.
         self.qkv_bias = qkv_bias
@@ -559,11 +555,7 @@ class AsymmetricAttention(nn.Module):
 
         # Output layers. y features go back down from dim_x -> dim_y.
         self.proj_x = nn.Linear(dim_x, dim_x, bias=out_bias, device=device)
-        self.proj_y = (
-            nn.Linear(dim_x, dim_y, bias=out_bias, device=device)
-            if update_y
-            else nn.Identity()
-        )
+        self.proj_y = nn.Linear(dim_x, dim_y, bias=out_bias, device=device) if update_y else nn.Identity()
 
     # def run_qkv_y(self, y):
     #     cp_rank, cp_size = cp.get_cp_rank_size()
@@ -676,16 +668,12 @@ class AsymmetricAttention(nn.Module):
     # ) -> Tuple[torch.Tensor, torch.Tensor]:
     #     """Forward pass of asymmetric multi-modal attention.
 
-    #     Args:
-    #         x: (B, N, dim_x) tensor for visual tokens
-    #         y: (B, L, dim_y) tensor of text token features
-    #         packed_indices: Dict with keys for Flash Attention
-    #         num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
+    # Args: # x: (B, N, dim_x) tensor for visual tokens # y: (B, L, dim_y) tensor of text token features #
+    packed_indices: Dict with keys for Flash Attention # num_frames: Number of frames in the video. N = num_frames *
+    num_spatial_tokens
 
-    #     Returns:
-    #         x: (B, N, dim_x) tensor of visual tokens after multi-modal attention
-    #         y: (B, L, dim_y) tensor of text token features after multi-modal attention
-    #     """
+    # Returns: # x: (B, N, dim_x) tensor of visual tokens after multi-modal attention # y: (B, L, dim_y) tensor of text
+    token features after multi-modal attention #"""
     #     B, L, _ = y.shape
     #     _, M, _ = x.shape
 
@@ -726,13 +714,9 @@ class FinalLayer(nn.Module):
         device: Optional[torch.device] = None,
     ):
         super().__init__()
-        self.norm_final = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, device=device
-        )
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, device=device)
         self.mod = nn.Linear(hidden_size, 2 * hidden_size, device=device)
-        self.linear = nn.Linear(
-            hidden_size, patch_size * patch_size * out_channels, device=device
-        )
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, device=device)
 
     def forward(self, x, c):
         c = F.silu(c)
@@ -777,15 +761,11 @@ class MochiTransformer3DModel(nn.Module):
         self.num_heads = num_heads
         self.hidden_size_x = hidden_size_x
         self.hidden_size_y = hidden_size_y
-        self.head_dim = (
-            hidden_size_x // num_heads
-        )  # Head dimension and count is determined by visual.
+        self.head_dim = hidden_size_x // num_heads  # Head dimension and count is determined by visual.
         self.use_extended_posenc = use_extended_posenc
         self.t5_token_length = t5_token_length
         self.t5_feat_dim = t5_feat_dim
-        self.rope_theta = (
-            rope_theta  # Scaling factor for frequency computation for temporal RoPE.
-        )
+        self.rope_theta = rope_theta  # Scaling factor for frequency computation for temporal RoPE.
 
         self.x_embedder = PatchEmbed(
             patch_size=patch_size,
@@ -796,24 +776,16 @@ class MochiTransformer3DModel(nn.Module):
         )
         # Conditionings
         # Timestep
-        self.t_embedder = TimestepEmbedder(
-            hidden_size_x, bias=timestep_mlp_bias, timestep_scale=timestep_scale
-        )
+        self.t_embedder = TimestepEmbedder(hidden_size_x, bias=timestep_mlp_bias, timestep_scale=timestep_scale)
 
         # Caption Pooling (T5)
-        self.t5_y_embedder = AttentionPool(
-            t5_feat_dim, num_heads=8, output_dim=hidden_size_x, device=device
-        )
+        self.t5_y_embedder = AttentionPool(t5_feat_dim, num_heads=8, output_dim=hidden_size_x, device=device)
 
         # Dense Embedding Projection (T5)
-        self.t5_yproj = nn.Linear(
-            t5_feat_dim, hidden_size_y, bias=True, device=device
-        )
+        self.t5_yproj = nn.Linear(t5_feat_dim, hidden_size_y, bias=True, device=device)
 
         # Initialize pos_frequencies as an empty parameter.
-        self.pos_frequencies = nn.Parameter(
-            torch.empty(3, self.num_heads, self.head_dim // 2, device=device)
-        )
+        self.pos_frequencies = nn.Parameter(torch.empty(3, self.num_heads, self.head_dim // 2, device=device))
 
         # for depth 48:
         #  b =  0: AsymmetricJointBlock, update_y=True
@@ -839,9 +811,7 @@ class MochiTransformer3DModel(nn.Module):
             blocks.append(block)
         self.blocks = nn.ModuleList(blocks)
 
-        self.final_layer = FinalLayer(
-            hidden_size_x, patch_size, self.out_channels, device=device
-        )
+        self.final_layer = FinalLayer(hidden_size_x, patch_size, self.out_channels, device=device)
 
     def embed_x(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -878,9 +848,7 @@ class MochiTransformer3DModel(nn.Module):
             pH, pW = H // self.patch_size, W // self.patch_size
             N = T * pH * pW
             assert x.size(1) == N
-            pos = create_position_matrix(
-                T, pH=pH, pW=pW, device=x.device, dtype=torch.float32
-            )  # (N, 3)
+            pos = create_position_matrix(T, pH=pH, pW=pW, device=x.device, dtype=torch.float32)  # (N, 3)
             rope_cos, rope_sin = compute_mixed_rotation(
                 freqs=self.pos_frequencies, pos=pos
             )  # Each are (N, num_heads, dim // 2)
@@ -896,9 +864,7 @@ class MochiTransformer3DModel(nn.Module):
                 t5_feat.size(1) == self.t5_token_length
             ), f"Expected L={self.t5_token_length}, got {t5_feat.shape} for y_feat."
             t5_y_pool = self.t5_y_embedder(t5_feat, t5_mask)  # (B, D)
-            assert (
-                t5_y_pool.size(0) == B
-            ), f"Expected B={B}, got {t5_y_pool.shape} for t5_y_pool."
+            assert t5_y_pool.size(0) == B, f"Expected B={B}, got {t5_y_pool.shape} for t5_y_pool."
 
         c = c_t + t5_y_pool
 
@@ -921,15 +887,15 @@ class MochiTransformer3DModel(nn.Module):
         Args:
             x: (B, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
             sigma: (B,) tensor of noise standard deviations
-            y_feat: List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77, y_feat_dim=2048)
+            y_feat:
+                List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77,
+                y_feat_dim=2048)
             y_mask: List((B, L) boolean tensor indicating which tokens are not padding)
             packed_indices: Dict with keys for Flash Attention. Result of compute_packed_indices.
         """
         B, _, T, H, W = x.shape
 
-        x, c, y_feat, rope_cos, rope_sin = self.prepare(
-            x, sigma, y_feat[0], y_mask[0]
-        )
+        x, c, y_feat, rope_cos, rope_sin = self.prepare(x, sigma, y_feat[0], y_mask[0])
         del y_mask
 
         for i, block in enumerate(self.blocks):

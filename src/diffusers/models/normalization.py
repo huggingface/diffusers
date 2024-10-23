@@ -245,14 +245,18 @@ class MochiRMSNormZero(nn.Module):
         embedding_dim (`int`): The size of each embedding vector.
     """
 
-    def __init__(self, embedding_dim: int, hidden_dim: int, norm_eps: float = 1e-5, elementwise_affine: bool = False) -> None:
+    def __init__(
+        self, embedding_dim: int, hidden_dim: int, norm_eps: float = 1e-5, elementwise_affine: bool = False
+    ) -> None:
         super().__init__()
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, hidden_dim)
         self.norm = RMSNorm(embedding_dim, eps=norm_eps, elementwise_affine=elementwise_affine)
 
-    def forward(self, hidden_states: torch.Tensor, emb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, hidden_states: torch.Tensor, emb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
         hidden_states = self.norm(hidden_states) * (1 + scale_msa[:, None])

@@ -1303,17 +1303,25 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
 
 
 class MochiCombinedTimestepCaptionEmbedding(nn.Module):
-    def __init__(self, embedding_dim: int, pooled_projection_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8) -> None:
+    def __init__(
+        self, embedding_dim: int, pooled_projection_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8
+    ) -> None:
         super().__init__()
-        
-        self.time_proj = Timesteps(
-            num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0
-        )
+
+        self.time_proj = Timesteps(num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0)
         self.timestep_embedder = TimestepEmbedding(in_channels=time_embed_dim, time_embed_dim=embedding_dim)
-        self.pooler = MochiAttentionPool(num_attention_heads=num_attention_heads, embed_dim=pooled_projection_dim, output_dim=embedding_dim)
+        self.pooler = MochiAttentionPool(
+            num_attention_heads=num_attention_heads, embed_dim=pooled_projection_dim, output_dim=embedding_dim
+        )
         self.caption_proj = nn.Linear(embedding_dim, pooled_projection_dim)
 
-    def forward(self, timestep: torch.LongTensor, encoder_hidden_states: torch.Tensor, encoder_attention_mask: torch.Tensor, hidden_dtype: Optional[torch.dtype] = None):
+    def forward(
+        self,
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
+        hidden_dtype: Optional[torch.dtype] = None,
+    ):
         time_proj = self.time_proj(timestep)
         time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
 
@@ -1467,7 +1475,7 @@ class MochiAttentionPool(nn.Module):
         self.to_kv = nn.Linear(embed_dim, 2 * embed_dim)
         self.to_q = nn.Linear(embed_dim, embed_dim)
         self.to_out = nn.Linear(embed_dim, self.output_dim)
-    
+
     @staticmethod
     def pool_tokens(x: torch.Tensor, mask: torch.Tensor, *, keepdim=False) -> torch.Tensor:
         """
@@ -1526,9 +1534,7 @@ class MochiAttentionPool(nn.Module):
         q = q.unsqueeze(2)  # (B, H, 1, head_dim)
 
         # Compute attention.
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, dropout_p=0.0
-        )  # (B, H, 1, head_dim)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)  # (B, H, 1, head_dim)
 
         # Concatenate heads and run output.
         x = x.squeeze(2).flatten(1, 2)  # (B, D = H * head_dim)
