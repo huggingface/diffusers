@@ -404,6 +404,10 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
+    @unittest.skip("Test currently not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
 
 @nightly
 @require_torch_gpu
