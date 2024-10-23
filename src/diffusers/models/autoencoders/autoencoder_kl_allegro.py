@@ -796,65 +796,32 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-        # only relevant if vae tiling is enabled
-        sample_size = sample_size[0] if isinstance(sample_size, (list, tuple)) else sample_size
-        self.vae_scale_factor = [4, 8, 8]
+        self.spatial_compression_ratio = 2 ** (len(block_out_channels) - 1)
+        self.tile_overlap_t = 8
+        self.tile_overlap_h = 120
+        self.tile_overlap_w = 80
+        sample_frames = 24
 
-        # TODO(aryan): refactor tiling implementation
-        chunk_len = 24
-        t_over = 8
-        tile_overlap = (120, 80)
-
-        self.latent_chunk_len = chunk_len // 4
-        self.latent_t_over = t_over // 4
-        self.kernel = (chunk_len, sample_size, sample_size)  # (24, 256, 256)
+        self.kernel = (sample_frames, sample_size, sample_size)
         self.stride = (
-            chunk_len - t_over,
-            sample_size - tile_overlap[0],
-            sample_size - tile_overlap[1],
-        )  # (16, 112, 192)
+            sample_frames - self.tile_overlap_t,
+            sample_size - self.tile_overlap_h,
+            sample_size - self.tile_overlap_w,
+        )
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
             module.gradient_checkpointing = value
 
     def enable_tiling(
-        self,
-        # tile_sample_min_height: Optional[int] = None,
-        # tile_sample_min_width: Optional[int] = None,
-        # tile_overlap_factor_height: Optional[float] = None,
-        # tile_overlap_factor_width: Optional[float] = None,
+        self
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
-
-        Args:
-            tile_sample_min_height (`int`, *optional*):
-                The minimum height required for a sample to be separated into tiles across the height dimension.
-            tile_sample_min_width (`int`, *optional*):
-                The minimum width required for a sample to be separated into tiles across the width dimension.
-            tile_overlap_factor_height (`int`, *optional*):
-                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
-                no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
-                value might cause more tiles to be processed leading to slow down of the decoding process.
-            tile_overlap_factor_width (`int`, *optional*):
-                The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
-                are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
-                value might cause more tiles to be processed leading to slow down of the decoding process.
         """
         self.use_tiling = True
-
-        # TODO(aryan): refactor tiling implementation
-        # self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
-        # self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
-        # self.tile_latent_min_height = int(
-        #     self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
-        # )
-        # self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
-        # self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
-        # self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
 
     def disable_tiling(self) -> None:
         r"""
@@ -949,162 +916,140 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=decoded)
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO(aryan): parameterize this in enable_tiling
         local_batch_size = 1
+        rs = self.spatial_compression_ratio
+        rt = self.config.temporal_compression_ratio
 
-        # TODO(aryan): rewrite to encode and tiled_encode
-        KERNEL = self.kernel
-        STRIDE = self.stride
-        LOCAL_BS = local_batch_size
-        OUT_C = 8
+        batch_size, num_channels, num_frames, height, width = x.shape
 
-        B, C, N, H, W = x.shape
+        output_num_frames = math.floor((num_frames - self.kernel[0]) / self.stride[0]) + 1
+        output_height = math.floor((height - self.kernel[1]) / self.stride[1]) + 1
+        output_width = math.floor((width - self.kernel[2]) / self.stride[2]) + 1
 
-        out_n = math.floor((N - KERNEL[0]) / STRIDE[0]) + 1
-        out_h = math.floor((H - KERNEL[1]) / STRIDE[1]) + 1
-        out_w = math.floor((W - KERNEL[2]) / STRIDE[2]) + 1
-
-        ## cut video into overlapped small cubes and batch forward
-        num = 0
-
-        out_latent = torch.zeros(
-            (out_n * out_h * out_w, OUT_C, KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8),
-            device=x.device,
-            dtype=x.dtype,
+        count = 0
+        output_latent = x.new_zeros(
+            (output_num_frames * output_height * output_width, 2 * self.config.latent_channels, self.kernel[0] // rt, self.kernel[1] // rs, self.kernel[2] // rs)
         )
-        vae_batch_input = torch.zeros((LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]), device=x.device, dtype=x.dtype)
+        vae_batch_input = x.new_zeros((local_batch_size, num_channels, self.kernel[0], self.kernel[1], self.kernel[2]))
 
-        for i in range(out_n):
-            for j in range(out_h):
-                for k in range(out_w):
-                    n_start, n_end = i * STRIDE[0], i * STRIDE[0] + KERNEL[0]
-                    h_start, h_end = j * STRIDE[1], j * STRIDE[1] + KERNEL[1]
-                    w_start, w_end = k * STRIDE[2], k * STRIDE[2] + KERNEL[2]
+        for i in range(output_num_frames):
+            for j in range(output_height):
+                for k in range(output_width):
+                    n_start, n_end = i * self.stride[0], i * self.stride[0] + self.kernel[0]
+                    h_start, h_end = j * self.stride[1], j * self.stride[1] + self.kernel[1]
+                    w_start, w_end = k * self.stride[2], k * self.stride[2] + self.kernel[2]
+                    
                     video_cube = x[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
-                    vae_batch_input[num % LOCAL_BS] = video_cube
+                    vae_batch_input[count % local_batch_size] = video_cube
 
-                    if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
+                    if count % local_batch_size == local_batch_size - 1 or count == output_num_frames * output_height * output_width - 1:
                         latent = self.encoder(vae_batch_input)
 
-                        if num == out_n * out_h * out_w - 1 and num % LOCAL_BS != LOCAL_BS - 1:
-                            out_latent[num - num % LOCAL_BS :] = latent[: num % LOCAL_BS + 1]
+                        if count == output_num_frames * output_height * output_width - 1 and count % local_batch_size != local_batch_size - 1:
+                            output_latent[count - count % local_batch_size :] = latent[: count % local_batch_size + 1]
                         else:
-                            out_latent[num - LOCAL_BS + 1 : num + 1] = latent
-                        vae_batch_input = torch.zeros(
-                            (LOCAL_BS, C, KERNEL[0], KERNEL[1], KERNEL[2]),
-                            device=x.device,
-                            dtype=x.dtype,
+                            output_latent[count - local_batch_size + 1 : count + 1] = latent
+                        
+                        vae_batch_input = x.new_zeros(
+                            (local_batch_size, num_channels, self.kernel[0], self.kernel[1], self.kernel[2])
                         )
-                    num += 1
+                    
+                    count += 1
 
-        ## flatten the batched out latent to videos and supress the overlapped parts
-        B, C, N, H, W = x.shape
+        latent = x.new_zeros((batch_size, 2 * self.config.latent_channels, num_frames // rt, height // rs, width // rs))
+        output_kernel = self.kernel[0] // rt, self.kernel[1] // rs, self.kernel[2] // rs
+        output_stride = self.stride[0] // rt, self.stride[1] // rs, self.stride[2] // rs
+        output_overlap = output_kernel[0] - output_stride[0], output_kernel[1] - output_stride[1], output_kernel[2] - output_stride[2]
 
-        out_video_cube = torch.zeros((B, OUT_C, N // 4, H // 8, W // 8), device=x.device, dtype=x.dtype)
-        OUT_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
-        OUT_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
-        OVERLAP = OUT_KERNEL[0] - OUT_STRIDE[0], OUT_KERNEL[1] - OUT_STRIDE[1], OUT_KERNEL[2] - OUT_STRIDE[2]
-
-        for i in range(out_n):
-            n_start, n_end = i * OUT_STRIDE[0], i * OUT_STRIDE[0] + OUT_KERNEL[0]
-            for j in range(out_h):
-                h_start, h_end = j * OUT_STRIDE[1], j * OUT_STRIDE[1] + OUT_KERNEL[1]
-                for k in range(out_w):
-                    w_start, w_end = k * OUT_STRIDE[2], k * OUT_STRIDE[2] + OUT_KERNEL[2]
-                    latent_mean_blend = prepare_for_blend(
-                        (i, out_n, OVERLAP[0]),
-                        (j, out_h, OVERLAP[1]),
-                        (k, out_w, OVERLAP[2]),
-                        out_latent[i * out_h * out_w + j * out_w + k].unsqueeze(0),
+        for i in range(output_num_frames):
+            n_start, n_end = i * output_stride[0], i * output_stride[0] + output_kernel[0]
+            for j in range(output_height):
+                h_start, h_end = j * output_stride[1], j * output_stride[1] + output_kernel[1]
+                for k in range(output_width):
+                    w_start, w_end = k * output_stride[2], k * output_stride[2] + output_kernel[2]
+                    latent_mean = _prepare_for_blend(
+                        (i, output_num_frames, output_overlap[0]),
+                        (j, output_height, output_overlap[1]),
+                        (k, output_width, output_overlap[2]),
+                        output_latent[i * output_height * output_width + j * output_width + k].unsqueeze(0),
                     )
-                    out_video_cube[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += latent_mean_blend
+                    latent[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += latent_mean
 
-        # final conv
-        out_video_cube = out_video_cube.permute(0, 2, 1, 3, 4).flatten(0, 1)
-        out_video_cube = self.quant_conv(out_video_cube)
-        out_video_cube = out_video_cube.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
-
-        return out_video_cube
+        latent = latent.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        latent = self.quant_conv(latent)
+        latent = latent.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
+        return latent
 
     def tiled_decode(self, z: torch.Tensor) -> torch.Tensor:
-        # TODO(aryan): parameterize this in enable_tiling
         local_batch_size = 1
+        rs = self.spatial_compression_ratio
+        rt = self.config.temporal_compression_ratio
 
-        # TODO(aryan): rewrite to decode and tiled_decode
-        KERNEL = self.kernel
-        STRIDE = self.stride
+        latent_kernel = self.kernel[0] // rt, self.kernel[1] // rs, self.kernel[2] // rs
+        latent_stride = self.stride[0] // rt, self.stride[1] // rs, self.stride[2] // rs
 
-        LOCAL_BS = local_batch_size
-        OUT_C = 3
-        IN_KERNEL = KERNEL[0] // 4, KERNEL[1] // 8, KERNEL[2] // 8
-        IN_STRIDE = STRIDE[0] // 4, STRIDE[1] // 8, STRIDE[2] // 8
-
-        B, C, N, H, W = z.shape
+        batch_size, num_channels, num_frames, height, width = z.shape
 
         ## post quant conv (a mapping)
         z = z.permute(0, 2, 1, 3, 4).flatten(0, 1)
         z = self.post_quant_conv(z)
-        z = z.unflatten(0, (B, -1)).permute(0, 2, 1, 3, 4)
+        z = z.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
 
-        ## out tensor shape
-        out_n = math.floor((N - IN_KERNEL[0]) / IN_STRIDE[0]) + 1
-        out_h = math.floor((H - IN_KERNEL[1]) / IN_STRIDE[1]) + 1
-        out_w = math.floor((W - IN_KERNEL[2]) / IN_STRIDE[2]) + 1
+        output_num_frames = math.floor((num_frames - latent_kernel[0]) / latent_stride[0]) + 1
+        output_height = math.floor((height - latent_kernel[1]) / latent_stride[1]) + 1
+        output_width = math.floor((width - latent_kernel[2]) / latent_stride[2]) + 1
 
-        ## cut latent into overlapped small cubes and batch forward
-        num = 0
-        decoded_cube = torch.zeros(
-            (out_n * out_h * out_w, OUT_C, KERNEL[0], KERNEL[1], KERNEL[2]),
-            device=z.device,
-            dtype=z.dtype,
+        count = 0
+        decoded_videos = z.new_zeros(
+            (output_num_frames * output_height * output_width, self.config.out_channels, self.kernel[0], self.kernel[1], self.kernel[2])
         )
-        vae_batch_input = torch.zeros(
-            (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
-            device=z.device,
-            dtype=z.dtype,
+        vae_batch_input = z.new_zeros(
+            (local_batch_size, num_channels, latent_kernel[0], latent_kernel[1], latent_kernel[2])
         )
-        for i in range(out_n):
-            for j in range(out_h):
-                for k in range(out_w):
-                    n_start, n_end = i * IN_STRIDE[0], i * IN_STRIDE[0] + IN_KERNEL[0]
-                    h_start, h_end = j * IN_STRIDE[1], j * IN_STRIDE[1] + IN_KERNEL[1]
-                    w_start, w_end = k * IN_STRIDE[2], k * IN_STRIDE[2] + IN_KERNEL[2]
-                    latent_cube = z[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
-                    vae_batch_input[num % LOCAL_BS] = latent_cube
-                    if num % LOCAL_BS == LOCAL_BS - 1 or num == out_n * out_h * out_w - 1:
-                        latent = self.decoder(vae_batch_input)
 
-                        if num == out_n * out_h * out_w - 1 and num % LOCAL_BS != LOCAL_BS - 1:
-                            decoded_cube[num - num % LOCAL_BS :] = latent[: num % LOCAL_BS + 1]
+        for i in range(output_num_frames):
+            for j in range(output_height):
+                for k in range(output_width):
+                    n_start, n_end = i * latent_stride[0], i * latent_stride[0] + latent_kernel[0]
+                    h_start, h_end = j * latent_stride[1], j * latent_stride[1] + latent_kernel[1]
+                    w_start, w_end = k * latent_stride[2], k * latent_stride[2] + latent_kernel[2]
+                    
+                    current_latent = z[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
+                    vae_batch_input[count % local_batch_size] = current_latent
+                    
+                    if count % local_batch_size == local_batch_size - 1 or count == output_num_frames * output_height * output_width - 1:
+                        current_video = self.decoder(vae_batch_input)
+
+                        if count == output_num_frames * output_height * output_width - 1 and count % local_batch_size != local_batch_size - 1:
+                            decoded_videos[count - count % local_batch_size :] = current_video[: count % local_batch_size + 1]
                         else:
-                            decoded_cube[num - LOCAL_BS + 1 : num + 1] = latent
-                        vae_batch_input = torch.zeros(
-                            (LOCAL_BS, C, IN_KERNEL[0], IN_KERNEL[1], IN_KERNEL[2]),
-                            device=z.device,
-                            dtype=z.dtype,
+                            decoded_videos[count - local_batch_size + 1 : count + 1] = current_video
+                        
+                        vae_batch_input = z.new_zeros(
+                            (local_batch_size, num_channels, latent_kernel[0], latent_kernel[1], latent_kernel[2])
                         )
-                    num += 1
-        B, C, N, H, W = z.shape
+                    
+                    count += 1
 
-        out_video = torch.zeros((B, OUT_C, N * 4, H * 8, W * 8), device=z.device, dtype=z.dtype)
-        OVERLAP = KERNEL[0] - STRIDE[0], KERNEL[1] - STRIDE[1], KERNEL[2] - STRIDE[2]
-        for i in range(out_n):
-            n_start, n_end = i * STRIDE[0], i * STRIDE[0] + KERNEL[0]
-            for j in range(out_h):
-                h_start, h_end = j * STRIDE[1], j * STRIDE[1] + KERNEL[1]
-                for k in range(out_w):
-                    w_start, w_end = k * STRIDE[2], k * STRIDE[2] + KERNEL[2]
-                    out_video_blend = prepare_for_blend(
-                        (i, out_n, OVERLAP[0]),
-                        (j, out_h, OVERLAP[1]),
-                        (k, out_w, OVERLAP[2]),
-                        decoded_cube[i * out_h * out_w + j * out_w + k].unsqueeze(0),
+        video = z.new_zeros((batch_size, self.config.out_channels, num_frames * rt, height * rs, width * rs))
+        video_overlap = self.kernel[0] - self.stride[0], self.kernel[1] - self.stride[1], self.kernel[2] - self.stride[2]
+        
+        for i in range(output_num_frames):
+            n_start, n_end = i * self.stride[0], i * self.stride[0] + self.kernel[0]
+            for j in range(output_height):
+                h_start, h_end = j * self.stride[1], j * self.stride[1] + self.kernel[1]
+                for k in range(output_width):
+                    w_start, w_end = k * self.stride[2], k * self.stride[2] + self.kernel[2]
+                    out_video_blend = _prepare_for_blend(
+                        (i, output_num_frames, video_overlap[0]),
+                        (j, output_height, video_overlap[1]),
+                        (k, output_width, video_overlap[2]),
+                        decoded_videos[i * output_height * output_width + j * output_width + k].unsqueeze(0),
                     )
-                    out_video[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += out_video_blend
+                    video[:, :, n_start:n_end, h_start:h_end, w_start:w_end] += out_video_blend
 
-        out_video = out_video.permute(0, 2, 1, 3, 4).contiguous()
-
-        return out_video
+        video = video.permute(0, 2, 1, 3, 4).contiguous()
+        return video
 
     def forward(
         self,
@@ -1143,7 +1088,8 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
 
-def prepare_for_blend(n_param, h_param, w_param, x):
+def _prepare_for_blend(n_param, h_param, w_param, x):
+    # TODO(aryan): refactor
     n, n_max, overlap_n = n_param
     h, h_max, overlap_h = h_param
     w, w_max, overlap_w = w_param
