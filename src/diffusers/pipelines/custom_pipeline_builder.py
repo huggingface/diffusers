@@ -282,21 +282,43 @@ class CFGGuider:
     This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
     """
 
-    def prepare_inputs_for_cfg(
-        self, negative_cond_input: torch.Tensor, cond_input: torch.Tensor, do_classifier_free_guidance: bool
-    ) -> torch.Tensor:
-        if do_classifier_free_guidance:
-            return torch.cat([negative_cond_input, cond_input], dim=0)
-        else:
-            return cond_input
+    def prepare_input(
+        self,
+        negative_cond_input: Union[torch.Tensor, List[torch.Tensor]],
+        cond_input: Union[torch.Tensor, List[torch.Tensor]],
+        do_classifier_free_guidance: bool,
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        """
+        Prepare the input for CFG.
 
-    def prepare_inputs(self, cfg_input_mapping: Dict[str, Any], do_classifier_free_guidance: bool) -> Dict[str, Any]:
-        prepared_inputs = {}
-        for cfg_input_name, (negative_cond_input, cond_input) in cfg_input_mapping.items():
-            prepared_inputs[cfg_input_name] = self.prepare_inputs_for_cfg(
-                negative_cond_input, cond_input, do_classifier_free_guidance
-            )
-        return prepared_inputs
+        Args:
+            negative_cond_input (Union[torch.Tensor, List[torch.Tensor]]): The negative conditional input. It can be a
+            single tensor or a list of tensors. It must have the same length as `cond_input`.
+            cond_input (Union[torch.Tensor, List[torch.Tensor]]):
+                The conditional input. It can be a single tensor or a
+            list of tensors. It must have the same length as `negative_cond_input`.
+            do_classifier_free_guidance (bool): Whether to perform classifier-free guidance.
+
+        Returns:
+            Union[torch.Tensor, List[torch.Tensor]]: The prepared input.
+        """
+        if isinstance(negative_cond_input, list) and isinstance(cond_input, list):
+            if len(negative_cond_input) != len(cond_input):
+                raise ValueError("The length of negative_cond_input and cond_input must be the same.")
+            prepared_input = []
+            for neg_cond, cond in zip(negative_cond_input, cond_input):
+                if do_classifier_free_guidance:
+                    prepared_input.append(torch.cat([neg_cond, cond], dim=0))
+                else:
+                    prepared_input.append(cond)
+            return prepared_input
+        elif isinstance(negative_cond_input, torch.Tensor) and isinstance(cond_input, torch.Tensor):
+            if do_classifier_free_guidance:
+                return torch.cat([negative_cond_input, cond_input], dim=0)
+            else:
+                return cond_input
+        else:
+            raise ValueError(f"Unsupported input type: {type(negative_cond_input)} and {type(cond_input)}")
 
     def apply_guidance(
         self,
@@ -442,7 +464,8 @@ class SDXLCustomPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
+    # Modified from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.prepare_image
+    # return image without apply any guidance
     def prepare_control_image(
         self,
         image,
@@ -467,9 +490,6 @@ class SDXLCustomPipeline(
         image = image.repeat_interleave(repeat_by, dim=0)
 
         image = image.to(device=device, dtype=dtype)
-
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
 
         return image
 
@@ -1791,67 +1811,6 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
         return pipeline, state
 
 
-class PrepareGuidance(PipelineBlock):
-    required_auxiliaries = ["guider"]
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("guidance_scale", 5.0),
-        ]
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return [
-            "add_time_ids",
-            "negative_add_time_ids",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "pooled_prompt_embeds",
-            "negative_pooled_prompt_embeds",
-        ]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["add_text_embeds", "add_time_ids", "prompt_embeds"]
-
-    def __init__(self, guider=None):
-        if guider is None:
-            guider = CFGGuider()
-        super().__init__(guider=guider)
-
-    @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-        guidance_scale = state.get_input("guidance_scale")
-
-        prompt_embeds = state.get_intermediate("prompt_embeds")
-        negative_prompt_embeds = state.get_intermediate("negative_prompt_embeds")
-        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
-        negative_pooled_prompt_embeds = state.get_intermediate("negative_pooled_prompt_embeds")
-        add_time_ids = state.get_intermediate("add_time_ids")
-        negative_add_time_ids = state.get_intermediate("negative_add_time_ids")
-
-        do_classifier_free_guidance = guidance_scale > 1.0
-        guider = pipeline.guider
-
-        # Fetch all model inputs from pipeline_state
-        conditional_inputs = {
-            "prompt_embeds": (negative_prompt_embeds, prompt_embeds),
-            "add_time_ids": (negative_add_time_ids, add_time_ids),
-            "add_text_embeds": (negative_pooled_prompt_embeds, pooled_prompt_embeds),
-        }
-
-        # Prepare inputs using the guider
-        prepared_conditional_inputs = guider.prepare_inputs(conditional_inputs, do_classifier_free_guidance)
-
-        # Add prepared inputs back to the state
-        state.add_intermediate("add_text_embeds", prepared_conditional_inputs["add_text_embeds"])
-        state.add_intermediate("add_time_ids", prepared_conditional_inputs["add_time_ids"])
-        state.add_intermediate("prompt_embeds", prepared_conditional_inputs["prompt_embeds"])
-
-        return pipeline, state
-
-
 class DenoiseStep(PipelineBlock):
     required_components = ["unet", "scheduler"]
     required_auxiliaries = ["guider"]
@@ -1872,10 +1831,13 @@ class DenoiseStep(PipelineBlock):
             "latents",
             "timesteps",
             "num_inference_steps",
-            "add_text_embeds",
+            "pooled_prompt_embeds",
+            "negative_pooled_prompt_embeds",
             "add_time_ids",
+            "negative_add_time_ids",
             "timestep_cond",
             "prompt_embeds",
+            "negative_prompt_embeds",
         ]
 
     @property
@@ -1891,20 +1853,39 @@ class DenoiseStep(PipelineBlock):
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         guidance_scale = state.get_input("guidance_scale")
         guidance_rescale = state.get_input("guidance_rescale")
+
         cross_attention_kwargs = state.get_input("cross_attention_kwargs")
         generator = state.get_input("generator")
         eta = state.get_input("eta")
 
+        prompt_embeds = state.get_intermediate("prompt_embeds")
+        negative_prompt_embeds = state.get_intermediate("negative_prompt_embeds")
+        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
+        negative_pooled_prompt_embeds = state.get_intermediate("negative_pooled_prompt_embeds")
+        add_time_ids = state.get_intermediate("add_time_ids")
+        negative_add_time_ids = state.get_intermediate("negative_add_time_ids")
+
+        timestep_cond = state.get_intermediate("timestep_cond")
         latents = state.get_intermediate("latents")
+
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
 
-        add_text_embeds = state.get_intermediate("add_text_embeds")
-        add_time_ids = state.get_intermediate("add_time_ids")
-        timestep_cond = state.get_intermediate("timestep_cond")
-        prompt_embeds = state.get_intermediate("prompt_embeds")
-
         do_classifier_free_guidance = guidance_scale > 1.0
+
+        # Prepare conditional inputs using the guider
+        prompt_embeds = pipeline.guider.prepare_input(
+            negative_prompt_embeds, prompt_embeds, do_classifier_free_guidance
+        )
+        add_time_ids = pipeline.guider.prepare_input(negative_add_time_ids, add_time_ids, do_classifier_free_guidance)
+        pooled_prompt_embeds = pipeline.guider.prepare_input(
+            negative_pooled_prompt_embeds, pooled_prompt_embeds, do_classifier_free_guidance
+        )
+
+        added_cond_kwargs = {
+            "text_embeds": pooled_prompt_embeds,
+            "time_ids": add_time_ids,
+        }
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = pipeline.prepare_extra_step_kwargs(generator, eta)
@@ -1913,12 +1894,9 @@ class DenoiseStep(PipelineBlock):
         with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = pipeline.guider.prepare_inputs_for_cfg(
-                    latents, latents, do_classifier_free_guidance
-                )
+                latent_model_input = pipeline.guider.prepare_input(latents, latents, do_classifier_free_guidance)
                 latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 noise_pred = pipeline.unet(
                     latent_model_input,
                     t,
@@ -1975,14 +1953,13 @@ class ControlNetDenoiseStep(PipelineBlock):
             "batch_size",
             "timesteps",
             "num_inference_steps",
-            "add_text_embeds",
-            "add_time_ids",
-            "timestep_cond",
             "prompt_embeds",
-            "guess_mode",
-            "controlnet_conditioning_scale",
-            "controlnet_keep",
-            "control_image",
+            "negative_prompt_embeds",
+            "add_time_ids",
+            "negative_add_time_ids",
+            "pooled_prompt_embeds",
+            "negative_pooled_prompt_embeds",
+            "timestep_cond",
         ]
 
     @property
@@ -2018,22 +1995,27 @@ class ControlNetDenoiseStep(PipelineBlock):
         cross_attention_kwargs = state.get_input("cross_attention_kwargs")
         generator = state.get_input("generator")
         eta = state.get_input("eta")
+        num_images_per_prompt = state.get_input("num_images_per_prompt")
+        # controlnet-specific inputs
         control_image = state.get_input("control_image")
         control_guidance_start = state.get_input("control_guidance_start")
         control_guidance_end = state.get_input("control_guidance_end")
         controlnet_conditioning_scale = state.get_input("controlnet_conditioning_scale")
         guess_mode = state.get_input("guess_mode")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
 
         batch_size = state.get_intermediate("batch_size")
         latents = state.get_intermediate("latents")
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
 
-        add_text_embeds = state.get_intermediate("add_text_embeds")
-        add_time_ids = state.get_intermediate("add_time_ids")
-        timestep_cond = state.get_intermediate("timestep_cond")
         prompt_embeds = state.get_intermediate("prompt_embeds")
+        negative_prompt_embeds = state.get_intermediate("negative_prompt_embeds")
+        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
+        negative_pooled_prompt_embeds = state.get_intermediate("negative_pooled_prompt_embeds")
+        add_time_ids = state.get_intermediate("add_time_ids")
+        negative_add_time_ids = state.get_intermediate("negative_add_time_ids")
+
+        timestep_cond = state.get_intermediate("timestep_cond")
 
         do_classifier_free_guidance = guidance_scale > 1.0
         device = pipeline._execution_device
@@ -2111,34 +2093,56 @@ class ControlNetDenoiseStep(PipelineBlock):
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
+        # Prepare conditional inputs for unet using the guider
+        prompt_embeds = pipeline.guider.prepare_input(
+            negative_prompt_embeds, prompt_embeds, do_classifier_free_guidance
+        )
+        add_time_ids = pipeline.guider.prepare_input(negative_add_time_ids, add_time_ids, do_classifier_free_guidance)
+        pooled_prompt_embeds = pipeline.guider.prepare_input(
+            negative_pooled_prompt_embeds, pooled_prompt_embeds, do_classifier_free_guidance
+        )
+
+        added_cond_kwargs = {
+            "text_embeds": pooled_prompt_embeds,
+            "time_ids": add_time_ids,
+        }
+
+        # Prepare conditional inputs for controlnet using the guider
+        # common inputs: prompt_embeds, add_time_ids, pooled_prompt_embeds
+        controlnet_do_classifier_free_guidance = do_classifier_free_guidance and not guess_mode
+        if do_classifier_free_guidance and not controlnet_do_classifier_free_guidance:
+            # when `guess_mode` and `do_classifier_free_guidance` are both enabled, we apply guidance for unet but not for controlnet
+            controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+            controlnet_added_cond_kwargs = {
+                "text_embeds": pooled_prompt_embeds.chunk(2)[1],
+                "time_ids": add_time_ids.chunk(2)[1],
+            }
+        else:
+            # if `guess_mode` is not enabled or `do_classifier_free_guidance` is not enabled, these inputs should be the same as unet
+            controlnet_prompt_embeds = prompt_embeds
+            controlnet_added_cond_kwargs = added_cond_kwargs
+        # controlnet-specific inputs: control_image
+        control_image = pipeline.guider.prepare_input(
+            control_image, control_image, controlnet_do_classifier_free_guidance
+        )
+
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = pipeline.prepare_extra_step_kwargs(generator, eta)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * pipeline.scheduler.order, 0)
 
         with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = pipeline.guider.prepare_inputs_for_cfg(
-                    latents, latents, do_classifier_free_guidance
-                )
+                # prepare latents for unet using the guider
+                latent_model_input = pipeline.guider.prepare_input(latents, latents, do_classifier_free_guidance)
                 latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-                # controlnet(s) inference
-                if guess_mode and do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
+                # prepare latents for controlnet using the guider
+                if do_classifier_free_guidance and not controlnet_do_classifier_free_guidance:
                     control_model_input = latents
                     control_model_input = pipeline.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                    controlnet_added_cond_kwargs = {
-                        "text_embeds": add_text_embeds.chunk(2)[1],
-                        "time_ids": add_time_ids.chunk(2)[1],
-                    }
                 else:
                     control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
-                    controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -2158,10 +2162,9 @@ class ControlNetDenoiseStep(PipelineBlock):
                     return_dict=False,
                 )
 
-                if guess_mode and do_classifier_free_guidance:
-                    # Inferred ControlNet only for the conditional batch.
-                    # To apply the output of ControlNet to both the unconditional and conditional batches,
-                    # add 0 to the unconditional batch to keep it unchanged.
+                if do_classifier_free_guidance and not controlnet_do_classifier_free_guidance:
+                    # when we apply guidance for unet, but not for controlnet:
+                    # add 0 to the unconditional batch
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
@@ -2281,6 +2284,80 @@ class DecodeLatentsStep(PipelineBlock):
         state.add_output("images", output)
 
         return pipeline, state
+
+
+class PAGGuider:
+    """
+    This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
+    """
+
+    def prepare_input(
+        self,
+        negative_cond_input: Union[torch.Tensor, List[torch.Tensor]],
+        cond_input: Union[torch.Tensor, List[torch.Tensor]],
+        do_classifier_free_guidance: bool,
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        """
+        Prepare the input for CFG.
+
+        Args:
+            negative_cond_input (Union[torch.Tensor, List[torch.Tensor]]): The negative conditional input. It can be a
+            single tensor or a list of tensors. It must have the same length as `cond_input`.
+            cond_input (Union[torch.Tensor, List[torch.Tensor]]):
+                The conditional input. It can be a single tensor or a
+            list of tensors. It must have the same length as `negative_cond_input`.
+            do_classifier_free_guidance (bool): Whether to perform classifier-free guidance.
+
+        Returns:
+            Union[torch.Tensor, List[torch.Tensor]]: The prepared input.
+        """
+        if isinstance(negative_cond_input, list) and isinstance(cond_input, list):
+            if len(negative_cond_input) != len(cond_input):
+                raise ValueError("The length of negative_cond_input and cond_input must be the same.")
+
+            prepared_input = []
+            for neg_cond, cond in zip(negative_cond_input, cond_input):
+                cond = torch.cat([cond] * 2, dim=0)
+
+                if do_classifier_free_guidance:
+                    prepared_input.append(torch.cat([neg_cond, cond], dim=0))
+                else:
+                    prepared_input.append(cond)
+
+            return prepared_input
+        elif isinstance(negative_cond_input, torch.Tensor) and isinstance(cond_input, torch.Tensor):
+            cond_input = torch.cat([cond_input] * 2, dim=0)
+
+            if do_classifier_free_guidance:
+                return torch.cat([negative_cond_input, cond_input], dim=0)
+            else:
+                return cond_input
+        else:
+            raise ValueError(f"Unsupported input type: {type(negative_cond_input)} and {type(cond_input)}")
+
+    def apply_guidance(
+        self,
+        model_output: torch.Tensor,
+        pag_scale: float,
+        guidance_scale: float,
+        do_classifier_free_guidance: bool,
+        guidance_rescale: float = 0.0,
+    ) -> torch.Tensor:
+        if do_classifier_free_guidance:
+            noise_pred_uncond, noise_pred_text, noise_pred_perturb = model_output.chunk(3)
+            noise_pred = (
+                noise_pred_uncond
+                + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                + pag_scale * (noise_pred_text - noise_pred_perturb)
+            )
+        else:
+            noise_pred_text, noise_pred_perturb = model_output.chunk(2)
+            noise_pred = noise_pred_text + pag_scale * (noise_pred_text - noise_pred_perturb)
+
+        if guidance_rescale > 0.0:
+            # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+        return noise_pred
 
 
 class PipelineBlockType(Enum):
@@ -2417,7 +2494,12 @@ class CustomPipelineBuilder:
         # Run the pipeline
         with torch.no_grad():
             for block in self.pipeline_blocks:
-                pipeline, state = block(pipeline, state)
+                try:
+                    pipeline, state = block(pipeline, state)
+                except Exception:
+                    error_msg = f"Error in block: ({block.__class__.__name__}):\n"
+                    logger.error(error_msg)
+                    raise
 
         return state.get_output("images")
 
