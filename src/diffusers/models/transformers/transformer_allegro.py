@@ -27,7 +27,7 @@ from ..attention_processor import AllegroAttnProcessor2_0, Attention
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
+from ..normalization import AllegroAdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)
@@ -36,30 +36,7 @@ logger = logging.get_logger(__name__)
 @maybe_allow_in_graph
 class AllegroTransformerBlock(nn.Module):
     r"""
-    Transformer block used in [Allegro](https://github.com/rhymes-ai/Allegro) model.
-
-    Args:
-        dim (`int`):
-            The number of channels in the input and output.
-        num_attention_heads (`int`):
-            The number of heads to use for multi-head attention.
-        attention_head_dim (`int`):
-            The number of channels in each head.
-        dropout (`float`, defaults to `0.0`):
-            The dropout probability to use.
-        cross_attention_dim (`int`, defaults to `2304`):
-            The dimension of the cross attention features.
-        activation_fn (`str`, defaults to `"gelu-approximate"`):
-            Activation function to be used in feed-forward.
-        attention_bias (`bool`, defaults to `False`):
-            Whether or not to use bias in attention projection layers.
-        only_cross_attention (`bool`, defaults to `False`):
-        norm_elementwise_affine (`bool`, defaults to `True`):
-            Whether to use learnable elementwise affine parameters for normalization.
-        norm_eps (`float`, defaults to `1e-5`):
-            Epsilon value for normalization layers.
-        final_dropout (`bool` defaults to `False`):
-            Whether to apply a final dropout after the last feed-forward layer.
+    TODO(aryan): docs
     """
 
     def __init__(
@@ -71,8 +48,11 @@ class AllegroTransformerBlock(nn.Module):
         cross_attention_dim: Optional[int] = None,
         activation_fn: str = "geglu",
         attention_bias: bool = False,
+        only_cross_attention: bool = False,
+        upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
+        final_dropout: bool = False,
     ):
         super().__init__()
 
@@ -85,7 +65,8 @@ class AllegroTransformerBlock(nn.Module):
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
-            cross_attention_dim=cross_attention_dim,
+            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+            upcast_attention=upcast_attention,
             processor=AllegroAttnProcessor2_0(),
         )
 
@@ -98,6 +79,7 @@ class AllegroTransformerBlock(nn.Module):
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
+            upcast_attention=upcast_attention,
             processor=AllegroAttnProcessor2_0(),
         )  # is self-attn if encoder_hidden_states is none
 
@@ -108,6 +90,7 @@ class AllegroTransformerBlock(nn.Module):
             dim,
             dropout=dropout,
             activation_fn=activation_fn,
+            final_dropout=final_dropout,
         )
 
         # 4. Scale-shift
@@ -164,63 +147,49 @@ class AllegroTransformerBlock(nn.Module):
         ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states
+
+        # TODO(aryan): maybe following line is not required
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
+
         return hidden_states
 
 
 class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
-    r"""
-    A 3D Transformer model for video-like data.
+    """
+    A 2D Transformer model for image-like data.
 
-    Args:
-        patch_size (`int`, defaults to `2`):
-            The size of spatial patches to use in the patch embedding layer.
-        patch_size_t (`int`, defaults to `1`):
-            The size of temporal patches to use in the patch embedding layer.
-        num_attention_heads (`int`, defaults to `24`):
-            The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, defaults to `96`):
-            The number of channels in each head.
-        in_channels (`int`, defaults to `4`):
-            The number of channels in the input.
-        out_channels (`int`, *optional*, defaults to `4`):
-            The number of channels in the output.
-        num_layers (`int`, defaults to `32`):
-            The number of layers of Transformer blocks to use.
-        dropout (`float`, defaults to `0.0`):
-            The dropout probability to use.
-        cross_attention_dim (`int`, defaults to `2304`):
-            The dimension of the cross attention features.
-        attention_bias (`bool`, defaults to `True`):
-            Whether or not to use bias in the attention projection layers.
-        sample_height (`int`, defaults to `90`):
-            The height of the input latents.
-        sample_width (`int`, defaults to `160`):
-            The width of the input latents.
-        sample_frames (`int`, defaults to `22`):
-            The number of frames in the input latents.
-        activation_fn (`str`, defaults to `"gelu-approximate"`):
-            Activation function to use in feed-forward.
-        norm_elementwise_affine (`bool`, defaults to `True`):
-            Whether or not to use elementwise affine in normalization layers.
-        norm_eps (`float`, defaults to `1e-5`):
-            The epsilon value to use in normalization layers.
-        caption_channels (`int`, defaults to `4096`):
-            Number of channels to use for projecting the caption embeddings.
-        interpolation_scale_h (`float`, defaults to `2.0`):
-            Scaling factor to apply in 3D positional embeddings across height dimension.
-        interpolation_scale_w (`float`, defaults to `2.0`):
-            Scaling factor to apply in 3D positional embeddings across width dimension.
-        interpolation_scale_t (`float`, defaults to `2.2`):
-            Scaling factor to apply in 3D positional embeddings across time dimension.
+    Parameters:
+        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
+        in_channels (`int`, *optional*):
+            The number of channels in the input and output (specify if the input is **continuous**).
+        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
+        num_vector_embeds (`int`, *optional*):
+            The number of classes of the vector embeddings of the latent pixels (specify if the input is **discrete**).
+            Includes the class for the masked latent pixel.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
+        num_embeds_ada_norm ( `int`, *optional*):
+            The number of diffusion steps used during training. Pass if at least one of the norm_layers is
+            `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
+            added to the hidden states.
+
+            During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
+        attention_bias (`bool`, *optional*):
+            Configure if the `TransformerBlocks` attention should contain a bias parameter.
     """
 
     @register_to_config
     def __init__(
         self,
         patch_size: int = 2,
-        patch_size_t: int = 1,
+        patch_size_temporal: int = 1,
         num_attention_heads: int = 24,
         attention_head_dim: int = 96,
         in_channels: int = 4,
@@ -233,6 +202,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         sample_width: int = 160,
         sample_frames: int = 22,
         activation_fn: str = "gelu-approximate",
+        upcast_attention: bool = False,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
         caption_channels: int = 4096,
@@ -275,6 +245,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
                     attention_bias=attention_bias,
+                    upcast_attention=upcast_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
                 )
@@ -288,7 +259,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * out_channels)
 
         # 4. Timestep embeddings
-        self.adaln_single = AdaLayerNormSingle(self.inner_dim, use_additional_conditions=False)
+        self.adaln_single = AllegroAdaLayerNormSingle(self.inner_dim, use_additional_conditions=False)
 
         # 5. Caption projection
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=self.inner_dim)
@@ -309,12 +280,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p_t = self.config.patch_size_t
+        p_t = self.config.patch_size_temporal
         p = self.config.patch_size
-
-        post_patch_num_frames = num_frames // self.config.patch_size_t
-        post_patch_height = height // self.config.patch_size
-        post_patch_width = width // self.config.patch_size
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
@@ -350,12 +317,15 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = (1 - encoder_attention_mask.to(self.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # 1. Timestep embeddings
+        # 1. Input
+        post_patch_num_frames = num_frames // self.config.patch_size_temporal
+        post_patch_height = height // self.config.patch_size
+        post_patch_width = width // self.config.patch_size
+
         timestep, embedded_timestep = self.adaln_single(
             timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
         )
 
-        # 2. Patch embeddings
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.pos_embed(hidden_states)
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
@@ -363,7 +333,6 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, encoder_hidden_states.shape[-1])
 
-        # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             # TODO(aryan): Implement gradient checkpointing
             if self.gradient_checkpointing:
@@ -395,16 +364,16 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        # 4. Output normalization & projection
+        # 3. Output
         shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
 
-        # modulation
+        # Modulation
         hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.squeeze(1)
 
-        # 5. Unpatchify
+        # unpatchify
         hidden_states = hidden_states.reshape(
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p, p, -1
         )
