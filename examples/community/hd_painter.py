@@ -898,13 +898,16 @@ class GaussianSmoothing(nn.Module):
     Apply gaussian smoothing on a
     1d, 2d or 3d tensor. Filtering is performed seperately for each channel
     in the input using a depthwise convolution.
-    Arguments:
-        channels (int, sequence): Number of channels of the input tensors. Output will
-            have this number of channels as well.
-        kernel_size (int, sequence): Size of the gaussian kernel.
-        sigma (float, sequence): Standard deviation of the gaussian kernel.
-        dim (int, optional): The number of dimensions of the data.
-            Default value is 2 (spatial).
+
+    Args:
+        channels (`int` or `sequence`):
+            Number of channels of the input tensors. The output will have this number of channels as well.
+        kernel_size (`int` or `sequence`):
+            Size of the Gaussian kernel.
+        sigma (`float` or `sequence`):
+            Standard deviation of the Gaussian kernel.
+        dim (`int`, *optional*, defaults to `2`):
+            The number of dimensions of the data. Default is 2 (spatial dimensions).
     """
 
     def __init__(self, channels, kernel_size, sigma, dim=2):
@@ -944,10 +947,14 @@ class GaussianSmoothing(nn.Module):
     def forward(self, input):
         """
         Apply gaussian filter to input.
-        Arguments:
-            input (torch.Tensor): Input to apply gaussian filter on.
+
+        Args:
+            input (`torch.Tensor` of shape `(N, C, H, W)`):
+                Input to apply Gaussian filter on.
+
         Returns:
-            filtered (torch.Tensor): Filtered output.
+            `torch.Tensor`:
+                The filtered output tensor with the same shape as the input.
         """
         return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups, padding="same")
 
