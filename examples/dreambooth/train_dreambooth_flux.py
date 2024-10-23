@@ -58,7 +58,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
-
+from diffusers.utils.import_utils import is_torch_npu_available
 
 if is_wandb_available():
     import wandb
@@ -68,6 +68,10 @@ check_min_version("0.31.0.dev0")
 
 logger = get_logger(__name__)
 
+if is_torch_npu_available():
+    import torch_npu
+    torch.npu.config.allow_internal_format = False
+    torch.npu.set_compile_mode(jit_compile=False)
 
 def save_model_card(
     repo_id: str,
@@ -1073,6 +1077,9 @@ def main(args):
             del pipeline
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            elif is_torch_npu_available():
+                torch_npu.npu.empty_cache()
+
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1359,6 +1366,8 @@ def main(args):
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif is_torch_npu_available():
+            torch_npu.npu.empty_cache()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1722,7 +1731,10 @@ def main(args):
                 )
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif is_torch_npu_available():
+                        torch_npu.npu.empty_cache()
                     gc.collect()
 
     # Save the lora layers

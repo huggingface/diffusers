@@ -1778,7 +1778,28 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        if is_torch_npu_available():
+            if query.dtype in (torch.float16, torch.bfloat16):
+                hidden_states = torch_npu.npu_fusion_attention(
+                    query,
+                    key,
+                    value,
+                    attn.heads,
+                    input_layout="BNSD",
+                    pse=None,
+                    scale=1.0 / math.sqrt(query.shape[-1]),
+                    pre_tockens=65536,
+                    next_tockens=65536,
+                    keep_prob=1.0,
+                    sync=False,
+                    inner_precise=0,
+                )[0]
+            else:
+                hidden_states = F.scaled_dot_product_attention(
+                    query, key, value, dropout_p=0.0, is_causal=False
+                )
+        else:
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -1872,7 +1893,28 @@ class FusedFluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        if is_torch_npu_available():
+            if query.dtype in (torch.float16, torch.bfloat16):
+                hidden_states = torch_npu.npu_fusion_attention(
+                    query,
+                    key,
+                    value,
+                    attn.heads,
+                    input_layout="BNSD",
+                    pse=None,
+                    scale=1.0 / math.sqrt(query.shape[-1]),
+                    pre_tockens=65536,
+                    next_tockens=65536,
+                    keep_prob=1.0,
+                    sync=False,
+                    inner_precise=0,
+                )[0]
+            else:
+                hidden_states = F.scaled_dot_product_attention(
+                    query, key, value, dropout_p=0.0, is_causal=False
+                )
+        else:
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
