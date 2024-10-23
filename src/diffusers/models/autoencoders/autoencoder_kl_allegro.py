@@ -300,7 +300,7 @@ class AllegroUpBlock3D(nn.Module):
         return hidden_states
 
 
-class UNetMidBlock3DConv(nn.Module):
+class AllegroMidBlock3DConv(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -473,7 +473,7 @@ class AllegroEncoder3D(nn.Module):
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock3DConv(
+        self.mid_block = AllegroMidBlock3DConv(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
@@ -581,7 +581,7 @@ class AllegroDecoder3D(nn.Module):
         temb_channels = in_channels if norm_type == "spatial" else None
 
         # mid
-        self.mid_block = UNetMidBlock3DConv(
+        self.mid_block = AllegroMidBlock3DConv(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,

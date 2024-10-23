@@ -206,40 +206,40 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
 
-    # def test_attention_slicing_forward_pass(
-    #     self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    # ):
-    #     if not self.test_attention_slicing:
-    #         return
+    def test_attention_slicing_forward_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
+    ):
+        if not self.test_attention_slicing:
+            return
 
-    #     components = self.get_dummy_components()
-    #     pipe = self.pipeline_class(**components)
-    #     for component in pipe.components.values():
-    #         if hasattr(component, "set_default_attn_processor"):
-    #             component.set_default_attn_processor()
-    #     pipe.to(torch_device)
-    #     pipe.set_progress_bar_config(disable=None)
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-    #     generator_device = "cpu"
-    #     inputs = self.get_dummy_inputs(generator_device)
-    #     output_without_slicing = pipe(**inputs)[0]
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_slicing = pipe(**inputs)[0]
 
-    #     pipe.enable_attention_slicing(slice_size=1)
-    #     inputs = self.get_dummy_inputs(generator_device)
-    #     output_with_slicing1 = pipe(**inputs)[0]
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing1 = pipe(**inputs)[0]
 
-    #     pipe.enable_attention_slicing(slice_size=2)
-    #     inputs = self.get_dummy_inputs(generator_device)
-    #     output_with_slicing2 = pipe(**inputs)[0]
+        pipe.enable_attention_slicing(slice_size=2)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing2 = pipe(**inputs)[0]
 
-    #     if test_max_difference:
-    #         max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-    #         max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-    #         self.assertLess(
-    #             max(max_diff1, max_diff2),
-    #             expected_max_diff,
-    #             "Attention slicing should not affect the inference results",
-    #         )
+        if test_max_difference:
+            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
+            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
+            self.assertLess(
+                max(max_diff1, max_diff2),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
+            )
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"
@@ -287,7 +287,7 @@ class AllegroPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_cogvideox(self):
+    def test_allegro(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", torch_dtype=torch.float16)
