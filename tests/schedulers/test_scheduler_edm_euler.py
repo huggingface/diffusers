@@ -89,9 +89,6 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
