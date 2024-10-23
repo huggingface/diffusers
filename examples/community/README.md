@@ -4336,19 +4336,19 @@ The Abstract of the paper:
 
 **64x64**
 :-------------------------:
-| <img src="https://github.com/user-attachments/assets/9e7bb2cd-45a0-4bd1-adb8-23e283baed39" width="222" height="222" alt="bird_64"> |
+| <img src="https://github.com/user-attachments/assets/032738eb-c6cd-4fd9-b4d7-a7317b4b6528" width="222" height="222" alt="bird_64_64"> |
 
 - `256×256, nesting_level=1`: 1.776 GiB. With `150` DDIM inference steps:
 
 **64x64**             |  **256x256**
 :-------------------------:|:-------------------------:
-| <img src="https://github.com/user-attachments/assets/6b724c2e-5e6a-4b63-9b65-c1182cbb67e0" width="222" height="222" alt="64x64"> | <img src="https://github.com/user-attachments/assets/7dbab2ad-bf40-4a73-ab04-f178347cb7d5" width="222" height="222" alt="256x256"> |
+| <img src="https://github.com/user-attachments/assets/21b9ad8b-eea6-4603-80a2-31180f391589" width="222" height="222" alt="bird_256_64"> | <img src="https://github.com/user-attachments/assets/fc411682-8a36-422c-9488-395b77d4406e" width="222" height="222" alt="bird_256_256"> |
 
-- `1024×1024, nesting_level=2`: 1.792 GiB. As one can realize the cost of adding another layer is really negligible. With `250` DDIM inference steps:
+- `1024×1024, nesting_level=2`: 1.792 GiB. As one can realize the cost of adding another layer is really negligible in this context! With `250` DDIM inference steps:
 
 **64x64**             |  **256x256**  |  **1024x1024**
 :-------------------------:|:-------------------------:|:-------------------------:
-| <img src="https://github.com/user-attachments/assets/4a9454e4-e20a-4736-a196-270e2ae796c0" width="222" height="222" alt="64x64"> | <img src="https://github.com/user-attachments/assets/4a96555d-0fda-4303-82b1-a4d886f770b9" width="222" height="222" alt="256x256"> | <img src="https://github.com/user-attachments/assets/e0239b7a-ab73-4d45-8f3e-b4e6b4b50abe" width="222" height="222" alt="1024x1024"> |
+| <img src="https://github.com/user-attachments/assets/febf4b98-3dee-4a8e-9946-fd42e1f232e6" width="222" height="222" alt="bird_1024_64"> | <img src="https://github.com/user-attachments/assets/c5f85b40-5d6d-4267-a92a-c89dff015b9b" width="222" height="222" alt="bird_1024_256"> | <img src="https://github.com/user-attachments/assets/ad66b913-4367-4cb9-889e-bc06f4d96148" width="222" height="222" alt="bird_1024_1024"> |
 
 ```py
 from diffusers import DiffusionPipeline
@@ -4362,8 +4362,7 @@ pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-model
 
 prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
 prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
-negative_prompt = "deformed, mutated, ugly, disfigured, blur, blurry, noise, noisy"
-image = pipe(prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=50).images
+image = pipe(prompt, num_inference_steps=50).images
 make_image_grid(image, rows=1, cols=len(image))
 
 # pipe.change_nesting_level(<int>)  # 0, 1, or 2

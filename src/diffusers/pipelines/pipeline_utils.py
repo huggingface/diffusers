@@ -44,6 +44,7 @@ from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -54,6 +55,7 @@ from ..utils import (
     is_accelerate_version,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_version,
     logging,
     numpy_to_pil,
 )
@@ -432,18 +434,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+            _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(module)
 
-            if is_loaded_in_8bit and dtype is not None:
+            if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {'4bit' if is_loaded_in_4bit_bnb else '8bit'} and conversion to {dtype} is not supported. Module is still in {'4bit' if is_loaded_in_4bit_bnb else '8bit'} precision."
                 )
 
-            if is_loaded_in_8bit and device is not None:
+            if is_loaded_in_8bit_bnb and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
-            else:
+
+            # This can happen for `transformer` models. CPU placement was added in
+            # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
+            if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
+                module.to(device=device)
+            elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
             if (
@@ -1040,7 +1047,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
+
             if not isinstance(model, torch.nn.Module):
+                continue
+
+            # This is because the model would already be placed on a CUDA device.
+            _, _, is_loaded_in_8bit_bnb = _check_bnb_status(model)
+            if is_loaded_in_8bit_bnb:
+                logger.info(
+                    f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` 8bit."
+                )
                 continue
 
             _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
