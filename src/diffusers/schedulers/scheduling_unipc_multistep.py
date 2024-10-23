@@ -532,6 +532,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         *args,
         sample: torch.Tensor = None,
+        predict_x0: bool = True,
+        step_index: Optional[int] = None,
         **kwargs,
     ) -> torch.Tensor:
         r"""
@@ -561,11 +563,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 "1.0.0",
                 "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
+        step_index = step_index if step_index is not None else self.step_index
 
-        sigma = self.sigmas[self.step_index]
+        sigma = self.sigmas[step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
 
-        if self.predict_x0:
+        if predict_x0:
             if self.config.prediction_type == "epsilon":
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
@@ -935,7 +938,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None
         )
 
-        model_output_convert = self.convert_model_output(model_output, sample=sample)
+        model_output_convert = self.convert_model_output(model_output, sample=sample, predict_x0=self.predict_x0)
         if use_corrector:
             sample = self.multistep_uni_c_bh_update(
                 this_model_output=model_output_convert,
