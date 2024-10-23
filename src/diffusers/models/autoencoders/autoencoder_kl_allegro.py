@@ -813,9 +813,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         if isinstance(module, (AllegroEncoder3D, AllegroDecoder3D)):
             module.gradient_checkpointing = value
 
-    def enable_tiling(
-        self
-    ) -> None:
+    def enable_tiling(self) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
@@ -928,7 +926,13 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         count = 0
         output_latent = x.new_zeros(
-            (output_num_frames * output_height * output_width, 2 * self.config.latent_channels, self.kernel[0] // rt, self.kernel[1] // rs, self.kernel[2] // rs)
+            (
+                output_num_frames * output_height * output_width,
+                2 * self.config.latent_channels,
+                self.kernel[0] // rt,
+                self.kernel[1] // rs,
+                self.kernel[2] // rs,
+            )
         )
         vae_batch_input = x.new_zeros((local_batch_size, num_channels, self.kernel[0], self.kernel[1], self.kernel[2]))
 
@@ -938,28 +942,40 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     n_start, n_end = i * self.stride[0], i * self.stride[0] + self.kernel[0]
                     h_start, h_end = j * self.stride[1], j * self.stride[1] + self.kernel[1]
                     w_start, w_end = k * self.stride[2], k * self.stride[2] + self.kernel[2]
-                    
+
                     video_cube = x[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
                     vae_batch_input[count % local_batch_size] = video_cube
 
-                    if count % local_batch_size == local_batch_size - 1 or count == output_num_frames * output_height * output_width - 1:
+                    if (
+                        count % local_batch_size == local_batch_size - 1
+                        or count == output_num_frames * output_height * output_width - 1
+                    ):
                         latent = self.encoder(vae_batch_input)
 
-                        if count == output_num_frames * output_height * output_width - 1 and count % local_batch_size != local_batch_size - 1:
+                        if (
+                            count == output_num_frames * output_height * output_width - 1
+                            and count % local_batch_size != local_batch_size - 1
+                        ):
                             output_latent[count - count % local_batch_size :] = latent[: count % local_batch_size + 1]
                         else:
                             output_latent[count - local_batch_size + 1 : count + 1] = latent
-                        
+
                         vae_batch_input = x.new_zeros(
                             (local_batch_size, num_channels, self.kernel[0], self.kernel[1], self.kernel[2])
                         )
-                    
+
                     count += 1
 
-        latent = x.new_zeros((batch_size, 2 * self.config.latent_channels, num_frames // rt, height // rs, width // rs))
+        latent = x.new_zeros(
+            (batch_size, 2 * self.config.latent_channels, num_frames // rt, height // rs, width // rs)
+        )
         output_kernel = self.kernel[0] // rt, self.kernel[1] // rs, self.kernel[2] // rs
         output_stride = self.stride[0] // rt, self.stride[1] // rs, self.stride[2] // rs
-        output_overlap = output_kernel[0] - output_stride[0], output_kernel[1] - output_stride[1], output_kernel[2] - output_stride[2]
+        output_overlap = (
+            output_kernel[0] - output_stride[0],
+            output_kernel[1] - output_stride[1],
+            output_kernel[2] - output_stride[2],
+        )
 
         for i in range(output_num_frames):
             n_start, n_end = i * output_stride[0], i * output_stride[0] + output_kernel[0]
@@ -1001,7 +1017,13 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
 
         count = 0
         decoded_videos = z.new_zeros(
-            (output_num_frames * output_height * output_width, self.config.out_channels, self.kernel[0], self.kernel[1], self.kernel[2])
+            (
+                output_num_frames * output_height * output_width,
+                self.config.out_channels,
+                self.kernel[0],
+                self.kernel[1],
+                self.kernel[2],
+            )
         )
         vae_batch_input = z.new_zeros(
             (local_batch_size, num_channels, latent_kernel[0], latent_kernel[1], latent_kernel[2])
@@ -1013,27 +1035,39 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
                     n_start, n_end = i * latent_stride[0], i * latent_stride[0] + latent_kernel[0]
                     h_start, h_end = j * latent_stride[1], j * latent_stride[1] + latent_kernel[1]
                     w_start, w_end = k * latent_stride[2], k * latent_stride[2] + latent_kernel[2]
-                    
+
                     current_latent = z[:, :, n_start:n_end, h_start:h_end, w_start:w_end]
                     vae_batch_input[count % local_batch_size] = current_latent
-                    
-                    if count % local_batch_size == local_batch_size - 1 or count == output_num_frames * output_height * output_width - 1:
+
+                    if (
+                        count % local_batch_size == local_batch_size - 1
+                        or count == output_num_frames * output_height * output_width - 1
+                    ):
                         current_video = self.decoder(vae_batch_input)
 
-                        if count == output_num_frames * output_height * output_width - 1 and count % local_batch_size != local_batch_size - 1:
-                            decoded_videos[count - count % local_batch_size :] = current_video[: count % local_batch_size + 1]
+                        if (
+                            count == output_num_frames * output_height * output_width - 1
+                            and count % local_batch_size != local_batch_size - 1
+                        ):
+                            decoded_videos[count - count % local_batch_size :] = current_video[
+                                : count % local_batch_size + 1
+                            ]
                         else:
                             decoded_videos[count - local_batch_size + 1 : count + 1] = current_video
-                        
+
                         vae_batch_input = z.new_zeros(
                             (local_batch_size, num_channels, latent_kernel[0], latent_kernel[1], latent_kernel[2])
                         )
-                    
+
                     count += 1
 
         video = z.new_zeros((batch_size, self.config.out_channels, num_frames * rt, height * rs, width * rs))
-        video_overlap = self.kernel[0] - self.stride[0], self.kernel[1] - self.stride[1], self.kernel[2] - self.stride[2]
-        
+        video_overlap = (
+            self.kernel[0] - self.stride[0],
+            self.kernel[1] - self.stride[1],
+            self.kernel[2] - self.stride[2],
+        )
+
         for i in range(output_num_frames):
             n_start, n_end = i * self.stride[0], i * self.stride[0] + self.kernel[0]
             for j in range(output_height):
