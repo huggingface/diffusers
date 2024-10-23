@@ -36,13 +36,13 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
     load_numpy,
     nightly,
+    require_accelerate_version_greater,
     require_non_cpu,
     require_torch_gpu,
     skip_mps,
@@ -227,6 +227,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
+    @require_non_cpu
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -246,10 +247,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.14.0")
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
