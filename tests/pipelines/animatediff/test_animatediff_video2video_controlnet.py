@@ -290,13 +290,13 @@ class AnimateDiffVideoToVideoControlNetPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
+        output_cuda = pipe(**self.get_dummy_inputs(torch_device))[0]
         self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
 
     def test_to_dtype(self):

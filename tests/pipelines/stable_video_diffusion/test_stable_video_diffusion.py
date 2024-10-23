@@ -25,6 +25,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
     require_non_cpu,
     require_torch_gpu,
     slow,
@@ -428,10 +429,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
-    @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         generator_device = "cpu"
         components = self.get_dummy_components()

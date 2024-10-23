@@ -23,10 +23,10 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
-from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
+    require_accelerate_version_greater,
     require_non_cpu,
     require_torch_gpu,
     torch_device,
@@ -261,10 +261,8 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
