@@ -38,9 +38,11 @@ from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
-from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    require_accelerate_version_greater,
+    require_non_cpu,
     require_torch,
     skip_mps,
     torch_device,
@@ -770,10 +772,8 @@ class PipelineFromPipeTesterMixin:
                     type(proc) == AttnProcessor for proc in component.attn_processors.values()
                 ), "`from_pipe` changed the attention processor in original pipeline."
 
-    @unittest.skipIf(
-        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.14.0")
     def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1201,7 +1201,7 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
-    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
+    @require_non_cpu
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1238,7 +1238,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
+    @require_non_cpu
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -1319,7 +1319,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device="cpu", reason="Hardware accelerator and CPU are required to switch devices")
+    @require_non_cpu
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1393,10 +1393,8 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(to_np(output_with_slicing1[0]), to_np(output_without_slicing[0]))
             assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
 
-    @unittest.skipIf(
-        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         import accelerate
 
@@ -1456,10 +1454,8 @@ class PipelineTesterMixin:
             f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
-    @unittest.skipIf(
-        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         import accelerate
 
@@ -1513,10 +1509,8 @@ class PipelineTesterMixin:
             f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
-    @unittest.skipIf(
-        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.17.0")
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
 
@@ -1570,10 +1564,8 @@ class PipelineTesterMixin:
             f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
-    @unittest.skipIf(
-        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.14.0")
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
 
