@@ -2286,11 +2286,54 @@ class DecodeLatentsStep(PipelineBlock):
         return pipeline, state
 
 
+from diffusers.models.attention_processor import AttentionProcessor
+from diffusers.models.attention_processor import PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0
+
 class PAGGuider:
     """
     This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
     """
 
+    def __init__(self, 
+                 pag_applied_layers: Union[str, List[str]], 
+                 pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (
+                     PAGCFGIdentitySelfAttnProcessor2_0(),
+                     PAGIdentitySelfAttnProcessor2_0(),
+                 ),
+    ):
+        r"""
+        Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
+
+        Args:
+            pag_applied_layers (`str` or `List[str]`):
+                One or more strings identifying the layer names, or a simple regex for matching multiple layers, where
+                PAG is to be applied. A few ways of expected usage are as follows:
+                  - Single layers specified as - "blocks.{layer_index}"
+                  - Multiple layers as a list - ["blocks.{layers_index_1}", "blocks.{layer_index_2}", ...]
+                  - Multiple layers as a block name - "mid"
+                  - Multiple layers as regex - "blocks.({layer_index_1}|{layer_index_2})"
+            pag_attn_processors:
+                (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(),
+                PAGIdentitySelfAttnProcessor2_0())`): A tuple of two attention processors. The first attention
+                processor is for PAG with Classifier-free guidance enabled (conditional and unconditional). The second
+                attention processor is for PAG with CFG disabled (unconditional only).
+        """
+
+        if not isinstance(pag_applied_layers, list):
+            pag_applied_layers = [pag_applied_layers]
+        if pag_attn_processors is not None:
+            if not isinstance(pag_attn_processors, tuple) or len(pag_attn_processors) != 2:
+                raise ValueError("Expected a tuple of two attention processors")
+
+        for i in range(len(pag_applied_layers)):
+            if not isinstance(pag_applied_layers[i], str):
+                raise ValueError(
+                    f"Expected either a string or a list of string but got type {type(pag_applied_layers[i])}"
+                )
+
+        self.pag_applied_layers = pag_applied_layers
+        self._pag_attn_processors = pag_attn_processors
+    
     def prepare_input(
         self,
         negative_cond_input: Union[torch.Tensor, List[torch.Tensor]],
