@@ -236,6 +236,7 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
                     f" {negative_prompt_attention_mask.shape}."
                 )
 
+    # Copied from diffusers.pipelines.aura_flow_pipeline_aura_flow.AuraFlowPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -362,6 +363,18 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_attention_mask = None
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep 
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+        
+        return timesteps, num_inference_steps - t_start
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.prepare_latents
     def prepare_latents(
@@ -535,6 +548,11 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
                 of a plain tuple.
+            map (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                A grayscale image that acts as a mask to control the denoising process. Values should be between 0 and 1, 
+                where higher values indicate earlier denoising (more change from the source image) and lower values 
+                indicate later denoising (less change from the source image). The map will be automatically resized to 
+                match the latent space dimensions.
             denoising_start (`float`, *optional*):
                 When specified, indicates the fraction (between 0.0 and 1.0) of the total denoising process to be
                 bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
@@ -612,7 +630,6 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
-        # sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
@@ -621,12 +638,11 @@ class AuraFlowDifferentialImg2ImgPipeline(DiffusionPipeline):
         total_time_steps = num_inference_steps
         # end diff diff change
 
-        # timesteps, num_inference_steps = self.get_timesteps(
-        #     num_inference_steps,
-        #     strength,
-        #     device,
-        #     denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
-        # )
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps,
+            strength,
+            device,
+        )
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latents
