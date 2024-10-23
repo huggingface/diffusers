@@ -37,6 +37,7 @@ logger = logging.get_logger(__name__)
 class AllegroTransformerBlock(nn.Module):
     r"""
     Transformer block used in [Allegro](https://github.com/rhymes-ai/Allegro) model.
+
     Args:
         dim (`int`):
             The number of channels in the input and output.
@@ -176,6 +177,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
 
     """
     A 3D Transformer model for video-like data.
+
     Args:
         patch_size (`int`, defaults to `2`):
             The size of spatial patches to use in the patch embedding layer.
