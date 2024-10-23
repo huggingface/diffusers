@@ -21,9 +21,9 @@ import torch.nn as nn
 from omegaconf import MISSING, OmegaConf
 from huggingface_hub import PyTorchModelHubMixin
 
-from ..efficientvit_blocks.act import build_act
-from ..efficientvit_blocks.norm import build_norm
-from ..efficientvit_blocks.ops import (
+from .dc_ae_blocks.act import build_act
+from .dc_ae_blocks.norm import build_norm
+from .dc_ae_blocks.ops import (
     ChannelDuplicatingPixelUnshuffleUpSampleLayer,
     ConvLayer,
     ConvPixelShuffleUpSampleLayer,
@@ -47,7 +47,7 @@ class EncoderConfig:
     width_list: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024)
     depth_list: tuple[int, ...] = (2, 2, 2, 2, 2, 2)
     block_type: Any = "ResBlock"
-    norm: str = "trms2d"
+    norm: str = "rms2d"
     act: str = "silu"
     downsample_block_type: str = "ConvPixelUnshuffle"
     downsample_match_channel: bool = True
@@ -66,12 +66,12 @@ class DecoderConfig:
     width_list: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024)
     depth_list: tuple[int, ...] = (2, 2, 2, 2, 2, 2)
     block_type: Any = "ResBlock"
-    norm: Any = "trms2d"
+    norm: Any = "rms2d"
     act: Any = "silu"
     upsample_block_type: str = "ConvPixelShuffle"
     upsample_match_channel: bool = True
     upsample_shortcut: str = "duplicating"
-    out_norm: str = "trms2d"
+    out_norm: str = "rms2d"
     out_act: str = "relu"
 
 
@@ -458,7 +458,7 @@ def dc_ae_f32c32(name: str, pretrained_path: str) -> DCAEConfig:
             "encoder.width_list=[128,256,512,512,1024,1024] encoder.depth_list=[0,4,8,2,2,2] "
             "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU] "
             "decoder.width_list=[128,256,512,512,1024,1024] decoder.depth_list=[0,5,10,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,trms2d,trms2d,trms2d] decoder.act=[relu,relu,relu,silu,silu,silu]"
+            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu]"
         )
     elif name in ["dc-ae-f32c32-sana-1.0"]:
         cfg_str = (
@@ -469,7 +469,7 @@ def dc_ae_f32c32(name: str, pretrained_path: str) -> DCAEConfig:
             "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViTS5_GLU,EViTS5_GLU,EViTS5_GLU] "
             "decoder.width_list=[128,256,512,512,1024,1024] decoder.depth_list=[3,3,3,3,3,3] "
             "decoder.upsample_block_type=InterpolateConv "
-            "decoder.norm=trms2d decoder.act=silu"
+            "decoder.norm=rms2d decoder.act=silu"
         )
     else:
         raise NotImplementedError
@@ -487,7 +487,7 @@ def dc_ae_f64c128(name: str, pretrained_path: Optional[str] = None) -> DCAEConfi
             "encoder.width_list=[128,256,512,512,1024,1024,2048] encoder.depth_list=[0,4,8,2,2,2,2] "
             "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
             "decoder.width_list=[128,256,512,512,1024,1024,2048] decoder.depth_list=[0,5,10,2,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,trms2d,trms2d,trms2d,trms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu]"
+            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu]"
         )
     else:
         raise NotImplementedError
@@ -505,7 +505,7 @@ def dc_ae_f128c512(name: str, pretrained_path: Optional[str] = None) -> DCAEConf
             "encoder.width_list=[128,256,512,512,1024,1024,2048,2048] encoder.depth_list=[0,4,8,2,2,2,2,2] "
             "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
             "decoder.width_list=[128,256,512,512,1024,1024,2048,2048] decoder.depth_list=[0,5,10,2,2,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,trms2d,trms2d,trms2d,trms2d,trms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu,silu]"
+            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu,silu]"
         )
     else:
         raise NotImplementedError
@@ -540,3 +540,35 @@ class DCAE_HF(DCAE, PyTorchModelHubMixin):
     def __init__(self, model_name: str):
         cfg = create_dc_ae_model_cfg(model_name)
         DCAE.__init__(self, cfg)
+
+
+def main():
+    dc_ae_f32c32_sana = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0")
+
+    from PIL import Image
+    import torch
+    import torchvision.transforms as transforms
+    from torchvision.utils import save_image
+
+    device = torch.device("cuda")
+    dc_ae_f32c32_sana = dc_ae_f32c32_sana.to(device).eval()
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
+    x = transform(image)[None].to(device)
+    latent = dc_ae_f32c32_sana.encode(x)
+    print(latent.shape)
+
+    # decode
+    y = dc_ae_f32c32_sana.decode(latent)
+    save_image(y * 0.5 + 0.5, "demo_dc_ae.png")
+
+if __name__ == "__main__":
+    main()
+
+"""
+python -m src.diffusers.models.autoencoders.dc_ae
+"""
