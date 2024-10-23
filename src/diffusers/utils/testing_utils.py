@@ -425,7 +425,7 @@ def require_transformers_version_greater(transformers_version):
 
 def require_accelerate_version_greater(accelerate_version):
     def decorator(test_case):
-        correct_accelerate_version = is_peft_available() and version.parse(
+        correct_accelerate_version = is_accelerate_available() and version.parse(
             version.parse(importlib.metadata.version("accelerate")).base_version
         ) > version.parse(accelerate_version)
         return unittest.skipUnless(
