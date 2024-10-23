@@ -207,9 +207,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             The number of frames in the input latents.
         activation_fn (`str`, defaults to `"gelu-approximate"`):
             Activation function to use in feed-forward.
-        norm_elementwise_affine (`bool`, defaults to `True`):
+        norm_elementwise_affine (`bool`, defaults to `False`):
             Whether or not to use elementwise affine in normalization layers.
-        norm_eps (`float`, defaults to `1e-5`):
+        norm_eps (`float`, defaults to `1e-6`):
             The epsilon value to use in normalization layers.
         caption_channels (`int`, defaults to `4096`):
             Number of channels to use for projecting the caption embeddings.
