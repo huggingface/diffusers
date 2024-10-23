@@ -238,4 +238,4 @@ with torch.no_grad():
 
 By selectively loading and unloading the models you need at a given stage and sharding the largest models across multiple GPUs, it is possible to run inference with large models on consumer GPUs.
 
-This workflow is also compatible when working with LoRAs via `load_lora_weights()`. However, note that only LoRAs not involving any text encoder components are supported in this workflow at the moment.
+This workflow is also compatible with LoRAs via [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`]. However, only LoRAs without text encoder components are currently supported in this workflow.
