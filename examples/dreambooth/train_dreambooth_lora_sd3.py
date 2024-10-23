@@ -86,6 +86,15 @@ def save_model_card(
     validation_prompt=None,
     repo_folder=None,
 ):
+    if "large" in base_model:
+        model_variant = "SD3.5-Large"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3.5-large/blob/main/LICENSE.md"
+        variant_tags = ["sd3.5-large", "sd3.5", "sd3.5-diffusers"]
+    else:
+        model_variant = "SD3"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE.md"
+        variant_tags = ["sd3", "sd3-diffusers"]
+
     widget_dict = []
     if images is not None:
         for i, image in enumerate(images):
@@ -95,7 +104,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# SD3 DreamBooth LoRA - {repo_id}
+# {model_variant} DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -120,7 +129,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-3-medium-diffusers', torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained({base_model}, torch_dtype=torch.float16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
@@ -135,7 +144,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
 
 ## License
 
-Please adhere to the licensing terms as described [here](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE).
+Please adhere to the licensing terms as described [here]({license_url}).
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -151,10 +160,10 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "diffusers-training",
         "diffusers",
         "lora",
-        "sd3",
-        "sd3-diffusers",
         "template:sd-lora",
     ]
+
+    tags += variant_tags
 
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
