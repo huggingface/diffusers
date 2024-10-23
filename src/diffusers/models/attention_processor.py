@@ -717,6 +717,144 @@ class Attention(nn.Module):
         self.fused_projections = fuse
 
 
+class AsymmetricAttention(nn.Module):
+    def __init__(
+        self,
+        query_dim: int,
+        query_context_dim: int,
+        num_attentions_heads: int = 8,
+        attention_head_dim: int = 64,
+        bias: bool = False,
+        context_bias: bool = False,
+        out_dim: Optional[int] = None,
+        out_context_dim: Optional[int] = None,
+        qk_norm: Optional[str] = None,
+        eps: float = 1e-5,
+        elementwise_affine: bool = True,
+        out_bias: bool = True,
+        processor: Optional["AttnProcessor"] = None,
+    ) -> None:
+        from .normalization import RMSNorm
+
+        self.query_dim = query_dim
+        self.query_context_dim = query_context_dim
+        self.inner_dim = out_dim if out_dim is not None else num_attentions_heads * attention_head_dim
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.out_context_dim = out_context_dim if out_context_dim is not None else query_context_dim
+        
+        self.scale = attention_head_dim ** -0.5
+        self.num_attention_heads = out_dim // attention_head_dim if out_dim is not None else num_attentions_heads
+
+        if qk_norm is None:
+            self.norm_q = None
+            self.norm_k = None
+            self.norm_context_q = None
+            self.norm_context_k = None
+        elif qk_norm == "rms_norm":
+            self.norm_q = RMSNorm(attention_head_dim, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = RMSNorm(attention_head_dim, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_context_q = RMSNorm(attention_head_dim, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_context_k = RMSNorm(attention_head_dim, eps=eps, elementwise_affine=elementwise_affine)
+        else:
+            raise ValueError((f"Unknown qk_norm: {qk_norm}. Should be None or `rms_norm`."))
+    
+        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
+
+        self.to_context_q = nn.Linear(query_context_dim, self.inner_dim, bias=context_bias)
+        self.to_context_k = nn.Linear(query_context_dim, self.inner_dim, bias=context_bias)
+        self.to_context_v = nn.Linear(query_context_dim, self.inner_dim, bias=context_bias)
+
+        # TODO(aryan): Take care of dropouts for training purpose in future
+        self.to_out = nn.ModuleList([
+            nn.Linear(self.inner_dim, self.out_dim)
+        ])
+        self.to_out = nn.ModuleList([
+            nn.Linear(self.inner_dim, self.out_context_dim)
+        ])
+
+        if processor is None:
+            processor = AsymmetricAttnProcessor2_0()
+        
+        self.set_processor(processor)
+
+
+# Similar to SD3
+# class AsymmetricAttnProcessor2_0:
+#     r"""
+#     Processor for implementing Asymmetric SDPA as described in Genmo/Mochi (TODO(aryan) add link).
+#     """
+    
+#     def __init__(self):
+#         if not hasattr(F, "scaled_dot_product_attention"):
+#             raise ImportError("AsymmetricAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+    
+#     def __call__(
+#         self,
+#         attn: AsymmetricAttention,
+#         hidden_states: torch.Tensor,
+#         encoder_hidden_states: torch.Tensor,
+#         temb: torch.Tensor,
+#         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+#     ) -> torch.Tensor:
+#         batch_size = hidden_states.size(0)
+
+#         query = attn.to_q(hidden_states)
+#         key = attn.to_k(hidden_states)
+#         value = attn.to_v(hidden_states)
+
+#         query_context = attn.to_context_q(encoder_hidden_states)
+#         key_context = attn.to_context_k(encoder_hidden_states)
+#         value_context = attn.to_context_v(encoder_hidden_states)
+
+#         inner_dim = key.shape[-1]
+#         head_dim = inner_dim / attn.num_attention_heads
+
+#         query = query.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+#         key = key.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+#         value = value.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+        
+#         query_context = query_context.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+#         key_context = key_context.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+#         value_context = value_context.unflatten(2, (attn.num_attention_heads, head_dim)).transpose(1, 2)
+
+#         if attn.norm_q is not None:
+#             query = attn.norm_q(query)
+#         if attn.norm_k is not None:
+#             key = attn.norm_k(key)
+
+#         if attn.norm_context_q is not None:
+#             query_context = attn.norm_context_q(query_context)
+#             key_context = attn.norm_context_k(key_context)
+        
+#         if image_rotary_emb is not None:
+#             from .embeddings import apply_rotary_emb
+
+#             query = apply_rotary_emb(query, image_rotary_emb)
+#             key = apply_rotary_emb(key, image_rotary_emb)
+
+#         sequence_length = query.size(1)
+#         context_sequence_length = query_context.size(1)
+#         query = torch.cat([query, query_context], dim=1)
+#         key = torch.cat([key, key_context], dim=1)
+#         value = torch.cat([value, value_context], dim=1)
+
+#         hidden_states = F.scaled_dot_product_attention(
+#             query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
+#         )
+
+#         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+#         hidden_states = hidden_states.to(query.dtype)
+
+#         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes([sequence_length, context_sequence_length], dim=1)
+        
+#         hidden_states = attn.to_out[0](hidden_states)
+#         encoder_hidden_states = attn.to_context_out[0](encoder_hidden_states)
+
+#         return hidden_states, encoder_hidden_states
+
+
 class AttnProcessor:
     r"""
     Default processor for performing attention-related computations.

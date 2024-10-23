@@ -25,7 +25,7 @@ from ..attention import Attention, FeedForward
 from ..embeddings import PatchEmbed, MochiAttentionPool, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNorm
+from ..normalization import MochiRMSNormZero, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -39,31 +39,60 @@ class MochiTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         caption_dim: int,
+        activation_fn: str = "swiglu",
         update_captions: bool = True,
     ) -> None:
         super().__init__()
 
-        # TODO: Replace this with norm
-        self.mod_x = nn.Linear(dim, 4 * dim)
-        if self.update_y:
-            self.mod_y = nn.Linear(dim, 4 * caption_dim)
-        else:
-            self.mod_y = nn.Linear(dim, caption_dim)
+        self.update_captions = update_captions
         
-        # TODO(aryan): attention class does not look compatible
-        self.attn1 = Attention(...)
-        # norms go in attention
-        # self.q_norm_x = RMSNorm(attention_head_dim)
-        # self.k_norm_x = RMSNorm(attention_head_dim)
-        # self.q_norm_y = RMSNorm(attention_head_dim)
-        # self.k_norm_y = RMSNorm(attention_head_dim)
+        self.norm1 = MochiRMSNormZero(dim, 4 * dim)
 
-        self.proj_x = nn.Linear(dim, dim)
+        if update_captions:
+            self.norm_context1 = MochiRMSNormZero(dim, 4 * caption_dim)
+        else:
+            self.norm_context1 = RMSNorm(caption_dim, eps=1e-5, elementwise_affine=False)
+        
+        self.attn = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
+            out_dim=4 * dim,
+            qk_norm="rms_norm",
+            eps=1e-5,
+            elementwise_affine=False,
+        )
+        self.attn_context = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
+            out_dim=4 * caption_dim if update_captions else caption_dim,
+            qk_norm="rms_norm",
+            eps=1e-5,
+            elementwise_affine=False,
+        )
 
-        self.proj_y = nn.Linear(dim, caption_dim) if update_captions else None
+        self.ff = FeedForward(dim, mult=4, activation_fn=activation_fn)
+        self.ff_context = FeedForward(caption_dim, mult=4, activation_fn=activation_fn)
     
-    def forward(self):
-        pass
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor, image_rotary_emb: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
+
+        if self.update_captions:
+            norm_encoder_hidden_states, enc_gate_msa, enc_scale_mlp, enc_gate_mlp = self.norm_context1(encoder_hidden_states, temb)
+        else:
+            norm_encoder_hidden_states = self.norm_context1(encoder_hidden_states)
+        
+        attn_hidden_states = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=None,
+            image_rotary_emb=image_rotary_emb,
+        )
+        attn_encoder_hidden_states = self.attn_context(
+            hidden_states=norm_encoder_hidden_states,
+            encoder_hidden_states=None,
+            image_rotary_emb=None,
+        )
 
 
 @maybe_allow_in_graph
@@ -87,6 +116,7 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
         timestep_mlp_bias=True,
         timestep_scale=1000.0,
         text_embed_dim=4096,
+        activation_fn: str = "swiglu",
         max_sequence_length=256,
     ) -> None:
         super().__init__()
@@ -112,6 +142,7 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
                 num_attention_heads=num_attention_heads,
                 attention_head_dim=attention_head_dim,
                 caption_dim=caption_dim,
+                activation_fn=activation_fn,
                 update_captions=i < num_layers - 1,
             )
             for i in range(num_layers)
