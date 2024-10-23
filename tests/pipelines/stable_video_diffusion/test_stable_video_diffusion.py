@@ -18,7 +18,7 @@ from diffusers import (
     StableVideoDiffusionPipeline,
     UNetSpatioTemporalConditionModel,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version, load_image, logging
+from diffusers.utils import load_image, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -404,10 +404,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    @unittest.skipIf(
-        not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with `accelerate v0.14.0` or higher",
-    )
+    @require_non_cpu
+    @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
