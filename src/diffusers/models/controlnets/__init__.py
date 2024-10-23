@@ -16,6 +16,7 @@ if is_torch_available():
         SparseControlNetOutput,
     )
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
+    from .multicontrolnet import MultiControlNetModel
 
 if is_flax_available():
     from .controlnet_flax import FlaxControlNetModel
