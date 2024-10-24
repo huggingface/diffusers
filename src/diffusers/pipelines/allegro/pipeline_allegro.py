@@ -53,14 +53,19 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
+        >>> from diffusers import AutoencoderKLAllegro, AllegroPipeline
+        >>> from diffusers.utils import export_to_video
 
-        >>> # You can replace the your_path_to_model with your own path.
-        >>> pipe = AllegroPipeline.from_pretrained(
-        ...     your_path_to_model, torch_dtype=torch.float16, trust_remote_code=True
+        >>> vae = AutoencoderKLAllegro.from_pretrained("rhymes-ai/Allegro", subfolder="vae", torch_dtype=torch.float32)
+        >>> pipe = AllegroPipeline.from_pretrained("rhymes-ai/Allegro", vae=vae, torch_dtype=torch.bfloat16).to("cuda")
+
+        >>> prompt = (
+        ...     "A seaside harbor with bright sunlight and sparkling seawater, with many boats in the water. From an aerial view, "
+        ...     "the boats vary in size and color, some moving and some stationary. Fishing boats in the water suggest that this "
+        ...     "location might be a popular spot for docking fishing boats."
         ... )
-
-        >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> image = pipe(prompt).video[0]
+        >>> video = pipe(prompt, guidance_scale=7.5, max_sequence_length=512).frames[0]
+        >>> export_to_video(video, "output.mp4", fps=15)
         ```
 """
 
