@@ -107,20 +107,21 @@ class MochiTransformerBlock(nn.Module):
         )
 
         hidden_states = hidden_states + self.norm2(attn_hidden_states) * torch.tanh(gate_msa).unsqueeze(1)
-        hidden_states = self.norm3(hidden_states) * (1 + scale_mlp.unsqueeze(1))
+        norm_hidden_states = self.norm3(hidden_states) * (1 + scale_mlp.unsqueeze(1))
+        
         if not self.context_pre_only:
             encoder_hidden_states = encoder_hidden_states + self.norm2_context(
                 context_attn_hidden_states
             ) * torch.tanh(enc_gate_msa).unsqueeze(1)
-            encoder_hidden_states = encoder_hidden_states + self.norm3_context(encoder_hidden_states) * (
+            norm_encoder_hidden_states = encoder_hidden_states + self.norm3_context(encoder_hidden_states) * (
                 1 + enc_scale_mlp.unsqueeze(1)
             )
 
-        ff_output = self.ff(hidden_states)
+        ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + ff_output * torch.tanh(gate_mlp).unsqueeze(1)
 
         if not self.context_pre_only:
-            context_ff_output = self.ff_context(encoder_hidden_states)
+            context_ff_output = self.ff_context(norm_encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states + context_ff_output * torch.tanh(enc_gate_mlp).unsqueeze(0)
 
         return hidden_states, encoder_hidden_states
