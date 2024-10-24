@@ -57,7 +57,7 @@ class MochiTransformerBlock(nn.Module):
         else:
             self.norm1_context = nn.Linear(dim, pooled_projection_dim)
 
-        self.attn = AsymmetricAttention(
+        self.attn1 = AsymmetricAttention(
             query_dim=dim,
             query_context_dim=pooled_projection_dim,
             num_attention_heads=num_attention_heads,
@@ -66,7 +66,7 @@ class MochiTransformerBlock(nn.Module):
             out_context_dim=None if context_pre_only else pooled_projection_dim,
             qk_norm=qk_norm,
             eps=1e-6,
-            elementwise_affine=False,
+            elementwise_affine=True,
             processor=AsymmetricAttnProcessor2_0(),
         )
 
@@ -100,7 +100,7 @@ class MochiTransformerBlock(nn.Module):
         else:
             norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states)
 
-        attn_hidden_states, context_attn_hidden_states = self.attn(
+        attn_hidden_states, context_attn_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
@@ -127,7 +127,7 @@ class MochiTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class MochiTransformer3D(ModelMixin, ConfigMixin):
+class MochiTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config

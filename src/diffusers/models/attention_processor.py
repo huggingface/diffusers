@@ -771,10 +771,13 @@ class AsymmetricAttention(nn.Module):
             nn.Linear(self.inner_dim, self.out_dim)
         ])
 
-        self.to_context_out = None
         if out_context_dim is not None:
             self.to_context_out = nn.ModuleList([
                 nn.Linear(self.inner_dim, out_context_dim)
+            ])
+        else:
+            self.to_context_out = nn.ModuleList([
+                nn.Identity()
             ])
         
         if processor is None:
