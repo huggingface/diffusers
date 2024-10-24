@@ -77,7 +77,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             sample_size=32,
             patch_size=1,
             in_channels=8,
-            num_layers=1,
+            num_layers=3,
             attention_head_dim=8,
             num_attention_heads=4,
             joint_attention_dim=32,
