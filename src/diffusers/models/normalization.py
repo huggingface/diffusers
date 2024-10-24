@@ -246,13 +246,13 @@ class MochiRMSNormZero(nn.Module):
     """
 
     def __init__(
-        self, embedding_dim: int, hidden_dim: int, norm_eps: float = 1e-5, elementwise_affine: bool = False
+        self, embedding_dim: int, hidden_dim: int, eps: float = 1e-5, elementwise_affine: bool = False
     ) -> None:
         super().__init__()
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, hidden_dim)
-        self.norm = RMSNorm(embedding_dim, eps=norm_eps, elementwise_affine=elementwise_affine)
+        self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
 
     def forward(
         self, hidden_states: torch.Tensor, emb: torch.Tensor

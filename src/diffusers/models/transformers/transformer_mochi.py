@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import Attention, FluxAttnProcessor2_0
+from ..attention_processor import Attention, MochiAttnProcessor2_0
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -43,6 +43,7 @@ class MochiTransformerBlock(nn.Module):
         qk_norm: str = "rms_norm",
         activation_fn: str = "swiglu",
         context_pre_only: bool = True,
+        eps: float = 1e-6,
     ) -> None:
         super().__init__()
 
@@ -50,15 +51,15 @@ class MochiTransformerBlock(nn.Module):
         self.ff_inner_dim = (4 * dim * 2) // 3
         self.ff_context_inner_dim = (4 * pooled_projection_dim * 2) // 3
 
-        self.norm1 = MochiRMSNormZero(dim, 4 * dim)
+        self.norm1 = MochiRMSNormZero(dim, 4 * dim, eps=eps, elementwise_affine=False)
 
         if not context_pre_only:
-            self.norm1_context = MochiRMSNormZero(dim, 4 * pooled_projection_dim)
+            self.norm1_context = MochiRMSNormZero(dim, 4 * pooled_projection_dim, eps=eps, elementwise_affine=False)
         else:
             self.norm1_context = LuminaLayerNormContinuous(
                 embedding_dim=pooled_projection_dim,
                 conditioning_embedding_dim=dim,
-                eps=1e-6,
+                eps=eps,
                 elementwise_affine=False,
                 norm_type="rms_norm",
                 out_dim=None,
@@ -76,16 +77,16 @@ class MochiTransformerBlock(nn.Module):
             out_dim=dim,
             out_context_dim=pooled_projection_dim,
             context_pre_only=context_pre_only,
-            processor=FluxAttnProcessor2_0(),
-            eps=1e-6,
+            processor=MochiAttnProcessor2_0(),
+            eps=eps,
             elementwise_affine=True,
         )
 
-        self.norm2 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
-        self.norm2_context = RMSNorm(pooled_projection_dim, eps=1e-6, elementwise_affine=False)
+        self.norm2 = RMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm2_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
-        self.norm3 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
-        self.norm3_context = RMSNorm(pooled_projection_dim, eps=1e-56, elementwise_affine=False)
+        self.norm3 = RMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm3_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
         self.ff = FeedForward(dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False)
         self.ff_context = None
@@ -94,8 +95,8 @@ class MochiTransformerBlock(nn.Module):
                 pooled_projection_dim, inner_dim=self.ff_context_inner_dim, activation_fn=activation_fn, bias=False
             )
 
-        self.norm4 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
-        self.norm4_context = RMSNorm(pooled_projection_dim, eps=1e-56, elementwise_affine=False)
+        self.norm4 = RMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm4_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
     def forward(
         self,
@@ -104,6 +105,7 @@ class MochiTransformerBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        breakpoint()
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
         if not self.context_pre_only:
@@ -140,6 +142,40 @@ class MochiTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+class MochiRoPE(nn.Module):
+    def __init__(self, base_height: int = 192, base_width: int = 192, theta: float = 10000.0) -> None:
+        super().__init__()
+        
+        self.target_area = base_height * base_width
+    
+    def _centers(self, start, stop, num, device, dtype) -> torch.Tensor:
+        edges = torch.linspace(start, stop, num + 1, device=device, dtype=dtype)
+        return (edges[:-1] + edges[1:]) / 2
+    
+    def _get_positions(self, num_frames: int, height: int, width: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+        scale = (self.target_area / (height * width)) ** 0.5
+        
+        t = torch.arange(num_frames, device=device, dtype=dtype)
+        h = self._centers(-height * scale / 2, height * scale / 2, height, device, dtype)
+        w = self._centers(-width * scale / 2, width * scale / 2, width, device, dtype)
+
+        grid_t, grid_h, grid_w = torch.meshgrid(t, h, w, indexing="ij")
+
+        positions = torch.stack([grid_t, grid_h, grid_w], dim=-1).view(-1, 3)
+        return positions
+
+    def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+        freqs = torch.einsum("nd,dhf->nhf", pos, freqs)
+        freqs_cos = torch.cos(freqs)
+        freqs_sin = torch.sin(freqs)
+        return freqs_cos, freqs_sin
+
+    def forward(self, pos_frequencies: torch.Tensor, num_frames: int, height: int, width: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        pos = self._get_positions(num_frames, height, width, device, dtype)
+        rope_cos, rope_sin = self._create_rope(pos_frequencies, pos)
+        return rope_cos, rope_sin
+
+
 @maybe_allow_in_graph
 class MochiTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
@@ -169,6 +205,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
+            pos_embed_type=None,
         )
 
         self.time_embed = MochiCombinedTimestepCaptionEmbedding(
@@ -180,6 +217,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         )
 
         self.pos_frequencies = nn.Parameter(torch.empty(3, num_attention_heads, attention_head_dim // 2))
+        self.rope = MochiRoPE()
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -207,7 +245,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -223,6 +260,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.patch_embed(hidden_states)
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
+
+        image_rotary_emb = self.rope(self.pos_frequencies, num_frames, post_patch_height, post_patch_width, device=hidden_states.device, dtype=torch.float32)
 
         for i, block in enumerate(self.transformer_blocks):
             hidden_states, encoder_hidden_states = block(
