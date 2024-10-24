@@ -564,6 +564,42 @@ def get_3d_rotary_pos_embed(
     return cos, sin
 
 
+def get_3d_rotary_pos_embed_allegro(
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    theta: int = 10000,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    # TODO(aryan): docs
+    start, stop = crops_coords
+    grid_size_h, grid_size_w = grid_size
+    interpolation_scale_t, interpolation_scale_h, interpolation_scale_w = interpolation_scale
+    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+    grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+
+    # Compute dimensions for each axis
+    dim_t = embed_dim // 3
+    dim_h = embed_dim // 3
+    dim_w = embed_dim // 3
+
+    # Temporal frequencies
+    freqs_t = get_1d_rotary_pos_embed(
+        dim_t, grid_t / interpolation_scale_t, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+    # Spatial frequencies for height and width
+    freqs_h = get_1d_rotary_pos_embed(
+        dim_h, grid_h / interpolation_scale_h, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+    freqs_w = get_1d_rotary_pos_embed(
+        dim_w, grid_w / interpolation_scale_w, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+
+    return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
+
+
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
     """
     RoPE for image tokens with 2d structure.
@@ -684,7 +720,7 @@ def get_1d_rotary_pos_embed(
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
-        # stable audio
+        # stable audio, allegro
         freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1).float()  # [S, D]
         freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1).float()  # [S, D]
         return freqs_cos, freqs_sin
@@ -741,6 +777,24 @@ def apply_rotary_emb(
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
+
+
+def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
+    # TODO(aryan): rewrite
+    def apply_1d_rope(tokens, pos, cos, sin):
+        cos = F.embedding(pos, cos)[:, None, :, :]
+        sin = F.embedding(pos, sin)[:, None, :, :]
+        x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2 :]
+        tokens_rotated = torch.cat((-x2, x1), dim=-1)
+        return (tokens.float() * cos + tokens_rotated.float() * sin).to(tokens.dtype)
+
+    (t_cos, t_sin), (h_cos, h_sin), (w_cos, w_sin) = freqs_cis
+    t, h, w = x.chunk(3, dim=-1)
+    t = apply_1d_rope(t, positions[0], t_cos, t_sin)
+    h = apply_1d_rope(h, positions[1], h_cos, h_sin)
+    w = apply_1d_rope(w, positions[2], w_cos, w_sin)
+    x = torch.cat([t, h, w], dim=-1)
+    return x
 
 
 class FluxPosEmbed(nn.Module):
