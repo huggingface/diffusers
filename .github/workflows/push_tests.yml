@@ -81,7 +81,7 @@ jobs:
       - name: Environment
         run: |
           python utils/print_env.py
-      - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
+      - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
@@ -184,7 +184,7 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run slow Flax TPU tests
+    - name: Run Flax TPU tests
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
@@ -232,7 +232,7 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run slow ONNXRuntime CUDA tests
+    - name: Run ONNXRuntime CUDA tests
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
