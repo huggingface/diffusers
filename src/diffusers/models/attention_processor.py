@@ -4299,7 +4299,7 @@ CROSS_ATTENTION_PROCESSORS = (
     IPAdapterAttnProcessor2_0,
 )
 
-AttentionProcessor= Union[
+AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
     FusedAttnProcessor2_0,
