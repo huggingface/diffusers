@@ -4,8 +4,8 @@ from contextlib import nullcontext
 import torch
 from accelerate import init_empty_weights
 from safetensors.torch import load_file
-# from transformers import T5EncoderModel, T5Tokenizer
 
+# from transformers import T5EncoderModel, T5Tokenizer
 from diffusers import MochiTransformer3DModel
 from diffusers.utils.import_utils import is_accelerate_available
 
@@ -72,10 +72,12 @@ def convert_mochi_transformer_checkpoint_to_diffusers(ckpt_path):
                 old_prefix + "mod_y.bias"
             )
         else:
-            new_state_dict[block_prefix + "norm1_context.weight"] = original_state_dict.pop(
+            new_state_dict[block_prefix + "norm1_context.linear_1.weight"] = original_state_dict.pop(
                 old_prefix + "mod_y.weight"
             )
-            new_state_dict[block_prefix + "norm1_context.bias"] = original_state_dict.pop(old_prefix + "mod_y.bias")
+            new_state_dict[block_prefix + "norm1_context.linear_1.bias"] = original_state_dict.pop(
+                old_prefix + "mod_y.bias"
+            )
 
         # Visual attention
         qkv_weight = original_state_dict.pop(old_prefix + "attn.qkv_x.weight")
@@ -158,7 +160,7 @@ def main(args):
         raise ValueError(f"Unsupported dtype: {args.dtype}")
 
     transformer = None
-    vae = None
+    # vae = None
 
     if args.transformer_checkpoint_path is not None:
         converted_transformer_state_dict = convert_mochi_transformer_checkpoint_to_diffusers(

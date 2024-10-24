@@ -385,20 +385,21 @@ class LuminaLayerNormContinuous(nn.Module):
         out_dim: Optional[int] = None,
     ):
         super().__init__()
+
         # AdaLN
         self.silu = nn.SiLU()
         self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
+
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        if norm_type == "rms_norm":
+            self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
-        # linear_2
+
+        self.linear_2 = None
         if out_dim is not None:
-            self.linear_2 = nn.Linear(
-                embedding_dim,
-                out_dim,
-                bias=bias,
-            )
+            self.linear_2 = nn.Linear(embedding_dim, out_dim, bias=bias)
 
     def forward(
         self,

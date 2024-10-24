@@ -1304,7 +1304,12 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
 
 class MochiCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(
-        self, embedding_dim: int, pooled_projection_dim: int, text_embed_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8
+        self,
+        embedding_dim: int,
+        pooled_projection_dim: int,
+        text_embed_dim: int,
+        time_embed_dim: int = 256,
+        num_attention_heads: int = 8,
     ) -> None:
         super().__init__()
 
