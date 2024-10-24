@@ -25,7 +25,7 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from ...models.transformers import FluxTransformer2DModel
@@ -106,7 +106,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -238,6 +238,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
 
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
         text_inputs = self.tokenizer_2(
             prompt,
             padding="max_length",
@@ -280,6 +283,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
+
+        if isinstance(self, TextualInversionLoaderMixin):
+            prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
         text_inputs = self.tokenizer(
             prompt,
@@ -754,19 +760,22 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
             )
             height, width = control_image.shape[-2:]
 
-            # vae encode
-            control_image = self.vae.encode(control_image).latent_dist.sample()
-            control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+            # xlab controlnet has a input_hint_block and instantx controlnet does not
+            controlnet_blocks_repeat = False if self.controlnet.input_hint_block is None else True
+            if self.controlnet.input_hint_block is None:
+                # vae encode
+                control_image = self.vae.encode(control_image).latent_dist.sample()
+                control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
-            # pack
-            height_control_image, width_control_image = control_image.shape[2:]
-            control_image = self._pack_latents(
-                control_image,
-                batch_size * num_images_per_prompt,
-                num_channels_latents,
-                height_control_image,
-                width_control_image,
-            )
+                # pack
+                height_control_image, width_control_image = control_image.shape[2:]
+                control_image = self._pack_latents(
+                    control_image,
+                    batch_size * num_images_per_prompt,
+                    num_channels_latents,
+                    height_control_image,
+                    width_control_image,
+                )
 
             # Here we ensure that `control_mode` has the same length as the control_image.
             if control_mode is not None:
@@ -777,8 +786,9 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         elif isinstance(self.controlnet, FluxMultiControlNetModel):
             control_images = []
-
-            for control_image_ in control_image:
+            # xlab controlnet has a input_hint_block and instantx controlnet does not
+            controlnet_blocks_repeat = False if self.controlnet.nets[0].input_hint_block is None else True
+            for i, control_image_ in enumerate(control_image):
                 control_image_ = self.prepare_image(
                     image=control_image_,
                     width=width,
@@ -790,20 +800,20 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 )
                 height, width = control_image_.shape[-2:]
 
-                # vae encode
-                control_image_ = self.vae.encode(control_image_).latent_dist.sample()
-                control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+                if self.controlnet.nets[0].input_hint_block is None:
+                    # vae encode
+                    control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                    control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
-                # pack
-                height_control_image, width_control_image = control_image_.shape[2:]
-                control_image_ = self._pack_latents(
-                    control_image_,
-                    batch_size * num_images_per_prompt,
-                    num_channels_latents,
-                    height_control_image,
-                    width_control_image,
-                )
-
+                    # pack
+                    height_control_image, width_control_image = control_image_.shape[2:]
+                    control_image_ = self._pack_latents(
+                        control_image_,
+                        batch_size * num_images_per_prompt,
+                        num_channels_latents,
+                        height_control_image,
+                        width_control_image,
+                    )
                 control_images.append(control_image_)
 
             control_image = control_images
@@ -927,6 +937,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
+                    controlnet_blocks_repeat=controlnet_blocks_repeat,
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1

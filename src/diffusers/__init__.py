@@ -1,4 +1,4 @@
-__version__ = "0.31.0.dev0"
+__version__ = "0.32.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -31,6 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "quantizers.quantization_config": ["BitsAndBytesConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -84,6 +85,7 @@ else:
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "CogVideoXTransformer3DModel",
+            "CogView3PlusTransformer2DModel",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ControlNetXSAdapter",
@@ -123,7 +125,6 @@ else:
             "VQModel",
         ]
     )
-
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -155,6 +156,7 @@ else:
             "StableDiffusionMixin",
         ]
     )
+    _import_structure["quantizers"] = ["DiffusersQuantizer"]
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
@@ -255,9 +257,11 @@ else:
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
+            "CogVideoXFunControlPipeline",
             "CogVideoXImageToVideoPipeline",
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
+            "CogView3PlusPipeline",
             "CycleDiffusionPipeline",
             "FluxControlNetImg2ImgPipeline",
             "FluxControlNetInpaintPipeline",
@@ -535,6 +539,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers.quantization_config import BitsAndBytesConfig
 
     try:
         if not is_onnx_available():
@@ -559,6 +564,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderOobleck,
             AutoencoderTiny,
             CogVideoXTransformer3DModel,
+            CogView3PlusTransformer2DModel,
             ConsistencyDecoderVAE,
             ControlNetModel,
             ControlNetXSAdapter,
@@ -628,6 +634,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
+        from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
             CMStochasticIterativeScheduler,
@@ -708,9 +715,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             AuraFlowPipeline,
             CLIPImageProjection,
+            CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
+            CogView3PlusPipeline,
             CycleDiffusionPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
