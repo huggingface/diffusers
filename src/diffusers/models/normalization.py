@@ -237,6 +237,33 @@ class LuminaRMSNormZero(nn.Module):
         return x, gate_msa, scale_mlp, gate_mlp
 
 
+class MochiRMSNormZero(nn.Module):
+    r"""
+    Adaptive RMS Norm used in Mochi.
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+    """
+
+    def __init__(
+        self, embedding_dim: int, hidden_dim: int, eps: float = 1e-5, elementwise_affine: bool = False
+    ) -> None:
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, hidden_dim)
+        self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
+
+    def forward(
+        self, hidden_states: torch.Tensor, emb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb = self.linear(self.silu(emb))
+        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
+        hidden_states = self.norm(hidden_states) * (1 + scale_msa[:, None])
+
+        return hidden_states, gate_msa, scale_mlp, gate_mlp
+
+
 class AdaLayerNormSingle(nn.Module):
     r"""
     Norm layer adaptive layer norm single (adaLN-single).
@@ -358,20 +385,21 @@ class LuminaLayerNormContinuous(nn.Module):
         out_dim: Optional[int] = None,
     ):
         super().__init__()
+
         # AdaLN
         self.silu = nn.SiLU()
         self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
+
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        if norm_type == "rms_norm":
+            self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
         else:
             raise ValueError(f"unknown norm_type {norm_type}")
-        # linear_2
+
+        self.linear_2 = None
         if out_dim is not None:
-            self.linear_2 = nn.Linear(
-                embedding_dim,
-                out_dim,
-                bias=bias,
-            )
+            self.linear_2 = nn.Linear(embedding_dim, out_dim, bias=bias)
 
     def forward(
         self,

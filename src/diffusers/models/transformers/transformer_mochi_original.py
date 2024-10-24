@@ -2,7 +2,7 @@ import collections
 import functools
 import itertools
 import math
-from typing import Any, Callable, Dict, Optional, List
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -19,7 +19,9 @@ def _ntuple(n):
 
     return parse
 
+
 to_2tuple = _ntuple(2)
+
 
 def centers(start: float, stop, num, dtype=None, device=None):
     """linspace through bin centers.
@@ -94,8 +96,7 @@ def compute_mixed_rotation(
         num_heads: int
 
     Returns:
-        freqs_cos: [N, num_heads, num_freqs] - cosine components
-        freqs_sin: [N, num_heads, num_freqs] - sine components
+        freqs_cos: [N, num_heads, num_freqs] - cosine components freqs_sin: [N, num_heads, num_freqs] - sine components
     """
     with torch.autocast("cuda", enabled=False):
         assert freqs.ndim == 3
@@ -132,9 +133,7 @@ class TimestepEmbedder(nn.Module):
         args = t[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
-            )
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
         return embedding
 
     def forward(self, t):
@@ -220,15 +219,17 @@ class PatchEmbed(nn.Module):
             device=device,
         )
         assert norm_layer is None
-        self.norm = (
-            norm_layer(embed_dim, device=device) if norm_layer else nn.Identity()
-        )
+        self.norm = norm_layer(embed_dim, device=device) if norm_layer else nn.Identity()
 
     def forward(self, x):
         B, _C, T, H, W = x.shape
         if not self.dynamic_img_pad:
-            assert H % self.patch_size[0] == 0, f"Input height ({H}) should be divisible by patch size ({self.patch_size[0]})."
-            assert W % self.patch_size[1] == 0, f"Input width ({W}) should be divisible by patch size ({self.patch_size[1]})."
+            assert (
+                H % self.patch_size[0] == 0
+            ), f"Input height ({H}) should be divisible by patch size ({self.patch_size[0]})."
+            assert (
+                W % self.patch_size[1] == 0
+            ), f"Input width ({W}) should be divisible by patch size ({self.patch_size[1]})."
         else:
             pad_h = (self.patch_size[0] - H % self.patch_size[0]) % self.patch_size[0]
             pad_w = (self.patch_size[1] - W % self.patch_size[1]) % self.patch_size[1]
@@ -337,9 +338,7 @@ class AttentionPool(nn.Module):
         q = q.unsqueeze(2)  # (B, H, 1, head_dim)
 
         # Compute attention.
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, dropout_p=0.0
-        )  # (B, H, 1, head_dim)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)  # (B, H, 1, head_dim)
 
         # Concatenate heads and run output.
         x = x.squeeze(2).flatten(1, 2)  # (B, D = H * head_dim)
@@ -470,9 +469,9 @@ class AsymmetricJointBlock(nn.Module):
             num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
         Returns:
-            x: (B, N, dim) tensor of visual tokens after block
-            y: (B, L, dim) tensor of text tokens after block
+            x: (B, N, dim) tensor of visual tokens after block y: (B, L, dim) tensor of text tokens after block
         """
+        breakpoint()
         N = x.size(1)
 
         c = F.silu(c)
@@ -540,9 +539,7 @@ class AsymmetricAttention(nn.Module):
         self.update_y = update_y
         self.softmax_scale = softmax_scale
         if dim_x % num_heads != 0:
-            raise ValueError(
-                f"dim_x={dim_x} should be divisible by num_heads={num_heads}"
-            )
+            raise ValueError(f"dim_x={dim_x} should be divisible by num_heads={num_heads}")
 
         # Input layers.
         self.qkv_bias = qkv_bias
@@ -559,158 +556,292 @@ class AsymmetricAttention(nn.Module):
 
         # Output layers. y features go back down from dim_x -> dim_y.
         self.proj_x = nn.Linear(dim_x, dim_x, bias=out_bias, device=device)
-        self.proj_y = (
-            nn.Linear(dim_x, dim_y, bias=out_bias, device=device)
-            if update_y
-            else nn.Identity()
+        self.proj_y = nn.Linear(dim_x, dim_y, bias=out_bias, device=device) if update_y else nn.Identity()
+
+    def run_qkv_y(self, y):
+        qkv_y = self.qkv_y(y)
+        qkv_y = qkv_y.view(qkv_y.size(0), qkv_y.size(1), 3, -1, self.head_dim)
+        q_y, k_y, v_y = qkv_y.unbind(2)
+        return q_y, k_y, v_y
+
+        # cp_rank, cp_size = cp.get_cp_rank_size()
+        # local_heads = self.num_heads // cp_size
+
+        # if cp.is_cp_active():
+        #     # Only predict local heads.
+        #     assert not self.qkv_bias
+        #     W_qkv_y = self.qkv_y.weight.view(
+        #         3, self.num_heads, self.head_dim, self.dim_y
+        #     )
+        #     W_qkv_y = W_qkv_y.narrow(1, cp_rank * local_heads, local_heads)
+        #     W_qkv_y = W_qkv_y.reshape(3 * local_heads * self.head_dim, self.dim_y)
+        #     qkv_y = F.linear(y, W_qkv_y, None)  # (B, L, 3 * local_h * head_dim)
+        # else:
+        #     qkv_y = self.qkv_y(y)  # (B, L, 3 * dim)
+
+        # qkv_y = qkv_y.view(qkv_y.size(0), qkv_y.size(1), 3, local_heads, self.head_dim)
+        # q_y, k_y, v_y = qkv_y.unbind(2)
+        # return q_y, k_y, v_y
+
+    def prepare_qkv(
+        self,
+        x: torch.Tensor,  # (B, N, dim_x)
+        y: torch.Tensor,  # (B, L, dim_y)
+        *,
+        scale_x: torch.Tensor,
+        scale_y: torch.Tensor,
+        rope_cos: torch.Tensor,
+        rope_sin: torch.Tensor,
+        valid_token_indices: torch.Tensor = None,
+    ):
+        breakpoint()
+        # Pre-norm for visual features
+        x = modulated_rmsnorm(x, scale_x)  # (B, M, dim_x) where M = N / cp_group_size
+
+        # Process visual features
+        qkv_x = self.qkv_x(x)  # (B, M, 3 * dim_x)
+        # assert qkv_x.dtype == torch.bfloat16
+        # qkv_x = cp.all_to_all_collect_tokens(
+        #     qkv_x, self.num_heads
+        # )  # (3, B, N, local_h, head_dim)
+        B, M, _ = qkv_x.size()
+        qkv_x = qkv_x.view(B, M, 3, -1, 128)
+        qkv_x = qkv_x.permute(2, 0, 1, 3, 4)
+
+        # Process text features
+        y = modulated_rmsnorm(y, scale_y)  # (B, L, dim_y)
+        q_y, k_y, v_y = self.run_qkv_y(y)  # (B, L, local_heads, head_dim)
+        q_y = self.q_norm_y(q_y)
+        k_y = self.k_norm_y(k_y)
+
+        # Split qkv_x into q, k, v
+        q_x, k_x, v_x = qkv_x.unbind(0)  # (B, N, local_h, head_dim)
+        q_x = self.q_norm_x(q_x)
+        q_x = apply_rotary_emb_qk_real(q_x, rope_cos, rope_sin)
+        k_x = self.k_norm_x(k_x)
+        k_x = apply_rotary_emb_qk_real(k_x, rope_cos, rope_sin)
+
+        # Unite streams
+        qkv = unify_streams(
+            q_x,
+            k_x,
+            v_x,
+            q_y,
+            k_y,
+            v_y,
+            valid_token_indices,
         )
 
-    # def run_qkv_y(self, y):
-    #     cp_rank, cp_size = cp.get_cp_rank_size()
-    #     local_heads = self.num_heads // cp_size
+        return qkv
 
-    #     if cp.is_cp_active():
-    #         # Only predict local heads.
-    #         assert not self.qkv_bias
-    #         W_qkv_y = self.qkv_y.weight.view(
-    #             3, self.num_heads, self.head_dim, self.dim_y
-    #         )
-    #         W_qkv_y = W_qkv_y.narrow(1, cp_rank * local_heads, local_heads)
-    #         W_qkv_y = W_qkv_y.reshape(3 * local_heads * self.head_dim, self.dim_y)
-    #         qkv_y = F.linear(y, W_qkv_y, None)  # (B, L, 3 * local_h * head_dim)
-    #     else:
-    #         qkv_y = self.qkv_y(y)  # (B, L, 3 * dim)
+    @torch.compiler.disable()
+    def run_attention(
+        self,
+        qkv: torch.Tensor,  # (total <= B * (N + L), 3, local_heads, head_dim)
+        *,
+        B: int,
+        L: int,
+        M: int,
+        cu_seqlens: torch.Tensor = None,
+        max_seqlen_in_batch: int = None,
+        valid_token_indices: torch.Tensor = None,
+    ):
+        breakpoint()
+        N = M
+        local_heads = self.num_heads
+        # local_dim = local_heads * self.head_dim
+        # with torch.autocast("cuda", enabled=False):
+        #     out: torch.Tensor = flash_attn_varlen_qkvpacked_func(
+        #         qkv,
+        #         cu_seqlens=cu_seqlens,
+        #         max_seqlen=max_seqlen_in_batch,
+        #         dropout_p=0.0,
+        #         softmax_scale=self.softmax_scale,
+        #     )  # (total, local_heads, head_dim)
+        #     out = out.view(total, local_dim)
 
-    #     qkv_y = qkv_y.view(qkv_y.size(0), qkv_y.size(1), 3, local_heads, self.head_dim)
-    #     q_y, k_y, v_y = qkv_y.unbind(2)
-    #     return q_y, k_y, v_y
+        q, k, v = qkv.unbind(1)
+        out = F.scaled_dot_product_attention(q, k, v)
 
-    # def prepare_qkv(
-    #     self,
-    #     x: torch.Tensor,  # (B, N, dim_x)
-    #     y: torch.Tensor,  # (B, L, dim_y)
-    #     *,
-    #     scale_x: torch.Tensor,
-    #     scale_y: torch.Tensor,
-    #     rope_cos: torch.Tensor,
-    #     rope_sin: torch.Tensor,
-    #     valid_token_indices: torch.Tensor,
-    # ):
-    #     # Pre-norm for visual features
-    #     x = modulated_rmsnorm(x, scale_x)  # (B, M, dim_x) where M = N / cp_group_size
+        # x, y = pad_and_split_xy(out, valid_token_indices, B, N, L, qkv.dtype)
+        x, y = out.split_with_sizes((N, L), dim=0)
+        # assert x.size() == (B, N, local_dim)
+        # assert y.size() == (B, L, local_dim)
 
-    #     # Process visual features
-    #     qkv_x = self.qkv_x(x)  # (B, M, 3 * dim_x)
-    #     assert qkv_x.dtype == torch.bfloat16
-    #     qkv_x = cp.all_to_all_collect_tokens(
-    #         qkv_x, self.num_heads
-    #     )  # (3, B, N, local_h, head_dim)
+        x = x.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
+        x = self.proj_x(x)  # (B, M, dim_x)
 
-    #     # Process text features
-    #     y = modulated_rmsnorm(y, scale_y)  # (B, L, dim_y)
-    #     q_y, k_y, v_y = self.run_qkv_y(y)  # (B, L, local_heads, head_dim)
-    #     q_y = self.q_norm_y(q_y)
-    #     k_y = self.k_norm_y(k_y)
+        y = y.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
+        y = self.proj_y(y)  # (B, L, dim_y)
+        return x, y
 
-    #     # Split qkv_x into q, k, v
-    #     q_x, k_x, v_x = qkv_x.unbind(0)  # (B, N, local_h, head_dim)
-    #     q_x = self.q_norm_x(q_x)
-    #     q_x = apply_rotary_emb_qk_real(q_x, rope_cos, rope_sin)
-    #     k_x = self.k_norm_x(k_x)
-    #     k_x = apply_rotary_emb_qk_real(k_x, rope_cos, rope_sin)
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, N, dim_x)
+        y: torch.Tensor,  # (B, L, dim_y)
+        *,
+        scale_x: torch.Tensor,  # (B, dim_x), modulation for pre-RMSNorm.
+        scale_y: torch.Tensor,  # (B, dim_y), modulation for pre-RMSNorm.
+        packed_indices: Dict[str, torch.Tensor] = None,
+        **rope_rotation,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass of asymmetric multi-modal attention.
 
-    #     # Unite streams
-    #     qkv = unify_streams(
-    #         q_x,
-    #         k_x,
-    #         v_x,
-    #         q_y,
-    #         k_y,
-    #         v_y,
-    #         valid_token_indices,
-    #     )
+        Args:
+            x: (B, N, dim_x) tensor for visual tokens
+            y: (B, L, dim_y) tensor of text token features
+            packed_indices: Dict with keys for Flash Attention
+            num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
-    #     return qkv
+        Returns:
+            x: (B, N, dim_x) tensor of visual tokens after multi-modal attention y: (B, L, dim_y) tensor of text token
+            features after multi-modal attention
+        """
+        B, L, _ = y.shape
+        _, M, _ = x.shape
 
-    # @torch.compiler.disable()
-    # def run_attention(
-    #     self,
-    #     qkv: torch.Tensor,  # (total <= B * (N + L), 3, local_heads, head_dim)
-    #     *,
-    #     B: int,
-    #     L: int,
-    #     M: int,
-    #     cu_seqlens: torch.Tensor,
-    #     max_seqlen_in_batch: int,
-    #     valid_token_indices: torch.Tensor,
-    # ):
-    #     with torch.autocast("cuda", enabled=False):
-    #         out: torch.Tensor = flash_attn_varlen_qkvpacked_func(
-    #             qkv,
-    #             cu_seqlens=cu_seqlens,
-    #             max_seqlen=max_seqlen_in_batch,
-    #             dropout_p=0.0,
-    #             softmax_scale=self.softmax_scale,
-    #         )  # (total, local_heads, head_dim)
-    #         out = out.view(total, local_dim)
+        # Predict a packed QKV tensor from visual and text features.
+        # Don't checkpoint the all_to_all.
+        qkv = self.prepare_qkv(
+            x=x,
+            y=y,
+            scale_x=scale_x,
+            scale_y=scale_y,
+            rope_cos=rope_rotation.get("rope_cos"),
+            rope_sin=rope_rotation.get("rope_sin"),
+            # valid_token_indices=packed_indices["valid_token_indices_kv"],
+        )  # (total <= B * (N + L), 3, local_heads, head_dim)
 
-    #     x, y = pad_and_split_xy(out, valid_token_indices, B, N, L, qkv.dtype)
-    #     assert x.size() == (B, N, local_dim)
-    #     assert y.size() == (B, L, local_dim)
+        x, y = self.run_attention(
+            qkv,
+            B=B,
+            L=L,
+            M=M,
+            # cu_seqlens=packed_indices["cu_seqlens_kv"],
+            # max_seqlen_in_batch=packed_indices["max_seqlen_in_batch_kv"],
+            # valid_token_indices=packed_indices["valid_token_indices_kv"],
+        )
+        return x, y
 
-    #     x = x.view(B, N, local_heads, self.head_dim)
-    #     x = self.proj_x(x)  # (B, M, dim_x)
 
-    #     y = self.proj_y(y)  # (B, L, dim_y)
-    #     return x, y
+def apply_rotary_emb_qk_real(
+    xqk: torch.Tensor,
+    freqs_cos: torch.Tensor,
+    freqs_sin: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Apply rotary embeddings to input tensors using the given frequency tensor without complex numbers.
 
-    # def forward(
-    #     self,
-    #     x: torch.Tensor,  # (B, N, dim_x)
-    #     y: torch.Tensor,  # (B, L, dim_y)
-    #     *,
-    #     scale_x: torch.Tensor,  # (B, dim_x), modulation for pre-RMSNorm.
-    #     scale_y: torch.Tensor,  # (B, dim_y), modulation for pre-RMSNorm.
-    #     packed_indices: Dict[str, torch.Tensor] = None,
-    #     **rope_rotation,
-    # ) -> Tuple[torch.Tensor, torch.Tensor]:
-    #     """Forward pass of asymmetric multi-modal attention.
+    Args:
+        xqk (torch.Tensor): Query and/or Key tensors to apply rotary embeddings. Shape: (B, S, *, num_heads, D)
+                            Can be either just query or just key, or both stacked along some batch or * dim.
+        freqs_cos (torch.Tensor): Precomputed cosine frequency tensor.
+        freqs_sin (torch.Tensor): Precomputed sine frequency tensor.
 
-    #     Args:
-    #         x: (B, N, dim_x) tensor for visual tokens
-    #         y: (B, L, dim_y) tensor of text token features
-    #         packed_indices: Dict with keys for Flash Attention
-    #         num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
+    Returns:
+        torch.Tensor: The input tensor with rotary embeddings applied.
+    """
+    # assert xqk.dtype == torch.bfloat16
+    # Split the last dimension into even and odd parts
+    xqk_even = xqk[..., 0::2]
+    xqk_odd = xqk[..., 1::2]
 
-    #     Returns:
-    #         x: (B, N, dim_x) tensor of visual tokens after multi-modal attention
-    #         y: (B, L, dim_y) tensor of text token features after multi-modal attention
-    #     """
-    #     B, L, _ = y.shape
-    #     _, M, _ = x.shape
+    # Apply rotation
+    cos_part = (xqk_even * freqs_cos - xqk_odd * freqs_sin).type_as(xqk)
+    sin_part = (xqk_even * freqs_sin + xqk_odd * freqs_cos).type_as(xqk)
 
-    #     # Predict a packed QKV tensor from visual and text features.
-    #     # Don't checkpoint the all_to_all.
-    #     qkv = self.prepare_qkv(
-    #         x=x,
-    #         y=y,
-    #         scale_x=scale_x,
-    #         scale_y=scale_y,
-    #         rope_cos=rope_rotation.get("rope_cos"),
-    #         rope_sin=rope_rotation.get("rope_sin"),
-    #         valid_token_indices=packed_indices["valid_token_indices_kv"],
-    #     )  # (total <= B * (N + L), 3, local_heads, head_dim)
+    # Interleave the results back into the original shape
+    out = torch.stack([cos_part, sin_part], dim=-1).flatten(-2)
+    # assert out.dtype == torch.bfloat16
+    return out
 
-    #     x, y = self.run_attention(
-    #         qkv,
-    #         B=B,
-    #         L=L,
-    #         M=M,
-    #         cu_seqlens=packed_indices["cu_seqlens_kv"],
-    #         max_seqlen_in_batch=packed_indices["max_seqlen_in_batch_kv"],
-    #         valid_token_indices=packed_indices["valid_token_indices_kv"],
-    #     )
-    #     return x, y
+
+class PadSplitXY(torch.autograd.Function):
+    """
+    Merge heads, pad and extract visual and text tokens, and split along the sequence length.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        xy: torch.Tensor,
+        indices: torch.Tensor,
+        B: int,
+        N: int,
+        L: int,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            xy: Packed tokens. Shape: (total <= B * (N + L), num_heads * head_dim).
+            indices: Valid token indices out of unpacked tensor. Shape: (total,)
+
+        Returns:
+            x: Visual tokens. Shape: (B, N, num_heads * head_dim). y: Text tokens. Shape: (B, L, num_heads * head_dim).
+        """
+        ctx.save_for_backward(indices)
+        ctx.B, ctx.N, ctx.L = B, N, L
+        D = xy.size(1)
+
+        # Pad sequences to (B, N + L, dim).
+        assert indices.ndim == 1
+        output = torch.zeros(B * (N + L), D, device=xy.device, dtype=dtype)
+        indices = indices.unsqueeze(1).expand(-1, D)  # (total,) -> (total, num_heads * head_dim)
+        output.scatter_(0, indices, xy)
+        xy = output.view(B, N + L, D)
+
+        # Split visual and text tokens along the sequence length.
+        return torch.tensor_split(xy, (N,), dim=1)
+
+
+def pad_and_split_xy(xy, indices, B, N, L, dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+    return PadSplitXY.apply(xy, indices, B, N, L, dtype)
+
+
+class UnifyStreams(torch.autograd.Function):
+    """Unify visual and text streams."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        q_x: torch.Tensor,
+        k_x: torch.Tensor,
+        v_x: torch.Tensor,
+        q_y: torch.Tensor,
+        k_y: torch.Tensor,
+        v_y: torch.Tensor,
+        indices: torch.Tensor,
+    ):
+        """
+        Args:
+            q_x: (B, N, num_heads, head_dim)
+            k_x: (B, N, num_heads, head_dim)
+            v_x: (B, N, num_heads, head_dim)
+            q_y: (B, L, num_heads, head_dim)
+            k_y: (B, L, num_heads, head_dim)
+            v_y: (B, L, num_heads, head_dim)
+            indices: (total <= B * (N + L))
+
+        Returns:
+            qkv: (total <= B * (N + L), 3, num_heads, head_dim)
+        """
+        ctx.save_for_backward(indices)
+        B, N, num_heads, head_dim = q_x.size()
+        ctx.B, ctx.N, ctx.L = B, N, q_y.size(1)
+        D = num_heads * head_dim
+
+        q = torch.cat([q_x, q_y], dim=1)
+        k = torch.cat([k_x, k_y], dim=1)
+        v = torch.cat([v_x, v_y], dim=1)
+        qkv = torch.stack([q, k, v], dim=2).view(B * (N + ctx.L), 3, D)
+
+        # indices = indices[:, None, None].expand(-1, 3, D)
+        # qkv = torch.gather(qkv, 0, indices)  # (total, 3, num_heads * head_dim)
+        return qkv.unflatten(2, (num_heads, head_dim))
+
+
+def unify_streams(q_x, k_x, v_x, q_y, k_y, v_y, indices) -> torch.Tensor:
+    return UnifyStreams.apply(q_x, k_x, v_x, q_y, k_y, v_y, indices)
 
 
 class FinalLayer(nn.Module):
@@ -726,13 +857,9 @@ class FinalLayer(nn.Module):
         device: Optional[torch.device] = None,
     ):
         super().__init__()
-        self.norm_final = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, device=device
-        )
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, device=device)
         self.mod = nn.Linear(hidden_size, 2 * hidden_size, device=device)
-        self.linear = nn.Linear(
-            hidden_size, patch_size * patch_size * out_channels, device=device
-        )
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, device=device)
 
     def forward(self, x, c):
         c = F.silu(c)
@@ -777,15 +904,11 @@ class MochiTransformer3DModel(nn.Module):
         self.num_heads = num_heads
         self.hidden_size_x = hidden_size_x
         self.hidden_size_y = hidden_size_y
-        self.head_dim = (
-            hidden_size_x // num_heads
-        )  # Head dimension and count is determined by visual.
+        self.head_dim = hidden_size_x // num_heads  # Head dimension and count is determined by visual.
         self.use_extended_posenc = use_extended_posenc
         self.t5_token_length = t5_token_length
         self.t5_feat_dim = t5_feat_dim
-        self.rope_theta = (
-            rope_theta  # Scaling factor for frequency computation for temporal RoPE.
-        )
+        self.rope_theta = rope_theta  # Scaling factor for frequency computation for temporal RoPE.
 
         self.x_embedder = PatchEmbed(
             patch_size=patch_size,
@@ -796,24 +919,16 @@ class MochiTransformer3DModel(nn.Module):
         )
         # Conditionings
         # Timestep
-        self.t_embedder = TimestepEmbedder(
-            hidden_size_x, bias=timestep_mlp_bias, timestep_scale=timestep_scale
-        )
+        self.t_embedder = TimestepEmbedder(hidden_size_x, bias=timestep_mlp_bias, timestep_scale=timestep_scale)
 
         # Caption Pooling (T5)
-        self.t5_y_embedder = AttentionPool(
-            t5_feat_dim, num_heads=8, output_dim=hidden_size_x, device=device
-        )
+        self.t5_y_embedder = AttentionPool(t5_feat_dim, num_heads=8, output_dim=hidden_size_x, device=device)
 
         # Dense Embedding Projection (T5)
-        self.t5_yproj = nn.Linear(
-            t5_feat_dim, hidden_size_y, bias=True, device=device
-        )
+        self.t5_yproj = nn.Linear(t5_feat_dim, hidden_size_y, bias=True, device=device)
 
         # Initialize pos_frequencies as an empty parameter.
-        self.pos_frequencies = nn.Parameter(
-            torch.empty(3, self.num_heads, self.head_dim // 2, device=device)
-        )
+        self.pos_frequencies = nn.Parameter(torch.empty(3, self.num_heads, self.head_dim // 2, device=device))
 
         # for depth 48:
         #  b =  0: AsymmetricJointBlock, update_y=True
@@ -839,9 +954,7 @@ class MochiTransformer3DModel(nn.Module):
             blocks.append(block)
         self.blocks = nn.ModuleList(blocks)
 
-        self.final_layer = FinalLayer(
-            hidden_size_x, patch_size, self.out_channels, device=device
-        )
+        self.final_layer = FinalLayer(hidden_size_x, patch_size, self.out_channels, device=device)
 
     def embed_x(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -861,6 +974,7 @@ class MochiTransformer3DModel(nn.Module):
         t5_mask: torch.Tensor,
     ):
         """Prepare input and conditioning embeddings."""
+        breakpoint()
 
         with torch.profiler.record_function("x_emb_pe"):
             # Visual patch embeddings with positional encoding.
@@ -878,9 +992,7 @@ class MochiTransformer3DModel(nn.Module):
             pH, pW = H // self.patch_size, W // self.patch_size
             N = T * pH * pW
             assert x.size(1) == N
-            pos = create_position_matrix(
-                T, pH=pH, pW=pW, device=x.device, dtype=torch.float32
-            )  # (N, 3)
+            pos = create_position_matrix(T, pH=pH, pW=pW, device=x.device, dtype=torch.float32)  # (N, 3)
             rope_cos, rope_sin = compute_mixed_rotation(
                 freqs=self.pos_frequencies, pos=pos
             )  # Each are (N, num_heads, dim // 2)
@@ -896,9 +1008,7 @@ class MochiTransformer3DModel(nn.Module):
                 t5_feat.size(1) == self.t5_token_length
             ), f"Expected L={self.t5_token_length}, got {t5_feat.shape} for y_feat."
             t5_y_pool = self.t5_y_embedder(t5_feat, t5_mask)  # (B, D)
-            assert (
-                t5_y_pool.size(0) == B
-            ), f"Expected B={B}, got {t5_y_pool.shape} for t5_y_pool."
+            assert t5_y_pool.size(0) == B, f"Expected B={B}, got {t5_y_pool.shape} for t5_y_pool."
 
         c = c_t + t5_y_pool
 
@@ -921,16 +1031,17 @@ class MochiTransformer3DModel(nn.Module):
         Args:
             x: (B, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
             sigma: (B,) tensor of noise standard deviations
-            y_feat: List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77, y_feat_dim=2048)
+            y_feat:
+                List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77,
+                y_feat_dim=2048)
             y_mask: List((B, L) boolean tensor indicating which tokens are not padding)
             packed_indices: Dict with keys for Flash Attention. Result of compute_packed_indices.
         """
         B, _, T, H, W = x.shape
 
-        x, c, y_feat, rope_cos, rope_sin = self.prepare(
-            x, sigma, y_feat[0], y_mask[0]
-        )
+        x, c, y_feat, rope_cos, rope_sin = self.prepare(x, sigma, y_feat[0], y_mask[0])
         del y_mask
+        breakpoint()
 
         for i, block in enumerate(self.blocks):
             x, y_feat = block(
