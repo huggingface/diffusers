@@ -12,7 +12,7 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
-TOKENIZER_MAX_LENGTH = 224
+TOKENIZER_MAX_LENGTH = 256
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--transformer_checkpoint_path", default=None, type=str)
