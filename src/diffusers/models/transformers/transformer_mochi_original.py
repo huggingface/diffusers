@@ -471,7 +471,6 @@ class AsymmetricJointBlock(nn.Module):
         Returns:
             x: (B, N, dim) tensor of visual tokens after block y: (B, L, dim) tensor of text tokens after block
         """
-        breakpoint()
         N = x.size(1)
 
         c = F.silu(c)
@@ -497,6 +496,7 @@ class AsymmetricJointBlock(nn.Module):
         x = residual_tanh_gated_rmsnorm(x, x_attn, gate_msa_x)
         if self.update_y:
             y = residual_tanh_gated_rmsnorm(y, y_attn, gate_msa_y)
+        breakpoint()
 
         # MLP block.
         x = self.ff_block_x(x, scale_mlp_x, gate_mlp_x)
@@ -509,9 +509,11 @@ class AsymmetricJointBlock(nn.Module):
         x_mod = modulated_rmsnorm(x, scale_x)
         x_res = self.mlp_x(x_mod)
         x = residual_tanh_gated_rmsnorm(x, x_res, gate_x)  # Sandwich norm
+        breakpoint()
         return x
 
     def ff_block_y(self, y, scale_y, gate_y):
+        breakpoint()
         y_mod = modulated_rmsnorm(y, scale_y)
         y_res = self.mlp_y(y_mod)
         y = residual_tanh_gated_rmsnorm(y, y_res, gate_y)  # Sandwich norm
@@ -594,7 +596,6 @@ class AsymmetricAttention(nn.Module):
         rope_sin: torch.Tensor,
         valid_token_indices: torch.Tensor = None,
     ):
-        breakpoint()
         # Pre-norm for visual features
         x = modulated_rmsnorm(x, scale_x)  # (B, M, dim_x) where M = N / cp_group_size
 
@@ -617,8 +618,9 @@ class AsymmetricAttention(nn.Module):
         # Split qkv_x into q, k, v
         q_x, k_x, v_x = qkv_x.unbind(0)  # (B, N, local_h, head_dim)
         q_x = self.q_norm_x(q_x)
-        q_x = apply_rotary_emb_qk_real(q_x, rope_cos, rope_sin)
         k_x = self.k_norm_x(k_x)
+        
+        q_x = apply_rotary_emb_qk_real(q_x, rope_cos, rope_sin)
         k_x = apply_rotary_emb_qk_real(k_x, rope_cos, rope_sin)
 
         # Unite streams
@@ -646,7 +648,6 @@ class AsymmetricAttention(nn.Module):
         max_seqlen_in_batch: int = None,
         valid_token_indices: torch.Tensor = None,
     ):
-        breakpoint()
         N = M
         local_heads = self.num_heads
         # local_dim = local_heads * self.head_dim
@@ -661,17 +662,23 @@ class AsymmetricAttention(nn.Module):
         #     out = out.view(total, local_dim)
 
         q, k, v = qkv.unbind(1)
+        q = q.permute(1, 0, 2).unsqueeze(0)
+        k = k.permute(1, 0, 2).unsqueeze(0)
+        v = v.permute(1, 0, 2).unsqueeze(0)
+        
         out = F.scaled_dot_product_attention(q, k, v)
 
+        out = out.transpose(1, 2).flatten(2, 3)
+
         # x, y = pad_and_split_xy(out, valid_token_indices, B, N, L, qkv.dtype)
-        x, y = out.split_with_sizes((N, L), dim=0)
+        x, y = out.split_with_sizes((N, L), dim=1)
         # assert x.size() == (B, N, local_dim)
         # assert y.size() == (B, L, local_dim)
 
-        x = x.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
+        # x = x.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
         x = self.proj_x(x)  # (B, M, dim_x)
 
-        y = y.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
+        # y = y.view(B, -1, local_heads, self.head_dim).flatten(2, 3)
         y = self.proj_y(y)  # (B, L, dim_y)
         return x, y
 
@@ -974,8 +981,6 @@ class MochiTransformer3DModel(nn.Module):
         t5_mask: torch.Tensor,
     ):
         """Prepare input and conditioning embeddings."""
-        breakpoint()
-
         with torch.profiler.record_function("x_emb_pe"):
             # Visual patch embeddings with positional encoding.
             T, H, W = x.shape[-3:]
@@ -1041,7 +1046,6 @@ class MochiTransformer3DModel(nn.Module):
 
         x, c, y_feat, rope_cos, rope_sin = self.prepare(x, sigma, y_feat[0], y_mask[0])
         del y_mask
-        breakpoint()
 
         for i, block in enumerate(self.blocks):
             x, y_feat = block(
@@ -1052,12 +1056,13 @@ class MochiTransformer3DModel(nn.Module):
                 rope_sin=rope_sin,
                 packed_indices=packed_indices,
             )  # (B, M, D), (B, L, D)
+            print(x.mean(), x.std())
         del y_feat  # Final layers don't use dense text features.
 
         x = self.final_layer(x, c)  # (B, M, patch_size ** 2 * out_channels)
 
         patch = x.size(2)
-        x = rearrange(x, "(G B) M P -> B (G M) P", G=1, P=patch)
+        # x = rearrange(x, "(G B) M P -> B (G M) P", G=1, P=patch)
         x = rearrange(
             x,
             "B (T hp wp) (p1 p2 c) -> B c T (hp p1) (wp p2)",

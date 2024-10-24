@@ -134,14 +134,18 @@ class SwiGLU(nn.Module):
         bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
-    def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True, flip_gate: bool = False):
         super().__init__()
+        self.flip_gate = flip_gate
+        
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         self.activation = nn.SiLU()
 
     def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
         hidden_states, gate = hidden_states.chunk(2, dim=-1)
+        if self.flip_gate:
+            hidden_states, gate = gate, hidden_states
         return hidden_states * self.activation(gate)
 
 

@@ -3163,7 +3163,8 @@ class MochiAttnProcessor2_0:
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
-        encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+        if hasattr(attn, "to_add_out"):
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         return hidden_states, encoder_hidden_states
 

@@ -88,11 +88,11 @@ class MochiTransformerBlock(nn.Module):
         self.norm3 = RMSNorm(dim, eps=eps, elementwise_affine=False)
         self.norm3_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
-        self.ff = FeedForward(dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False)
+        self.ff = FeedForward(dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False, flip_gate=True)
         self.ff_context = None
         if not context_pre_only:
             self.ff_context = FeedForward(
-                pooled_projection_dim, inner_dim=self.ff_context_inner_dim, activation_fn=activation_fn, bias=False
+                pooled_projection_dim, inner_dim=self.ff_context_inner_dim, activation_fn=activation_fn, bias=False, flip_gate=True
             )
 
         self.norm4 = RMSNorm(dim, eps=eps, elementwise_affine=False)
@@ -105,7 +105,6 @@ class MochiTransformerBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        breakpoint()
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
         if not self.context_pre_only:
@@ -123,21 +122,16 @@ class MochiTransformerBlock(nn.Module):
 
         hidden_states = hidden_states + self.norm2(attn_hidden_states) * torch.tanh(gate_msa).unsqueeze(1)
         norm_hidden_states = self.norm3(hidden_states) * (1 + scale_mlp.unsqueeze(1))
+        ff_output = self.ff(norm_hidden_states)
+        hidden_states = hidden_states + self.norm4(ff_output) * torch.tanh(gate_mlp).unsqueeze(1)
 
         if not self.context_pre_only:
             encoder_hidden_states = encoder_hidden_states + self.norm2_context(
                 context_attn_hidden_states
             ) * torch.tanh(enc_gate_msa).unsqueeze(1)
-            norm_encoder_hidden_states = encoder_hidden_states + self.norm3_context(encoder_hidden_states) * (
-                1 + enc_scale_mlp.unsqueeze(1)
-            )
-
-        ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + ff_output * torch.tanh(gate_mlp).unsqueeze(1)
-
-        if not self.context_pre_only:
+            norm_encoder_hidden_states = self.norm3_context(encoder_hidden_states) * (1 + enc_scale_mlp.unsqueeze(1))
             context_ff_output = self.ff_context(norm_encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states + context_ff_output * torch.tanh(enc_gate_mlp).unsqueeze(0)
+            encoder_hidden_states = encoder_hidden_states + self.norm4_context(context_ff_output) * torch.tanh(enc_gate_mlp).unsqueeze(0)
 
         return hidden_states, encoder_hidden_states
 
@@ -292,8 +286,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
             )
+            print(hidden_states.mean(), hidden_states.std())
 
-        # TODO(aryan): do something with self.pos_frequencies
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
