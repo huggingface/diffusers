@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import AsymmetricAttention, AsymmetricAttnProcessor2_0
+from ..attention_processor import Attention, FluxAttnProcessor2_0
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -57,17 +57,21 @@ class MochiTransformerBlock(nn.Module):
         else:
             self.norm1_context = nn.Linear(dim, pooled_projection_dim)
 
-        self.attn1 = AsymmetricAttention(
+        self.attn1 = Attention(
             query_dim=dim,
-            query_context_dim=pooled_projection_dim,
-            num_attention_heads=num_attention_heads,
-            attention_head_dim=attention_head_dim,
-            out_dim=dim,
-            out_context_dim=None if context_pre_only else pooled_projection_dim,
+            cross_attention_dim=None,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            bias=False,
             qk_norm=qk_norm,
+            added_kv_proj_dim=pooled_projection_dim,
+            added_proj_bias=False,
+            out_dim=dim,
+            out_context_dim=pooled_projection_dim,
+            context_pre_only=context_pre_only,
+            processor=FluxAttnProcessor2_0(),
             eps=1e-6,
             elementwise_affine=True,
-            processor=AsymmetricAttnProcessor2_0(),
         )
 
         self.norm2 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
@@ -93,7 +97,7 @@ class MochiTransformerBlock(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
-        if self.context_pre_only:
+        if not self.context_pre_only:
             norm_encoder_hidden_states, enc_gate_msa, enc_scale_mlp, enc_gate_mlp = self.norm1_context(
                 encoder_hidden_states, temb
             )
@@ -203,9 +207,11 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         post_patch_height = height // p
         post_patch_width = width // p
 
-        temb, encoder_hidden_states = self.time_embed(timestep, encoder_hidden_states, encoder_attention_mask)
+        temb, encoder_hidden_states = self.time_embed(timestep, encoder_hidden_states, encoder_attention_mask, hidden_dtype=hidden_states.dtype)
 
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.patch_embed(hidden_states)
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
 
         for i, block in enumerate(self.transformer_blocks):
             hidden_states, encoder_hidden_states = block(
@@ -216,7 +222,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
             )
 
         # TODO(aryan): do something with self.pos_frequencies
-
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 

@@ -99,20 +99,20 @@ def convert_mochi_transformer_checkpoint_to_diffusers(ckpt_path):
         qkv_weight = original_state_dict.pop(old_prefix + "attn.qkv_y.weight")
         q, k, v = qkv_weight.chunk(3, dim=0)
 
-        new_state_dict[block_prefix + "attn1.to_context_q.weight"] = q
-        new_state_dict[block_prefix + "attn1.to_context_k.weight"] = k
-        new_state_dict[block_prefix + "attn1.to_context_v.weight"] = v
-        new_state_dict[block_prefix + "attn1.norm_context_q.weight"] = original_state_dict.pop(
+        new_state_dict[block_prefix + "attn1.add_q_proj.weight"] = q
+        new_state_dict[block_prefix + "attn1.add_k_proj.weight"] = k
+        new_state_dict[block_prefix + "attn1.add_v_proj.weight"] = v
+        new_state_dict[block_prefix + "attn1.norm_added_q.weight"] = original_state_dict.pop(
             old_prefix + "attn.q_norm_y.weight"
         )
-        new_state_dict[block_prefix + "attn1.norm_context_k.weight"] = original_state_dict.pop(
+        new_state_dict[block_prefix + "attn1.norm_added_k.weight"] = original_state_dict.pop(
             old_prefix + "attn.k_norm_y.weight"
         )
         if i < num_layers - 1:
-            new_state_dict[block_prefix + "attn1.to_context_out.0.weight"] = original_state_dict.pop(
+            new_state_dict[block_prefix + "attn1.to_add_out.weight"] = original_state_dict.pop(
                 old_prefix + "attn.proj_y.weight"
             )
-            new_state_dict[block_prefix + "attn1.to_context_out.0.bias"] = original_state_dict.pop(
+            new_state_dict[block_prefix + "attn1.to_add_out.bias"] = original_state_dict.pop(
                 old_prefix + "attn.proj_y.bias"
             )
 
