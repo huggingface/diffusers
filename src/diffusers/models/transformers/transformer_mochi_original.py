@@ -96,7 +96,8 @@ def compute_mixed_rotation(
         num_heads: int
 
     Returns:
-        freqs_cos: [N, num_heads, num_freqs] - cosine components freqs_sin: [N, num_heads, num_freqs] - sine components
+        freqs_cos: [N, num_heads, num_freqs] - cosine components
+        freqs_sin: [N, num_heads, num_freqs] - sine components
     """
     with torch.autocast("cuda", enabled=False):
         assert freqs.ndim == 3
@@ -469,7 +470,8 @@ class AsymmetricJointBlock(nn.Module):
             num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
         Returns:
-            x: (B, N, dim) tensor of visual tokens after block y: (B, L, dim) tensor of text tokens after block
+            x: (B, N, dim) tensor of visual tokens after block
+            y: (B, L, dim) tensor of text tokens after block
         """
         N = x.size(1)
 
@@ -668,12 +670,16 @@ class AsymmetricAttention(nn.Module):
     # ) -> Tuple[torch.Tensor, torch.Tensor]:
     #     """Forward pass of asymmetric multi-modal attention.
 
-    # Args: # x: (B, N, dim_x) tensor for visual tokens # y: (B, L, dim_y) tensor of text token features #
-    packed_indices: Dict with keys for Flash Attention # num_frames: Number of frames in the video. N = num_frames *
-    num_spatial_tokens
+    #     Args:
+    #         x: (B, N, dim_x) tensor for visual tokens
+    #         y: (B, L, dim_y) tensor of text token features
+    #         packed_indices: Dict with keys for Flash Attention
+    #         num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
-    # Returns: # x: (B, N, dim_x) tensor of visual tokens after multi-modal attention # y: (B, L, dim_y) tensor of text
-    token features after multi-modal attention #"""
+    #     Returns:
+    #         x: (B, N, dim_x) tensor of visual tokens after multi-modal attention
+    #         y: (B, L, dim_y) tensor of text token features after multi-modal attention
+    #     """
     #     B, L, _ = y.shape
     #     _, M, _ = x.shape
 
@@ -887,9 +893,7 @@ class MochiTransformer3DModel(nn.Module):
         Args:
             x: (B, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
             sigma: (B,) tensor of noise standard deviations
-            y_feat:
-                List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77,
-                y_feat_dim=2048)
+            y_feat: List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77, y_feat_dim=2048)
             y_mask: List((B, L) boolean tensor indicating which tokens are not padding)
             packed_indices: Dict with keys for Flash Attention. Result of compute_packed_indices.
         """

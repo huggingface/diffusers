@@ -1304,16 +1304,16 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
 
 class MochiCombinedTimestepCaptionEmbedding(nn.Module):
     def __init__(
-        self, embedding_dim: int, pooled_projection_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8
+        self, embedding_dim: int, pooled_projection_dim: int, text_embed_dim: int, time_embed_dim: int = 256, num_attention_heads: int = 8
     ) -> None:
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0)
         self.timestep_embedder = TimestepEmbedding(in_channels=time_embed_dim, time_embed_dim=embedding_dim)
         self.pooler = MochiAttentionPool(
-            num_attention_heads=num_attention_heads, embed_dim=pooled_projection_dim, output_dim=embedding_dim
+            num_attention_heads=num_attention_heads, embed_dim=text_embed_dim, output_dim=embedding_dim
         )
-        self.caption_proj = nn.Linear(embedding_dim, pooled_projection_dim)
+        self.caption_proj = nn.Linear(text_embed_dim, pooled_projection_dim)
 
     def forward(
         self,

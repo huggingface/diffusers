@@ -21,7 +21,8 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import Attention, FeedForward, JointAttnProcessor2_0
+from ..attention import FeedForward
+from ..attention_processor import AsymmetricAttention, AsymmetricAttnProcessor2_0
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -46,23 +47,27 @@ class MochiTransformerBlock(nn.Module):
         super().__init__()
 
         self.context_pre_only = context_pre_only
+        self.ff_inner_dim = (4 * dim * 2) // 3
+        self.ff_context_inner_dim = (4 * pooled_projection_dim * 2) // 3
 
         self.norm1 = MochiRMSNormZero(dim, 4 * dim)
 
-        if context_pre_only:
+        if not context_pre_only:
             self.norm1_context = MochiRMSNormZero(dim, 4 * pooled_projection_dim)
         else:
-            self.norm1_context = RMSNorm(pooled_projection_dim, eps=1e-6, elementwise_affine=False)
+            self.norm1_context = nn.Linear(dim, pooled_projection_dim)
 
-        self.attn = Attention(
+        self.attn = AsymmetricAttention(
             query_dim=dim,
-            heads=num_attention_heads,
+            query_context_dim=pooled_projection_dim,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
-            out_dim=4 * dim,
+            out_dim=dim,
+            out_context_dim=None if context_pre_only else pooled_projection_dim,
             qk_norm=qk_norm,
             eps=1e-6,
             elementwise_affine=False,
-            processor=JointAttnProcessor2_0(),
+            processor=AsymmetricAttnProcessor2_0(),
         )
 
         self.norm2 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
@@ -71,8 +76,10 @@ class MochiTransformerBlock(nn.Module):
         self.norm3 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
         self.norm3_context = RMSNorm(pooled_projection_dim, eps=1e-56, elementwise_affine=False)
 
-        self.ff = FeedForward(dim, mult=4, activation_fn=activation_fn)
-        self.ff_context = FeedForward(pooled_projection_dim, mult=4, activation_fn=activation_fn)
+        self.ff = FeedForward(dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False)
+        self.ff_context = None
+        if not context_pre_only:
+            self.ff_context = FeedForward(pooled_projection_dim, inner_dim=self.ff_context_inner_dim, activation_fn=activation_fn, bias=False)
 
         self.norm4 = RMSNorm(dim, eps=1e-6, elementwise_affine=False)
         self.norm4_context = RMSNorm(pooled_projection_dim, eps=1e-56, elementwise_affine=False)
@@ -110,10 +117,10 @@ class MochiTransformerBlock(nn.Module):
             )
 
         ff_output = self.ff(hidden_states)
-        context_ff_output = self.ff_context(encoder_hidden_states)
-
         hidden_states = hidden_states + ff_output * torch.tanh(gate_mlp).unsqueeze(1)
+
         if not self.context_pre_only:
+            context_ff_output = self.ff_context(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states + context_ff_output * torch.tanh(enc_gate_mlp).unsqueeze(0)
 
         return hidden_states, encoder_hidden_states
@@ -131,11 +138,9 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
         attention_head_dim: int = 128,
         num_layers: int = 48,
         pooled_projection_dim: int = 1536,
-        in_channels=12,
+        in_channels: int = 12,
         out_channels: Optional[int] = None,
         qk_norm: str = "rms_norm",
-        timestep_mlp_bias=True,
-        timestep_scale=1000.0,
         text_embed_dim: int = 4096,
         time_embed_dim: int = 256,
         activation_fn: str = "swiglu",
@@ -146,17 +151,18 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
-        self.time_embed = MochiCombinedTimestepCaptionEmbedding(
-            embedding_dim=text_embed_dim,
-            pooled_projection_dim=pooled_projection_dim,
-            time_embed_dim=time_embed_dim,
-            num_attention_heads=8,
-        )
-
         self.patch_embed = PatchEmbed(
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
+        )
+
+        self.time_embed = MochiCombinedTimestepCaptionEmbedding(
+            embedding_dim=inner_dim,
+            pooled_projection_dim=pooled_projection_dim,
+            text_embed_dim=text_embed_dim,
+            time_embed_dim=time_embed_dim,
+            num_attention_heads=8,
         )
 
         self.pos_frequencies = nn.Parameter(torch.empty(3, num_attention_heads, attention_head_dim // 2))
@@ -170,7 +176,7 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
                     pooled_projection_dim=pooled_projection_dim,
                     qk_norm=qk_norm,
                     activation_fn=activation_fn,
-                    context_pre_only=i < num_layers - 1,
+                    context_pre_only=i == num_layers - 1,
                 )
                 for i in range(num_layers)
             ]
@@ -196,7 +202,7 @@ class MochiTransformer3D(ModelMixin, ConfigMixin):
         post_patch_height = height // p
         post_patch_width = width // p
 
-        temb, caption_proj = self.time_embed(timestep, encoder_hidden_states, encoder_attention_mask)
+        temb, encoder_hidden_states = self.time_embed(timestep, encoder_hidden_states, encoder_attention_mask)
 
         hidden_states = self.patch_embed(hidden_states)
 
