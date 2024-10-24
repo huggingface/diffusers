@@ -18,7 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
-from ...image_processor import VaeImageProcessor
 from ...loaders import TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import MochiTransformer3DModel
@@ -29,6 +28,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import MochiPipelineOutput
 
@@ -205,7 +205,7 @@ class MochiPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         self.vae_temporal_scale_factor = 6
         self.patch_size = 2
 
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
