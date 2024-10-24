@@ -3096,9 +3096,6 @@ class MochiAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        breakpoint()
-        batch_size = hidden_states.size(0)
-
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
@@ -3124,8 +3121,9 @@ class MochiAttnProcessor2_0:
             encoder_query = attn.norm_added_q(encoder_query)
         if attn.norm_added_k is not None:
             encoder_key = attn.norm_added_k(encoder_key)
-        
+
         if image_rotary_emb is not None:
+
             def apply_rotary_emb(x, freqs_cos, freqs_sin):
                 x_even = x[..., 0::2].float()
                 x_odd = x[..., 1::2].float()
@@ -3137,9 +3135,13 @@ class MochiAttnProcessor2_0:
 
             query = apply_rotary_emb(query, *image_rotary_emb)
             key = apply_rotary_emb(key, *image_rotary_emb)
-        
+
         query, key, value = query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
-        encoder_query, encoder_key, encoder_value = encoder_query.transpose(1, 2), encoder_key.transpose(1, 2), encoder_value.transpose(1, 2)
+        encoder_query, encoder_key, encoder_value = (
+            encoder_query.transpose(1, 2),
+            encoder_key.transpose(1, 2),
+            encoder_value.transpose(1, 2),
+        )
 
         sequence_length = query.size(2)
         encoder_sequence_length = encoder_query.size(2)
@@ -3152,7 +3154,9 @@ class MochiAttnProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
 
-        hidden_states, encoder_hidden_states = hidden_states.split_with_sizes((sequence_length, encoder_sequence_length), dim=1)
+        hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
+            (sequence_length, encoder_sequence_length), dim=1
+        )
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

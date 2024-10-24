@@ -96,8 +96,7 @@ def compute_mixed_rotation(
         num_heads: int
 
     Returns:
-        freqs_cos: [N, num_heads, num_freqs] - cosine components
-        freqs_sin: [N, num_heads, num_freqs] - sine components
+        freqs_cos: [N, num_heads, num_freqs] - cosine components freqs_sin: [N, num_heads, num_freqs] - sine components
     """
     with torch.autocast("cuda", enabled=False):
         assert freqs.ndim == 3
@@ -470,8 +469,7 @@ class AsymmetricJointBlock(nn.Module):
             num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
         Returns:
-            x: (B, N, dim) tensor of visual tokens after block
-            y: (B, L, dim) tensor of text tokens after block
+            x: (B, N, dim) tensor of visual tokens after block y: (B, L, dim) tensor of text tokens after block
         """
         breakpoint()
         N = x.size(1)
@@ -651,7 +649,7 @@ class AsymmetricAttention(nn.Module):
         breakpoint()
         N = M
         local_heads = self.num_heads
-        local_dim = local_heads * self.head_dim
+        # local_dim = local_heads * self.head_dim
         # with torch.autocast("cuda", enabled=False):
         #     out: torch.Tensor = flash_attn_varlen_qkvpacked_func(
         #         qkv,
@@ -696,8 +694,8 @@ class AsymmetricAttention(nn.Module):
             num_frames: Number of frames in the video. N = num_frames * num_spatial_tokens
 
         Returns:
-            x: (B, N, dim_x) tensor of visual tokens after multi-modal attention
-            y: (B, L, dim_y) tensor of text token features after multi-modal attention
+            x: (B, N, dim_x) tensor of visual tokens after multi-modal attention y: (B, L, dim_y) tensor of text token
+            features after multi-modal attention
         """
         B, L, _ = y.shape
         _, M, _ = x.shape
@@ -724,6 +722,7 @@ class AsymmetricAttention(nn.Module):
             # valid_token_indices=packed_indices["valid_token_indices_kv"],
         )
         return x, y
+
 
 def apply_rotary_emb_qk_real(
     xqk: torch.Tensor,
@@ -756,10 +755,10 @@ def apply_rotary_emb_qk_real(
     # assert out.dtype == torch.bfloat16
     return out
 
+
 class PadSplitXY(torch.autograd.Function):
     """
-    Merge heads, pad and extract visual and text tokens,
-    and split along the sequence length.
+    Merge heads, pad and extract visual and text tokens, and split along the sequence length.
     """
 
     @staticmethod
@@ -778,8 +777,7 @@ class PadSplitXY(torch.autograd.Function):
             indices: Valid token indices out of unpacked tensor. Shape: (total,)
 
         Returns:
-            x: Visual tokens. Shape: (B, N, num_heads * head_dim).
-            y: Text tokens. Shape: (B, L, num_heads * head_dim).
+            x: Visual tokens. Shape: (B, N, num_heads * head_dim). y: Text tokens. Shape: (B, L, num_heads * head_dim).
         """
         ctx.save_for_backward(indices)
         ctx.B, ctx.N, ctx.L = B, N, L
@@ -788,9 +786,7 @@ class PadSplitXY(torch.autograd.Function):
         # Pad sequences to (B, N + L, dim).
         assert indices.ndim == 1
         output = torch.zeros(B * (N + L), D, device=xy.device, dtype=dtype)
-        indices = indices.unsqueeze(1).expand(
-            -1, D
-        )  # (total,) -> (total, num_heads * head_dim)
+        indices = indices.unsqueeze(1).expand(-1, D)  # (total,) -> (total, num_heads * head_dim)
         output.scatter_(0, indices, xy)
         xy = output.view(B, N + L, D)
 
@@ -800,6 +796,7 @@ class PadSplitXY(torch.autograd.Function):
 
 def pad_and_split_xy(xy, indices, B, N, L, dtype) -> Tuple[torch.Tensor, torch.Tensor]:
     return PadSplitXY.apply(xy, indices, B, N, L, dtype)
+
 
 class UnifyStreams(torch.autograd.Function):
     """Unify visual and text streams."""
@@ -1034,7 +1031,9 @@ class MochiTransformer3DModel(nn.Module):
         Args:
             x: (B, C, T, H, W) tensor of spatial inputs (images or latent representations of images)
             sigma: (B,) tensor of noise standard deviations
-            y_feat: List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77, y_feat_dim=2048)
+            y_feat:
+                List((B, L, y_feat_dim) tensor of caption token features. For SDXL text encoders: L=77,
+                y_feat_dim=2048)
             y_mask: List((B, L) boolean tensor indicating which tokens are not padding)
             packed_indices: Dict with keys for Flash Attention. Result of compute_packed_indices.
         """

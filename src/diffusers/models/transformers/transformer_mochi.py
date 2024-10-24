@@ -145,16 +145,23 @@ class MochiTransformerBlock(nn.Module):
 class MochiRoPE(nn.Module):
     def __init__(self, base_height: int = 192, base_width: int = 192, theta: float = 10000.0) -> None:
         super().__init__()
-        
+
         self.target_area = base_height * base_width
-    
+
     def _centers(self, start, stop, num, device, dtype) -> torch.Tensor:
         edges = torch.linspace(start, stop, num + 1, device=device, dtype=dtype)
         return (edges[:-1] + edges[1:]) / 2
-    
-    def _get_positions(self, num_frames: int, height: int, width: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+
+    def _get_positions(
+        self,
+        num_frames: int,
+        height: int,
+        width: int,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
         scale = (self.target_area / (height * width)) ** 0.5
-        
+
         t = torch.arange(num_frames, device=device, dtype=dtype)
         h = self._centers(-height * scale / 2, height * scale / 2, height, device, dtype)
         w = self._centers(-width * scale / 2, width * scale / 2, width, device, dtype)
@@ -170,7 +177,15 @@ class MochiRoPE(nn.Module):
         freqs_sin = torch.sin(freqs)
         return freqs_cos, freqs_sin
 
-    def forward(self, pos_frequencies: torch.Tensor, num_frames: int, height: int, width: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        pos_frequencies: torch.Tensor,
+        num_frames: int,
+        height: int,
+        width: int,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         pos = self._get_positions(num_frames, height, width, device, dtype)
         rope_cos, rope_sin = self._create_rope(pos_frequencies, pos)
         return rope_cos, rope_sin
@@ -261,7 +276,14 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.patch_embed(hidden_states)
         hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
 
-        image_rotary_emb = self.rope(self.pos_frequencies, num_frames, post_patch_height, post_patch_width, device=hidden_states.device, dtype=torch.float32)
+        image_rotary_emb = self.rope(
+            self.pos_frequencies,
+            num_frames,
+            post_patch_height,
+            post_patch_width,
+            device=hidden_states.device,
+            dtype=torch.float32,
+        )
 
         for i, block in enumerate(self.transformer_blocks):
             hidden_states, encoder_hidden_states = block(
