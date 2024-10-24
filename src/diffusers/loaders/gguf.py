@@ -14,14 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import torch
 from array import array
-
+import gguf
 from tqdm import tqdm
 
 from ..utils import is_torch_available
 from ..utils.logging import get_logger
-
+from ..utils.import_utils import is_gguf_available
 
 TORCH_COMPATIBLE_QTYPES = {None, gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16}
 
@@ -41,6 +41,29 @@ GGUF_TO_DIFFUSERS_MAPPING = {
         "general": {"file_type": "file_type", "quantization_version": "quantization_version"},
     },
 }
+
+
+class GGMLTensor(torch.Tensor):
+    def __init__(self, dtype, axis):
+        self._dtype = dtype
+        self._axis = axis
+
+    @property
+    def axis(self):
+        return self._axis
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    def numpy(self):
+        return self.dequantize().cpu().numpy()
+
+    def clone(self, *args, **kwargs):
+        return self
+
+    def detach(self, *args, **kwargs):
+        return self
 
 
 def _gguf_parse_value(_value, data_type):
@@ -95,7 +118,8 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         )
         raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
     """
-    from gguf import GGUFReader, dequantize
+    if is_torch_available():
+        from gguf import GGUFReader, dequantize
 
     reader = GGUFReader(gguf_checkpoint_path)
     fields = reader.fields
@@ -104,7 +128,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     parsed_parameters = {}
     for tensor in tqdm(reader.tensors, desc="Converting and de-quantizing GGUF tensors..."):
         name = tensor.name
-        weights = dequantize(tensor.data, tensor.tensor_type)
+        weights = torch.from_numpy(tensor.data)
 
         parsed_parameters[name] = weights
 
