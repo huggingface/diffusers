@@ -349,6 +349,18 @@ class LoraBaseMixin:
 
         return (is_model_cpu_offload, is_sequential_cpu_offload)
 
+    @classmethod
+    def _fetch_state_dict(cls, *args, **kwargs):
+        deprecation_message = f"Using the `_fetch_state_dict()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _fetch_state_dict`."
+        deprecate("_fetch_state_dict", "0.35.0", deprecation_message)
+        _fetch_state_dict(*args, **kwargs)
+
+    @classmethod
+    def _best_guess_weight_name(cls, *args, **kwargs):
+        deprecation_message = f"Using the `_best_guess_weight_name()` method from {cls} has been deprecated and will be removed in a future version. Please use `from diffusers.loaders.lora_base import _best_guess_weight_name`."
+        deprecate("_best_guess_weight_name", "0.35.0", deprecation_message)
+        _best_guess_weight_name(*args, **kwargs)
+
     def unload_lora_weights(self):
         """
         Unloads the LoRA parameters.
