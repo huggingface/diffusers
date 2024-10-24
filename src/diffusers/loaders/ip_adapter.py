@@ -208,6 +208,8 @@ class IPAdapterMixin:
                             pretrained_model_name_or_path_or_dict,
                             subfolder=image_encoder_subfolder,
                             low_cpu_mem_usage=low_cpu_mem_usage,
+                            cache_dir=cache_dir,
+                            local_files_only=local_files_only,
                         ).to(self.device, dtype=self.dtype)
                         self.register_modules(image_encoder=image_encoder)
                     else:
@@ -222,7 +224,12 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                feature_extractor = CLIPImageProcessor()
+                # FaceID IP adapters don't need the image encoder so it's not present, in this case we default to 224
+                default_clip_size = 224
+                clip_image_size = (
+                    self.image_encoder.config.image_size if self.image_encoder is not None else default_clip_size
+                )
+                feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
                 self.register_modules(feature_extractor=feature_extractor)
 
         # load ip-adapter into unet
@@ -319,7 +326,13 @@ class IPAdapterMixin:
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
-        self.config.encoder_hid_dim_type = None
+        self.unet.config.encoder_hid_dim_type = None
+
+        # Kolors: restore `encoder_hid_proj` with `text_encoder_hid_proj`
+        if hasattr(self.unet, "text_encoder_hid_proj") and self.unet.text_encoder_hid_proj is not None:
+            self.unet.encoder_hid_proj = self.unet.text_encoder_hid_proj
+            self.unet.text_encoder_hid_proj = None
+            self.unet.config.encoder_hid_dim_type = "text_proj"
 
         # restore original Unet attention processors layers
         attn_procs = {}

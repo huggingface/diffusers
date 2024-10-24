@@ -29,9 +29,12 @@ from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
+    USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -74,7 +77,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -199,6 +202,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
+        )
+        self.patch_size = (
+            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
         )
 
     def _get_t5_prompt_embeds(
@@ -329,6 +335,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         clip_skip: Optional[int] = None,
         max_sequence_length: int = 256,
+        lora_scale: Optional[float] = None,
     ):
         r"""
 
@@ -374,8 +381,21 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            lora_scale (`float`, *optional*):
+                A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
         """
         device = device or self._execution_device
+
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, SD3LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder, lora_scale)
+            if self.text_encoder_2 is not None and USE_PEFT_BACKEND:
+                scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         if prompt is not None:
@@ -479,6 +499,16 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
             )
 
+        if self.text_encoder is not None:
+            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
+
+        if self.text_encoder_2 is not None:
+            if isinstance(self, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder_2, lora_scale)
+
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     def check_inputs(
@@ -498,8 +528,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if (
+            height % (self.vae_scale_factor * self.patch_size) != 0
+            or width % (self.vae_scale_factor * self.patch_size) != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * self.patch_size} but are {height} and {width}."
+                f"You can use height {height - height % (self.vae_scale_factor * self.patch_size)} and width {width - width % (self.vae_scale_factor * self.patch_size)}."
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -683,7 +719,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
+            guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -787,6 +823,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         device = self._execution_device
 
+        lora_scale = (
+            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        )
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -808,6 +847,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             clip_skip=self.clip_skip,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            lora_scale=lora_scale,
         )
 
         if self.do_classifier_free_guidance:

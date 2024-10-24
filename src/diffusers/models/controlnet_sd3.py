@@ -22,7 +22,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..models.attention import JointTransformerBlock
-from ..models.attention_processor import Attention, AttentionProcessor
+from ..models.attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ..models.modeling_outputs import Transformer2DModelOutput
 from ..models.modeling_utils import ModelMixin
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -55,6 +55,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
+        extra_conditioning_channels: int = 0,
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -98,7 +99,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             height=sample_size,
             width=sample_size,
             patch_size=patch_size,
-            in_channels=in_channels,
+            in_channels=in_channels + extra_conditioning_channels,
             embed_dim=self.inner_dim,
             pos_embed_type=None,
         )
@@ -196,7 +197,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    # Copied from diffusers.models.transformers.transformer_sd3.SD3Transformer2DModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
@@ -220,6 +221,8 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
+        self.set_attn_processor(FusedJointAttnProcessor2_0())
+
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
@@ -239,9 +242,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             module.gradient_checkpointing = value
 
     @classmethod
-    def from_transformer(cls, transformer, num_layers=12, load_weights_from_transformer=True):
+    def from_transformer(
+        cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
+    ):
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
+        config["extra_conditioning_channels"] = num_extra_conditioning_channels
         controlnet = cls(**config)
 
         if load_weights_from_transformer:
@@ -330,7 +336,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
                     encoder_hidden_states,
