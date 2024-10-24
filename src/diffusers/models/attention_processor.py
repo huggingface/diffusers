@@ -4290,65 +4290,30 @@ ADDED_KV_ATTENTION_PROCESSORS = (
     XFormersAttnAddedKVProcessor,
 )
 
-if is_torch_npu_available():
-    cross_attention_processors = (
-        AttnProcessor,
-        AttnProcessor2_0,
-        AttnProcessorNPU,
-        XFormersAttnProcessor,
-        SlicedAttnProcessor,
-        IPAdapterAttnProcessor,
-        IPAdapterAttnProcessor2_0,
-    )
+CROSS_ATTENTION_PROCESSORS = (
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+)
 
-    attention_processor = Union[
-        AttnProcessor,
-        AttnProcessor2_0,
-        AttnProcessorNPU,
-        FusedAttnProcessor2_0,
-        XFormersAttnProcessor,
-        SlicedAttnProcessor,
-        AttnAddedKVProcessor,
-        SlicedAttnAddedKVProcessor,
-        AttnAddedKVProcessor2_0,
-        XFormersAttnAddedKVProcessor,
-        CustomDiffusionAttnProcessor,
-        CustomDiffusionXFormersAttnProcessor,
-        CustomDiffusionAttnProcessor2_0,
-        PAGCFGIdentitySelfAttnProcessor2_0,
-        PAGIdentitySelfAttnProcessor2_0,
-        PAGCFGHunyuanAttnProcessor2_0,
-        PAGHunyuanAttnProcessor2_0,
-    ]
-
-else:
-    cross_attention_processors = (
-        AttnProcessor,
-        AttnProcessor2_0,
-        XFormersAttnProcessor,
-        SlicedAttnProcessor,
-        IPAdapterAttnProcessor,
-        IPAdapterAttnProcessor2_0,
-    )
-
-    attention_processor= Union[
-        AttnProcessor,
-        AttnProcessor2_0,
-        FusedAttnProcessor2_0,
-        XFormersAttnProcessor,
-        SlicedAttnProcessor,
-        AttnAddedKVProcessor,
-        SlicedAttnAddedKVProcessor,
-        AttnAddedKVProcessor2_0,
-        XFormersAttnAddedKVProcessor,
-        CustomDiffusionAttnProcessor,
-        CustomDiffusionXFormersAttnProcessor,
-        CustomDiffusionAttnProcessor2_0,
-        PAGCFGIdentitySelfAttnProcessor2_0,
-        PAGIdentitySelfAttnProcessor2_0,
-        PAGCFGHunyuanAttnProcessor2_0,
-        PAGHunyuanAttnProcessor2_0,
-    ]
-
-CROSS_ATTENTION_PROCESSORS = cross_attention_processors
-AttentionProcessor = attention_processor
+AttentionProcessor= Union[
+    AttnProcessor,
+    AttnProcessor2_0,
+    FusedAttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
+    PAGCFGIdentitySelfAttnProcessor2_0,
+    PAGIdentitySelfAttnProcessor2_0,
+    PAGCFGHunyuanAttnProcessor2_0,
+    PAGHunyuanAttnProcessor2_0,
+]
