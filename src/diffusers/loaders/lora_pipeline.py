@@ -21,7 +21,6 @@ from ..utils import (
     USE_PEFT_BACKEND,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
-    convert_unet_state_dict_to_peft,
     deprecate,
     get_adapter_name,
     get_peft_kwargs,
@@ -33,7 +32,7 @@ from ..utils import (
     logging,
     scale_lora_layers,
 )
-from .lora_base import LoraBaseMixin
+from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _fetch_state_dict  # noqa
 from .lora_conversion_utils import (
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
@@ -61,9 +60,6 @@ logger = logging.get_logger(__name__)
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
-
-LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
-LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 
 class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
@@ -222,7 +218,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -282,7 +278,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading only loading the pretrained LoRA weights and not initializing the random weights.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -341,7 +339,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -601,7 +601,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -744,7 +746,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -805,7 +807,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading only loading the pretrained LoRA weights and not initializing the random weights.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -865,7 +869,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1182,7 +1188,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1226,7 +1232,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -1250,13 +1258,17 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
+        if len(transformer_state_dict) > 0:
+            self.load_lora_into_transformer(
+                state_dict,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
@@ -1301,94 +1313,24 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
-        keys = list(state_dict.keys())
-
-        transformer_keys = [k for k in keys if k.startswith(cls.transformer_name)]
-        state_dict = {
-            k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
-        }
-
-        if len(state_dict.keys()) > 0:
-            # check with first key if is not in peft format
-            first_key = next(iter(state_dict.keys()))
-            if "lora_A" not in first_key:
-                state_dict = convert_unet_state_dict_to_peft(state_dict)
-
-            if adapter_name in getattr(transformer, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
-                else:
-                    lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(transformer)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
-
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -1424,7 +1366,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1742,7 +1686,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1819,7 +1763,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1843,14 +1789,18 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
-            state_dict,
-            network_alphas=network_alphas,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
-            adapter_name=adapter_name,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
+        if len(transformer_state_dict) > 0:
+            self.load_lora_into_transformer(
+                state_dict,
+                network_alphas=network_alphas,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
+                adapter_name=adapter_name,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
@@ -1881,104 +1831,32 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            transformer (`SD3Transformer2DModel`):
+            transformer (`FluxTransformer2DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
+        # Load the layers corresponding to transformer.
         keys = list(state_dict.keys())
-
-        transformer_keys = [k for k in keys if k.startswith(cls.transformer_name)]
-        state_dict = {
-            k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
-        }
-
-        if len(state_dict.keys()) > 0:
-            # check with first key if is not in peft format
-            first_key = next(iter(state_dict.keys()))
-            if "lora_A" not in first_key:
-                state_dict = convert_unet_state_dict_to_peft(state_dict)
-
-            if adapter_name in getattr(transformer, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            if network_alphas is not None and len(network_alphas) >= 1:
-                prefix = cls.transformer_name
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
-                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
-                else:
-                    lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(transformer)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
-
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
+        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
+        if transformer_present:
+            logger.info(f"Loading {cls.transformer_name}.")
+            transformer.load_lora_adapter(
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2014,7 +1892,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2242,7 +2122,10 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     text_encoder_name = TEXT_ENCODER_NAME
 
     @classmethod
-    def load_lora_into_transformer(cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None):
+    # Copied from diffusers.loaders.lora_pipeline.FluxLoraLoaderMixin.load_lora_into_transformer with FluxTransformer2DModel->UVit2DModel
+    def load_lora_into_transformer(
+        cls, state_dict, network_alphas, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `transformer`.
 
@@ -2255,93 +2138,32 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            unet (`UNet2DConditionModel`):
-                The UNet model to load the LoRA layers into.
+            transformer (`UVit2DModel`):
+                The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
+        # Load the layers corresponding to transformer.
         keys = list(state_dict.keys())
-
-        transformer_keys = [k for k in keys if k.startswith(cls.transformer_name)]
-        state_dict = {
-            k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
-        }
-
-        if network_alphas is not None:
-            alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.transformer_name)]
-            network_alphas = {
-                k.replace(f"{cls.transformer_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
-            }
-
-        if len(state_dict.keys()) > 0:
-            if adapter_name in getattr(transformer, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
-                else:
-                    lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(transformer)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
-
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
+        transformer_present = any(key.startswith(cls.transformer_name) for key in keys)
+        if transformer_present:
+            logger.info(f"Loading {cls.transformer_name}.")
+            transformer.load_lora_adapter(
+                state_dict,
+                network_alphas=network_alphas,
+                adapter_name=adapter_name,
+                _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+            )
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2377,7 +2199,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2619,7 +2443,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             "framework": "pytorch",
         }
 
-        state_dict = cls._fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2658,7 +2482,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
@@ -2691,7 +2517,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogVideoXTransformer3DModel
     def load_lora_into_transformer(
         cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
     ):
@@ -2703,99 +2529,29 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            transformer (`SD3Transformer2DModel`):
+            transformer (`CogVideoXTransformer3DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
-            Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.:
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
 
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
-
-        keys = list(state_dict.keys())
-
-        transformer_keys = [k for k in keys if k.startswith(cls.transformer_name)]
-        state_dict = {
-            k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
-        }
-
-        if len(state_dict.keys()) > 0:
-            # check with first key if is not in peft format
-            first_key = next(iter(state_dict.keys()))
-            if "lora_A" not in first_key:
-                state_dict = convert_unet_state_dict_to_peft(state_dict)
-
-            if adapter_name in getattr(transformer, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
-
-            rank = {}
-            for key, val in state_dict.items():
-                if "lora_B" in key:
-                    rank[key] = val.shape[1]
-
-            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
-            if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
-                else:
-                    lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(transformer)
-
-            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
-            # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name, **peft_kwargs)
-
-            warn_msg = ""
-            if incompatible_keys is not None:
-                # Check only for unexpected keys.
-                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-                if unexpected_keys:
-                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
-                    if lora_unexpected_keys:
-                        warn_msg = (
-                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
-                            f" {', '.join(lora_unexpected_keys)}. "
-                        )
-
-                # Filter missing keys specific to the current adapter.
-                missing_keys = getattr(incompatible_keys, "missing_keys", None)
-                if missing_keys:
-                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
-                    if lora_missing_keys:
-                        warn_msg += (
-                            f"Loading adapter weights from state_dict led to missing keys in the model:"
-                            f" {', '.join(lora_missing_keys)}."
-                        )
-
-            if warn_msg:
-                logger.warning(warn_msg)
-
-            # Offload back.
-            if is_model_cpu_offload:
-                _pipeline.enable_model_cpu_offload()
-            elif is_sequential_cpu_offload:
-                _pipeline.enable_sequential_cpu_offload()
-            # Unsafe code />
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
     @classmethod
     # Adapted from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights without support for text encoder
