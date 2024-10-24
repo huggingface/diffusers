@@ -32,7 +32,7 @@ from ..utils import (
     logging,
     scale_lora_layers,
 )
-from .lora_base import LoraBaseMixin, _fetch_state_dict
+from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _fetch_state_dict  # noqa
 from .lora_conversion_utils import (
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
@@ -60,9 +60,6 @@ logger = logging.get_logger(__name__)
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
-
-LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
-LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 
 class StableDiffusionLoraLoaderMixin(LoraBaseMixin):

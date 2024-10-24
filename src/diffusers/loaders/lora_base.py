@@ -51,6 +51,9 @@ if is_accelerate_available():
 
 logger = logging.get_logger(__name__)
 
+LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
+LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
     """
@@ -195,8 +198,6 @@ def _fetch_state_dict(
     user_agent,
     allow_pickle,
 ):
-    from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
         # Let's first try to load .safetensors weights
@@ -260,8 +261,6 @@ def _fetch_state_dict(
 def _best_guess_weight_name(
     pretrained_model_name_or_path_or_dict, file_extension=".safetensors", local_files_only=False
 ):
-    from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
     if local_files_only or HF_HUB_OFFLINE:
         raise ValueError("When using the offline mode, you must specify a `weight_name`.")
 
@@ -722,8 +721,6 @@ class LoraBaseMixin:
         save_function: Callable,
         safe_serialization: bool,
     ):
-        from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
-
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
