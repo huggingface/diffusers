@@ -193,6 +193,8 @@ def log_validation(
     del pipeline
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    elif is_torch_npu_available():
+        torch_npu.npu.empty_cache()
 
     return images
 
