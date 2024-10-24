@@ -27,12 +27,15 @@ from ...models.attention_processor import (
     Attention,
     AttentionProcessor,
     FluxAttnProcessor2_0,
+    FluxAttnProcessor2_0_NPU,
     FusedFluxAttnProcessor2_0,
+    FusedFluxAttnProcessor2_0_NPU,
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.import_utils import is_torch_npu_available
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
@@ -64,7 +67,10 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        processor = FluxAttnProcessor2_0()
+        if is_torch_npu_available():
+            processor = FluxAttnProcessor2_0_NPU()
+        else:
+            processor = FluxAttnProcessor2_0()
         self.attn = Attention(
             query_dim=dim,
             cross_attention_dim=None,
@@ -369,7 +375,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-        self.set_attn_processor(FusedFluxAttnProcessor2_0())
+        if is_torch_npu_available():
+            self.set_attn_processor(FusedFluxAttnProcessor2_0_NPU())
+        else:
+            self.set_attn_processor(FusedFluxAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
