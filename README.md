@@ -128,7 +128,7 @@ You can look out for [issues](https://github.com/huggingface/diffusers/issues) y
 Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>. We discuss the hottest trends about diffusion models, help each other with contributions, personal projects or just hang out ☕.
 
 
-## Popular Tasks & Pipelines
+## Popular Tasks and Pipelines
 
 <table>
   <tr>
@@ -214,7 +214,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 
 Thank you for using us ❤️.
 
-## Credits
+## Credits 
 
 This library concretizes previous work by many different authors and would not have been possible without their great research and implementations. We'd like to thank, in particular, the following implementations which have helped us in our development and without which the API could not have been as polished today:
 
