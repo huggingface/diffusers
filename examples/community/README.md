@@ -75,6 +75,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 | HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
 | [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
+| ConsistencyTTA Pipeline | Implementation of [ConsistencyTTA: Accelerating Diffusion-Based Text-to-Audio Generation with Consistency Distillation](https://arxiv.org/abs/2309.10740) | [ConsistencyTTA Pipeline](#consistencytta-pipeline) | - | [Aryan V S](https://github.com/a-r-r-o-w)
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -4445,3 +4446,38 @@ grid_image.save(grid_dir + "sample.png")
 `pag_scale` : guidance scale of PAG (ex: 5.0)
 
 `pag_applied_layers_index` : index of the layer to apply perturbation (ex: ['m0'])
+
+# ConsistencyTTA Pipeline
+
+This is a Diffusers implementation of [ConsistencyTTA: Accelerating Diffusion-Based Text-to-Audio Generation with Consistency Distillation](https://arxiv.org/abs/2309.10740). For example results, please refer to the project page linked below or [PR 8739](https://github.com/huggingface/diffusers/pull/8739).
+
+[Paper](https://arxiv.org/abs/2309.10740) | [Project Page](https://consistency-tta.github.io/) | [Github](https://github.com/Bai-YT/ConsistencyTTA) | [Checkpoints](https://huggingface.co/Bai-YT/ConsistencyTTA)
+
+```py
+import scipy
+import torch
+from diffusers import DiffusionPipeline
+
+model_id = "a-r-r-o-w/ConsistencyTTA"
+
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    custom_pipeline="pipeline_consistency_txt2audio",
+    trust_remote_code=True,
+).to("cuda")
+
+prompt = "Ducks quacking"
+
+generator = torch.Generator().manual_seed(42)
+audio = pipe(
+    prompt,
+    num_inference_steps=1,
+    audio_length_in_s=10,
+    guidance_scale=1,
+    guidance_scale_cond=4,
+    generator=generator,
+).audios[0]
+
+scipy.io.wavfile.write("audio.wav", rate=16000, data=audio)
+```
