@@ -1256,8 +1256,8 @@ def main(args):
 
                 latent_image_ids = FluxControlNetPipeline._prepare_latent_image_ids(
                     batch_size=pixel_latents_tmp.shape[0],
-                    height=pixel_latents_tmp.shape[2],
-                    width=pixel_latents_tmp.shape[3],
+                    height=pixel_latents_tmp.shape[2] // 2,
+                    width=pixel_latents_tmp.shape[3] // 2,
                     device=pixel_values.device,
                     dtype=pixel_values.dtype,
                 )

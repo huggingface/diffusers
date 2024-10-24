@@ -2198,8 +2198,8 @@ def main(args):
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    model_input.shape[2],
-                    model_input.shape[3],
+                    model_input.shape[2] // 2,
+                    model_input.shape[3] // 2,
                     accelerator.device,
                     weight_dtype,
                 )
@@ -2253,8 +2253,8 @@ def main(args):
                 )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2] * vae_scale_factor / 2),
-                    width=int(model_input.shape[3] * vae_scale_factor / 2),
+                    height=model_input.shape[2] * vae_scale_factor,
+                    width=model_input.shape[3] * vae_scale_factor,
                     vae_scale_factor=vae_scale_factor,
                 )
 
