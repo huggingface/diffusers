@@ -130,7 +130,9 @@ def convert_mochi_transformer_checkpoint_to_diffusers(ckpt_path):
             )
 
     # Output layers
-    new_state_dict["norm_out.linear.weight"] = swap_scale_shift(original_state_dict.pop("final_layer.mod.weight"), dim=0)
+    new_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+        original_state_dict.pop("final_layer.mod.weight"), dim=0
+    )
     new_state_dict["norm_out.linear.bias"] = swap_scale_shift(original_state_dict.pop("final_layer.mod.bias"), dim=0)
     new_state_dict["proj_out.weight"] = original_state_dict.pop("final_layer.linear.weight")
     new_state_dict["proj_out.bias"] = original_state_dict.pop("final_layer.linear.bias")
