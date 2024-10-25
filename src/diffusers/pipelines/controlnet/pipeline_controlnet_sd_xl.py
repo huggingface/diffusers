@@ -242,6 +242,7 @@ class StableDiffusionXLControlNetPipeline(
         "add_time_ids",
         "negative_pooled_prompt_embeds",
         "negative_add_time_ids",
+        "image",
     ]
 
     def __init__(
@@ -1540,6 +1541,7 @@ class StableDiffusionXLControlNetPipeline(
                     )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
                     negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
+                    image = callback_outputs.pop("image", image)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
