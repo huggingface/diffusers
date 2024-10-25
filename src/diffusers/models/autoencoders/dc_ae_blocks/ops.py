@@ -4,28 +4,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .act import build_act
+from ...activations import get_activation
 from .norm import build_norm
 from .utils.network import get_same_padding, resize
 from .utils.list import list_sum, val2list, val2tuple
 
 __all__ = [
     "ConvLayer",
-    "UpSampleLayer",
     "ConvPixelUnshuffleDownSampleLayer",
     "PixelUnshuffleChannelAveragingDownSampleLayer",
     "ConvPixelShuffleUpSampleLayer",
     "ChannelDuplicatingPixelUnshuffleUpSampleLayer",
-    "LinearLayer",
     "IdentityLayer",
-    "DSConv",
-    "MBConv",
-    "FusedMBConv",
     "ResBlock",
     "LiteMLA",
     "EfficientViTBlock",
     "ResidualBlock",
-    "DAGBlock",
     "OpSequential",
 ]
 
@@ -66,7 +60,7 @@ class ConvLayer(nn.Module):
             bias=use_bias,
         )
         self.norm = build_norm(norm, num_features=out_channels)
-        self.act = build_act(act_func)
+        self.act = get_activation(act_func) if act_func is not None else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.dropout is not None:
@@ -77,29 +71,6 @@ class ConvLayer(nn.Module):
         if self.act:
             x = self.act(x)
         return x
-
-
-class UpSampleLayer(nn.Module):
-    def __init__(
-        self,
-        mode="bicubic",
-        size: Optional[int | tuple[int, int] | list[int]] = None,
-        factor=2,
-        align_corners=False,
-    ):
-        super(UpSampleLayer, self).__init__()
-        self.mode = mode
-        self.size = val2list(size, 2) if size is not None else None
-        self.factor = None if self.size is not None else factor
-        self.align_corners = align_corners
-
-    @torch.autocast(device_type="cuda", enabled=False)
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if (self.size is not None and tuple(x.shape[-2:]) == self.size) or self.factor == 1:
-            return x
-        if x.dtype in [torch.float16, torch.bfloat16]:
-            x = x.float()
-        return resize(x, self.size, self.factor, self.mode, self.align_corners)
 
 
 class ConvPixelUnshuffleDownSampleLayer(nn.Module):
@@ -224,190 +195,8 @@ class ChannelDuplicatingPixelUnshuffleUpSampleLayer(nn.Module):
         return x
 
 
-class LinearLayer(nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        use_bias=True,
-        dropout=0,
-        norm=None,
-        act_func=None,
-    ):
-        super(LinearLayer, self).__init__()
-
-        self.dropout = nn.Dropout(dropout, inplace=False) if dropout > 0 else None
-        self.linear = nn.Linear(in_features, out_features, use_bias)
-        self.norm = build_norm(norm, num_features=out_features)
-        self.act = build_act(act_func)
-
-    def _try_squeeze(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() > 2:
-            x = torch.flatten(x, start_dim=1)
-        return x
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._try_squeeze(x)
-        if self.dropout:
-            x = self.dropout(x)
-        x = self.linear(x)
-        if self.norm:
-            x = self.norm(x)
-        if self.act:
-            x = self.act(x)
-        return x
-
-
 class IdentityLayer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x
-
-
-#################################################################################
-#                             Basic Blocks                                      #
-#################################################################################
-
-
-class DSConv(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        use_bias=False,
-        norm=("bn2d", "bn2d"),
-        act_func=("relu6", None),
-    ):
-        super(DSConv, self).__init__()
-
-        use_bias = val2tuple(use_bias, 2)
-        norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
-
-        self.depth_conv = ConvLayer(
-            in_channels,
-            in_channels,
-            kernel_size,
-            stride,
-            groups=in_channels,
-            norm=norm[0],
-            act_func=act_func[0],
-            use_bias=use_bias[0],
-        )
-        self.point_conv = ConvLayer(
-            in_channels,
-            out_channels,
-            1,
-            norm=norm[1],
-            act_func=act_func[1],
-            use_bias=use_bias[1],
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
-
-
-class MBConv(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        mid_channels=None,
-        expand_ratio=6,
-        use_bias=False,
-        norm=("bn2d", "bn2d", "bn2d"),
-        act_func=("relu6", "relu6", None),
-    ):
-        super(MBConv, self).__init__()
-
-        use_bias = val2tuple(use_bias, 3)
-        norm = val2tuple(norm, 3)
-        act_func = val2tuple(act_func, 3)
-        mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
-
-        self.inverted_conv = ConvLayer(
-            in_channels,
-            mid_channels,
-            1,
-            stride=1,
-            norm=norm[0],
-            act_func=act_func[0],
-            use_bias=use_bias[0],
-        )
-        self.depth_conv = ConvLayer(
-            mid_channels,
-            mid_channels,
-            kernel_size,
-            stride=stride,
-            groups=mid_channels,
-            norm=norm[1],
-            act_func=act_func[1],
-            use_bias=use_bias[1],
-        )
-        self.point_conv = ConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            norm=norm[2],
-            act_func=act_func[2],
-            use_bias=use_bias[2],
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.inverted_conv(x)
-        x = self.depth_conv(x)
-        x = self.point_conv(x)
-        return x
-
-
-class FusedMBConv(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        mid_channels=None,
-        expand_ratio=6,
-        groups=1,
-        use_bias=False,
-        norm=("bn2d", "bn2d"),
-        act_func=("relu6", None),
-    ):
-        super().__init__()
-        use_bias = val2tuple(use_bias, 2)
-        norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
-
-        mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
-
-        self.spatial_conv = ConvLayer(
-            in_channels,
-            mid_channels,
-            kernel_size,
-            stride,
-            groups=groups,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
-        )
-        self.point_conv = ConvLayer(
-            mid_channels,
-            out_channels,
-            1,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.spatial_conv(x)
-        x = self.point_conv(x)
         return x
 
 
@@ -431,7 +220,7 @@ class GLUMBConv(nn.Module):
 
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
-        self.glu_act = build_act(act_func[1], inplace=False)
+        self.glu_act = get_activation(act_func[1])
         self.inverted_conv = ConvLayer(
             in_channels,
             mid_channels * 2,
@@ -568,7 +357,7 @@ class LiteMLA(nn.Module):
                 for scale in scales
             ]
         )
-        self.kernel_func = build_act(kernel_func, inplace=False)
+        self.kernel_func = get_activation(kernel_func)
 
         self.proj = ConvLayer(
             total_dim * (1 + len(scales)),
@@ -748,7 +537,7 @@ class ResidualBlock(nn.Module):
         self.pre_norm = pre_norm
         self.main = main
         self.shortcut = shortcut
-        self.post_act = build_act(post_act)
+        self.post_act = get_activation(post_act) if post_act is not None else None
 
     def forward_main(self, x: torch.Tensor) -> torch.Tensor:
         if self.pre_norm is None:
@@ -766,43 +555,6 @@ class ResidualBlock(nn.Module):
             if self.post_act:
                 res = self.post_act(res)
         return res
-
-
-class DAGBlock(nn.Module):
-    def __init__(
-        self,
-        inputs: dict[str, nn.Module],
-        merge: str,
-        post_input: Optional[nn.Module],
-        middle: nn.Module,
-        outputs: dict[str, nn.Module],
-    ):
-        super(DAGBlock, self).__init__()
-
-        self.input_keys = list(inputs.keys())
-        self.input_ops = nn.ModuleList(list(inputs.values()))
-        self.merge = merge
-        self.post_input = post_input
-
-        self.middle = middle
-
-        self.output_keys = list(outputs.keys())
-        self.output_ops = nn.ModuleList(list(outputs.values()))
-
-    def forward(self, feature_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        feat = [op(feature_dict[key]) for key, op in zip(self.input_keys, self.input_ops)]
-        if self.merge == "add":
-            feat = list_sum(feat)
-        elif self.merge == "cat":
-            feat = torch.concat(feat, dim=1)
-        else:
-            raise NotImplementedError
-        if self.post_input is not None:
-            feat = self.post_input(feat)
-        feat = self.middle(feat)
-        for key, op in zip(self.output_keys, self.output_ops):
-            feature_dict[key] = op(feat)
-        return feature_dict
 
 
 class OpSequential(nn.Module):

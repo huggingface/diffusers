@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ..modeling_utils import ModelMixin
 
-from .dc_ae_blocks.act import build_act
+from ..activations import get_activation
 from .dc_ae_blocks.norm import build_norm
 from .dc_ae_blocks.ops import (
     ChannelDuplicatingPixelUnshuffleUpSampleLayer,
@@ -164,7 +164,7 @@ def build_encoder_project_out_block(
     block = OpSequential(
         [
             build_norm(norm),
-            build_act(act),
+            get_activation(act) if act is not None else None,
             ConvLayer(
                 in_channels=in_channels,
                 out_channels=out_channels,
@@ -215,7 +215,7 @@ def build_decoder_project_out_block(
 ):
     layers: list[nn.Module] = [
         build_norm(norm, in_channels),
-        build_act(act),
+        get_activation(act) if act is not None else None,
     ]
     if factor == 1:
         layers.append(
@@ -542,3 +542,35 @@ class DCAE_HF(PyTorchModelHubMixin, DCAE):
     def __init__(self, model_name: str):
         cfg = create_dc_ae_model_cfg(model_name)
         DCAE.__init__(self, **cfg)
+
+
+def main():
+    from PIL import Image
+    import torch
+    import torchvision.transforms as transforms
+    from torchvision.utils import save_image
+    import ipdb
+
+    torch.set_grad_enabled(False)
+    device = torch.device("cuda")
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
+    x = transform(image)[None].to(device)
+    for model_name in REGISTERED_DCAE_MODEL:
+        dc_ae = DCAE_HF.from_pretrained(f"mit-han-lab/{model_name}")
+        dc_ae = dc_ae.to(device).eval()
+        latent = dc_ae.encode(x)
+        print(latent.shape)
+        y = dc_ae.decode(latent)
+        save_image(y * 0.5 + 0.5, f"demo_{model_name}.png")
+
+if __name__ == "__main__":
+    main()
+
+"""
+python -m src.diffusers.models.autoencoders.dc_ae
+"""
