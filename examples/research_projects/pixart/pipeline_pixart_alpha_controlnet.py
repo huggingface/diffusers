@@ -25,6 +25,7 @@ import PIL
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
+from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 from diffusers.image_processor import PipelineImageInput, PixArtImageProcessor
 from diffusers.models import AutoencoderKL, PixArtTransformer2DModel
 from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
@@ -38,10 +39,6 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
