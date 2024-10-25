@@ -21,7 +21,6 @@ import math
 import os
 import random
 import shutil
-import sys
 from pathlib import Path
 
 import accelerate
@@ -38,6 +37,7 @@ from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
+from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import T5EncoderModel, T5Tokenizer
@@ -51,14 +51,10 @@ from diffusers.utils import check_min_version, is_wandb_available, make_image_gr
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-subfolder_path = os.path.join(script_dir, "pipeline")
-sys.path.insert(0, subfolder_path)
-
-from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
-from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
+from examples.research_projects.pixart.controlnet_pixart_alpha import (
+    PixArtControlNetAdapterModel,
+    PixArtControlNetTransformerModel,
+)
 
 
 if is_wandb_available():

@@ -8,6 +8,7 @@ from diffusers.models import PixArtTransformer2DModel
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils.torch_utils import is_torch_version
 
 
 class PixArtControlNetAdapterBlock(nn.Module):

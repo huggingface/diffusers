@@ -14,18 +14,16 @@
 
 import html
 import inspect
-import os
 import re
-import sys
 import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
 import torch
+from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 from transformers import T5EncoderModel, T5Tokenizer
 
-from controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
 from diffusers.image_processor import PipelineImageInput, PixArtImageProcessor
 from diffusers.models import AutoencoderKL, PixArtTransformer2DModel
 from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
