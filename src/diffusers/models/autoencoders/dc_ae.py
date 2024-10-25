@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass, field
 from typing import Any, Optional, Callable
 
 import torch
 import torch.nn as nn
-from omegaconf import MISSING, OmegaConf
 from huggingface_hub import PyTorchModelHubMixin
+
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders.single_file_model import FromOriginalModelMixin
+from ..modeling_utils import ModelMixin
 
 from .dc_ae_blocks.act import build_act
 from .dc_ae_blocks.norm import build_norm
@@ -38,59 +40,6 @@ from .dc_ae_blocks.ops import (
 )
 
 __all__ = ["DCAE", "dc_ae_f32c32", "dc_ae_f64c128", "dc_ae_f128c512"]
-
-
-@dataclass
-class EncoderConfig:
-    in_channels: int = MISSING
-    latent_channels: int = MISSING
-    width_list: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024)
-    depth_list: tuple[int, ...] = (2, 2, 2, 2, 2, 2)
-    block_type: Any = "ResBlock"
-    norm: str = "rms2d"
-    act: str = "silu"
-    downsample_block_type: str = "ConvPixelUnshuffle"
-    downsample_match_channel: bool = True
-    downsample_shortcut: Optional[str] = "averaging"
-    out_norm: Optional[str] = None
-    out_act: Optional[str] = None
-    out_shortcut: Optional[str] = "averaging"
-    double_latent: bool = False
-
-
-@dataclass
-class DecoderConfig:
-    in_channels: int = MISSING
-    latent_channels: int = MISSING
-    in_shortcut: Optional[str] = "duplicating"
-    width_list: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024)
-    depth_list: tuple[int, ...] = (2, 2, 2, 2, 2, 2)
-    block_type: Any = "ResBlock"
-    norm: Any = "rms2d"
-    act: Any = "silu"
-    upsample_block_type: str = "ConvPixelShuffle"
-    upsample_match_channel: bool = True
-    upsample_shortcut: str = "duplicating"
-    out_norm: str = "rms2d"
-    out_act: str = "relu"
-
-
-@dataclass
-class DCAEConfig:
-    in_channels: int = 3
-    latent_channels: int = 32
-    encoder: EncoderConfig = field(
-        default_factory=lambda: EncoderConfig(in_channels="${..in_channels}", latent_channels="${..latent_channels}")
-    )
-    decoder: DecoderConfig = field(
-        default_factory=lambda: DecoderConfig(in_channels="${..in_channels}", latent_channels="${..latent_channels}")
-    )
-    use_quant_conv: bool = False
-
-    pretrained_path: Optional[str] = None
-    pretrained_source: str = "dc-ae"
-
-    scaling_factor: Optional[float] = None
 
 
 def build_block(
@@ -292,48 +241,62 @@ def build_decoder_project_out_block(
 
 
 class Encoder(nn.Module):
-    def __init__(self, cfg: EncoderConfig):
+    def __init__(
+        self, 
+        in_channels: int,
+        latent_channels: int,
+        width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
+        depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        block_type: str | list[str] = "ResBlock",
+        norm: str = "rms2d",
+        act: str = "silu",
+        downsample_block_type: str = "ConvPixelUnshuffle",
+        downsample_match_channel: bool = True,
+        downsample_shortcut: Optional[str] = "averaging",
+        out_norm: Optional[str] = None,
+        out_act: Optional[str] = None,
+        out_shortcut: Optional[str] = "averaging",
+        double_latent: bool = False,
+    ):
         super().__init__()
-        self.cfg = cfg
-        num_stages = len(cfg.width_list)
+        num_stages = len(width_list)
         self.num_stages = num_stages
-        assert len(cfg.depth_list) == num_stages
-        assert len(cfg.width_list) == num_stages
-        assert isinstance(cfg.block_type, str) or (
-            isinstance(cfg.block_type, list) and len(cfg.block_type) == num_stages
+        assert len(depth_list) == num_stages
+        assert len(width_list) == num_stages
+        assert isinstance(block_type, str) or (
+            isinstance(block_type, list) and len(block_type) == num_stages
         )
 
         self.project_in = build_encoder_project_in_block(
-            in_channels=cfg.in_channels,
-            out_channels=cfg.width_list[0] if cfg.depth_list[0] > 0 else cfg.width_list[1],
-            factor=1 if cfg.depth_list[0] > 0 else 2,
-            downsample_block_type=cfg.downsample_block_type,
+            in_channels=in_channels,
+            out_channels=width_list[0] if depth_list[0] > 0 else width_list[1],
+            factor=1 if depth_list[0] > 0 else 2,
+            downsample_block_type=downsample_block_type,
         )
 
         self.stages: list[OpSequential] = []
-        for stage_id, (width, depth) in enumerate(zip(cfg.width_list, cfg.depth_list)):
-            block_type = cfg.block_type[stage_id] if isinstance(cfg.block_type, list) else cfg.block_type
+        for stage_id, (width, depth) in enumerate(zip(width_list, depth_list)):
+            stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
             stage = build_stage_main(
-                width=width, depth=depth, block_type=block_type, norm=cfg.norm, act=cfg.act, input_width=width
+                width=width, depth=depth, block_type=stage_block_type, norm=norm, act=act, input_width=width
             )
-
             if stage_id < num_stages - 1 and depth > 0:
                 downsample_block = build_downsample_block(
-                    block_type=cfg.downsample_block_type,
+                    block_type=downsample_block_type,
                     in_channels=width,
-                    out_channels=cfg.width_list[stage_id + 1] if cfg.downsample_match_channel else width,
-                    shortcut=cfg.downsample_shortcut,
+                    out_channels=width_list[stage_id + 1] if downsample_match_channel else width,
+                    shortcut=downsample_shortcut,
                 )
                 stage.append(downsample_block)
             self.stages.append(OpSequential(stage))
         self.stages = nn.ModuleList(self.stages)
 
         self.project_out = build_encoder_project_out_block(
-            in_channels=cfg.width_list[-1],
-            out_channels=2 * cfg.latent_channels if cfg.double_latent else cfg.latent_channels,
-            norm=cfg.out_norm,
-            act=cfg.out_act,
-            shortcut=cfg.out_shortcut,
+            in_channels=width_list[-1],
+            out_channels=2 * latent_channels if double_latent else latent_channels,
+            norm=out_norm,
+            act=out_act,
+            shortcut=out_shortcut,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -347,49 +310,63 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, cfg: DecoderConfig):
+    def __init__(
+        self, 
+        in_channels: int,
+        latent_channels: int,
+        in_shortcut: Optional[str] = "duplicating",
+        width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
+        depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        block_type: str | list[str] = "ResBlock",
+        norm: str | list[str] = "rms2d",
+        act: str | list[str] = "silu",
+        upsample_block_type: str = "ConvPixelShuffle",
+        upsample_match_channel: bool = True,
+        upsample_shortcut: str = "duplicating",
+        out_norm: str = "rms2d",
+        out_act: str = "relu",
+    ):
         super().__init__()
-        self.cfg = cfg
-        num_stages = len(cfg.width_list)
+        num_stages = len(width_list)
         self.num_stages = num_stages
-        assert len(cfg.depth_list) == num_stages
-        assert len(cfg.width_list) == num_stages
-        assert isinstance(cfg.block_type, str) or (
-            isinstance(cfg.block_type, list) and len(cfg.block_type) == num_stages
+        assert len(depth_list) == num_stages
+        assert len(width_list) == num_stages
+        assert isinstance(block_type, str) or (
+            isinstance(block_type, list) and len(block_type) == num_stages
         )
-        assert isinstance(cfg.norm, str) or (isinstance(cfg.norm, list) and len(cfg.norm) == num_stages)
-        assert isinstance(cfg.act, str) or (isinstance(cfg.act, list) and len(cfg.act) == num_stages)
+        assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
+        assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
         self.project_in = build_decoder_project_in_block(
-            in_channels=cfg.latent_channels,
-            out_channels=cfg.width_list[-1],
-            shortcut=cfg.in_shortcut,
+            in_channels=latent_channels,
+            out_channels=width_list[-1],
+            shortcut=in_shortcut,
         )
 
         self.stages: list[OpSequential] = []
-        for stage_id, (width, depth) in reversed(list(enumerate(zip(cfg.width_list, cfg.depth_list)))):
+        for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
             stage = []
             if stage_id < num_stages - 1 and depth > 0:
                 upsample_block = build_upsample_block(
-                    block_type=cfg.upsample_block_type,
-                    in_channels=cfg.width_list[stage_id + 1],
-                    out_channels=width if cfg.upsample_match_channel else cfg.width_list[stage_id + 1],
-                    shortcut=cfg.upsample_shortcut,
+                    block_type=upsample_block_type,
+                    in_channels=width_list[stage_id + 1],
+                    out_channels=width if upsample_match_channel else width_list[stage_id + 1],
+                    shortcut=upsample_shortcut,
                 )
                 stage.append(upsample_block)
 
-            block_type = cfg.block_type[stage_id] if isinstance(cfg.block_type, list) else cfg.block_type
-            norm = cfg.norm[stage_id] if isinstance(cfg.norm, list) else cfg.norm
-            act = cfg.act[stage_id] if isinstance(cfg.act, list) else cfg.act
+            stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
+            stage_norm = norm[stage_id] if isinstance(norm, list) else norm
+            stage_act = act[stage_id] if isinstance(act, list) else act
             stage.extend(
                 build_stage_main(
                     width=width,
                     depth=depth,
-                    block_type=block_type,
-                    norm=norm,
-                    act=act,
+                    block_type=stage_block_type,
+                    norm=stage_norm,
+                    act=stage_act,
                     input_width=(
-                        width if cfg.upsample_match_channel else cfg.width_list[min(stage_id + 1, num_stages - 1)]
+                        width if upsample_match_channel else width_list[min(stage_id + 1, num_stages - 1)]
                     ),
                 )
             )
@@ -397,12 +374,12 @@ class Decoder(nn.Module):
         self.stages = nn.ModuleList(self.stages)
 
         self.project_out = build_decoder_project_out_block(
-            in_channels=cfg.width_list[0] if cfg.depth_list[0] > 0 else cfg.width_list[1],
-            out_channels=cfg.in_channels,
-            factor=1 if cfg.depth_list[0] > 0 else 2,
-            upsample_block_type=cfg.upsample_block_type,
-            norm=cfg.out_norm,
-            act=cfg.out_act,
+            in_channels=width_list[0] if depth_list[0] > 0 else width_list[1],
+            out_channels=in_channels,
+            factor=1 if depth_list[0] > 0 else 2,
+            upsample_block_type=upsample_block_type,
+            norm=out_norm,
+            act=out_act,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -416,21 +393,45 @@ class Decoder(nn.Module):
 
 
 class DCAE(nn.Module):
-    def __init__(self, cfg: DCAEConfig):
+    def __init__(
+        self,
+        in_channels: int = 3,
+        latent_channels: int = 32,
+        encoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
+        encoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        encoder_block_type: str | list[str] = "ResBlock",
+        encoder_norm: str = "rms2d",
+        encoder_act: str = "silu",
+        downsample_block_type: str = "ConvPixelUnshuffle",
+        decoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
+        decoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        decoder_block_type: str | list[str] = "ResBlock",
+        decoder_norm: str = "rms2d",
+        decoder_act: str = "silu",
+        upsample_block_type: str = "ConvPixelShuffle",
+        scaling_factor: Optional[float] = None,
+    ):
         super().__init__()
-        self.cfg = cfg
-        self.encoder = Encoder(cfg.encoder)
-        self.decoder = Decoder(cfg.decoder)
-
-        if self.cfg.pretrained_path is not None:
-            self.load_model()
-
-    def load_model(self):
-        if self.cfg.pretrained_source == "dc-ae":
-            state_dict = torch.load(self.cfg.pretrained_path, map_location="cpu", weights_only=True)["state_dict"]
-            self.load_state_dict(state_dict)
-        else:
-            raise NotImplementedError
+        self.encoder = Encoder(
+            in_channels=in_channels,
+            latent_channels=latent_channels,
+            width_list=encoder_width_list,
+            depth_list=encoder_depth_list,
+            block_type=encoder_block_type,
+            norm=encoder_norm,
+            act=encoder_act,
+            downsample_block_type=downsample_block_type,
+        )
+        self.decoder = Decoder(
+            in_channels=in_channels,
+            latent_channels=latent_channels,
+            width_list=decoder_width_list,
+            depth_list=decoder_depth_list,
+            block_type=decoder_block_type,
+            norm=decoder_norm,
+            act=decoder_act,
+            upsample_block_type=upsample_block_type,
+        )
 
     @property
     def spatial_compression_ratio(self) -> int:
@@ -450,125 +451,94 @@ class DCAE(nn.Module):
         return x, torch.tensor(0), {}
 
 
-def dc_ae_f32c32(name: str, pretrained_path: str) -> DCAEConfig:
+def dc_ae_f32c32(name: str) -> dict:
     if name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
-        cfg_str = (
-            "latent_channels=32 "
-            "encoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "encoder.width_list=[128,256,512,512,1024,1024] encoder.depth_list=[0,4,8,2,2,2] "
-            "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "decoder.width_list=[128,256,512,512,1024,1024] decoder.depth_list=[0,5,10,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu]"
-        )
+        cfg = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "encoder_width_list": [128, 256, 512, 512, 1024, 1024],
+            "encoder_depth_list": [0, 4, 8, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_width_list": [128, 256, 512, 512, 1024, 1024],
+            "decoder_depth_list": [0, 5, 10, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu"],
+        }
     elif name in ["dc-ae-f32c32-sana-1.0"]:
-        cfg_str = (
-            "latent_channels=32 "
-            "encoder.block_type=[ResBlock,ResBlock,ResBlock,EViTS5_GLU,EViTS5_GLU,EViTS5_GLU] "
-            "encoder.width_list=[128,256,512,512,1024,1024] encoder.depth_list=[2,2,2,3,3,3] "
-            "encoder.downsample_block_type=Conv "
-            "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViTS5_GLU,EViTS5_GLU,EViTS5_GLU] "
-            "decoder.width_list=[128,256,512,512,1024,1024] decoder.depth_list=[3,3,3,3,3,3] "
-            "decoder.upsample_block_type=InterpolateConv "
-            "decoder.norm=rms2d decoder.act=silu"
-        )
+        cfg = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "encoder_width_list": [128, 256, 512, 512, 1024, 1024],
+            "encoder_depth_list": [2, 2, 2, 3, 3, 3],
+            "downsample_block_type": "Conv",
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "decoder_width_list": [128, 256, 512, 512, 1024, 1024],
+            "decoder_depth_list": [3, 3, 3, 3, 3, 3],
+            "upsample_block_type": "InterpolateConv",
+            "scaling_factor": 0.41407,
+        }
     else:
         raise NotImplementedError
-    cfg = OmegaConf.from_dotlist(cfg_str.split(" "))
-    cfg: DCAEConfig = OmegaConf.to_object(OmegaConf.merge(OmegaConf.structured(DCAEConfig), cfg))
-    cfg.pretrained_path = pretrained_path
     return cfg
 
 
-def dc_ae_f64c128(name: str, pretrained_path: Optional[str] = None) -> DCAEConfig:
+def dc_ae_f64c128(name: str,) -> dict:
     if name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
-        cfg_str = (
-            "latent_channels=128 "
-            "encoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "encoder.width_list=[128,256,512,512,1024,1024,2048] encoder.depth_list=[0,4,8,2,2,2,2] "
-            "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "decoder.width_list=[128,256,512,512,1024,1024,2048] decoder.depth_list=[0,5,10,2,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu]"
-        )
+        cfg = {
+            "latent_channels": 128,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "encoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048],
+            "encoder_depth_list": [0, 4, 8, 2, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048],
+            "decoder_depth_list": [0, 5, 10, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
+        }
     else:
         raise NotImplementedError
-    cfg = OmegaConf.from_dotlist(cfg_str.split(" "))
-    cfg: DCAEConfig = OmegaConf.to_object(OmegaConf.merge(OmegaConf.structured(DCAEConfig), cfg))
-    cfg.pretrained_path = pretrained_path
     return cfg
 
 
-def dc_ae_f128c512(name: str, pretrained_path: Optional[str] = None) -> DCAEConfig:
+def dc_ae_f128c512(name: str,) -> dict:
     if name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
-        cfg_str = (
-            "latent_channels=512 "
-            "encoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "encoder.width_list=[128,256,512,512,1024,1024,2048,2048] encoder.depth_list=[0,4,8,2,2,2,2,2] "
-            "decoder.block_type=[ResBlock,ResBlock,ResBlock,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU,EViT_GLU] "
-            "decoder.width_list=[128,256,512,512,1024,1024,2048,2048] decoder.depth_list=[0,5,10,2,2,2,2,2] "
-            "decoder.norm=[bn2d,bn2d,bn2d,rms2d,rms2d,rms2d,rms2d,rms2d] decoder.act=[relu,relu,relu,silu,silu,silu,silu,silu]"
-        )
+        cfg = {
+            "latent_channels": 512,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "encoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
+            "encoder_depth_list": [0, 4, 8, 2, 2, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
+            "decoder_depth_list": [0, 5, 10, 2, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
+        }
     else:
         raise NotImplementedError
-    cfg = OmegaConf.from_dotlist(cfg_str.split(" "))
-    cfg: DCAEConfig = OmegaConf.to_object(OmegaConf.merge(OmegaConf.structured(DCAEConfig), cfg))
-    cfg.pretrained_path = pretrained_path
     return cfg
 
 
-REGISTERED_DCAE_MODEL: dict[str, tuple[Callable, Optional[str]]] = {
-    "dc-ae-f32c32-in-1.0": (dc_ae_f32c32, None),
-    "dc-ae-f64c128-in-1.0": (dc_ae_f64c128, None),
-    "dc-ae-f128c512-in-1.0": (dc_ae_f128c512, None),
+REGISTERED_DCAE_MODEL: dict[str, Callable] = {
+    "dc-ae-f32c32-in-1.0": dc_ae_f32c32,
+    "dc-ae-f64c128-in-1.0": dc_ae_f64c128,
+    "dc-ae-f128c512-in-1.0": dc_ae_f128c512,
     #################################################################################################
-    "dc-ae-f32c32-mix-1.0": (dc_ae_f32c32, None),
-    "dc-ae-f64c128-mix-1.0": (dc_ae_f64c128, None),
-    "dc-ae-f128c512-mix-1.0": (dc_ae_f128c512, None),
+    "dc-ae-f32c32-mix-1.0": dc_ae_f32c32,
+    "dc-ae-f64c128-mix-1.0": dc_ae_f64c128,
+    "dc-ae-f128c512-mix-1.0": dc_ae_f128c512,
     #################################################################################################
-    "dc-ae-f32c32-sana-1.0": (dc_ae_f32c32, None),
+    "dc-ae-f32c32-sana-1.0": dc_ae_f32c32,
 }
 
 
-def create_dc_ae_model_cfg(name: str, pretrained_path: Optional[str] = None) -> DCAEConfig:
+def create_dc_ae_model_cfg(name: str) -> dict:
     assert name in REGISTERED_DCAE_MODEL, f"{name} is not supported"
-    dc_ae_cls, default_pt_path = REGISTERED_DCAE_MODEL[name]
-    pretrained_path = default_pt_path if pretrained_path is None else pretrained_path
-    model_cfg = dc_ae_cls(name, pretrained_path)
+    dc_ae_cls = REGISTERED_DCAE_MODEL[name]
+    model_cfg = dc_ae_cls(name)
     return model_cfg
 
 
-class DCAE_HF(DCAE, PyTorchModelHubMixin):
+class DCAE_HF(PyTorchModelHubMixin, DCAE):
     def __init__(self, model_name: str):
         cfg = create_dc_ae_model_cfg(model_name)
-        DCAE.__init__(self, cfg)
-
-
-def main():
-    dc_ae_f32c32_sana = DCAE_HF.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0")
-
-    from PIL import Image
-    import torch
-    import torchvision.transforms as transforms
-    from torchvision.utils import save_image
-
-    device = torch.device("cuda")
-    dc_ae_f32c32_sana = dc_ae_f32c32_sana.to(device).eval()
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-    image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
-    x = transform(image)[None].to(device)
-    latent = dc_ae_f32c32_sana.encode(x)
-    print(latent.shape)
-
-    # decode
-    y = dc_ae_f32c32_sana.decode(latent)
-    save_image(y * 0.5 + 0.5, "demo_dc_ae.png")
-
-if __name__ == "__main__":
-    main()
-
-"""
-python -m src.diffusers.models.autoencoders.dc_ae
-"""
+        DCAE.__init__(self, **cfg)
