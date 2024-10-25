@@ -18,6 +18,7 @@ import json
 import os
 import random
 import shutil
+import subprocess
 import sys
 import tempfile
 import traceback
@@ -76,6 +77,7 @@ from diffusers.utils.testing_utils import (
     require_compel,
     require_flax,
     require_onnxruntime,
+    require_peft_backend,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -2080,3 +2082,56 @@ class PipelineNightlyTests(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
+
+
+class TestLoraHotSwapping:
+    """Test that hotswapping does not result in recompilation.
+
+    We're not extensively testing the hotswapping functionality since it is implemented in PEFT and is extensively
+    tested there. The goal of this test is specifically to ensure that hotswapping with diffusers does not require
+    recompilation.
+
+    The reason why we need to shell out instead of just running the script inside of the test is that shelling out is
+    required to collect the torch.compile logs.
+
+    """
+
+    @slow
+    @require_torch_2
+    @require_torch_gpu
+    @require_peft_backend
+    def test_hotswapping_compiled_model_does_not_trigger_recompilation(self):
+        env = os.environ.copy()
+        env["TORCH_LOGS"] = "guards,recompiles"
+        here = os.path.dirname(__file__)
+        file_name = os.path.join(here, "run_compiled_model_hotswap.py")
+
+        # first test with hotswapping: should not trigger recompilation
+        process = subprocess.Popen(
+            [sys.executable, file_name, "1"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+        # Communicate will read the output and error streams, preventing deadlock
+        stdout, stderr = process.communicate()
+        exit_code = process.returncode
+
+        # sanity check:
+        assert exit_code == 0
+
+        # check that the recompilation message is not present
+        assert "__recompiles" not in stderr.decode()
+
+        # next, contingency check: without hotswapping, we *do* get recompilation
+        process = subprocess.Popen(
+            [sys.executable, file_name, "0"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+        # Communicate will read the output and error streams, preventing deadlock
+        stdout, stderr = process.communicate()
+        exit_code = process.returncode
+
+        # sanity check:
+        assert exit_code == 0
+
+        # check that the recompilation message is not present
+        assert "__recompiles" in stderr.decode()
