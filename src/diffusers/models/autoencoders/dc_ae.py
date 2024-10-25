@@ -392,7 +392,8 @@ class Decoder(nn.Module):
         return x
 
 
-class DCAE(ModelMixin):
+class DCAE(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         in_channels: int = 3,
