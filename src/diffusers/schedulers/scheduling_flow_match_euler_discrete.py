@@ -71,6 +71,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         max_shift: Optional[float] = 1.15,
         base_image_seq_len: Optional[int] = 256,
         max_image_seq_len: Optional[int] = 4096,
+        invert_sigmas: bool = False,
     ):
         timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
@@ -293,6 +294,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
         sigma_next = self.sigmas[self.step_index + 1]
+
+        if self.config.invert_sigmas:
+            print("inverting")
+            sigma, sigma_next = sigma_next, sigma
 
         prev_sample = sample + (sigma_next - sigma) * model_output
 
