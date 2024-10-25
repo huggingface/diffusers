@@ -1041,7 +1041,8 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            has_supported_fp16_accelerator = torch.cuda.is_available() or torch.backends.mps.is_available()
+            has_supported_fp16_accelerator = (torch.cuda.is_available() or torch.backends.mps.is_available()
+                                              or is_torch_npu_available())
             torch_dtype = torch.float16 if has_supported_fp16_accelerator else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
