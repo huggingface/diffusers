@@ -41,7 +41,7 @@ optimum-cli export neuron --model stabilityai/stable-diffusion-xl-base-1.0 \
   sd_neuron_xl/
 ```
 
-Now let's generate some images with pre-compiled SDXL models:
+Now generate some images with the pre-compiled SDXL model.
 
 ```python
 >>> from optimum.neuron import NeuronStableDiffusionXLPipeline
