@@ -930,7 +930,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             )
             height, width = control_image.shape[-2:]
 
-             # xlab controlnet has a input_hint_block and instantx controlnet does not
+            # xlab controlnet has a input_hint_block and instantx controlnet does not
             controlnet_blocks_repeat = False if self.controlnet.input_hint_block is None else True
             if self.controlnet.input_hint_block is None:
                 # vae encode
