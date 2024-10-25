@@ -1206,6 +1206,7 @@ class FeedForward(nn.Module):
         final_dropout: bool = False,
         inner_dim=None,
         bias: bool = True,
+        flip_gate: bool = False,
     ):
         super().__init__()
         if inner_dim is None:
@@ -1221,7 +1222,7 @@ class FeedForward(nn.Module):
         elif activation_fn == "geglu-approximate":
             act_fn = ApproximateGELU(dim, inner_dim, bias=bias)
         elif activation_fn == "swiglu":
-            act_fn = SwiGLU(dim, inner_dim, bias=bias)
+            act_fn = SwiGLU(dim, inner_dim, bias=bias, flip_gate=flip_gate)
 
         self.net = nn.ModuleList([])
         # project in
