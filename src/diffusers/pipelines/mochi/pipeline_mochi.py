@@ -48,6 +48,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import MochiPipeline
+        >>> from diffusers.utils import export_to_video
 
         >>> pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
