@@ -188,6 +188,8 @@
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
+    - local: optimization/neuron
+      title: AWS Neuron
     title: Optimized hardware
   title: Accelerate inference and reduce memory
 - sections:
