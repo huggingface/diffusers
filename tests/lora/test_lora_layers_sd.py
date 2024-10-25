@@ -34,6 +34,7 @@ from diffusers import (
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     load_image,
+    nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
@@ -207,6 +208,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 
 @slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
 class LoraIntegrationTests(unittest.TestCase):
