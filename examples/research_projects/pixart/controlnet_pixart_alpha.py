@@ -3,17 +3,17 @@ from typing import Any, Dict, Optional
 import torch
 from torch import nn
 
-from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models import PixArtTransformer2DModel
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.models.modeling_utils import ModelMixin
+from diffusers.models import PixArtTransformer2DModel
+from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
+from diffusers.models.modeling_utils import ModelMixin
+
 
 class PixArtControlNetAdapterBlock(nn.Module):
     def __init__(
-        self, 
+        self,
         block_index,
-        
         # taken from PixArtTransformer2DModel
         num_attention_heads: int = 16,
         attention_head_dim: int = 72,
@@ -55,7 +55,7 @@ class PixArtControlNetAdapterBlock(nn.Module):
             attention_type=attention_type,
         )
 
-        self.after_proj = nn.Linear(self.inner_dim, self.inner_dim) 
+        self.after_proj = nn.Linear(self.inner_dim, self.inner_dim)
         nn.init.zeros_(self.after_proj.weight)
         nn.init.zeros_(self.after_proj.bias)
 
@@ -90,50 +90,51 @@ class PixArtControlNetAdapterBlock(nn.Module):
             cross_attention_kwargs=cross_attention_kwargs,
             attention_mask=attention_mask,
             encoder_attention_mask=encoder_attention_mask,
-            class_labels=None
+            class_labels=None,
         )
 
         controlnet_states_left = self.after_proj(controlnet_states_down)
 
         return controlnet_states_left, controlnet_states_down
 
+
 class PixArtControlNetAdapterModel(ModelMixin, ConfigMixin):
     # N=13, as specified in the paper https://arxiv.org/html/2401.05252v1/#S4 ControlNet-Transformer
     @register_to_config
-    def __init__(self, num_layers = 13) -> None:
+    def __init__(self, num_layers=13) -> None:
         super().__init__()
 
         self.num_layers = num_layers
 
         self.controlnet_blocks = nn.ModuleList(
-            [
-                PixArtControlNetAdapterBlock(block_index=i)
-                for i in range(num_layers)
-            ]
+            [PixArtControlNetAdapterBlock(block_index=i) for i in range(num_layers)]
         )
 
     @classmethod
     def from_transformer(cls, transformer: PixArtTransformer2DModel):
         control_net = PixArtControlNetAdapterModel()
-        
+
         # copied the specified number of blocks from the transformer
         for depth in range(control_net.num_layers):
-            control_net.controlnet_blocks[depth].transformer_block.load_state_dict(transformer.transformer_blocks[depth].state_dict())
+            control_net.controlnet_blocks[depth].transformer_block.load_state_dict(
+                transformer.transformer_blocks[depth].state_dict()
+            )
 
         return control_net
 
     def train(self, mode: bool = True):
         for block in self.controlnet_blocks:
             block.train(mode)
-            
+
+
 class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
     def __init__(
-            self, 
-            transformer: PixArtTransformer2DModel,
-            controlnet: PixArtControlNetAdapterModel,
-            blocks_num=13,
-            init_from_transformer=False,
-            training=False
+        self,
+        transformer: PixArtTransformer2DModel,
+        controlnet: PixArtControlNetAdapterModel,
+        blocks_num=13,
+        init_from_transformer=False,
+        training=False,
     ):
         super().__init__()
 
@@ -141,14 +142,14 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
         self.register_to_config(**transformer.config)
         self.training = training
-        
+
         if init_from_transformer:
             # copies the specified number of blocks from the transformer
             controlnet.from_transformer(transformer, self.blocks_num)
 
         self.transformer = transformer
         self.controlnet = controlnet
-    
+
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
@@ -165,10 +166,9 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-      
         if self.transformer.use_additional_conditions and added_cond_kwargs is None:
             raise ValueError("`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`.")
-        
+
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -243,15 +243,17 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
             else:
                 # the control nets are only used for the blocks 1 to self.blocks_num
                 if block_index > 0 and block_index <= self.blocks_num and controlnet_states_down is not None:
-                    controlnet_states_left, controlnet_states_down = self.controlnet.controlnet_blocks[block_index - 1](
-                        hidden_states=hidden_states, # used only in the first block
+                    controlnet_states_left, controlnet_states_down = self.controlnet.controlnet_blocks[
+                        block_index - 1
+                    ](
+                        hidden_states=hidden_states,  # used only in the first block
                         controlnet_states=controlnet_states_down,
                         encoder_hidden_states=encoder_hidden_states,
                         timestep=timestep,
                         added_cond_kwargs=added_cond_kwargs,
                         cross_attention_kwargs=cross_attention_kwargs,
                         attention_mask=attention_mask,
-                        encoder_attention_mask=encoder_attention_mask
+                        encoder_attention_mask=encoder_attention_mask,
                     )
 
                     hidden_states = hidden_states + controlnet_states_left
@@ -268,7 +270,8 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         shift, scale = (
-            self.transformer.scale_shift_table[None] + embedded_timestep[:, None].to(self.transformer.scale_shift_table.device)
+            self.transformer.scale_shift_table[None]
+            + embedded_timestep[:, None].to(self.transformer.scale_shift_table.device)
         ).chunk(2, dim=1)
         hidden_states = self.transformer.norm_out(hidden_states)
         # Modulation
@@ -278,15 +281,26 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
 
         # unpatchify
         hidden_states = hidden_states.reshape(
-            shape=(-1, height, width, self.transformer.config.patch_size, self.transformer.config.patch_size, self.transformer.out_channels)
+            shape=(
+                -1,
+                height,
+                width,
+                self.transformer.config.patch_size,
+                self.transformer.config.patch_size,
+                self.transformer.out_channels,
+            )
         )
         hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
         output = hidden_states.reshape(
-            shape=(-1, self.transformer.out_channels, height * self.transformer.config.patch_size, width * self.transformer.config.patch_size)
+            shape=(
+                -1,
+                self.transformer.out_channels,
+                height * self.transformer.config.patch_size,
+                width * self.transformer.config.patch_size,
+            )
         )
 
         if not return_dict:
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
-

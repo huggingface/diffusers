@@ -14,21 +14,22 @@
 
 import html
 import inspect
-import re
-import urllib.parse as ul
-import sys
 import os
+import re
+import sys
+import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
+import numpy as np
+import PIL
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
-import PIL
-import numpy as np
 
-from diffusers.image_processor import PixArtImageProcessor, PipelineImageInput, VaeImageProcessor
+from diffusers.image_processor import PipelineImageInput, PixArtImageProcessor
 from diffusers.models import AutoencoderKL, PixArtTransformer2DModel
+from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import DPMSolverMultistepScheduler
-from diffusers.utils import ( 
+from diffusers.utils import (
     BACKENDS_MAPPING,
     deprecate,
     is_bs4_available,
@@ -37,10 +38,11 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel, PixArtControlNetTransformerModel
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -174,6 +176,7 @@ ASPECT_RATIO_256_BIN = {
     "4.0": [512.0, 128.0],
 }
 
+
 def get_closest_hw(width, height, image_size):
     if image_size == 1024:
         aspect_ratio_bin = ASPECT_RATIO_1024_BIN
@@ -181,10 +184,11 @@ def get_closest_hw(width, height, image_size):
         aspect_ratio_bin = ASPECT_RATIO_512_BIN
     else:
         raise ValueError("Invalid image size")
-    
+
     height, width = PixArtImageProcessor.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
     return width, height
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -300,12 +304,15 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
         super().__init__()
 
         # change to the controlnet transformer model
-        transformer = PixArtControlNetTransformerModel(
-            transformer=transformer, controlnet=controlnet
-        )
+        transformer = PixArtControlNetTransformerModel(transformer=transformer, controlnet=controlnet)
 
         self.register_modules(
-            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler, controlnet=controlnet
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            transformer=transformer,
+            scheduler=scheduler,
+            controlnet=controlnet,
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
@@ -472,7 +479,7 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
+
     def check_inputs(
         self,
         prompt,
@@ -480,7 +487,7 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
         width,
         negative_prompt,
         callback_steps,
-        image = None,
+        image=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,

@@ -1,18 +1,17 @@
-import sys
 import os
+import sys
+
 import torch
 import torchvision.transforms as T
-import torchvision.transforms.functional as TF
-
+from controlnet_aux import HEDdetector
 from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
+
 from diffusers.utils import load_image
 
-from diffusers.image_processor import PixArtImageProcessor
-
-from controlnet_aux import HEDdetector
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel
+
 
 controlnet_repo_id = "raulc0399/pixart-alpha-hed-controlnet"
 
@@ -48,7 +47,7 @@ control_image_file = "0_7.jpg"
 # prompt = "realistical photo of a loving couple standing in the open kitchen of the living room, cooking ."
 prompt = "battleship in space, galaxy in background"
 
-control_image_name = control_image_file.split('.')[0]
+control_image_name = control_image_file.split(".")[0]
 
 control_image = load_image(f"{images_path}/{control_image_file}")
 print(control_image.size)
@@ -56,10 +55,12 @@ height, width = control_image.size
 
 hed = HEDdetector.from_pretrained("lllyasviel/Annotators")
 
-condition_transform = T.Compose([
-    T.Lambda(lambda img: img.convert('RGB')),
-    T.CenterCrop([image_size, image_size]),
-])
+condition_transform = T.Compose(
+    [
+        T.Lambda(lambda img: img.convert("RGB")),
+        T.CenterCrop([image_size, image_size]),
+    ]
+)
 
 control_image = condition_transform(control_image)
 hed_edge = hed(control_image, detect_resolution=image_size, image_resolution=image_size)
@@ -78,4 +79,3 @@ with torch.no_grad():
     )
 
     out.images[0].save(f"{images_path}//{control_image_name}_output.jpg")
-    
