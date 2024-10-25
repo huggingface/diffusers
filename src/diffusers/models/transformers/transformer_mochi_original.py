@@ -619,7 +619,7 @@ class AsymmetricAttention(nn.Module):
         q_x, k_x, v_x = qkv_x.unbind(0)  # (B, N, local_h, head_dim)
         q_x = self.q_norm_x(q_x)
         k_x = self.k_norm_x(k_x)
-        
+
         q_x = apply_rotary_emb_qk_real(q_x, rope_cos, rope_sin)
         k_x = apply_rotary_emb_qk_real(k_x, rope_cos, rope_sin)
 
@@ -665,7 +665,7 @@ class AsymmetricAttention(nn.Module):
         q = q.permute(1, 0, 2).unsqueeze(0)
         k = k.permute(1, 0, 2).unsqueeze(0)
         v = v.permute(1, 0, 2).unsqueeze(0)
-        
+
         out = F.scaled_dot_product_attention(q, k, v)
 
         out = out.transpose(1, 2).flatten(2, 3)

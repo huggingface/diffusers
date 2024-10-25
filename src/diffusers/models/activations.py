@@ -137,7 +137,7 @@ class SwiGLU(nn.Module):
     def __init__(self, dim_in: int, dim_out: int, bias: bool = True, flip_gate: bool = False):
         super().__init__()
         self.flip_gate = flip_gate
-        
+
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         self.activation = nn.SiLU()
 

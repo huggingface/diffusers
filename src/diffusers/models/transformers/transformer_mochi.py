@@ -249,7 +249,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
-    
+
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
@@ -287,7 +287,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
 
         for i, block in enumerate(self.transformer_blocks):
             if self.gradient_checkpointing:
-                
+
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         return module(*inputs)
