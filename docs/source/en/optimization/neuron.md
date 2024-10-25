@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AWS Neuron
 
-🤗 Diffusers functionalities are available on [AWS Inf2 instances](https://aws.amazon.com/ec2/instance-types/inf2/), which are EC2 instances powered by [Neuron machine learning accelerators](https://aws.amazon.com/machine-learning/inferentia/). These instances aim at providing better compute performance(higher throughput, lower latency) with good cost-efficiency, which makes them good candidates for AWS users to deploy diffusion models for production.
+Diffusers functionalities are available on [AWS Inf2 instances](https://aws.amazon.com/ec2/instance-types/inf2/), which are EC2 instances powered by [Neuron machine learning accelerators](https://aws.amazon.com/machine-learning/inferentia/). These instances aim to provide better compute performance (higher throughput, lower latency) with good cost-efficiency, making them good candidates for AWS users to deploy diffusion models to production.
 
 A wide range of features in 🤗 Diffusers are supported by [🤗 Optimum Neuron](https://huggingface.co/docs/optimum-neuron/en/index) via similar APIs. Once you have created an AWS Inf2 instance, you can install 🤗 Optimum Neuron:
 
