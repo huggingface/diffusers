@@ -26,7 +26,7 @@ We provide pre-built [Hugging Face Neuron Deep Learning AMI](https://aws.amazon.
 
 </Tip>
 
-Here below is an example of generating images with Stable Diffusion XL model on an inf2.8xlarge instance (you can switch to cheaper inf2.xlarge instances once the model is compiled). We will use the `NeuronStableDiffusionXLPipeline` class, a class similar to the `StableDiffusionXLPipeline` class in diffusers to generate some images for fun.
+The example below demonstrates how to generate images with the Stable Diffusion XL model on an inf2.8xlarge instance (you can switch to cheaper inf2.xlarge instances once the model is compiled). To generate some images, use the [`~optimum.neuron.NeuronStableDiffusionXLPipeline`] class, which is similar to the [`StableDiffusionXLPipeline`] class in Diffusers.
 
 Unlike in 🤗 Diffusers, we need to compile models in the pipeline to Neuron compatible format `.neuron`. To do this, you will need to launch the following command:
 
