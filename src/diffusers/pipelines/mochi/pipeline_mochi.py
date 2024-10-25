@@ -204,7 +204,7 @@ class MochiPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         self.vae_temporal_scale_factor = 6
         self.patch_size = 2
 
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_scale_factor)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
