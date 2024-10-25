@@ -49,13 +49,11 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import MochiPipeline
 
-        >>> pipe = MochiPipeline.from_pretrained("black-forest-labs/mochi.1-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
-        >>> image.save("mochi.png")
+        >>> prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
+        >>> frames = pipe(prompt, num_inference_steps=28, guidance_scale=3.5).frames[0]
+        >>> export_to_video(frames, "mochi.mp4")
         ```
 """
 
