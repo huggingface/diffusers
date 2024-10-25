@@ -13,31 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import logging
-from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..downsampling import CogVideoXDownsample3D
-from ..modeling_outputs import AutoencoderKLOutput
-from ..modeling_utils import ModelMixin
-from ..upsampling import CogVideoXUpsample3D
-from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
 # YiYi to-do: replace this with nn.Conv3d
@@ -60,17 +46,18 @@ class Conv1x1(nn.Linear):
         x = super().forward(x)
         x = x.movedim(-1, 1)
         return x
-    
+
 
 class MochiChunkedCausalConv3d(nn.Module):
-    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in CogVideoX Model.
+    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in Mochi Model.
+    It also supports memory-efficient chunked 3D convolutions.
 
     Args:
         in_channels (`int`): Number of channels in the input tensor.
         out_channels (`int`): Number of output channels produced by the convolution.
         kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
         stride (`int` or `Tuple[int, int, int]`, defaults to `1`): Stride of the convolution.
-        pad_mode (`str`, defaults to `"constant"`): Padding mode.
+        padding_mode (`str`, defaults to `"replicate"`): Padding mode.
     """
 
     def __init__(
@@ -88,7 +75,7 @@ class MochiChunkedCausalConv3d(nn.Module):
         if isinstance(stride, int):
             stride = (stride,) * 3
 
-        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
+        _, height_kernel_size, width_kernel_size = kernel_size
 
         self.padding_mode = padding_mode
         height_pad = (height_kernel_size - 1) // 2
@@ -104,18 +91,17 @@ class MochiChunkedCausalConv3d(nn.Module):
             padding_mode=padding_mode,
         )
 
-
-
-    def forward(self, hidden_states : torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         time_kernel_size = self.conv.kernel_size[0]
         context_size = time_kernel_size - 1
         time_casual_padding = (0, 0, 0, 0, context_size, 0)
         hidden_states = F.pad(hidden_states, time_casual_padding, mode=self.padding_mode)
-        
+
         # Memory-efficient chunked operation
         memory_count = torch.prod(torch.tensor(hidden_states.shape)).item() * 2 / 1024**3
         # YiYI Notes: testing only!! please remove
         memory_count = 3
+        # YiYI Notes: this number 2 should be a config: max_memory_chunk_size (2 is 2GB)
         if memory_count > 2:
             part_num = int(memory_count / 2) + 1
             num_frames = hidden_states.shape[2]
@@ -131,7 +117,7 @@ class MochiChunkedCausalConv3d(nn.Module):
                 output_chunks.append(output_chunk)  # Append each output chunk to the list
 
             # Concatenate all output chunks along the temporal dimension
-            hidden_states = torch.cat(output_chunks, dim=2) 
+            hidden_states = torch.cat(output_chunks, dim=2)
 
             return hidden_states
         else:
@@ -140,9 +126,14 @@ class MochiChunkedCausalConv3d(nn.Module):
 
 class MochiChunkedGroupNorm3D(nn.Module):
     r"""
-    Group normalization applied per-frame.
+    Applies per-frame group normalization for 5D video inputs. It also supports memory-efficient chunked group
+    normalization.
 
     Args:
+        num_channels (int): Number of channels expected in input
+        num_groups (int, optional): Number of groups to separate the channels into. Default: 32
+        affine (bool, optional): If True, this module has learnable affine parameters. Default: True
+        chunk_size (int, optional): Size of each chunk for processing. Default: 8
 
     """
 
@@ -157,49 +148,27 @@ class MochiChunkedGroupNorm3D(nn.Module):
         self.norm_layer = nn.GroupNorm(num_channels=num_channels, num_groups=num_groups, affine=affine)
         self.chunk_size = chunk_size
 
-    def forward(
-        self, x: torch.Tensor = None
-    ) -> torch.Tensor:
-
+    def forward(self, x: torch.Tensor = None) -> torch.Tensor:
         batch_size, channels, num_frames, height, width = x.shape
         x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-        
-        num_chunks = (batch_size * num_frames + self.chunk_size - 1) // self.chunk_size
-        
-        output = torch.cat(
-            [self.norm_layer(chunk) for chunk in x.split(self.chunk_size, dim=0)],
-            dim=0
-            )
+
+        output = torch.cat([self.norm_layer(chunk) for chunk in x.split(self.chunk_size, dim=0)], dim=0)
         output = output.view(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
-        
+
         return output
 
 
 class MochiResnetBlock3D(nn.Module):
     r"""
-    A 3D ResNet block used in the CogVideoX model.
+    A 3D ResNet block used in the Mochi model.
 
     Args:
         in_channels (`int`):
             Number of input channels.
         out_channels (`int`, *optional*):
             Number of output channels. If None, defaults to `in_channels`.
-        dropout (`float`, defaults to `0.0`):
-            Dropout rate.
-        temb_channels (`int`, defaults to `512`):
-            Number of time embedding channels.
-        groups (`int`, defaults to `32`):
-            Number of groups to separate the channels into for group normalization.
-        eps (`float`, defaults to `1e-6`):
-            Epsilon value for normalization layers.
         non_linearity (`str`, defaults to `"swish"`):
             Activation function to use.
-        conv_shortcut (bool, defaults to `False`):
-            Whether or not to use a convolution shortcut.
-        spatial_norm_dim (`int`, *optional*):
-            The dimension to use for spatial norm if it is to be used instead of group norm.
-        pad_mode (str, defaults to `"first"`):
-            Padding mode.
     """
 
     def __init__(
@@ -225,14 +194,12 @@ class MochiResnetBlock3D(nn.Module):
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1
         )
 
-
     def forward(
         self,
         inputs: torch.Tensor,
     ) -> torch.Tensor:
-
         hidden_states = inputs
-       
+
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv1(hidden_states)
@@ -254,6 +221,12 @@ class MochiUpBlock3D(nn.Module):
             Number of input channels.
         out_channels (`int`, *optional*):
             Number of output channels. If None, defaults to `in_channels`.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet blocks in the block.
+        temporal_expansion (`int`, defaults to `2`):
+            Temporal expansion factor.
+        spatial_expansion (`int`, defaults to `2`):
+            Spatial expansion factor.
     """
 
     def __init__(
@@ -290,8 +263,7 @@ class MochiUpBlock3D(nn.Module):
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
 
-        for i, resnet in enumerate(self.resnets):
-
+        for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -322,10 +294,8 @@ class MochiUpBlock3D(nn.Module):
         hidden_states = hidden_states.contiguous().view(B, new_C, T * st, H * sh, W * sw)
 
         if self.temporal_expansion > 1:
-            print(f"x: {hidden_states.shape}")
             # Drop the first self.temporal_expansion - 1 frames.
             hidden_states = hidden_states[:, :, self.temporal_expansion - 1 :]
-            print(f"x: {hidden_states.shape}")
 
         return hidden_states
 
@@ -337,22 +307,20 @@ class MochiMidBlock3D(nn.Module):
     Args:
         in_channels (`int`):
             Number of input channels.
+        num_layers (`int`, defaults to `3`):
+            Number of resnet blocks in the block.
     """
-
-    _supports_gradient_checkpointing = True
 
     def __init__(
         self,
-        in_channels: int, # 768
+        in_channels: int,  # 768
         num_layers: int = 3,
     ):
         super().__init__()
 
         resnets = []
         for _ in range(num_layers):
-            resnets.append(
-                MochiResnetBlock3D(in_channels=in_channels)
-            )
+            resnets.append(MochiResnetBlock3D(in_channels=in_channels))
         self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
@@ -363,7 +331,7 @@ class MochiMidBlock3D(nn.Module):
     ) -> torch.Tensor:
         r"""Forward method of the `MochiMidBlock3D` class."""
 
-        for i, resnet in enumerate(self.resnets):
+        for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -372,9 +340,7 @@ class MochiMidBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states
-                )
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states)
             else:
                 hidden_states = resnet(hidden_states)
 
@@ -382,12 +348,31 @@ class MochiMidBlock3D(nn.Module):
 
 
 class MochiDecoder3D(nn.Module):
-    _supports_gradient_checkpointing = True
+    r"""
+    The `MochiDecoder3D` layer of a variational autoencoder that decodes its latent representation into an output
+    sample.
+
+    Args:
+        in_channels (`int`, *optional*):
+            The number of input channels.
+        out_channels (`int`, *optional*):
+            The number of output channels.
+        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
+            The number of output channels for each block.
+        layers_per_block (`Tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
+            The number of resnet blocks for each block.
+        temporal_expansions (`Tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
+            The temporal expansion factor for each of the up blocks.
+        spatial_expansions (`Tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
+            The spatial expansion factor for each of the up blocks.
+        non_linearity (`str`, *optional*, defaults to `"swish"`):
+            The non-linearity to use in the decoder.
+    """
 
     def __init__(
         self,
-        in_channels: int, # 12
-        out_channels: int, # 3
+        in_channels: int,  # 12
+        out_channels: int,  # 3
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 768),
         layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
         temporal_expansions: Tuple[int, ...] = (1, 2, 3),
@@ -418,29 +403,36 @@ class MochiDecoder3D(nn.Module):
             num_layers=layers_per_block[0],
         )
         self.conv_out = Conv1x1(block_out_channels[0], out_channels)
-    
+
+        self.gradient_checkpointing = False
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         r"""Forward method of the `MochiDecoder3D` class."""
 
-        print(f"hidden_states: {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
         hidden_states = self.conv_in(hidden_states)
-        print(f"hidden_states (after conv_in): {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
-
 
         # 1. Mid
-        hidden_states = self.block_in(hidden_states)
-        print(f"hidden_states (after block_in): {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
-        # 2. Up
-        for i, up_block in enumerate(self.up_blocks):
-            hidden_states = up_block(hidden_states)
-            print(f"hidden_states (after up_block {i}): {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
-        # 3. Post-process
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def create_forward(*inputs):
+                    return module(*inputs)
+
+                return create_forward
+
+            hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.block_in), hidden_states)
+
+            for up_block in self.up_blocks:
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), hidden_states)
+        else:
+            hidden_states = self.block_in(hidden_states)
+
+            for up_block in self.up_blocks:
+                hidden_states = up_block(hidden_states)
+
         hidden_states = self.block_out(hidden_states)
-        print(f"hidden_states (after block_out): {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
-        
+
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv_out(hidden_states)
-        print(f"hidden_states (after conv_out): {hidden_states.shape}, {hidden_states[0,:3,0,:2,:2]}")
 
         return hidden_states
-        
