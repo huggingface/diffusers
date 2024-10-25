@@ -25,7 +25,6 @@ vae = AutoencoderKLMochi.from_pretrained("genmo/mochi-1-preview", subfolder="vae
 
 [[autodoc]] AutoencoderKLMochi
     - decode
-    - encode
     - all
 
 ## DecoderOutput
