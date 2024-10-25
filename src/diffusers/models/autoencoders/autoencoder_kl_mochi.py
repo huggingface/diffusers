@@ -472,9 +472,9 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
     def __init__(
         self,
         out_channels: int = 3,
-        block_out_channels: Tuple[int] = (128, 256, 256, 512),
+        block_out_channels: Tuple[int] = (128, 256, 512, 768),
         latent_channels: int = 12,
-        layers_per_block: int = 3,
+        layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
         act_fn: str = "silu",
         temporal_expansions: Tuple[int, ...] = (1, 2, 3),
         spatial_expansions: Tuple[int, ...] = (2, 2, 2),
