@@ -573,7 +573,7 @@ def parse_args(input_args=None):
 
     parser.add_argument(
         "--lora_layers",
-        nargs="+",
+        nargs="*",
         type=str,
         default=None,
         help=(
@@ -583,7 +583,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--lora_blocks",
-        nargs="+",
+        nargs="*",
         type=int,
         default=None,
         help=(
@@ -1260,7 +1260,6 @@ def main(args):
         target_modules = [
             f"transformer_blocks.{block}.{module}" for block in args.lora_blocks for module in target_modules
         ]
-        print(target_modules)
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
