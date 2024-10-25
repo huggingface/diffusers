@@ -577,7 +577,7 @@ def parse_args(input_args=None):
         default=None,
         help=(
             "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string. "
-            'For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
+            "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
         ),
     )
     parser.add_argument(
@@ -1256,9 +1256,10 @@ def main(args):
         ]
     if args.lora_blocks is not None:
         target_blocks = [int(block.strip()) for block in args.lora_blocks.split(",")]
-        target_modules = [f"transformer_blocks.{block}.{module}" for block in target_blocks for module in target_modules]
+        target_modules = [
+            f"transformer_blocks.{block}.{module}" for block in target_blocks for module in target_modules
+        ]
         print(target_modules)
-
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
