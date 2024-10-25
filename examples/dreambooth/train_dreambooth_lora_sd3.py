@@ -573,20 +573,22 @@ def parse_args(input_args=None):
 
     parser.add_argument(
         "--lora_layers",
+        nargs="+",
         type=str,
         default=None,
         help=(
-            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string. "
+            "The transformer block layers to apply LoRA training on. "
             "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
         ),
     )
     parser.add_argument(
         "--lora_blocks",
-        type=str,
+        nargs="+",
+        type=int,
         default=None,
         help=(
-            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma seperated manner. "
-            'E.g. - "12,30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
+            "The transformer blocks to apply LoRA training on."
+            'E.g. - "--lora_blocks 12 30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
         ),
     )
 
@@ -1242,7 +1244,7 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
     if args.lora_layers is not None:
-        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+        target_modules = args.lora_layers
     else:
         target_modules = [
             "attn.add_k_proj",
@@ -1255,9 +1257,8 @@ def main(args):
             "attn.to_v",
         ]
     if args.lora_blocks is not None:
-        target_blocks = [int(block.strip()) for block in args.lora_blocks.split(",")]
         target_modules = [
-            f"transformer_blocks.{block}.{module}" for block in target_blocks for module in target_modules
+            f"transformer_blocks.{block}.{module}" for block in args.lora_blocks for module in target_modules
         ]
         print(target_modules)
 

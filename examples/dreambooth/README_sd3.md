@@ -163,24 +163,23 @@ For **SD3.5-Large** specifically, you may find this information useful (taken fr
 > To dampen any possible degradation of anatomy, training only the attention layers and **not** the adaptive linear layers could help. For reference, below is one of the transformer blocks.
 
 
-we've added `--lora_layers` and `--lora_blocks` to make LoRA training modules configurable. 
+We've added `--lora_layers` and `--lora_blocks` to make LoRA training modules configurable. 
 - with `--lora_blocks` you can specify the block numbers for training. E.g. passing - 
 ```bash
---lora_blocks="12,13,14,15,16,17,18,19,20,21,22,23,24,30,31,32,33,34,35,36,37"
+--lora_blocks 12 13 14 15 16 17 18 19 20 21 22 23 24 30 31 32 33 34 35 36 37
 ```
 will trigger LoRA training of transformer blocks 12-24 and 30-37. By default, all blocks are trained. 
 - with `--lora_layers` you can specify the types of layers you wish to train. 
 By default, the trained layers are -  
-`"attn.add_k_proj","attn.add_q_proj","attn.add_v_proj", "attn.to_add_out","attn.to_k","attn.to_out.0","attn.to_q","attn.to_v"`
+`attn.add_k_proj attn.add_q_proj attn.add_v_proj attn.to_add_out attn.to_k attn.to_out.0 attn.to_q attn.to_v`
 If you wish to have a leaner LoRA / train more blocks over layers you could pass - 
 ```bash
---lora_layers="attn.to_k,attn.to_q,attn.to_v,attn.to_out.0"
+--lora_layers attn.to_k attn.to_q attn.to_v attn.to_out.0
 ```
 This will reduce LoRA size by roughly 50% for the same rank compared to the default. 
 However, if you're after compact LoRAs, it's our impression that maintaining the default setting for `--lora_layers` and
 freezing some of the early & blocks is usually better. 
 
-The following configuration
 
 ### Text Encoder Training
 Alongside the transformer, LoRA fine-tuning of the CLIP text encoders is now also supported.
