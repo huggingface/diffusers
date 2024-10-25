@@ -29,6 +29,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
+    _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
@@ -83,6 +84,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderKLCogVideoX,
+            AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,

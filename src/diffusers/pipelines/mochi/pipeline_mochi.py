@@ -102,7 +102,6 @@ def retrieve_timesteps(
 ):
     r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
     Args:
