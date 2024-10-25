@@ -34,6 +34,26 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @maybe_allow_in_graph
 class MochiTransformerBlock(nn.Module):
+    r"""
+    Transformer block used in [Mochi](https://huggingface.co/genmo/mochi-1-preview).
+
+    Args:
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        qk_norm (`str`, defaults to `"rms_norm"`):
+            The normalization layer to use.
+        activation_fn (`str`, defaults to `"swiglu"`):
+            Activation function to use in feed-forward.
+        context_pre_only (`bool`, defaults to `False`):
+            Whether or not to process context-related conditions with additional layers.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -42,7 +62,7 @@ class MochiTransformerBlock(nn.Module):
         pooled_projection_dim: int,
         qk_norm: str = "rms_norm",
         activation_fn: str = "swiglu",
-        context_pre_only: bool = True,
+        context_pre_only: bool = False,
         eps: float = 1e-6,
     ) -> None:
         super().__init__()
@@ -82,6 +102,7 @@ class MochiTransformerBlock(nn.Module):
             elementwise_affine=True,
         )
 
+        # TODO(aryan): norm_context layers are not needed when `context_pre_only` is True
         self.norm2 = RMSNorm(dim, eps=eps, elementwise_affine=False)
         self.norm2_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
@@ -145,7 +166,17 @@ class MochiTransformerBlock(nn.Module):
 
 
 class MochiRoPE(nn.Module):
-    def __init__(self, base_height: int = 192, base_width: int = 192, theta: float = 10000.0) -> None:
+    r"""
+    RoPE implementation used in [Mochi](https://huggingface.co/genmo/mochi-1-preview).
+
+    Args:
+        base_height (`int`, defaults to `192`):
+            Base height used to compute interpolation scale for rotary positional embeddings.
+        base_width (`int`, defaults to `192`):
+            Base width used to compute interpolation scale for rotary positional embeddings.
+    """
+
+    def __init__(self, base_height: int = 192, base_width: int = 192) -> None:
         super().__init__()
 
         self.target_area = base_height * base_width
@@ -195,6 +226,34 @@ class MochiRoPE(nn.Module):
 
 @maybe_allow_in_graph
 class MochiTransformer3DModel(ModelMixin, ConfigMixin):
+    r"""
+    A Transformer model for video-like data introduced in [Mochi](https://huggingface.co/genmo/mochi-1-preview).
+
+    Args:
+        patch_size (`int`, defaults to `2`):
+            The size of the patches to use in the patch embedding layer.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
+        num_layers (`int`, defaults to `48`):
+            The number of layers of Transformer blocks to use.
+        in_channels (`int`, defaults to `12`):
+            The number of channels in the input.
+        out_channels (`int`, *optional*, defaults to `None`):
+            The number of channels in the output.
+        qk_norm (`str`, defaults to `"rms_norm"`):
+            The normalization layer to use.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        time_embed_dim (`int`, defaults to `256`):
+            Output dimension of timestep embeddings.
+        activation_fn (`str`, defaults to `"swiglu"`):
+            Activation function to use in feed-forward.
+        max_sequence_length (`int`, defaults to `256`):
+            The maximum sequence length of text embeddings supported.
+    """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config

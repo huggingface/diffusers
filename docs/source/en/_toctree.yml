@@ -302,6 +302,8 @@
         title: AutoencoderKL
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_mochi
+        title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/consistency_decoder_vae
@@ -394,6 +396,8 @@
       title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
+    - local: api/pipelines/mochi
+      title: Mochi
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
