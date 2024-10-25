@@ -1246,20 +1246,12 @@ def main(args):
     else:
         target_modules = [
             "attn.add_k_proj",
-            "attn.add_k_proj",
-            "attn.add_q_proj",
             "attn.add_q_proj",
             "attn.add_v_proj",
-            "attn.add_v_proj",
-            "attn.to_add_out",
             "attn.to_add_out",
             "attn.to_k",
-            "attn.to_k",
-            "attn.to_out.0",
             "attn.to_out.0",
             "attn.to_q",
-            "attn.to_q",
-            "attn.to_v",
             "attn.to_v",
         ]
     if args.lora_blocks is not None:
