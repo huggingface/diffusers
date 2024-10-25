@@ -167,7 +167,9 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
             # when not training the text encoder, all the parameters in the state dict should start
             # with `"transformer"` in their names.
             # In this test, only params of transformer block 0 should be in the state dict
-            starts_with_transformer = all(key.startswith("transformer.transformer_blocks.0") for key in lora_state_dict.keys())
+            starts_with_transformer = all(
+                key.startswith("transformer.transformer_blocks.0") for key in lora_state_dict.keys()
+            )
             self.assertTrue(starts_with_transformer)
 
     def test_dreambooth_lora_sd3_checkpointing_checkpoints_total_limit(self):
