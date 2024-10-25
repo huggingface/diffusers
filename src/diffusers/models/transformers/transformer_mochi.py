@@ -205,7 +205,7 @@ class MochiRoPE(nn.Module):
         return positions
 
     def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
-        freqs = torch.einsum("nd,dhf->nhf", pos, freqs)
+        freqs = torch.einsum("nd,dhf->nhf", pos, freqs.float())
         freqs_cos = torch.cos(freqs)
         freqs_sin = torch.sin(freqs)
         return freqs_cos, freqs_sin
