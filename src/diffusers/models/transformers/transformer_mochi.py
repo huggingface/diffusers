@@ -251,6 +251,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
             The maximum sequence length of text embeddings supported.
     """
 
+    _keep_in_fp32_modules = "pos_frequencies"
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -289,7 +290,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
             num_attention_heads=8,
         )
 
-        self.pos_frequencies = nn.Parameter(torch.empty(3, num_attention_heads, attention_head_dim // 2))
+        self.pos_frequencies = nn.Parameter(torch.full((3, num_attention_heads, attention_head_dim // 2), 0.0))
         self.rope = MochiRoPE()
 
         self.transformer_blocks = nn.ModuleList(

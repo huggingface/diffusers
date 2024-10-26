@@ -654,9 +654,8 @@ class MochiPipeline(DiffusionPipeline):
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
-                print(t)
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,

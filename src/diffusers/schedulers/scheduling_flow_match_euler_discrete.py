@@ -296,7 +296,6 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_next = self.sigmas[self.step_index + 1]
 
         if self.config.invert_sigmas:
-            print("inverting")
             sigma, sigma_next = sigma_next, sigma
 
         prev_sample = sample + (sigma_next - sigma) * model_output
