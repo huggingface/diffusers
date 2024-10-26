@@ -540,6 +540,9 @@ def parse_args(input_args=None):
         help="Maximum sequence length to use with with the T5 text encoder",
     )
     parser.add_argument(
+        "--dataset_preprocess_batch_size", type=int, default=1000, help="Batch size for preprocessing dataset."
+    )
+    parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
@@ -1123,7 +1126,11 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset = train_dataset.map(
+            compute_embeddings_fn,
+            batched=True,
+            batch_size=args.dataset_preprocess_batch_size,
+            new_fingerprint=new_fingerprint)
 
     del text_encoder_one, text_encoder_two, text_encoder_three
     del tokenizer_one, tokenizer_two, tokenizer_three
