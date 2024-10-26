@@ -659,7 +659,7 @@ class MochiPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    timestep=1000 - timestep,
+                    timestep=timestep,
                     encoder_attention_mask=prompt_attention_mask,
                     return_dict=False,
                 )[0]
