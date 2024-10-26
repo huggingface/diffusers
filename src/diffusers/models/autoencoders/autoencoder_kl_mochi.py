@@ -661,16 +661,16 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         """
 
         batch_size, num_channels, num_frames, height, width = z.shape
+        sample_height = height * self.spatial_compression_ratio
+        sample_width = width * self.spatial_compression_ratio
 
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
         tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
 
-        blend_extent_height = self.tile_sample_min_height - self.tile_sample_stride_height
-        blend_extent_width = self.tile_sample_min_width - self.tile_sample_stride_width
-        row_limit_height = self.tile_sample_min_height - blend_extent_height
-        row_limit_width = self.tile_sample_min_width - blend_extent_width
+        blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
+        blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
 
         # Split z into overlapping tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
@@ -691,13 +691,13 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent_height)
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_extent_width)
-                result_row.append(tile[:, :, :, :row_limit_height, :row_limit_width])
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
             result_rows.append(torch.cat(result_row, dim=4))
 
-        dec = torch.cat(result_rows, dim=3)
+        dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
 
         if not return_dict:
             return (dec,)
