@@ -58,7 +58,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
     
-    def get_dummy_components(self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = None):
+    def get_dummy_components(self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm"):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(
             sample_size=32,
