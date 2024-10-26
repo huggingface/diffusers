@@ -23,6 +23,59 @@ This guide will show you how to generate videos, how to configure video model pa
 
 [Stable Video Diffusions (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [I2VGen-XL](https://huggingface.co/ali-vilab/i2vgen-xl/), [AnimateDiff](https://huggingface.co/guoyww/animatediff), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are popular models used for video diffusion. Each model is distinct. For example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images, whereas SVD is entirely pretrained from scratch with a three-stage training process to generate short high-quality videos.
 
+[CogVideoX](https://huggingface.co/collections/THUDM/cogvideo-66c08e62f1685a3ade464cce) is another popular video generation model. The model is a multidimensional transformer that integrates text, time, and space. It employs full attention in the attention module and includes an expert block at the layer level to spatially align text and video.
+
+### CogVideoX
+ 
+[CogVideoX](../api/pipelines/cogvideox) uses a 3D Variational Autoencoder (VAE) to compress videos along the spatial and temporal dimensions.
+
+Begin by loading the [`CogVideoXPipeline`] and passing an initial text or image to generate a video.
+<Tip>
+
+CogVideoX is available for image-to-video and text-to-video. [THUDM/CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) uses the [`CogVideoXImageToVideoPipeline`] for image-to-video. [THUDM/CogVideoX-5b](https://huggingface.co/THUDM/CogVideoX-5b) and [THUDM/CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b) are available for text-to-video with the [`CogVideoXPipeline`].
+ 
+</Tip>
+
+```py
+import torch
+from diffusers import CogVideoXImageToVideoPipeline
+from diffusers.utils import export_to_video, load_image
+
+prompt = "A vast, shimmering ocean flows gracefully under a twilight sky, its waves undulating in a mesmerizing dance of blues and greens. The surface glints with the last rays of the setting sun, casting golden highlights that ripple across the water. Seagulls soar above, their cries blending with the gentle roar of the waves. The horizon stretches infinitely, where the ocean meets the sky in a seamless blend of hues. Close-ups reveal the intricate patterns of the waves, capturing the fluidity and dynamic beauty of the sea in motion."
+image = load_image(image="cogvideox_rocket.png")
+pipe = CogVideoXImageToVideoPipeline.from_pretrained(
+    "THUDM/CogVideoX-5b-I2V",
+    torch_dtype=torch.bfloat16
+)
+ 
+pipe.vae.enable_tiling()
+pipe.vae.enable_slicing()
+
+video = pipe(
+    prompt=prompt,
+    image=image,
+    num_videos_per_prompt=1,
+    num_inference_steps=50,
+    num_frames=49,
+    guidance_scale=6,
+    generator=torch.Generator(device="cuda").manual_seed(42),
+).frames[0]
+
+export_to_video(video, "output.mp4", fps=8)
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_rocket.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cogvideox/cogvideox_outrocket.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
+  </div>
+</div>
+
+ 
 ### Stable Video Diffusion
 
 [SVD](../api/pipelines/svd) is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. You can learn more details about model, like micro-conditioning, in the [Stable Video Diffusion](../using-diffusers/svd) guide.

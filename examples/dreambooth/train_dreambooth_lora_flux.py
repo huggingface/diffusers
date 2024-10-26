@@ -72,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -985,7 +985,6 @@ def encode_prompt(
     text_input_ids_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
-    batch_size = len(prompt)
     dtype = text_encoders[0].dtype
 
     pooled_prompt_embeds = _encode_prompt_with_clip(
@@ -1007,8 +1006,7 @@ def encode_prompt(
         text_input_ids=text_input_ids_list[1] if text_input_ids_list else None,
     )
 
-    text_ids = torch.zeros(batch_size, prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
-    text_ids = text_ids.repeat(num_images_per_prompt, 1, 1)
+    text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
     return prompt_embeds, pooled_prompt_embeds, text_ids
 
@@ -1646,12 +1644,12 @@ def main(args):
                 model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
-                vae_scale_factor = 2 ** (len(vae_config_block_out_channels))
+                vae_scale_factor = 2 ** (len(vae_config_block_out_channels) - 1)
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    model_input.shape[2],
-                    model_input.shape[3],
+                    model_input.shape[2] // 2,
+                    model_input.shape[3] // 2,
                     accelerator.device,
                     weight_dtype,
                 )
@@ -1705,8 +1703,8 @@ def main(args):
                 )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2] * vae_scale_factor / 2),
-                    width=int(model_input.shape[3] * vae_scale_factor / 2),
+                    height=model_input.shape[2] * vae_scale_factor,
+                    width=model_input.shape[3] * vae_scale_factor,
                     vae_scale_factor=vae_scale_factor,
                 )
 
