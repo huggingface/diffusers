@@ -31,6 +31,7 @@ else:
     _import_structure["pipeline_controlnet_sd_xl"] = ["StableDiffusionXLControlNetPipeline"]
     _import_structure["pipeline_controlnet_sd_xl_img2img"] = ["StableDiffusionXLControlNetImg2ImgPipeline"]
     _import_structure["pipeline_controlnet_union_sd_xl"] = ["StableDiffusionXLControlNetUnionPipeline"]
+    _import_structure["pipeline_controlnet_union_sd_xl_img2img"] = ["StableDiffusionXLControlNetUnionImg2ImgPipeline"]
 try:
     if not (is_transformers_available() and is_flax_available()):
         raise OptionalDependencyNotAvailable()
@@ -59,6 +60,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
         from .pipeline_controlnet_sd_xl_img2img import StableDiffusionXLControlNetImg2ImgPipeline
         from .pipeline_controlnet_union_sd_xl import StableDiffusionXLControlNetUnionPipeline
+        from .pipeline_controlnet_union_sd_xl_img2img import StableDiffusionXLControlNetUnionImg2ImgPipeline
 
     try:
         if not (is_transformers_available() and is_flax_available()):
