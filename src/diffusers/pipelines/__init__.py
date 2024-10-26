@@ -163,6 +163,7 @@ else:
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
             "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
             "StableDiffusionXLControlNetUnionImg2ImgPipeline",
         ]
     )
@@ -498,6 +499,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
             StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
             StableDiffusionXLControlNetUnionPipeline,
         )
         from .controlnet_hunyuandit import (
