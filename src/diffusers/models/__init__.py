@@ -46,6 +46,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
+    _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
