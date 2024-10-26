@@ -33,6 +33,12 @@ def swap_scale_shift(weight, dim):
     return new_weight
 
 
+def swap_proj_gate(weight):
+    proj, gate = weight.chunk(2, dim=0)
+    new_weight = torch.cat([gate, proj], dim=0)
+    return new_weight
+
+
 def convert_mochi_transformer_checkpoint_to_diffusers(ckpt_path):
     original_state_dict = load_file(ckpt_path, device="cpu")
     new_state_dict = {}
@@ -119,12 +125,12 @@ def convert_mochi_transformer_checkpoint_to_diffusers(ckpt_path):
             )
 
         # MLP
-        new_state_dict[block_prefix + "ff.net.0.proj.weight"] = original_state_dict.pop(old_prefix + "mlp_x.w1.weight")
+        new_state_dict[block_prefix + "ff.net.0.proj.weight"] = swap_proj_gate(original_state_dict.pop(old_prefix + "mlp_x.w1.weight"))
         new_state_dict[block_prefix + "ff.net.2.weight"] = original_state_dict.pop(old_prefix + "mlp_x.w2.weight")
         if i < num_layers - 1:
-            new_state_dict[block_prefix + "ff_context.net.0.proj.weight"] = original_state_dict.pop(
+            new_state_dict[block_prefix + "ff_context.net.0.proj.weight"] = swap_proj_gate(original_state_dict.pop(
                 old_prefix + "mlp_y.w1.weight"
-            )
+            ))
             new_state_dict[block_prefix + "ff_context.net.2.weight"] = original_state_dict.pop(
                 old_prefix + "mlp_y.w2.weight"
             )

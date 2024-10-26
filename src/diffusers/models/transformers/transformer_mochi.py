@@ -110,7 +110,7 @@ class MochiTransformerBlock(nn.Module):
         self.norm3_context = RMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
         self.ff = FeedForward(
-            dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False, flip_gate=True
+            dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False
         )
         self.ff_context = None
         if not context_pre_only:
@@ -119,7 +119,6 @@ class MochiTransformerBlock(nn.Module):
                 inner_dim=self.ff_context_inner_dim,
                 activation_fn=activation_fn,
                 bias=False,
-                flip_gate=True,
             )
 
         self.norm4 = RMSNorm(dim, eps=eps, elementwise_affine=False)

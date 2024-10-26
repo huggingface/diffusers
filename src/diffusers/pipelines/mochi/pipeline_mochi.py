@@ -346,7 +346,6 @@ class MochiPipeline(DiffusionPipeline):
         prompt,
         height,
         width,
-        num_frames,
         callback_on_step_end_tensor_inputs=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -355,8 +354,6 @@ class MochiPipeline(DiffusionPipeline):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-        if (num_frames - 1) % self.vae_temporal_scale_factor != 0:
-            raise ValueError(f"Expected `num_frames - 1` to be divisible by {self.vae_temporal_scale_factor=}")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -577,7 +574,6 @@ class MochiPipeline(DiffusionPipeline):
             prompt=prompt,
             height=height,
             width=width,
-            num_frames=num_frames,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,

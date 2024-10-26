@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 from typing import Optional, Tuple, Union
 
 import torch
@@ -153,11 +154,11 @@ class MochiChunkedGroupNorm3D(nn.Module):
         self.chunk_size = chunk_size
 
     def forward(self, x: torch.Tensor = None) -> torch.Tensor:
-        batch_size, channels, num_frames, height, width = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
+        batch_size = x.size(0)
+        
+        x = x.permute(0, 2, 1, 3, 4).flatten(0, 1)
         output = torch.cat([self.norm_layer(chunk) for chunk in x.split(self.chunk_size, dim=0)], dim=0)
-        output = output.view(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+        output = output.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
 
         return output
 
@@ -520,8 +521,17 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
+        self.spatial_compression_ratio = functools.reduce(lambda x, y: x * y, spatial_expansions, 1)
+        self.temporal_compression_ratio = functools.reduce(lambda x, y: x * y, temporal_expansions, 1)
+
         self.use_slicing = False
         self.use_tiling = False
+
+        self.tile_sample_min_height = 256
+        self.tile_sample_min_width = 256
+
+        self.tile_sample_stride_height = 192
+        self.tile_sample_stride_width = 192
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, MochiDecoder3D):
@@ -531,8 +541,8 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         self,
         tile_sample_min_height: Optional[int] = None,
         tile_sample_min_width: Optional[int] = None,
-        tile_overlap_factor_height: Optional[float] = None,
-        tile_overlap_factor_width: Optional[float] = None,
+        tile_sample_stride_height: Optional[float] = None,
+        tile_sample_stride_width: Optional[float] = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -544,24 +554,18 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 The minimum height required for a sample to be separated into tiles across the height dimension.
             tile_sample_min_width (`int`, *optional*):
                 The minimum width required for a sample to be separated into tiles across the width dimension.
-            tile_overlap_factor_height (`int`, *optional*):
+            tile_sample_stride_height (`int`, *optional*):
                 The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
-                no tiling artifacts produced across the height dimension. Must be between 0 and 1. Setting a higher
-                value might cause more tiles to be processed leading to slow down of the decoding process.
-            tile_overlap_factor_width (`int`, *optional*):
-                The minimum amount of overlap between two consecutive horizontal tiles. This is to ensure that there
-                are no tiling artifacts produced across the width dimension. Must be between 0 and 1. Setting a higher
-                value might cause more tiles to be processed leading to slow down of the decoding process.
+                no tiling artifacts produced across the height dimension.
+            tile_sample_stride_width (`int`, *optional*):
+                The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling artifacts
+                produced across the width dimension.
         """
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
-        self.tile_latent_min_height = int(
-            self.tile_sample_min_height / (2 ** (len(self.config.block_out_channels) - 1))
-        )
-        self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
-        self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
+        self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
+        self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
 
     def disable_tiling(self) -> None:
         r"""
@@ -583,6 +587,21 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         decoding in one step.
         """
         self.use_slicing = False
+    
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        batch_size, num_channels, num_frames, height, width = z.shape
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
+            return self.tiled_decode(z, return_dict=return_dict)
+
+        dec = self.decoder(z)
+
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
 
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
@@ -600,13 +619,14 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 returned.
         """
         if self.use_slicing and z.shape[0] > 1:
-            decoded_slices = [self.decoder(z_slice) for z_slice in z.split(1)]
+            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
-            decoded = self.decoder(z)
+            decoded = self._decode(z).sample
 
         if not return_dict:
             return (decoded,)
+        
         return DecoderOutput(sample=decoded)
 
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
@@ -642,41 +662,26 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
 
         batch_size, num_channels, num_frames, height, width = z.shape
 
-        overlap_height = int(self.tile_latent_min_height * (1 - self.tile_overlap_factor_height))
-        overlap_width = int(self.tile_latent_min_width * (1 - self.tile_overlap_factor_width))
-        blend_extent_height = int(self.tile_sample_min_height * self.tile_overlap_factor_height)
-        blend_extent_width = int(self.tile_sample_min_width * self.tile_overlap_factor_width)
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_extent_height = self.tile_sample_min_height - self.tile_sample_stride_height
+        blend_extent_width = self.tile_sample_min_width - self.tile_sample_stride_width
         row_limit_height = self.tile_sample_min_height - blend_extent_height
         row_limit_width = self.tile_sample_min_width - blend_extent_width
-        frame_batch_size = self.num_latent_frames_batch_size
 
         # Split z into overlapping tiles and decode them separately.
         # The tiles have an overlap to avoid seams between tiles.
         rows = []
-        for i in range(0, height, overlap_height):
+        for i in range(0, height, tile_latent_stride_height):
             row = []
-            for j in range(0, width, overlap_width):
-                num_batches = max(num_frames // frame_batch_size, 1)
-                conv_cache = None
-                time = []
-
-                for k in range(num_batches):
-                    remaining_frames = num_frames % frame_batch_size
-                    start_frame = frame_batch_size * k + (0 if k == 0 else remaining_frames)
-                    end_frame = frame_batch_size * (k + 1) + remaining_frames
-                    tile = z[
-                        :,
-                        :,
-                        start_frame:end_frame,
-                        i : i + self.tile_latent_min_height,
-                        j : j + self.tile_latent_min_width,
-                    ]
-                    if self.post_quant_conv is not None:
-                        tile = self.post_quant_conv(tile)
-                    tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
-                    time.append(tile)
-
-                row.append(torch.cat(time, dim=2))
+            for j in range(0, width, tile_latent_stride_width):
+                # TODO(aryan): Implement frame-wise tiling
+                tile = z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                tile = self.decoder(tile)
+                row.append(tile)
             rows.append(row)
 
         result_rows = []
