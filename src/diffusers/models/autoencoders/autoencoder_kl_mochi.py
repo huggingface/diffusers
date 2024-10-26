@@ -155,7 +155,7 @@ class MochiChunkedGroupNorm3D(nn.Module):
 
     def forward(self, x: torch.Tensor = None) -> torch.Tensor:
         batch_size = x.size(0)
-        
+
         x = x.permute(0, 2, 1, 3, 4).flatten(0, 1)
         output = torch.cat([self.norm_layer(chunk) for chunk in x.split(self.chunk_size, dim=0)], dim=0)
         output = output.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3, 4)
@@ -558,8 +558,8 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
                 no tiling artifacts produced across the height dimension.
             tile_sample_stride_width (`int`, *optional*):
-                The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling artifacts
-                produced across the width dimension.
+                The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling
+                artifacts produced across the width dimension.
         """
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
@@ -587,7 +587,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         decoding in one step.
         """
         self.use_slicing = False
-    
+
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
@@ -626,7 +626,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (decoded,)
-        
+
         return DecoderOutput(sample=decoded)
 
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
