@@ -1595,11 +1595,10 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         # 8.2 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
-            keeps = [
-                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
-                for s, e in zip(control_guidance_start, control_guidance_end)
-            ]
-            controlnet_keep.append(keeps[0])
+            controlnet_keep.append(
+                1.0
+                - float(i / len(timesteps) < control_guidance_start or (i + 1) / len(timesteps) > control_guidance_end)
+            )
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         height, width = latents.shape[-2:]
