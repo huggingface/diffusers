@@ -725,6 +725,20 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
+        if not isinstance(controlnet_cond, (ControlNetUnionInput, ControlNetUnionInputProMax)):
+            raise ValueError(
+                "Expected type of `controlnet_cond` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
+            )
+        if len(controlnet_cond) != self.config.num_control_type:
+            if isinstance(controlnet_cond, ControlNetUnionInput):
+                raise ValueError(
+                    f"Expected num_control_type {self.config.num_control_type}, got {len(controlnet_cond)}. Try `ControlNetUnionInputProMax`."
+                )
+            elif isinstance(controlnet_cond, ControlNetUnionInputProMax):
+                raise ValueError(
+                    f"Expected num_control_type {self.config.num_control_type}, got {len(controlnet_cond)}. Try `ControlNetUnionInput`."
+                )
+
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
