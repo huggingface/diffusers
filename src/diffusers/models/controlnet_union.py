@@ -841,7 +841,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             x = layer(x)
 
         controlnet_cond_fuser = sample * 0.0
-        for idx, condition in enumerate(condition_list):
+        for idx, condition in enumerate(condition_list[:-1]):
             alpha = self.spatial_ch_projs(x[:, idx])
             alpha = alpha.unsqueeze(-1).unsqueeze(-1)
             controlnet_cond_fuser += condition + alpha
