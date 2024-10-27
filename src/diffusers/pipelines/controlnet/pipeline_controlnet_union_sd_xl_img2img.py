@@ -1334,11 +1334,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
 
         device = self._execution_device
 
-        global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, (ControlNetModel, ControlNetUnionModel))
-            else controlnet.nets[0].config.global_pool_conditions
-        )
+        global_pool_conditions = controlnet.config.global_pool_conditions
         guess_mode = guess_mode or global_pool_conditions
 
         # 3.1. Encode input prompt
