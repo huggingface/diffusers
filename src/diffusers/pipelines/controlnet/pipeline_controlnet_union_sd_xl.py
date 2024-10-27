@@ -209,10 +209,8 @@ class StableDiffusionXLControlNetUnionPipeline(
             A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded image latents.
-        controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
-            Provides additional conditioning to the `unet` during the denoising process. If you set multiple
-            ControlNets as a list, the outputs from each ControlNet are added together to create one combined
-            additional conditioning.
+        controlnet ([`ControlNetUnionModel`]`):
+            Provides additional conditioning to the `unet` during the denoising process.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -254,7 +252,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: ControlNetUnionModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -262,6 +260,9 @@ class StableDiffusionXLControlNetUnionPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
+
+        if not isinstance(controlnet, ControlNetUnionModel):
+            raise ValueError("Expected `controlnet` to be of type `ControlNetUnionModel`.")
 
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)
