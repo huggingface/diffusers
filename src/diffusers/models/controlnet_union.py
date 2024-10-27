@@ -366,7 +366,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         task_scale_factor = num_trans_channel**0.5
         self.task_embedding = nn.Parameter(task_scale_factor * torch.randn(num_control_type, num_trans_channel))
-        self.transformer_layers = nn.ModuleList(
+        self.transformer_layes = nn.ModuleList(
             [ResidualAttentionBlock(num_trans_channel, num_trans_head) for _ in range(num_trans_layer)]
         )
         self.spatial_ch_projs = zero_module(nn.Linear(num_trans_channel, num_proj_channel))
@@ -837,7 +837,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         condition_list.append(condition)
 
         x = torch.cat(inputs, dim=1)
-        for layer in self.transformer_layers:
+        for layer in self.transformer_layes:
             x = layer(x)
 
         controlnet_cond_fuser = sample * 0.0
