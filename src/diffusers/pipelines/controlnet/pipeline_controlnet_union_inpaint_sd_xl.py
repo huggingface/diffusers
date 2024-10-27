@@ -239,7 +239,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: ControlNetUnionModel,
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -248,6 +248,9 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
+
+        if not isinstance(controlnet, ControlNetUnionModel):
+            raise ValueError("Expected `controlnet` to be of type `ControlNetUnionModel`.")
 
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)
