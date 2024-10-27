@@ -1232,6 +1232,20 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
+        if not isinstance(image_list, (ControlNetUnionInput, ControlNetUnionInputProMax)):
+            raise ValueError(
+                "Expected type of `image_list` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
+            )
+        if len(image_list) != controlnet.config.num_control_type:
+            if isinstance(image_list, ControlNetUnionInput):
+                raise ValueError(
+                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image_list)}. Try `ControlNetUnionInputProMax`."
+                )
+            elif isinstance(image_list, ControlNetUnionInputProMax):
+                raise ValueError(
+                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image_list)}. Try `ControlNetUnionInput`."
+                )
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
