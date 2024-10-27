@@ -40,6 +40,7 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
+from ...models.controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -1184,10 +1185,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
-        control_image_list: Union[
-            PipelineImageInput,
-            List[PipelineImageInput],
-        ] = None,
+        control_image_list: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         padding_mask_crop: Optional[int] = None,
@@ -1226,8 +1224,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        union_control=False,
-        union_control_type=None,
         **kwargs,
     ):
         r"""
@@ -1433,12 +1429,13 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             )
 
         # 1. Check inputs
-        for control_image in control_image_list:
-            if control_image:
+        control_type = []
+        for image_type in control_image_list:
+            if control_image_list[image_type]:
                 self.check_inputs(
                     prompt,
                     prompt_2,
-                    control_image,
+                    control_image_list[image_type],
                     mask_image,
                     strength,
                     num_inference_steps,
@@ -1458,6 +1455,11 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     callback_on_step_end_tensor_inputs,
                     padding_mask_crop,
                 )
+                control_type.append(1)
+            else:
+                control_type.append(0)
+
+        control_type = torch.Tensor(control_type)
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
@@ -1553,10 +1555,10 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         init_image = init_image.to(dtype=torch.float32)
 
         # 5.2 Prepare control images
-        for idx in range(len(control_image_list)):
-            if control_image_list[idx]:
+        for image_type in control_image_list:
+            if control_image_list[image_type]:
                 control_image = self.prepare_control_image(
-                    image=control_image_list[idx],
+                    image=control_image_list[image_type],
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -1569,7 +1571,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     guess_mode=guess_mode,
                 )
                 height, width = control_image.shape[-2:]
-                control_image_list[idx] = control_image
+                control_image_list[image_type] = control_image
 
         # 5.3 Prepare mask
         mask = self.mask_processor.preprocess(
@@ -1709,6 +1711,11 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
 
+        control_type = (
+            control_type.reshape(1, -1)
+            .to(device, dtype=prompt_embeds.dtype)
+            .repeat(batch_size * num_images_per_prompt * 2, 1)
+        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1723,9 +1730,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                 added_cond_kwargs = {
                     "text_embeds": add_text_embeds,
                     "time_ids": add_time_ids,
-                    "control_type": union_control_type.reshape(1, -1)
-                    .to(device, dtype=prompt_embeds.dtype)
-                    .repeat(batch_size * num_images_per_prompt * 2, 1),
                 }
 
                 # controlnet(s) inference
@@ -1759,7 +1763,8 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond_list=control_image_list,
+                    controlnet_cond=control_image_list,
+                    control_type=control_type,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -18,8 +19,9 @@ from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..image_processor import PipelineImageInput
 from ..loaders.single_file_model import FromOriginalModelMixin
-from ..utils import logging
+from ..utils import BaseInput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -37,6 +39,52 @@ from .unets.unet_2d_blocks import (
     get_down_block,
 )
 from .unets.unet_2d_condition import UNet2DConditionModel
+
+
+@dataclass
+class ControlNetUnionInput(BaseInput):
+    """
+    The image input of [`ControlNetUnionModel`]:
+
+    - 0: openpose
+    - 1: depth
+    - 2: hed/pidi/scribble/ted
+    - 3: canny/lineart/anime_lineart/mlsd
+    - 4: normal
+    - 5: segment
+    """
+
+    openpose: PipelineImageInput = None
+    depth: PipelineImageInput = None
+    hed: PipelineImageInput = None
+    canny: PipelineImageInput = None
+    normal: PipelineImageInput = None
+    segment: PipelineImageInput = None
+
+
+@dataclass
+class ControlNetUnionInputProMax(BaseInput):
+    """
+    The image input of [`ControlNetUnionModel`] for ProMax variants:
+
+    - 0: openpose
+    - 1: depth
+    - 2: hed/pidi/scribble/ted
+    - 3: canny/lineart/anime_lineart/mlsd
+    - 4: normal
+    - 5: segment
+    - 6: tile
+    - 7: repaint
+    """
+
+    openpose: PipelineImageInput = None
+    depth: PipelineImageInput = None
+    hed: PipelineImageInput = None
+    canny: PipelineImageInput = None
+    normal: PipelineImageInput = None
+    segment: PipelineImageInput = None
+    tile: PipelineImageInput = None
+    repaint: PipelineImageInput = None
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -624,7 +672,8 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond_list: List[torch.Tensor],
+        controlnet_cond: Union[ControlNetUnionInput, ControlNetUnionInputProMax],
+        control_type: torch.Tensor,
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -644,8 +693,11 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond_list (`List[torch.Tensor]`):
-                List of the conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            controlnet_cond (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
+                The conditional input tensors.
+            control_type (`torch.Tensor`):
+                A tensor of shape `(batch, num_control_type)` with values `0` or `1` depending on whether the
+                control type is used.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
@@ -743,7 +795,6 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 add_embeds = add_embeds.to(emb.dtype)
                 aug_emb = self.add_embedding(add_embeds)
 
-        control_type = added_cond_kwargs.get("control_type")
         control_embeds = self.control_type_proj(control_type.flatten())
         control_embeds = control_embeds.reshape((t_emb.shape[0], -1))
         control_embeds = control_embeds.to(emb.dtype)
@@ -753,32 +804,33 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # 2. pre-process
         sample = self.conv_in(sample)
-        indices = torch.nonzero(control_type[0])
 
         inputs = []
         condition_list = []
 
-        for idx in range(indices.shape[0] + 1):
-            if idx == indices.shape[0]:
-                controlnet_cond = sample
-                feat_seq = torch.mean(controlnet_cond, dim=(2, 3))
-            else:
-                controlnet_cond = self.controlnet_cond_embedding(controlnet_cond_list[indices[idx][0]])
-                feat_seq = torch.mean(controlnet_cond, dim=(2, 3))
-                feat_seq = feat_seq + self.task_embedding[indices[idx][0]]
-
+        for idx, image_type in enumerate(controlnet_cond):
+            if controlnet_cond[image_type] is None:
+                continue
+            condition = self.controlnet_cond_embedding(controlnet_cond[image_type])
+            feat_seq = torch.mean(condition, dim=(2, 3))
+            feat_seq = feat_seq + self.task_embedding[idx]
             inputs.append(feat_seq.unsqueeze(1))
-            condition_list.append(controlnet_cond)
+            condition_list.append(condition)
+
+        condition = sample
+        feat_seq = torch.mean(condition, dim=(2, 3))
+        inputs.append(feat_seq.unsqueeze(1))
+        condition_list.append(condition)
 
         x = torch.cat(inputs, dim=1)
         for layer in self.transformer_layers:
             x = layer(x)
 
         controlnet_cond_fuser = sample * 0.0
-        for idx in range(indices.shape[0]):
+        for idx, condition in enumerate(condition_list):
             alpha = self.spatial_ch_projs(x[:, idx])
             alpha = alpha.unsqueeze(-1).unsqueeze(-1)
-            controlnet_cond_fuser += condition_list[idx] + alpha
+            controlnet_cond_fuser += condition + alpha
 
         sample = sample + controlnet_cond_fuser
 
