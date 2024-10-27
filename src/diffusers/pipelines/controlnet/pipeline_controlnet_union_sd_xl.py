@@ -1282,8 +1282,6 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 4. Prepare image
-        assert isinstance(controlnet, ControlNetUnionModel)
-
         for image_type in image_list:
             if image_list[image_type]:
                 image = self.prepare_image(
@@ -1447,18 +1445,17 @@ class StableDiffusionXLControlNetUnionPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                if isinstance(controlnet, ControlNetUnionModel):
-                    down_block_res_samples, mid_block_res_sample = self.controlnet(
-                        control_model_input,
-                        t,
-                        encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond=image_list,
-                        control_type=control_type,
-                        conditioning_scale=cond_scale,
-                        guess_mode=guess_mode,
-                        added_cond_kwargs=controlnet_added_cond_kwargs,
-                        return_dict=False,
-                    )
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=image_list,
+                    control_type=control_type,
+                    conditioning_scale=cond_scale,
+                    guess_mode=guess_mode,
+                    added_cond_kwargs=controlnet_added_cond_kwargs,
+                    return_dict=False,
+                )
 
                 if guess_mode and self.do_classifier_free_guidance:
                     # Inferred ControlNet only for the conditional batch.
