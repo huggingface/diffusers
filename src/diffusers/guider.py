@@ -12,33 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from dataclasses import dataclass, field
-from enum import Enum
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import PIL
 import torch
-from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
-
-from .configuration_utils import ConfigMixin
-from .image_processor import VaeImageProcessor
-from .loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from .models import ControlNetModel, ImageProjection
-from .models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor, Attention, AttentionProcessor, PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0
-from .models.lora import adjust_lora_scale_text_encoder
-from .utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from .utils.torch_utils import is_compiled_module, randn_tensor
-from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from .pipelines.pipeline_loading_utils import _fetch_class_library_tuple
-from .pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-
-
 import torch.nn as nn
-import re
+
+from .models.attention_processor import (
+    Attention,
+    AttentionProcessor,
+    PAGCFGIdentitySelfAttnProcessor2_0,
+    PAGIdentitySelfAttnProcessor2_0,
+)
+from .utils import logging
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -55,7 +45,6 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-
 class CFGGuider:
     """
     This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
@@ -64,7 +53,7 @@ class CFGGuider:
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1.0 and not self._disable_guidance
-    
+
     @property
     def guidance_rescale(self):
         return self._guidance_rescale
@@ -76,7 +65,7 @@ class CFGGuider:
     @property
     def batch_size(self):
         return self._batch_size
-    
+
     def set_guider(self, pipeline, guider_kwargs: Dict[str, Any]):
         # a flag to disable CFG, e.g. we disable it for LCM and use a guidance scale embedding instead
         disable_guidance = guider_kwargs.get("disable_guidance", False)
@@ -95,18 +84,17 @@ class CFGGuider:
     def reset_guider(self, pipeline):
         pass
 
-    def maybe_update_guider(self, pipeline, timestep):  
+    def maybe_update_guider(self, pipeline, timestep):
         pass
 
     def maybe_update_input(self, pipeline, cond_input):
         pass
-    
-    
+
     def _maybe_split_prepared_input(self, cond):
         """
         Process and potentially split the conditional input for Classifier-Free Guidance (CFG).
 
-        This method handles inputs that may already have CFG applied (i.e. when `cond` is output of `prepare_input`). 
+        This method handles inputs that may already have CFG applied (i.e. when `cond` is output of `prepare_input`).
         It determines whether to split the input based on its batch size relative to the expected batch size.
 
         Args:
@@ -118,15 +106,14 @@ class CFGGuider:
                 - The positive conditional input (cond_input)
         """
         if cond.shape[0] == self.batch_size * 2:
-            neg_cond = cond[0:self.batch_size]
-            cond = cond[self.batch_size:]
+            neg_cond = cond[0 : self.batch_size]
+            cond = cond[self.batch_size :]
             return neg_cond, cond
         elif cond.shape[0] == self.batch_size:
             return cond, cond
         else:
             raise ValueError(f"Unsupported input shape: {cond.shape}")
-    
-    
+
     def _is_prepared_input(self, cond):
         """
         Check if the input is already prepared for Classifier-Free Guidance (CFG).
@@ -138,12 +125,9 @@ class CFGGuider:
             bool: True if the input is already prepared, False otherwise.
         """
         cond_tensor = cond[0] if isinstance(cond, (list, tuple)) else cond
-        print(f"cond_tensor.shape[0]: {cond_tensor.shape[0]}")
-        print(f"self.batch_size: {self.batch_size}")
 
         return cond_tensor.shape[0] == self.batch_size * 2
 
-    
     def prepare_input(
         self,
         cond_input: Union[torch.Tensor, List[torch.Tensor]],
@@ -157,7 +141,7 @@ class CFGGuider:
                 The conditional input. It can be a single tensor or a
             list of tensors. It must have the same length as `negative_cond_input`.
             negative_cond_input (Union[torch.Tensor, List[torch.Tensor]]): The negative conditional input. It can be a
-                single tensor or a list of tensors. It must have the same length as `cond_input`.   
+                single tensor or a list of tensors. It must have the same length as `cond_input`.
 
         Returns:
             Union[torch.Tensor, List[torch.Tensor]]: The prepared input.
@@ -166,21 +150,22 @@ class CFGGuider:
         # we check if cond_input already has CFG applied, and split if it is the case.
         if self._is_prepared_input(cond_input) and self.do_classifier_free_guidance:
             return cond_input
-        
+
         if self._is_prepared_input(cond_input) and not self.do_classifier_free_guidance:
             if isinstance(cond_input, list):
                 negative_cond_input, cond_input = zip(*[self._maybe_split_prepared_input(cond) for cond in cond_input])
             else:
                 negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
-        
+
         if not self._is_prepared_input(cond_input) and negative_cond_input is None:
-            raise ValueError("`negative_cond_input` is required when cond_input does not already contains negative conditional input")
+            raise ValueError(
+                "`negative_cond_input` is required when cond_input does not already contains negative conditional input"
+            )
 
         if isinstance(cond_input, (list, tuple)):
-            
             if not self.do_classifier_free_guidance:
                 return cond_input
-            
+
             if len(negative_cond_input) != len(cond_input):
                 raise ValueError("The length of negative_cond_input and cond_input must be the same.")
             prepared_input = []
@@ -189,9 +174,8 @@ class CFGGuider:
                     raise ValueError("The batch size of negative_cond_input and cond_input must be the same.")
                 prepared_input.append(torch.cat([neg_cond, cond], dim=0))
             return prepared_input
-        
+
         elif isinstance(cond_input, torch.Tensor):
-            
             if not self.do_classifier_free_guidance:
                 return cond_input
             else:
@@ -203,22 +187,18 @@ class CFGGuider:
     def apply_guidance(
         self,
         model_output: torch.Tensor,
-        timesteps: int = None,
+        timestep: int = None,
     ) -> torch.Tensor:
-
         if not self.do_classifier_free_guidance:
             return model_output
 
         noise_pred_uncond, noise_pred_text = model_output.chunk(2)
         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-        
+
         if self.guidance_rescale > 0.0:
             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
             noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
         return noise_pred
-
-
-
 
 
 class PAGGuider:
@@ -226,12 +206,13 @@ class PAGGuider:
     This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
     """
 
-    def __init__(self, 
-                 pag_applied_layers: Union[str, List[str]], 
-                 pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (
-                     PAGCFGIdentitySelfAttnProcessor2_0(),
-                     PAGIdentitySelfAttnProcessor2_0(),
-                 ),
+    def __init__(
+        self,
+        pag_applied_layers: Union[str, List[str]],
+        pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (
+            PAGCFGIdentitySelfAttnProcessor2_0(),
+            PAGIdentitySelfAttnProcessor2_0(),
+        ),
     ):
         r"""
         Set the the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
@@ -265,7 +246,6 @@ class PAGGuider:
 
         self.pag_applied_layers = pag_applied_layers
         self._pag_attn_processors = pag_attn_processors
-  
 
     def _set_pag_attn_processor(self, model, pag_applied_layers, do_classifier_free_guidance):
         r"""
@@ -308,42 +288,40 @@ class PAGGuider:
 
             for module in target_modules:
                 module.processor = pag_attn_proc
-    
 
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1 and not self._disable_guidance
-    
+
     @property
     def do_perturbed_attention_guidance(self):
         return self._pag_scale > 0 and not self._disable_guidance
-    
+
     @property
     def do_pag_adaptive_scaling(self):
         return self._pag_adaptive_scale > 0 and self._pag_scale > 0 and not self._disable_guidance
-    
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
-    
+
     @property
     def guidance_rescale(self):
         return self._guidance_rescale
-    
+
     @property
     def batch_size(self):
         return self._batch_size
-    
+
     @property
     def pag_scale(self):
         return self._pag_scale
-    
+
     @property
     def pag_adaptive_scale(self):
         return self._pag_adaptive_scale
-    
-    def set_guider(self, pipeline, guider_kwargs: Dict[str, Any]):
 
+    def set_guider(self, pipeline, guider_kwargs: Dict[str, Any]):
         pag_scale = guider_kwargs.get("pag_scale", 3.0)
         pag_adaptive_scale = guider_kwargs.get("pag_adaptive_scale", 0.0)
 
@@ -367,24 +345,21 @@ class PAGGuider:
         if not hasattr(pipeline, "original_attn_proc") or pipeline.original_attn_proc is None:
             self.original_attn_proc = pipeline.unet.attn_processors
             self._set_pag_attn_processor(
-                    model=pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer,
-                    pag_applied_layers=self.pag_applied_layers,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
-                )
-    
+                model=pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer,
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+            )
 
     def reset_guider(self, pipeline):
         if self.do_perturbed_attention_guidance:
             pipeline.unet.set_attn_processor(self.original_attn_proc)
             pipeline.original_attn_proc = None
 
-
-    def maybe_update_guider(self, pipeline, timestep):  
+    def maybe_update_guider(self, pipeline, timestep):
         pass
 
     def maybe_update_input(self, pipeline, cond_input):
         pass
-    
 
     def _is_prepared_input(self, cond):
         """
@@ -399,12 +374,12 @@ class PAGGuider:
         cond_tensor = cond[0] if isinstance(cond, (list, tuple)) else cond
 
         return cond_tensor.shape[0] == self.batch_size * 3
-    
+
     def _maybe_split_prepared_input(self, cond):
         """
         Process and potentially split the conditional input for Classifier-Free Guidance (CFG).
 
-        This method handles inputs that may already have CFG applied (i.e. when `cond` is output of `prepare_input`). 
+        This method handles inputs that may already have CFG applied (i.e. when `cond` is output of `prepare_input`).
         It determines whether to split the input based on its batch size relative to the expected batch size.
 
         Args:
@@ -416,15 +391,14 @@ class PAGGuider:
                 - The positive conditional input (cond_input)
         """
         if cond.shape[0] == self.batch_size * 3:
-            neg_cond = cond[0:self.batch_size]
-            cond = cond[self.batch_size:self.batch_size * 2]
+            neg_cond = cond[0 : self.batch_size]
+            cond = cond[self.batch_size : self.batch_size * 2]
             return neg_cond, cond
         elif cond.shape[0] == self.batch_size:
             return cond, cond
         else:
             raise ValueError(f"Unsupported input shape: {cond.shape}")
-    
-    
+
     def prepare_input(
         self,
         cond_input: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]],
@@ -437,59 +411,60 @@ class PAGGuider:
             cond_input (Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]):
                 The conditional input. It can be a single tensor or a
             list of tensors. It must have the same length as `negative_cond_input`.
-            negative_cond_input (Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]): The negative conditional input. It can be a
-                single tensor or a list of tensors. It must have the same length as `cond_input`.   
+            negative_cond_input (Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]):
+                The negative conditional input. It can be a single tensor or a list of tensors. It must have the same
+                length as `cond_input`.
 
         Returns:
             Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]: The prepared input.
         """
 
         # we check if cond_input already has CFG applied, and split if it is the case.
-        
+
         if self._is_prepared_input(cond_input) and self.do_perturbed_attention_guidance:
             return cond_input
-        
+
         if self._is_prepared_input(cond_input) and not self.do_perturbed_attention_guidance:
             if isinstance(cond_input, list):
                 negative_cond_input, cond_input = zip(*[self._maybe_split_prepared_input(cond) for cond in cond_input])
             else:
                 negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
-        
+
         if not self._is_prepared_input(cond_input) and negative_cond_input is None:
-            raise ValueError("`negative_cond_input` is required when cond_input does not already contains negative conditional input")
-        
+            raise ValueError(
+                "`negative_cond_input` is required when cond_input does not already contains negative conditional input"
+            )
+
         if isinstance(cond_input, (list, tuple)):
-            
             if not self.do_perturbed_attention_guidance:
                 return cond_input
-            
+
             if len(negative_cond_input) != len(cond_input):
                 raise ValueError("The length of negative_cond_input and cond_input must be the same.")
-            
+
             prepared_input = []
             for neg_cond, cond in zip(negative_cond_input, cond_input):
                 if neg_cond.shape[0] != cond.shape[0]:
                     raise ValueError("The batch size of negative_cond_input and cond_input must be the same.")
-                
+
                 cond = torch.cat([cond] * 2, dim=0)
                 if self.do_classifier_free_guidance:
                     prepared_input.append(torch.cat([neg_cond, cond], dim=0))
                 else:
                     prepared_input.append(cond)
-            
+
             return prepared_input
 
         elif isinstance(cond_input, torch.Tensor):
-            
             if not self.do_perturbed_attention_guidance:
                 return cond_input
-            
+
             cond_input = torch.cat([cond_input] * 2, dim=0)
             if self.do_classifier_free_guidance:
                 return torch.cat([negative_cond_input, cond_input], dim=0)
             else:
                 return cond_input
-        
+
         else:
             raise ValueError(f"Unsupported input type: {type(negative_cond_input)} and {type(cond_input)}")
 
@@ -498,10 +473,9 @@ class PAGGuider:
         model_output: torch.Tensor,
         timestep: int,
     ) -> torch.Tensor:
-
         if not self.do_perturbed_attention_guidance:
             return model_output
-        
+
         if self.do_pag_adaptive_scaling:
             pag_scale = max(self._pag_scale - self._pag_adaptive_scale * (1000 - timestep), 0)
         else:
@@ -521,5 +495,5 @@ class PAGGuider:
         if self.guidance_rescale > 0.0:
             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
             noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
-        
+
         return noise_pred
