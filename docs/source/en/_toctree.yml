@@ -219,6 +219,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/inputs
+      title: Inputs
     - local: api/quantization
       title: Quantization
     title: Main Classes

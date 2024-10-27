@@ -43,6 +43,7 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
+from ...models.controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -1016,7 +1017,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image_list: PipelineImageInput = None,
+        image_list: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -1054,8 +1055,6 @@ class StableDiffusionXLControlNetUnionPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        union_control=False,
-        union_control_type=None,
         **kwargs,
     ):
         r"""
@@ -1067,8 +1066,10 @@ class StableDiffusionXLControlNetUnionPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
-                    `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+            image_list (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
+                In turn this supports (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
+                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]`
+                    or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
                 as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
@@ -1244,12 +1245,13 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 1. Check inputs. Raise error if not correct
-        for image in image_list:
-            if image:
+        control_type = []
+        for image_type in image_list:
+            if image_list[image_type]:
                 self.check_inputs(
                     prompt,
                     prompt_2,
-                    image,
+                    image_list[image_type],
                     callback_steps,
                     negative_prompt,
                     negative_prompt_2,
@@ -1264,6 +1266,11 @@ class StableDiffusionXLControlNetUnionPipeline(
                     control_guidance_end,
                     callback_on_step_end_tensor_inputs,
                 )
+                control_type.append(1)
+            else:
+                control_type.append(0)
+
+        control_type = torch.Tensor(control_type)
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
@@ -1329,10 +1336,10 @@ class StableDiffusionXLControlNetUnionPipeline(
         # 4. Prepare image
         assert isinstance(controlnet, ControlNetUnionModel)
 
-        for idx in range(len(image_list)):
-            if image_list[idx]:
+        for image_type in image_list:
+            if image_list[image_type]:
                 image = self.prepare_image(
-                    image=image_list[idx],
+                    image=image_list[image_type],
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -1343,7 +1350,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                     guess_mode=guess_mode,
                 )
                 height, width = image.shape[-2:]
-                image_list[idx] = image
+                image_list[image_type] = image
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -1387,9 +1394,9 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 7.2 Prepare added time ids & embeddings
-        for image in image_list:
-            if isinstance(image, torch.Tensor):
-                original_size = original_size or image.shape[-2:]
+        for image_type in image_list:
+            if isinstance(image_list[image_type], torch.Tensor):
+                original_size = original_size or image_list[image_type].shape[-2:]
 
         target_size = target_size or (height, width)
         add_text_embeds = pooled_prompt_embeds
@@ -1448,6 +1455,12 @@ class StableDiffusionXLControlNetUnionPipeline(
         is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
+
+        control_type = (
+            control_type.reshape(1, -1)
+            .to(device, dtype=prompt_embeds.dtype)
+            .repeat(batch_size * num_images_per_prompt * 2, 1)
+        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1464,9 +1477,6 @@ class StableDiffusionXLControlNetUnionPipeline(
                 added_cond_kwargs = {
                     "text_embeds": add_text_embeds,
                     "time_ids": add_time_ids,
-                    "control_type": union_control_type.reshape(1, -1)
-                    .to(device, dtype=prompt_embeds.dtype)
-                    .repeat(batch_size * num_images_per_prompt * 2, 1),
                 }
 
                 # controlnet(s) inference
@@ -1497,7 +1507,8 @@ class StableDiffusionXLControlNetUnionPipeline(
                         control_model_input,
                         t,
                         encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond_list=image_list,
+                        controlnet_cond=image_list,
+                        control_type=control_type,
                         conditioning_scale=cond_scale,
                         guess_mode=guess_mode,
                         added_cond_kwargs=controlnet_added_cond_kwargs,

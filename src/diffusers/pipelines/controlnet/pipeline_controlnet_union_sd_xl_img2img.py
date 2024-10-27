@@ -43,6 +43,7 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
+from ...models.controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -1096,7 +1097,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
-        control_image_list: PipelineImageInput = None,
+        control_image_list: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 0.8,
@@ -1134,8 +1135,6 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        union_control=False,
-        union_control_type=None,
         **kwargs,
     ):
         r"""
@@ -1152,8 +1151,10 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The initial image will be used as the starting point for the image generation process. Can also accept
                 image latents as `image`, if passing latents directly, it will not be encoded again.
-            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
-                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+            control_image_list (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
+                In turn this supports (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
+                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]`
+                    or `List[List[PIL.Image.Image]]`)::
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also
                 be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
@@ -1335,12 +1336,13 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
             )
 
         # 1. Check inputs. Raise error if not correct
-        for control_image in control_image_list:
-            if control_image:
+        control_type = []
+        for image_type in control_image_list:
+            if control_image_list[image_type]:
                 self.check_inputs(
                     prompt,
                     prompt_2,
-                    control_image,
+                    control_image_list[image_type],
                     strength,
                     num_inference_steps,
                     callback_steps,
@@ -1357,6 +1359,11 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     control_guidance_end,
                     callback_on_step_end_tensor_inputs,
                 )
+                control_type.append(1)
+            else:
+                control_type.append(0)
+
+        control_type = torch.Tensor(control_type)
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
@@ -1421,10 +1428,10 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         # 4. Prepare image and controlnet_conditioning_image
         image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
-        for idx in range(len(control_image_list)):
-            if control_image_list[idx]:
+        for image_type in control_image_list:
+            if control_image_list[image_type]:
                 control_image = self.prepare_control_image(
-                    image=control_image_list[idx],
+                    image=control_image_list[image_type],
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -1435,7 +1442,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     guess_mode=guess_mode,
                 )
                 height, width = control_image.shape[-2:]
-                control_image_list[idx] = control_image
+                control_image_list[image_type] = control_image
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -1471,10 +1478,9 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
             )
 
         # 7.2 Prepare added time ids & embeddings
-        if isinstance(control_image, list):
-            original_size = original_size or control_image[0].shape[-2:]
-        else:
-            original_size = original_size or control_image.shape[-2:]
+        for image_type in control_image_list:
+            if isinstance(control_image_list[image_type], torch.Tensor):
+                original_size = original_size or control_image_list[image_type].shape[-2:]
         target_size = target_size or (height, width)
 
         if negative_original_size is None:
@@ -1511,6 +1517,11 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device)
+        control_type = (
+            control_type.reshape(1, -1)
+            .to(device, dtype=prompt_embeds.dtype)
+            .repeat(batch_size * num_images_per_prompt * 2, 1)
+        )
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -1526,9 +1537,6 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                 added_cond_kwargs = {
                     "text_embeds": add_text_embeds,
                     "time_ids": add_time_ids,
-                    "control_type": union_control_type.reshape(1, -1)
-                    .to(device, dtype=prompt_embeds.dtype)
-                    .repeat(batch_size * num_images_per_prompt * 2, 1),
                 }
 
                 # controlnet(s) inference
@@ -1557,7 +1565,8 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond_list=control_image_list,
+                    controlnet_cond=control_image_list,
+                    control_type=control_type,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
