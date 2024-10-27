@@ -2331,17 +2331,17 @@ class CustomPipelineBuilder:
             if name in input_params:
                 state.add_intermediate(name, input_params.pop(name))
 
-        # Add inputs to state, using defaults if not provided
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
         for name, default in default_params.items():
             if name in input_params:
                 state.add_input(name, input_params.pop(name))
-            else:
+            elif name not in state.inputs:
                 state.add_input(name, default)
 
         # Warn about unexpected inputs
         if len(input_params) > 0:
             logger.warning(f"Unexpected input '{input_params.keys()}' provided. This input will be ignored.")
-
         # Run the pipeline
         with torch.no_grad():
             for block in self.pipeline_blocks:
