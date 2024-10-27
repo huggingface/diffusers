@@ -282,11 +282,25 @@ class CFGGuider:
     This class is used to guide the pipeline with CFG (Classifier-Free Guidance).
     """
 
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0 and not self._disable_guidance
     
-    def set_up_guider(self, guider_kwargs: Dict[str, Any]):
-        do_classifier_free_guidance = guider_kwargs.get("do_classifier_free_guidance", None)
-        if do_classifier_free_guidance is None:
-            raise ValueError("do_classifier_free_guidance is not provided in guider_kwargs")
+    @property
+    def guidance_rescale(self):
+        return self._guidance_rescale
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def batch_size(self):
+        return self._batch_size
+    
+    def set_guider(self, pipeline, guider_kwargs: Dict[str, Any]):
+        # a flag to disable CFG, e.g. we disable it for LCM and use a guidance scale embedding instead
+        disable_guidance = guider_kwargs.get("disable_guidance", False)
         guidance_scale = guider_kwargs.get("guidance_scale", None)
         if guidance_scale is None:
             raise ValueError("guidance_scale is not provided in guider_kwargs")
@@ -294,14 +308,22 @@ class CFGGuider:
         batch_size = guider_kwargs.get("batch_size", None)
         if batch_size is None:
             raise ValueError("batch_size is not provided in guider_kwargs")
-        self.guidance_scale = guidance_scale
-        self.guidance_rescale = guidance_rescale
-        self.do_classifier_free_guidance = do_classifier_free_guidance
-        self.batch_size = batch_size
+        self._guidance_scale = guidance_scale
+        self._guidance_rescale = guidance_rescale
+        self._batch_size = batch_size
+        self._disable_guidance = disable_guidance
 
+    def reset_guider(self, pipeline):
+        pass
+
+    def maybe_update_guider(self, pipeline, timestep):  
+        pass
+
+    def maybe_update_input(self, pipeline, cond_input):
+        pass
     
     
-    def maybe_split_prepared_input(self, cond):
+    def _maybe_split_prepared_input(self, cond):
         """
         Process and potentially split the conditional input for Classifier-Free Guidance (CFG).
 
@@ -325,6 +347,24 @@ class CFGGuider:
         else:
             raise ValueError(f"Unsupported input shape: {cond.shape}")
     
+    
+    def _is_prepared_input(self, cond):
+        """
+        Check if the input is already prepared for Classifier-Free Guidance (CFG).
+
+        Args:
+            cond (torch.Tensor): The conditional input tensor to check.
+
+        Returns:
+            bool: True if the input is already prepared, False otherwise.
+        """
+        cond_tensor = cond[0] if isinstance(cond, (list, tuple)) else cond
+        print(f"cond_tensor.shape[0]: {cond_tensor.shape[0]}")
+        print(f"self.batch_size: {self.batch_size}")
+
+        return cond_tensor.shape[0] == self.batch_size * 2
+
+    
     def prepare_input(
         self,
         cond_input: Union[torch.Tensor, List[torch.Tensor]],
@@ -344,36 +384,47 @@ class CFGGuider:
             Union[torch.Tensor, List[torch.Tensor]]: The prepared input.
         """
 
-        # If negative_cond_input is None, we check if cond_input already has CFG applied, and split if it is the case.
-        if negative_cond_input is None:
+        # we check if cond_input already has CFG applied, and split if it is the case.
+        if self._is_prepared_input(cond_input) and self.do_classifier_free_guidance:
+            return cond_input
+        
+        if self._is_prepared_input(cond_input) and not self.do_classifier_free_guidance:
             if isinstance(cond_input, list):
-                negative_cond_input, cond_input = zip(*[self.maybe_split_prepared_input(cond) for cond in cond_input])
+                negative_cond_input, cond_input = zip(*[self._maybe_split_prepared_input(cond) for cond in cond_input])
             else:
-                negative_cond_input, cond_input = self.maybe_split_prepared_input(cond_input)
-   
-        if isinstance(negative_cond_input, list) and isinstance(cond_input, list):
+                negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
+        
+        if not self._is_prepared_input(cond_input) and negative_cond_input is None:
+            raise ValueError("`negative_cond_input` is required when cond_input does not already contains negative conditional input")
+
+        if isinstance(cond_input, (list, tuple)):
+            
+            if not self.do_classifier_free_guidance:
+                return cond_input
+            
             if len(negative_cond_input) != len(cond_input):
                 raise ValueError("The length of negative_cond_input and cond_input must be the same.")
             prepared_input = []
             for neg_cond, cond in zip(negative_cond_input, cond_input):
                 if neg_cond.shape[0] != cond.shape[0]:
                     raise ValueError("The batch size of negative_cond_input and cond_input must be the same.")
-                if self.do_classifier_free_guidance:
-                    prepared_input.append(torch.cat([neg_cond, cond], dim=0))
-                else:
-                    prepared_input.append(cond)
+                prepared_input.append(torch.cat([neg_cond, cond], dim=0))
             return prepared_input
-        elif isinstance(negative_cond_input, torch.Tensor) and isinstance(cond_input, torch.Tensor):
-            if self.do_classifier_free_guidance:
-                return torch.cat([negative_cond_input, cond_input], dim=0)
-            else:
+        
+        elif isinstance(cond_input, torch.Tensor):
+            
+            if not self.do_classifier_free_guidance:
                 return cond_input
+            else:
+                return torch.cat([negative_cond_input, cond_input], dim=0)
+
         else:
-            raise ValueError(f"Unsupported input type: {type(negative_cond_input)} and {type(cond_input)}")
+            raise ValueError(f"Unsupported input type: {type(cond_input)}")
 
     def apply_guidance(
         self,
         model_output: torch.Tensor,
+        timesteps: int = None,
     ) -> torch.Tensor:
 
         if not self.do_classifier_free_guidance:
@@ -381,6 +432,7 @@ class CFGGuider:
 
         noise_pred_uncond, noise_pred_text = model_output.chunk(2)
         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+        
         if self.guidance_rescale > 0.0:
             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
             noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
@@ -524,8 +576,6 @@ class SDXLCustomPipeline(
         num_images_per_prompt,
         device,
         dtype,
-        do_classifier_free_guidance=False,
-        guess_mode=False,
     ):
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
@@ -1922,20 +1972,19 @@ class DenoiseStep(PipelineBlock):
 
         timesteps = state.get_intermediate("timesteps")
         num_inference_steps = state.get_intermediate("num_inference_steps")
-
-        do_classifier_free_guidance = guidance_scale > 1.0
+        disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
 
         # adding default guider arguments: do_classifier_free_guidance, guidance_scale, guidance_rescale
         guider_kwargs = guider_kwargs or {}
         guider_kwargs = {
             **guider_kwargs,
-            "do_classifier_free_guidance": do_classifier_free_guidance,
+            "disable_guidance": disable_guidance,
             "guidance_scale": guidance_scale,
             "guidance_rescale": guidance_rescale,
             "batch_size": batch_size,
         }
 
-        pipeline.guider.set_up_guider(guider_kwargs)
+        pipeline.guider.set_guider(pipeline, guider_kwargs)
         # Prepare conditional inputs using the guider
         prompt_embeds = pipeline.guider.prepare_input(
             prompt_embeds,
@@ -1962,7 +2011,7 @@ class DenoiseStep(PipelineBlock):
         with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = pipeline.guider.prepare_input(latents)
+                latent_model_input = pipeline.guider.prepare_input(latents, latents)
                 latent_model_input = pipeline.scheduler.scale_model_input(latent_model_input, t)
                 # predict the noise residual
                 noise_pred = pipeline.unet(
@@ -1977,6 +2026,7 @@ class DenoiseStep(PipelineBlock):
                 # perform guidance
                 noise_pred = pipeline.guider.apply_guidance(
                     noise_pred, 
+                    timestep = t,
                 )
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -1989,6 +2039,7 @@ class DenoiseStep(PipelineBlock):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0):
                     progress_bar.update()
 
+        pipeline.guider.reset_guider(pipeline)
         state.add_intermediate("latents", latents)
 
         return pipeline, state
@@ -2091,7 +2142,6 @@ class ControlNetDenoiseStep(PipelineBlock):
 
         timestep_cond = state.get_intermediate("timestep_cond")
 
-        do_classifier_free_guidance = guidance_scale > 1.0
         device = pipeline._execution_device
 
         height, width = latents.shape[-2:]
@@ -2133,8 +2183,6 @@ class ControlNetDenoiseStep(PipelineBlock):
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-                guess_mode=guess_mode,
             )
         elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
@@ -2148,8 +2196,6 @@ class ControlNetDenoiseStep(PipelineBlock):
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
-                    do_classifier_free_guidance=do_classifier_free_guidance,
-                    guess_mode=guess_mode,
                 )
 
                 control_images.append(control_image)
@@ -2169,16 +2215,17 @@ class ControlNetDenoiseStep(PipelineBlock):
 
 
         # Prepare conditional inputs for unet using the guider
-        # adding default guider arguments: do_classifier_free_guidance, guidance_scale, guidance_rescale
+        # adding default guider arguments: disable_guidance, guidance_scale, guidance_rescale
+        disable_guidance = True if pipeline.unet.config.time_cond_proj_dim is not None else False
         guider_kwargs = guider_kwargs or {}
         guider_kwargs = {
             **guider_kwargs,
-            "do_classifier_free_guidance": do_classifier_free_guidance,
+            "disable_guidance": disable_guidance,
             "guidance_scale": guidance_scale,
             "guidance_rescale": guidance_rescale,
             "batch_size": batch_size,
         }
-        pipeline.guider.set_up_guider(guider_kwargs)
+        pipeline.guider.set_guider(pipeline, guider_kwargs)
         prompt_embeds = pipeline.guider.prepare_input(
             prompt_embeds,
             negative_prompt_embeds,
@@ -2198,16 +2245,16 @@ class ControlNetDenoiseStep(PipelineBlock):
         }
 
         # Prepare conditional inputs for controlnet using the guider
-        controlnet_do_classifier_free_guidance = do_classifier_free_guidance and not guess_mode
+        controlnet_disable_guidance = True if disable_guidance or guess_mode else False
         controlnet_guider_kwargs = guider_kwargs or {}
-        controlnet_guider_kwargs = {
+        controlnet_guider_kwargs = {    
             **controlnet_guider_kwargs,
-            "do_classifier_free_guidance": controlnet_do_classifier_free_guidance,
+            "disable_guidance": controlnet_disable_guidance,
             "guidance_scale": guidance_scale,
             "guidance_rescale": guidance_rescale,
             "batch_size": batch_size,
         }
-        pipeline.controlnet_guider.set_up_guider(controlnet_guider_kwargs)
+        pipeline.controlnet_guider.set_guider(pipeline, controlnet_guider_kwargs)
         controlnet_prompt_embeds = pipeline.controlnet_guider.prepare_input(prompt_embeds)
         controlnet_added_cond_kwargs = {
             "text_embeds": pipeline.controlnet_guider.prepare_input(pooled_prompt_embeds),
@@ -2215,7 +2262,7 @@ class ControlNetDenoiseStep(PipelineBlock):
         }
         # controlnet-specific inputs: control_image
         control_image = pipeline.controlnet_guider.prepare_input(
-            control_image
+            control_image, control_image
         )
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -2225,10 +2272,10 @@ class ControlNetDenoiseStep(PipelineBlock):
         with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # prepare latents for unet using the guider
-                latent_model_input = pipeline.guider.prepare_input(latents)
+                latent_model_input = pipeline.guider.prepare_input(latents, latents)
 
                 # prepare latents for controlnet using the guider
-                control_model_input = pipeline.controlnet_guider.prepare_input(latents)
+                control_model_input = pipeline.controlnet_guider.prepare_input(latents, latents)
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -2248,11 +2295,10 @@ class ControlNetDenoiseStep(PipelineBlock):
                     return_dict=False,
                 )
 
-                if do_classifier_free_guidance and not controlnet_do_classifier_free_guidance:
-                    # when we apply guidance for unet, but not for controlnet:
-                    # add 0 to the unconditional batch
-                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+                # when we apply guidance for unet, but not for controlnet:
+                # add 0 to the unconditional batch
+                down_block_res_samples = pipeline.guider.prepare_input(down_block_res_samples, [torch.zeros_like(d) for d in down_block_res_samples])
+                mid_block_res_sample = pipeline.guider.prepare_input(mid_block_res_sample, torch.zeros_like(mid_block_res_sample))
 
                 noise_pred = pipeline.unet(
                     pipeline.scheduler.scale_model_input(latent_model_input, t),
@@ -2266,7 +2312,7 @@ class ControlNetDenoiseStep(PipelineBlock):
                     return_dict=False,
                 )[0]
                 # perform guidance
-                noise_pred = pipeline.guider.apply_guidance(noise_pred)
+                noise_pred = pipeline.guider.apply_guidance(noise_pred, timestep=t)
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = pipeline.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -2278,6 +2324,8 @@ class ControlNetDenoiseStep(PipelineBlock):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0):
                     progress_bar.update()
 
+        pipeline.guider.reset_guider(pipeline)
+        pipeline.controlnet_guider.reset_guider(pipeline)
         state.add_intermediate("latents", latents)
 
         return pipeline, state
@@ -2370,8 +2418,10 @@ class DecodeLatentsStep(PipelineBlock):
         return pipeline, state
 
 
-from diffusers.models.attention_processor import AttentionProcessor
-from diffusers.models.attention_processor import PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0
+from diffusers.models.attention_processor import Attention, AttentionProcessor, PAGCFGIdentitySelfAttnProcessor2_0, PAGIdentitySelfAttnProcessor2_0
+import torch.nn as nn
+import re
+
 
 class PAGGuider:
     """
@@ -2417,73 +2467,263 @@ class PAGGuider:
 
         self.pag_applied_layers = pag_applied_layers
         self._pag_attn_processors = pag_attn_processors
+  
+
+    def _set_pag_attn_processor(self, model, pag_applied_layers, do_classifier_free_guidance):
+        r"""
+        Set the attention processor for the PAG layers.
+        """
+        pag_attn_processors = self._pag_attn_processors
+        pag_attn_proc = pag_attn_processors[0] if do_classifier_free_guidance else pag_attn_processors[1]
+
+        def is_self_attn(module: nn.Module) -> bool:
+            r"""
+            Check if the module is self-attention module based on its name.
+            """
+            return isinstance(module, Attention) and not module.is_cross_attention
+
+        def is_fake_integral_match(layer_id, name):
+            layer_id = layer_id.split(".")[-1]
+            name = name.split(".")[-1]
+            return layer_id.isnumeric() and name.isnumeric() and layer_id == name
+
+        for layer_id in pag_applied_layers:
+            # for each PAG layer input, we find corresponding self-attention layers in the unet model
+            target_modules = []
+
+            for name, module in model.named_modules():
+                # Identify the following simple cases:
+                #   (1) Self Attention layer existing
+                #   (2) Whether the module name matches pag layer id even partially
+                #   (3) Make sure it's not a fake integral match if the layer_id ends with a number
+                #       For example, blocks.1, blocks.10 should be differentiable if layer_id="blocks.1"
+                if (
+                    is_self_attn(module)
+                    and re.search(layer_id, name) is not None
+                    and not is_fake_integral_match(layer_id, name)
+                ):
+                    logger.debug(f"Applying PAG to layer: {name}")
+                    target_modules.append(module)
+
+            if len(target_modules) == 0:
+                raise ValueError(f"Cannot find PAG layer to set attention processor for: {layer_id}")
+
+            for module in target_modules:
+                module.processor = pag_attn_proc
+    
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1 and not self._disable_guidance
+    
+    @property
+    def do_perturbed_attention_guidance(self):
+        return self._pag_scale > 0 and not self._disable_guidance
+    
+    @property
+    def do_pag_adaptive_scaling(self):
+        return self._pag_adaptive_scale > 0 and self._pag_scale > 0 and not self._disable_guidance
+    
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+    
+    @property
+    def guidance_rescale(self):
+        return self._guidance_rescale
+    
+    @property
+    def batch_size(self):
+        return self._batch_size
+    
+    @property
+    def pag_scale(self):
+        return self._pag_scale
+    
+    @property
+    def pag_adaptive_scale(self):
+        return self._pag_adaptive_scale
+    
+    def set_guider(self, pipeline, guider_kwargs: Dict[str, Any]):
+
+        pag_scale = guider_kwargs.get("pag_scale", 3.0)
+        pag_adaptive_scale = guider_kwargs.get("pag_adaptive_scale", 0.0)
+
+        batch_size = guider_kwargs.get("batch_size", None)
+        if batch_size is None:
+            raise ValueError("batch_size is a required argument for PAGGuider")
+
+        guidance_scale = guider_kwargs.get("guidance_scale", None)
+        guidance_rescale = guider_kwargs.get("guidance_rescale", 0.0)
+        disable_guidance = guider_kwargs.get("disable_guidance", False)
+
+        if guidance_scale is None:
+            raise ValueError("guidance_scale is a required argument for PAGGuider")
+
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale
+        self._guidance_scale = guidance_scale
+        self._disable_guidance = disable_guidance
+        self._guidance_rescale = guidance_rescale
+        self._batch_size = batch_size
+        if not hasattr(pipeline, "original_attn_proc") or pipeline.original_attn_proc is None:
+            self.original_attn_proc = pipeline.unet.attn_processors
+            self._set_pag_attn_processor(
+                    model=pipeline.unet if hasattr(pipeline, "unet") else pipeline.transformer,
+                    pag_applied_layers=self.pag_applied_layers,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                )
+    
+
+    def reset_guider(self, pipeline):
+        if self.do_perturbed_attention_guidance:
+            pipeline.unet.set_attn_processor(self.original_attn_proc)
+            pipeline.original_attn_proc = None
+
+
+    def maybe_update_guider(self, pipeline, timestep):  
+        pass
+
+    def maybe_update_input(self, pipeline, cond_input):
+        pass
+    
+
+    def _is_prepared_input(self, cond):
+        """
+        Check if the input is already prepared for Perturbed Attention Guidance (PAG).
+
+        Args:
+            cond (torch.Tensor): The conditional input tensor to check.
+
+        Returns:
+            bool: True if the input is already prepared, False otherwise.
+        """
+        cond_tensor = cond[0] if isinstance(cond, (list, tuple)) else cond
+
+        return cond_tensor.shape[0] == self.batch_size * 3
+    
+    def _maybe_split_prepared_input(self, cond):
+        """
+        Process and potentially split the conditional input for Classifier-Free Guidance (CFG).
+
+        This method handles inputs that may already have CFG applied (i.e. when `cond` is output of `prepare_input`). 
+        It determines whether to split the input based on its batch size relative to the expected batch size.
+
+        Args:
+            cond (torch.Tensor): The conditional input tensor to process.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+                - The negative conditional input (uncond_input)
+                - The positive conditional input (cond_input)
+        """
+        if cond.shape[0] == self.batch_size * 3:
+            neg_cond = cond[0:self.batch_size]
+            cond = cond[self.batch_size:self.batch_size * 2]
+            return neg_cond, cond
+        elif cond.shape[0] == self.batch_size:
+            return cond, cond
+        else:
+            raise ValueError(f"Unsupported input shape: {cond.shape}")
+    
     
     def prepare_input(
         self,
-        negative_cond_input: Union[torch.Tensor, List[torch.Tensor]],
-        cond_input: Union[torch.Tensor, List[torch.Tensor]],
-        do_classifier_free_guidance: bool,
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        cond_input: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]],
+        negative_cond_input: Optional[Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]] = None,
+    ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]:
         """
         Prepare the input for CFG.
 
         Args:
-            negative_cond_input (Union[torch.Tensor, List[torch.Tensor]]): The negative conditional input. It can be a
-            single tensor or a list of tensors. It must have the same length as `cond_input`.
-            cond_input (Union[torch.Tensor, List[torch.Tensor]]):
+            cond_input (Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]):
                 The conditional input. It can be a single tensor or a
             list of tensors. It must have the same length as `negative_cond_input`.
-            do_classifier_free_guidance (bool): Whether to perform classifier-free guidance.
+            negative_cond_input (Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]): The negative conditional input. It can be a
+                single tensor or a list of tensors. It must have the same length as `cond_input`.   
 
         Returns:
-            Union[torch.Tensor, List[torch.Tensor]]: The prepared input.
+            Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, ...]]: The prepared input.
         """
-        if isinstance(negative_cond_input, list) and isinstance(cond_input, list):
+
+        # we check if cond_input already has CFG applied, and split if it is the case.
+        
+        if self._is_prepared_input(cond_input) and self.do_perturbed_attention_guidance:
+            return cond_input
+        
+        if self._is_prepared_input(cond_input) and not self.do_perturbed_attention_guidance:
+            if isinstance(cond_input, list):
+                negative_cond_input, cond_input = zip(*[self._maybe_split_prepared_input(cond) for cond in cond_input])
+            else:
+                negative_cond_input, cond_input = self._maybe_split_prepared_input(cond_input)
+        
+        if not self._is_prepared_input(cond_input) and negative_cond_input is None:
+            raise ValueError("`negative_cond_input` is required when cond_input does not already contains negative conditional input")
+        
+        if isinstance(cond_input, (list, tuple)):
+            
+            if not self.do_perturbed_attention_guidance:
+                return cond_input
+            
             if len(negative_cond_input) != len(cond_input):
                 raise ValueError("The length of negative_cond_input and cond_input must be the same.")
-
+            
             prepared_input = []
             for neg_cond, cond in zip(negative_cond_input, cond_input):
+                if neg_cond.shape[0] != cond.shape[0]:
+                    raise ValueError("The batch size of negative_cond_input and cond_input must be the same.")
+                
                 cond = torch.cat([cond] * 2, dim=0)
-
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     prepared_input.append(torch.cat([neg_cond, cond], dim=0))
                 else:
                     prepared_input.append(cond)
-
+            
             return prepared_input
-        elif isinstance(negative_cond_input, torch.Tensor) and isinstance(cond_input, torch.Tensor):
-            cond_input = torch.cat([cond_input] * 2, dim=0)
 
-            if do_classifier_free_guidance:
+        elif isinstance(cond_input, torch.Tensor):
+            
+            if not self.do_perturbed_attention_guidance:
+                return cond_input
+            
+            cond_input = torch.cat([cond_input] * 2, dim=0)
+            if self.do_classifier_free_guidance:
                 return torch.cat([negative_cond_input, cond_input], dim=0)
             else:
                 return cond_input
+        
         else:
             raise ValueError(f"Unsupported input type: {type(negative_cond_input)} and {type(cond_input)}")
 
     def apply_guidance(
         self,
         model_output: torch.Tensor,
-        pag_scale: float,
-        guidance_scale: float,
-        do_classifier_free_guidance: bool,
-        guidance_rescale: float = 0.0,
+        timestep: int,
     ) -> torch.Tensor:
-        if do_classifier_free_guidance:
+
+        if not self.do_perturbed_attention_guidance:
+            return model_output
+        
+        if self.do_pag_adaptive_scaling:
+            pag_scale = max(self._pag_scale - self._pag_adaptive_scale * (1000 - timestep), 0)
+        else:
+            pag_scale = self._pag_scale
+
+        if self.do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text, noise_pred_perturb = model_output.chunk(3)
             noise_pred = (
                 noise_pred_uncond
-                + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 + pag_scale * (noise_pred_text - noise_pred_perturb)
             )
         else:
             noise_pred_text, noise_pred_perturb = model_output.chunk(2)
             noise_pred = noise_pred_text + pag_scale * (noise_pred_text - noise_pred_perturb)
 
-        if guidance_rescale > 0.0:
+        if self.guidance_rescale > 0.0:
             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+        
         return noise_pred
 
 
