@@ -1291,58 +1291,16 @@ class SetTimestepsStep(PipelineBlock):
             ("timesteps", None),
             ("sigmas", None),
             ("denoising_end", None),
-        ]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["timesteps", "num_inference_steps"]
-
-    def __init__(self, scheduler=None):
-        super().__init__(scheduler=scheduler)
-
-    @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        num_inference_steps = state.get_input("num_inference_steps")
-        timesteps = state.get_input("timesteps")
-        sigmas = state.get_input("sigmas")
-        denoising_end = state.get_input("denoising_end")
-
-        device = pipeline._execution_device
-
-        timesteps, num_inference_steps = retrieve_timesteps(
-            pipeline.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
-
-        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
-            discrete_timestep_cutoff = int(
-                round(
-                    pipeline.scheduler.config.num_train_timesteps
-                    - (denoising_end * pipeline.scheduler.config.num_train_timesteps)
-                )
-            )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
-
-        state.add_intermediate("timesteps", timesteps)
-        state.add_intermediate("num_inference_steps", num_inference_steps)
-
-        return pipeline, state
-
-
-class Image2ImageSetTimestepsStep(PipelineBlock):
-    required_components = ["scheduler"]
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("num_inference_steps", 50),
-            ("timesteps", None),
-            ("sigmas", None),
-            ("denoising_end", None),
+            ("image", None),
             ("strength", 0.3),
             ("denoising_start", None),
             ("num_images_per_prompt", 1),
+            ("device", None),
         ]
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return ["batch_size"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -1357,28 +1315,39 @@ class Image2ImageSetTimestepsStep(PipelineBlock):
         timesteps = state.get_input("timesteps")
         sigmas = state.get_input("sigmas")
         denoising_end = state.get_input("denoising_end")
+        device = state.get_input("device")
+
+        # image to image only
+        image = state.get_input("image")  # just to check if it is an image to image workflow
         strength = state.get_input("strength")
         denoising_start = state.get_input("denoising_start")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
 
+        # image to image only
         batch_size = state.get_intermediate("batch_size")
 
-        device = pipeline._execution_device
-
-        def denoising_value_valid(dnv):
-            return isinstance(dnv, float) and 0 < dnv < 1
+        if device is None:
+            device = pipeline._execution_device
 
         timesteps, num_inference_steps = retrieve_timesteps(
             pipeline.scheduler, num_inference_steps, device, timesteps, sigmas
         )
 
-        timesteps, num_inference_steps = pipeline.get_timesteps(
-            num_inference_steps,
-            strength,
-            device,
-            denoising_start=denoising_start if denoising_value_valid(denoising_start) else None,
-        )
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+        if image is not None:
+
+            def denoising_value_valid(dnv):
+                return isinstance(dnv, float) and 0 < dnv < 1
+
+            timesteps, num_inference_steps = pipeline.get_timesteps(
+                num_inference_steps,
+                strength,
+                device,
+                denoising_start=denoising_start if denoising_value_valid(denoising_start) else None,
+            )
+            latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
+
+        else:
+            latent_timestep = None
 
         if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
             discrete_timestep_cutoff = int(
@@ -1397,74 +1366,9 @@ class Image2ImageSetTimestepsStep(PipelineBlock):
         return pipeline, state
 
 
-class Image2ImagePrepareLatentsStep(PipelineBlock):
-    required_components = ["vae"]
-    required_auxiliaries = ["image_processor"]
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("image", None),
-            ("num_images_per_prompt", 1),
-            ("generator", None),
-            ("latents", None),
-            ("device", None),
-            ("dtype", None),
-        ]
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["batch_size", "timesteps", "num_inference_steps"]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["latents", "timesteps", "num_inference_steps"]
-
-    def __init__(self, vae=None, image_processor=None, vae_scale_factor=8):
-        if image_processor is None:
-            image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
-        super().__init__(vae=vae, image_processor=image_processor, vae_scale_factor=vae_scale_factor)
-
-    @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-        image = state.get_input("image")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        generator = state.get_input("generator")
-        latents = state.get_input("latents")
-        denoising_start = state.get_input("denoising_start")
-        device = state.get_input("device")
-        dtype = state.get_input("dtype")
-
-        # get intermediates
-        batch_size = state.get_intermediate("batch_size")
-        latent_timestep = state.get_intermediate("latent_timestep")
-
-        device = pipeline._execution_device if device is None else device
-        dtype = pipeline.vae.dtype if dtype is None else dtype
-
-        image = pipeline.image_processor.preprocess(image)
-
-        add_noise = True if denoising_start is None else False
-
-        if latents is None:
-            latents = pipeline.prepare_latents_img2img(
-                image,
-                latent_timestep,
-                batch_size,
-                num_images_per_prompt,
-                dtype,
-                device,
-                generator,
-                add_noise,
-            )
-
-        state.add_intermediate("latents", latents)
-
-        return pipeline, state
-
-
 class PrepareLatentsStep(PipelineBlock):
-    required_components = ["scheduler"]
+    optional_components = ["vae", "scheduler"]
+    required_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1476,22 +1380,36 @@ class PrepareLatentsStep(PipelineBlock):
             ("num_images_per_prompt", 1),
             ("device", None),
             ("dtype", None),
+            ("image", None),
+            ("denoising_start", None),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
-        return ["batch_size"]
+        return ["batch_size", "latent_timestep"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, scheduler=None):
-        super().__init__(scheduler=scheduler)
+    def __init__(self, vae=None, image_processor=None, vae_scale_factor=8, scheduler=None):
+        if image_processor is None:
+            image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+        super().__init__(
+            vae=vae, image_processor=image_processor, vae_scale_factor=vae_scale_factor, scheduler=scheduler
+        )
 
     @staticmethod
-    def check_inputs(pipeline, height, width):
-        if height % pipeline.vae_scale_factor != 0 or width % pipeline.vae_scale_factor != 0:
+    def check_inputs(pipeline, height, width, image):
+        if image is not None and (height is not None or width is not None):
+            raise ValueError("Cannot specify both `image` and `height` or `width`")
+
+        if (
+            height is not None
+            and height % pipeline.vae_scale_factor != 0
+            or width is not None
+            and width % pipeline.vae_scale_factor != 0
+        ):
             raise ValueError(
                 f"`height` and `width` have to be divisible by {pipeline.vae_scale_factor} but are {height} and {width}."
             )
@@ -1500,14 +1418,22 @@ class PrepareLatentsStep(PipelineBlock):
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
         latents = state.get_input("latents")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
-        height = state.get_input("height")
-        width = state.get_input("width")
         generator = state.get_input("generator")
         device = state.get_input("device")
         dtype = state.get_input("dtype")
 
+        # text to image only
+        height = state.get_input("height")
+        width = state.get_input("width")
+
+        # image to image only
+        image = state.get_input("image")
+        denoising_start = state.get_input("denoising_start")
+
         batch_size = state.get_intermediate("batch_size")
         prompt_embeds = state.get_intermediate("prompt_embeds", None)
+        # image to image only
+        latent_timestep = state.get_intermediate("latent_timestep", None)
 
         if dtype is None and prompt_embeds is not None:
             dtype = prompt_embeds.dtype
@@ -1517,24 +1443,36 @@ class PrepareLatentsStep(PipelineBlock):
         if device is None:
             device = pipeline._execution_device
 
-        height = height or pipeline.default_sample_size * pipeline.vae_scale_factor
-        width = width or pipeline.default_sample_size * pipeline.vae_scale_factor
+        self.check_inputs(pipeline, height, width, image)
 
-        self.check_inputs(pipeline, height, width)
-
-        # 5. Prepare latent variables
-
-        num_channels_latents = pipeline.num_channels_latents
-        latents = pipeline.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            dtype,
-            device,
-            generator,
-            latents,
-        )
+        if image is None:
+            height = height or pipeline.default_sample_size * pipeline.vae_scale_factor
+            width = width or pipeline.default_sample_size * pipeline.vae_scale_factor
+            num_channels_latents = pipeline.num_channels_latents
+            latents = pipeline.prepare_latents(
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                dtype,
+                device,
+                generator,
+                latents,
+            )
+        else:
+            image = pipeline.image_processor.preprocess(image)
+            add_noise = True if denoising_start is None else False
+            if latents is None:
+                latents = pipeline.prepare_latents_img2img(
+                    image,
+                    latent_timestep,
+                    batch_size,
+                    num_images_per_prompt,
+                    dtype,
+                    device,
+                    generator,
+                    add_noise,
+                )
 
         state.add_intermediate("latents", latents)
 
@@ -1555,108 +1493,15 @@ class PrepareAdditionalConditioningStep(PipelineBlock):
             ("negative_crops_coords_top_left", (0, 0)),
             ("num_images_per_prompt", 1),
             ("guidance_scale", 5.0),
+            ("aesthetic_score", 6.0),
+            ("negative_aesthetic_score", 2.0),
+            ("device", None),
+            ("image", None),
         ]
 
     @property
     def intermediates_inputs(self) -> List[str]:
         return ["latents", "batch_size", "pooled_prompt_embeds"]
-
-    @property
-    def intermediates_outputs(self) -> List[str]:
-        return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
-
-    def __init__(self, unet=None):
-        super().__init__(unet=unet)
-
-    @torch.no_grad()
-    def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
-        original_size = state.get_input("original_size")
-        target_size = state.get_input("target_size")
-        negative_original_size = state.get_input("negative_original_size")
-        negative_target_size = state.get_input("negative_target_size")
-        crops_coords_top_left = state.get_input("crops_coords_top_left")
-        negative_crops_coords_top_left = state.get_input("negative_crops_coords_top_left")
-        num_images_per_prompt = state.get_input("num_images_per_prompt")
-        guidance_scale = state.get_input("guidance_scale")
-
-        latents = state.get_intermediate("latents")
-        batch_size = state.get_intermediate("batch_size")
-        pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
-
-        device = pipeline._execution_device
-
-        height, width = latents.shape[-2:]
-        height = height * pipeline.vae_scale_factor
-        width = width * pipeline.vae_scale_factor
-
-        original_size = original_size or (height, width)
-        target_size = target_size or (height, width)
-
-        if hasattr(pipeline, "text_encoder_2") and pipeline.text_encoder_2 is not None:
-            text_encoder_projection_dim = pipeline.text_encoder_2.config.projection_dim
-        else:
-            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
-
-        add_time_ids = pipeline._get_add_time_ids(
-            original_size,
-            crops_coords_top_left,
-            target_size,
-            pooled_prompt_embeds.dtype,
-            text_encoder_projection_dim=text_encoder_projection_dim,
-        )
-        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
-
-        if negative_original_size is not None and negative_target_size is not None:
-            negative_add_time_ids = pipeline._get_add_time_ids(
-                negative_original_size,
-                negative_crops_coords_top_left,
-                negative_target_size,
-                pooled_prompt_embeds.dtype,
-                text_encoder_projection_dim=text_encoder_projection_dim,
-            )
-        else:
-            negative_add_time_ids = add_time_ids
-        negative_add_time_ids = negative_add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
-
-        # Optionally get Guidance Scale Embedding for LCM
-        timestep_cond = None
-        if (
-            hasattr(pipeline, "unet")
-            and pipeline.unet is not None
-            and pipeline.unet.config.time_cond_proj_dim is not None
-        ):
-            guidance_scale_tensor = torch.tensor(guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
-            timestep_cond = pipeline.get_guidance_scale_embedding(
-                guidance_scale_tensor, embedding_dim=pipeline.unet.config.time_cond_proj_dim
-            ).to(device=device, dtype=latents.dtype)
-
-        state.add_intermediate("add_time_ids", add_time_ids)
-        state.add_intermediate("negative_add_time_ids", negative_add_time_ids)
-        state.add_intermediate("timestep_cond", timestep_cond)
-        return pipeline, state
-
-
-class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
-    required_components = ["unet"]
-
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            ("original_sizife", None),
-            ("target_size", None),
-            ("negative_original_size", None),
-            ("negative_target_size", None),
-            ("crops_coords_top_left", (0, 0)),
-            ("negative_crops_coords_top_left", (0, 0)),
-            ("num_images_per_prompt", 1),
-            ("guidance_scale", 5.0),
-            ("aesthetic_score", 6.0),
-            ("negative_aesthetic_score", 2.0),
-        ]
-
-    @property
-    def intermediates_inputs(self) -> List[str]:
-        return ["latents"]
 
     @property
     def intermediates_outputs(self) -> List[str]:
@@ -1675,6 +1520,10 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
         negative_crops_coords_top_left = state.get_input("negative_crops_coords_top_left")
         num_images_per_prompt = state.get_input("num_images_per_prompt")
         guidance_scale = state.get_input("guidance_scale")
+        device = state.get_input("device")
+
+        # image to image only
+        image = state.get_input("image")
         aesthetic_score = state.get_input("aesthetic_score")
         negative_aesthetic_score = state.get_input("negative_aesthetic_score")
 
@@ -1682,7 +1531,8 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
         batch_size = state.get_intermediate("batch_size")
         pooled_prompt_embeds = state.get_intermediate("pooled_prompt_embeds")
 
-        device = pipeline._execution_device
+        if device is None:
+            device = pipeline._execution_device
 
         height, width = latents.shape[-2:]
         height = height * pipeline.vae_scale_factor
@@ -1691,30 +1541,56 @@ class Image2ImagePrepareAdditionalConditioningStep(PipelineBlock):
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
-        if negative_original_size is None:
-            negative_original_size = original_size
-        if negative_target_size is None:
-            negative_target_size = target_size
-
         if hasattr(pipeline, "text_encoder_2") and pipeline.text_encoder_2 is not None:
             text_encoder_projection_dim = pipeline.text_encoder_2.config.projection_dim
         else:
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
 
-        add_time_ids, negative_add_time_ids = pipeline._get_add_time_ids_img2img(
-            original_size,
-            crops_coords_top_left,
-            target_size,
-            aesthetic_score,
-            negative_aesthetic_score,
-            negative_original_size,
-            negative_crops_coords_top_left,
-            negative_target_size,
-            dtype=pooled_prompt_embeds.dtype,
-            text_encoder_projection_dim=text_encoder_projection_dim,
-        )
-        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
-        negative_add_time_ids = negative_add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
+        if image is None:
+            add_time_ids = pipeline._get_add_time_ids(
+                original_size,
+                crops_coords_top_left,
+                target_size,
+                pooled_prompt_embeds.dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
+            )
+            add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
+
+            if negative_original_size is not None and negative_target_size is not None:
+                negative_add_time_ids = pipeline._get_add_time_ids(
+                    negative_original_size,
+                    negative_crops_coords_top_left,
+                    negative_target_size,
+                    pooled_prompt_embeds.dtype,
+                    text_encoder_projection_dim=text_encoder_projection_dim,
+                )
+            else:
+                negative_add_time_ids = add_time_ids
+            negative_add_time_ids = negative_add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(
+                device=device
+            )
+        else:
+            if negative_original_size is None:
+                negative_original_size = original_size
+            if negative_target_size is None:
+                negative_target_size = target_size
+
+            add_time_ids, negative_add_time_ids = pipeline._get_add_time_ids_img2img(
+                original_size,
+                crops_coords_top_left,
+                target_size,
+                aesthetic_score,
+                negative_aesthetic_score,
+                negative_original_size,
+                negative_crops_coords_top_left,
+                negative_target_size,
+                dtype=pooled_prompt_embeds.dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
+            )
+            add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(device=device)
+            negative_add_time_ids = negative_add_time_ids.repeat(batch_size * num_images_per_prompt, 1).to(
+                device=device
+            )
 
         # Optionally get Guidance Scale Embedding for LCM
         timestep_cond = None
