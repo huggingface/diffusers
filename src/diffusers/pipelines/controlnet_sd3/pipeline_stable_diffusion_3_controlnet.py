@@ -83,7 +83,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -192,6 +192,8 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         ],
     ):
         super().__init__()
+        if isinstance(controlnet, (list, tuple)):
+            controlnet = SD3MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,

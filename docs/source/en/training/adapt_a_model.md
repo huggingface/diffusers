@@ -6,12 +6,12 @@ This guide will show you how to adapt a pretrained text-to-image model for inpai
 
 ## Configure UNet2DConditionModel parameters
 
-A [`UNet2DConditionModel`] by default accepts 4 channels in the [input sample](https://huggingface.co/docs/diffusers/v0.16.0/en/api/models#diffusers.UNet2DConditionModel.in_channels). For example, load a pretrained text-to-image model like [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) and take a look at the number of `in_channels`:
+A [`UNet2DConditionModel`] by default accepts 4 channels in the [input sample](https://huggingface.co/docs/diffusers/v0.16.0/en/api/models#diffusers.UNet2DConditionModel.in_channels). For example, load a pretrained text-to-image model like [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) and take a look at the number of `in_channels`:
 
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 pipeline.unet.config["in_channels"]
 4
 ```
@@ -33,7 +33,7 @@ Initialize a [`UNet2DConditionModel`] with the pretrained text-to-image model we
 ```py
 from diffusers import UNet2DConditionModel
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 unet = UNet2DConditionModel.from_pretrained(
     model_id,
     subfolder="unet",

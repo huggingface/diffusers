@@ -30,6 +30,7 @@ import requests_mock
 import safetensors.torch
 import torch
 import torch.nn as nn
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from PIL import Image
 from requests.exceptions import HTTPError
@@ -551,37 +552,138 @@ class DownloadTests(unittest.TestCase):
                 assert sum(f.endswith(this_format) and not f.endswith(f"{variant}{this_format}") for f in files) == 3
                 assert not any(f.endswith(other_format) for f in files)
 
-    def test_download_broken_variant(self):
-        for use_safetensors in [False, True]:
-            # text encoder is missing no variant and "no_ema" variant weights, so the following can't work
-            for variant in [None, "no_ema"]:
-                with self.assertRaises(OSError) as error_context:
-                    with tempfile.TemporaryDirectory() as tmpdirname:
-                        tmpdirname = StableDiffusionPipeline.from_pretrained(
-                            "hf-internal-testing/stable-diffusion-broken-variants",
-                            cache_dir=tmpdirname,
-                            variant=variant,
-                            use_safetensors=use_safetensors,
-                        )
+    def test_download_variants_with_sharded_checkpoints(self):
+        # Here we test for downloading of "variant" files belonging to the `unet` and
+        # the `text_encoder`. Their checkpoints can be sharded.
+        for use_safetensors in [True, False]:
+            for variant in ["fp16", None]:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    tmpdirname = DiffusionPipeline.download(
+                        "hf-internal-testing/tiny-stable-diffusion-pipe-variants-right-format",
+                        safety_checker=None,
+                        cache_dir=tmpdirname,
+                        variant=variant,
+                        use_safetensors=use_safetensors,
+                    )
 
-                assert "Error no file name" in str(error_context.exception)
+                    all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
+                    files = [item for sublist in all_root_files for item in sublist]
 
-            # text encoder has fp16 variants so we can load it
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdirname = StableDiffusionPipeline.download(
+                    # Check for `model_ext` and `variant`.
+                    model_ext = ".safetensors" if use_safetensors else ".bin"
+                    unexpected_ext = ".bin" if use_safetensors else ".safetensors"
+                    model_files = [f for f in files if f.endswith(model_ext)]
+                    assert not any(f.endswith(unexpected_ext) for f in files)
+                    assert all(variant in f for f in model_files if f.endswith(model_ext) and variant is not None)
+
+    def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
+        repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
+
+        for is_local in [True, False]:
+            with CaptureLogger(logger) as cap_logger:
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    local_repo_id = repo_id
+                    if is_local:
+                        local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
+
+                    _ = DiffusionPipeline.from_pretrained(
+                        local_repo_id,
+                        safety_checker=None,
+                        variant="fp16",
+                        use_safetensors=True,
+                    )
+            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+
+    def test_download_safetensors_only_variant_exists_for_model(self):
+        variant = None
+        use_safetensors = True
+
+        # text encoder is missing no variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
                     "hf-internal-testing/stable-diffusion-broken-variants",
-                    use_safetensors=use_safetensors,
                     cache_dir=tmpdirname,
-                    variant="fp16",
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
+
+        # text encoder has fp16 variants so we can load it
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = StableDiffusionPipeline.download(
+                "hf-internal-testing/stable-diffusion-broken-variants",
+                use_safetensors=use_safetensors,
+                cache_dir=tmpdirname,
+                variant="fp16",
+            )
+            all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+            files = [item for sublist in all_root_files for item in sublist]
+            # None of the downloaded files should be a non-variant file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+            assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+
+    def test_download_bin_only_variant_exists_for_model(self):
+        variant = None
+        use_safetensors = False
+
+        # text encoder is missing Non-variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
+
+        # text encoder has fp16 variants so we can load it
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = StableDiffusionPipeline.download(
+                "hf-internal-testing/stable-diffusion-broken-variants",
+                use_safetensors=use_safetensors,
+                cache_dir=tmpdirname,
+                variant="fp16",
+            )
+            all_root_files = [t[-1] for t in os.walk(tmpdirname)]
+            files = [item for sublist in all_root_files for item in sublist]
+            # None of the downloaded files should be a non-variant file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
+            assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
+
+    def test_download_safetensors_variant_does_not_exist_for_model(self):
+        variant = "no_ema"
+        use_safetensors = True
+
+        # text encoder is missing no_ema variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
                 )
 
-                all_root_files = [t[-1] for t in os.walk(tmpdirname)]
-                files = [item for sublist in all_root_files for item in sublist]
+            assert "Error no file name" in str(error_context.exception)
 
-                # None of the downloaded files should be a non-variant file even if we have some here:
-                # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
-                assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
-                # only unet has "no_ema" variant
+    def test_download_bin_variant_does_not_exist_for_model(self):
+        variant = "no_ema"
+        use_safetensors = False
+
+        # text encoder is missing no_ema variant weights, so the following can't work
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertRaises(OSError) as error_context:
+                tmpdirname = StableDiffusionPipeline.from_pretrained(
+                    "hf-internal-testing/stable-diffusion-broken-variants",
+                    cache_dir=tmpdirname,
+                    variant=variant,
+                    use_safetensors=use_safetensors,
+                )
+            assert "Error no file name" in str(error_context.exception)
 
     def test_local_save_load_index(self):
         prompt = "hello"
@@ -598,7 +700,7 @@ class DownloadTests(unittest.TestCase):
                 out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="np").images
 
                 with tempfile.TemporaryDirectory() as tmpdirname:
-                    pipe.save_pretrained(tmpdirname)
+                    pipe.save_pretrained(tmpdirname, variant=variant, safe_serialization=use_safe)
                     pipe_2 = StableDiffusionPipeline.from_pretrained(
                         tmpdirname, safe_serialization=use_safe, variant=variant
                     )
@@ -844,6 +946,27 @@ class DownloadTests(unittest.TestCase):
         assert (
             emb1[num_tokens + 1].sum().item() == emb2[num_tokens + 1].sum().item() == emb3[num_tokens + 1].sum().item()
         )
+
+    def test_textual_inversion_unload(self):
+        pipe1 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe1 = pipe1.to(torch_device)
+        orig_tokenizer_size = len(pipe1.tokenizer)
+        orig_emb_size = len(pipe1.text_encoder.get_input_embeddings().weight)
+
+        token = "<*>"
+        ten = torch.ones((32,))
+        pipe1.load_textual_inversion(ten, token=token)
+        pipe1.unload_textual_inversion()
+        pipe1.load_textual_inversion(ten, token=token)
+        pipe1.unload_textual_inversion()
+
+        final_tokenizer_size = len(pipe1.tokenizer)
+        final_emb_size = len(pipe1.text_encoder.get_input_embeddings().weight)
+        # both should be restored to original size
+        assert final_tokenizer_size == orig_tokenizer_size
+        assert final_emb_size == orig_emb_size
 
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
@@ -1589,7 +1712,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_error_no_variant_available(self):
         variant = "fp16"
         with self.assertRaises(ValueError) as error_context:
-            _ = StableDiffusionPipeline.download(
+            _ = StableDiffusionPipeline.from_pretrained(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 

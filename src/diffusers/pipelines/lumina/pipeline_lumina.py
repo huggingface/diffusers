@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = LuminaText2ImgPipeline.from_pretrained(
         ...     "Alpha-VLLM/Lumina-Next-SFT-diffusers", torch_dtype=torch.bfloat16
-        ... ).cuda()
+        ... )
         >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
@@ -73,7 +73,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 

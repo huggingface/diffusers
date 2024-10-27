@@ -18,7 +18,9 @@ from collections import OrderedDict
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
+from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
+from .cogview3 import CogView3PlusPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -28,6 +30,14 @@ from .controlnet import (
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .flux import (
+    FluxControlNetImg2ImgPipeline,
+    FluxControlNetInpaintPipeline,
+    FluxControlNetPipeline,
+    FluxImg2ImgPipeline,
+    FluxInpaintPipeline,
+    FluxPipeline,
+)
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -46,12 +56,18 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
-from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
+from .lumina import LuminaText2ImgPipeline
 from .pag import (
     StableDiffusionControlNetPAGImg2ImgPipeline,
+    HunyuanDiTPAGPipeline,
+    PixArtSigmaPAGPipeline,
+    StableDiffusion3PAGPipeline,
+    StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
+    StableDiffusionPAGImg2ImgPipeline,
     StableDiffusionPAGPipeline,
+    StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
     StableDiffusionXLPAGImg2ImgPipeline,
     StableDiffusionXLPAGInpaintPipeline,
@@ -82,8 +98,10 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionPipeline),
         ("stable-diffusion-xl", StableDiffusionXLPipeline),
         ("stable-diffusion-3", StableDiffusion3Pipeline),
+        ("stable-diffusion-3-pag", StableDiffusion3PAGPipeline),
         ("if", IFPipeline),
         ("hunyuan", HunyuanDiTPipeline),
+        ("hunyuan-pag", HunyuanDiTPAGPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("kandinsky3", Kandinsky3Pipeline),
@@ -98,8 +116,12 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGPipeline),
+        ("pixart-sigma-pag", PixArtSigmaPAGPipeline),
         ("auraflow", AuraFlowPipeline),
-        ("kolors", KolorsPipeline),
+        ("flux", FluxPipeline),
+        ("flux-controlnet", FluxControlNetPipeline),
+        ("lumina", LuminaText2ImgPipeline),
+        ("cogview3", CogView3PlusPipeline),
     ]
 )
 
@@ -114,10 +136,13 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky3", Kandinsky3Img2ImgPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGImg2ImgPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
-        ("kolors", KolorsImg2ImgPipeline),
+        ("flux", FluxImg2ImgPipeline),
+        ("flux-controlnet", FluxControlNetImg2ImgPipeline),
     ]
 )
 
@@ -130,8 +155,11 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
+        ("flux", FluxInpaintPipeline),
+        ("flux-controlnet", FluxControlNetInpaintPipeline),
     ]
 )
 
@@ -155,6 +183,14 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22InpaintPipeline),
     ]
 )
+
+if is_sentencepiece_available():
+    from .kolors import KolorsImg2ImgPipeline, KolorsPipeline
+    from .pag import KolorsPAGPipeline
+
+    AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsPipeline
+    AUTO_TEXT2IMAGE_PIPELINES_MAPPING["kolors-pag"] = KolorsPAGPipeline
+    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING["kolors"] = KolorsImg2ImgPipeline
 
 SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
@@ -644,12 +680,17 @@ class AutoPipelineForImage2Image(ConfigMixin):
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
+        # the `orig_class_name` can be:
+        # `- *Pipeline` (for regular text-to-image checkpoint)
+        # `- *Img2ImgPipeline` (for refiner checkpoint)
+        to_replace = "Img2ImgPipeline" if "Img2Img" in config["_class_name"] else "Pipeline"
+
         if "controlnet" in kwargs:
-            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                orig_class_name = orig_class_name.replace("Pipeline", "PAGPipeline")
+                orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
 
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
@@ -936,13 +977,17 @@ class AutoPipelineForInpainting(ConfigMixin):
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
+        # The `orig_class_name`` can be:
+        # `- *InpaintPipeline` (for inpaint-specific checkpoint)
+        #  - or *Pipeline (for regular text-to-image checkpoint)
+        to_replace = "InpaintPipeline" if "Inpaint" in config["_class_name"] else "Pipeline"
+
         if "controlnet" in kwargs:
-            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
-                orig_class_name = config["_class_name"].replace("Pipeline", "PAGPipeline")
-
+                orig_class_name = orig_class_name.replace(to_replace, "PAG" + to_replace)
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
         kwargs = {**load_config_kwargs, **kwargs}
