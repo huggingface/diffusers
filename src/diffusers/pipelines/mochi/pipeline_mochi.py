@@ -86,7 +86,7 @@ def linear_quadratic_schedule(num_steps, threshold_noise, linear_steps=None):
     quadratic_sigma_schedule = [
         quadratic_coef * (i**2) + linear_coef * i + const for i in range(linear_steps, num_steps)
     ]
-    sigma_schedule = linear_sigma_schedule + quadratic_sigma_schedule + [1.0]
+    sigma_schedule = linear_sigma_schedule + quadratic_sigma_schedule
     sigma_schedule = [1.0 - x for x in sigma_schedule]
     return sigma_schedule
 
