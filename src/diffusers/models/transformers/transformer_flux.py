@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention import FeedForward
 from ...models.attention_processor import (
     Attention,
@@ -207,7 +207,9 @@ class FluxTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class FluxTransformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, FluxTransformer2DLoadersMixin
+):
     """
     The Transformer model introduced in Flux.
 
