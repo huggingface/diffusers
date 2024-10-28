@@ -576,7 +576,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer block layers to apply LoRA training on. "
+            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string."
             "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
         ),
     )
@@ -585,8 +585,8 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         help=(
-            "The transformer blocks to apply LoRA training on."
-            'E.g. - "--lora_blocks 12 30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
+            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma seperated manner."
+            'E.g. - "--lora_blocks 12,30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
         ),
     )
 
@@ -1242,7 +1242,6 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
     if args.lora_layers is not None:
-        #target_modules = args.lora_layers
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
         target_modules = [
