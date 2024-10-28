@@ -31,28 +31,6 @@ from .vae import DecoderOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# YiYi to-do: replace this with nn.Conv3d
-class Conv1x1(nn.Linear):
-    """*1x1 Conv implemented with a linear layer."""
-
-    def __init__(self, in_features: int, out_features: int, *args, **kwargs):
-        super().__init__(in_features, out_features, *args, **kwargs)
-
-    def forward(self, x: torch.Tensor):
-        """Forward pass.
-
-        Args:
-            x: Input tensor. Shape: [B, C, *] or [B, *, C].
-
-        Returns:
-            x: Output tensor. Shape: [B, C', *] or [B, *, C'].
-        """
-        x = x.movedim(1, -1)
-        x = super().forward(x)
-        x = x.movedim(-1, 1)
-        return x
-
-
 class MochiChunkedCausalConv3d(nn.Module):
     r"""A 3D causal convolution layer that pads the input tensor to ensure causality in Mochi Model.
     It also supports memory-efficient chunked 3D convolutions.
@@ -253,10 +231,7 @@ class MochiUpBlock3D(nn.Module):
             )
 
         self.resnets = nn.ModuleList(resnets)
-        self.proj = Conv1x1(
-            in_channels,
-            out_channels * temporal_expansion * (spatial_expansion**2),
-        )
+        self.proj = nn.Linear(in_channels, out_channels * temporal_expansion * spatial_expansion**2)
 
         self.gradient_checkpointing = False
 
@@ -282,7 +257,9 @@ class MochiUpBlock3D(nn.Module):
             else:
                 hidden_states = resnet(hidden_states)
 
+        hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj(hidden_states)
+        hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         # Calculate new shape
         B, C, T, H, W = hidden_states.shape
@@ -405,7 +382,7 @@ class MochiDecoder3D(nn.Module):
             in_channels=block_out_channels[0],
             num_layers=layers_per_block[0],
         )
-        self.conv_out = Conv1x1(block_out_channels[0], out_channels)
+        self.conv_out = nn.Linear(block_out_channels[0], out_channels)
 
         self.gradient_checkpointing = False
 
@@ -436,7 +413,10 @@ class MochiDecoder3D(nn.Module):
         hidden_states = self.block_out(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
+
+        hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_out(hidden_states)
+        hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         return hidden_states
 
