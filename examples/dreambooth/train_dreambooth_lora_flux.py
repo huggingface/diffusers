@@ -555,6 +555,15 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
+        "--lora_layers",
+        type=str,
+        default=None,
+        help=(
+            'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only'
+        ),
+    )
+
+    parser.add_argument(
         "--adam_epsilon",
         type=float,
         default=1e-08,
@@ -1186,12 +1195,30 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
 
-    # now we will add new LoRA weights to the attention layers
+    if args.lora_layers is not None:
+        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+    else:
+        target_modules = [
+            "attn.to_k",
+            "attn.to_q",
+            "attn.to_v",
+            "attn.to_out.0",
+            "attn.add_k_proj",
+            "attn.add_q_proj",
+            "attn.add_v_proj",
+            "attn.to_add_out",
+            "ff.net.0.proj",
+            "ff.net.2",
+            "ff_context.net.0.proj",
+            "ff_context.net.2",
+        ]
+
+    # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=target_modules,
     )
     transformer.add_adapter(transformer_lora_config)
     if args.train_text_encoder:
@@ -1367,7 +1394,7 @@ def main(args):
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
             )
-            # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
+            # changes the learning rate of text_encoder_parameters_one to be
             # --learning_rate
             params_to_optimize[1]["lr"] = args.learning_rate
 

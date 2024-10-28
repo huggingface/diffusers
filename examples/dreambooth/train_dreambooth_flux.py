@@ -161,7 +161,7 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
+    pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1579,7 +1579,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                if accelerator.unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -1693,6 +1693,8 @@ def main(args):
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
                 else:  # even when training the text encoder we're only training text encoder one
                     text_encoder_two = text_encoder_cls_two.from_pretrained(
                         args.pretrained_model_name_or_path,
