@@ -38,6 +38,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_flux.py"
     transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
+
     def test_dreambooth_lora_flux(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
