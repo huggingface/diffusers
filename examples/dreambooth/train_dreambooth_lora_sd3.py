@@ -573,7 +573,6 @@ def parse_args(input_args=None):
 
     parser.add_argument(
         "--lora_layers",
-        nargs="*",
         type=str,
         default=None,
         help=(
@@ -583,8 +582,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--lora_blocks",
-        nargs="*",
-        type=int,
+        type=str,
         default=None,
         help=(
             "The transformer blocks to apply LoRA training on."
@@ -1244,7 +1242,8 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
     if args.lora_layers is not None:
-        target_modules = args.lora_layers
+        #target_modules = args.lora_layers
+        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
         target_modules = [
             "attn.add_k_proj",
@@ -1257,8 +1256,9 @@ def main(args):
             "attn.to_v",
         ]
     if args.lora_blocks is not None:
+        target_blocks = [int(block.strip()) for block in args.lora_blocks.split(",")]
         target_modules = [
-            f"transformer_blocks.{block}.{module}" for block in args.lora_blocks for module in target_modules
+            f"transformer_blocks.{block}.{module}" for block in target_blocks for module in target_modules
         ]
 
     # now we will add new LoRA weights to the attention layers
