@@ -70,6 +70,7 @@ logger = get_logger(__name__)
 
 if is_torch_npu_available():
     import torch_npu
+
     torch.npu.config.allow_internal_format = False
     torch.npu.set_compile_mode(jit_compile=False)
 

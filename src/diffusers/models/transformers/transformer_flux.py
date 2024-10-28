@@ -34,8 +34,8 @@ from ...models.attention_processor import (
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
 from ...utils.import_utils import is_torch_npu_available
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
