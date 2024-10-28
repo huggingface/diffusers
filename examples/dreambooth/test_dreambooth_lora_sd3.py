@@ -38,8 +38,8 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sd3-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_sd3.py"
 
-    LORA_BLOCK_TO_TEST = 0
-    LORA_LAYER_TO_TEST = "attn.to_k"
+    transformer_block_idx = 0
+    layer_type = "attn.to_k"
 
     def test_dreambooth_lora_sd3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -150,7 +150,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
-                --lora_blocks {LORA_BLOCK_TO_TEST}
+                --lora_blocks {self.transformer_block_idx}
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -186,7 +186,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
-                --lora_layers {LORA_LAYER_TO_TEST}
+                --lora_layers {self.layer_type}
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
