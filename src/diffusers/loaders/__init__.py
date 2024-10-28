@@ -55,7 +55,7 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["single_file_model"] = ["FromOriginalModelMixin"]
-
+    _import_structure["transformer_flux"] = ["FluxTransformer2DLoadersMixin"]
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
     if is_transformers_available():
@@ -72,7 +72,7 @@ if is_torch_available():
             "Mochi1LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
-        _import_structure["ip_adapter"] = ["IPAdapterMixin"]
+        _import_structure["ip_adapter"] = ["IPAdapterMixin", "FluxIPAdapterMixin"]
 
 _import_structure["peft"] = ["PeftAdapterMixin"]
 
@@ -80,11 +80,12 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .single_file_model import FromOriginalModelMixin
+        from .transformer_flux import FluxTransformer2DLoadersMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 
         if is_transformers_available():
-            from .ip_adapter import IPAdapterMixin
+            from .ip_adapter import FluxIPAdapterMixin, IPAdapterMixin
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
