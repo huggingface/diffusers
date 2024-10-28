@@ -251,7 +251,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
             The maximum sequence length of text embeddings supported.
     """
 
-    _keep_in_fp32_modules = "pos_frequencies"
     _supports_gradient_checkpointing = True
 
     @register_to_config
