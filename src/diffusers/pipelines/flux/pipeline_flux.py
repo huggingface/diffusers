@@ -134,9 +134,7 @@ def retrieve_timesteps(
     else:
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
-    # a copy of timesteps that's always on cpu for indexing and code that requires cuda sync
-    timesteps_cpu = getattr(scheduler, "timesteps_cpu", None)
-    return timesteps, num_inference_steps, timesteps_cpu
+    return timesteps, num_inference_steps
 
 
 class FluxPipeline(
@@ -241,12 +239,10 @@ class FluxPipeline(
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)[
-            0
-        ]
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device, non_blocking=True), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device, non_blocking=True)
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -374,7 +370,7 @@ class FluxPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer_dtype
+        dtype = self.text_encoder.dtype if self.text_encoder is not None else self.transformer.dtype
         text_ids = torch.zeros((prompt_embeds.shape[1], 3), device=device, dtype=dtype)
 
         return prompt_embeds, pooled_prompt_embeds, text_ids
@@ -706,7 +702,7 @@ class FluxPipeline(
             self.scheduler.config.base_shift,
             self.scheduler.config.max_shift,
         )
-        timesteps, num_inference_steps, timesteps_cpu = retrieve_timesteps(
+        timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
@@ -714,6 +710,10 @@ class FluxPipeline(
             sigmas,
             mu=mu,
         )
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(0)
+
+
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -727,9 +727,6 @@ class FluxPipeline(
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                t_cpu = timesteps_cpu[i]
-                # t: the current timestep, in gpu, for model input
-                # t_cpu: the current timestep, in cpu, for indexing in scheduler
                 if self.interrupt:
                     continue
 
@@ -750,7 +747,7 @@ class FluxPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t_cpu, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
