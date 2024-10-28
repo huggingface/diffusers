@@ -40,6 +40,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
 
     LORA_BLOCK_TO_TEST = 0
     LORA_LAYER_TO_TEST = "attn.to_k"
+
     def test_dreambooth_lora_sd3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
