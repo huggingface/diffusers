@@ -151,7 +151,7 @@ class DreamBoothLoRAFlux(ExamplesTestsAccelerate):
                 --cache_latents
                 --learning_rate 5.0e-04
                 --scale_lr
-                --lora_layers {transformer_layer_type}
+                --lora_layers {self.transformer_layer_type}
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --output_dir {tmpdir}
