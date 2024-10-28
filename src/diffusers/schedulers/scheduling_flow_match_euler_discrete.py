@@ -201,10 +201,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
 
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device, non_blocking=True)
         timesteps = sigmas * self.config.num_train_timesteps
 
-        self.timesteps = timesteps.to(device=device)
+        self.timesteps = timesteps.to(device=device, non_blocking=True)
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
         self._step_index = None
