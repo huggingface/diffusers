@@ -668,8 +668,9 @@ class DummyObject(type):
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
 def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
     """
-    Args:
     Compares a library version to some requirement using a given operation.
+
+    Args:
         library_or_version (`str` or `packaging.version.Version`):
             A library name or a version to check.
         operation (`str`):
@@ -688,8 +689,9 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
 def is_torch_version(operation: str, version: str):
     """
-    Args:
     Compares the current PyTorch version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -700,8 +702,9 @@ def is_torch_version(operation: str, version: str):
 
 def is_transformers_version(operation: str, version: str):
     """
-    Args:
     Compares the current Transformers version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -714,8 +717,9 @@ def is_transformers_version(operation: str, version: str):
 
 def is_accelerate_version(operation: str, version: str):
     """
-    Args:
     Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -728,8 +732,9 @@ def is_accelerate_version(operation: str, version: str):
 
 def is_peft_version(operation: str, version: str):
     """
-    Args:
     Compares the current PEFT version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -740,10 +745,25 @@ def is_peft_version(operation: str, version: str):
     return compare_versions(parse(_peft_version), operation, version)
 
 
-def is_k_diffusion_version(operation: str, version: str):
+def is_bitsandbytes_version(operation: str, version: str):
     """
     Args:
+    Compares the current bitsandbytes version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _bitsandbytes_version:
+        return False
+    return compare_versions(parse(_bitsandbytes_version), operation, version)
+
+
+def is_k_diffusion_version(operation: str, version: str):
+    """
     Compares the current k-diffusion version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -756,8 +776,9 @@ def is_k_diffusion_version(operation: str, version: str):
 
 def get_objects_from_module(module):
     """
-    Args:
     Returns a dict of object names and values in a module, while skipping private/internal objects
+
+    Args:
         module (ModuleType):
             Module to extract the objects from.
 
@@ -775,7 +796,9 @@ def get_objects_from_module(module):
 
 
 class OptionalDependencyNotAvailable(BaseException):
-    """An error indicating that an optional dependency of Diffusers was not found in the environment."""
+    """
+    An error indicating that an optional dependency of Diffusers was not found in the environment.
+    """
 
 
 class _LazyModule(ModuleType):
