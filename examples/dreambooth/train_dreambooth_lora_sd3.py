@@ -1242,7 +1242,7 @@ def main(args):
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
     if args.lora_layers is not None:
-        #target_modules = args.lora_layers
+        # target_modules = args.lora_layers
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
         target_modules = [
