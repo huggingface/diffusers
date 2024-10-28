@@ -19,12 +19,81 @@ from enum import Enum
 from typing import Optional, Union
 
 from torch.optim import Optimizer
+import torch
+import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
 
 from .utils import logging
 
 
 logger = logging.get_logger(__name__)
+
+
+
+class AdaptiveLearningRateScheduler:
+    def __init__(self, optimizer, patience=2, decay_factor=0.5, min_lr=1e-6):
+        """
+        Args:
+            optimizer (torch.optim.Optimizer): Optimizer being used.
+            patience (int): Number of epochs without improvement before reducing LR.
+            decay_factor (float): Factor by which to reduce the LR.
+            min_lr (float): Minimum learning rate allowed.
+        """
+        self.optimizer = optimizer
+        self.patience = patience
+        self.decay_factor = decay_factor
+        self.min_lr = min_lr
+        self.best_loss = float('inf')
+        self.bad_epochs = 0
+
+    def step(self, val_loss):
+        if val_loss < self.best_loss:
+            self.best_loss = val_loss
+            self.bad_epochs = 0  # Reset counter if loss improves
+        else:
+            self.bad_epochs += 1
+
+        # Apply learning rate decay if patience is reached
+        if self.bad_epochs >= self.patience:
+            for param_group in self.optimizer.param_groups:
+                new_lr = max(param_group['lr'] * self.decay_factor, self.min_lr)
+                param_group['lr'] = new_lr
+            self.bad_epochs = 0  # Reset after updating learning rate
+            print(f"Learning rate reduced to: {new_lr:.6f}")
+
+# Training loop incorporating adaptive LR
+def train_model(model, train_loader, val_loader, criterion, initial_lr, num_epochs):
+    optimizer = optim.Adam(model.parameters(), lr=initial_lr)
+    lr_scheduler = AdaptiveLearningRateScheduler(optimizer)
+
+    for epoch in range(num_epochs):
+        model.train()
+        total_train_loss = 0.0
+        for inputs, targets in train_loader:
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+            total_train_loss += loss.item()
+
+        # Validation phase
+        model.eval()
+        total_val_loss = 0.0
+        with torch.no_grad():
+            for inputs, targets in val_loader:
+                outputs = model(inputs)
+                val_loss = criterion(outputs, targets)
+                total_val_loss += val_loss.item()
+
+        # Calculate average losses
+        avg_train_loss = total_train_loss / len(train_loader)
+        avg_val_loss = total_val_loss / len(val_loader)
+        
+        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+
+        # Adjust learning rate based on validation performance
+        lr_scheduler.step(avg_val_loss)
 
 
 class SchedulerType(Enum):
