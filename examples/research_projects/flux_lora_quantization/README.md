@@ -5,7 +5,8 @@
 
 This example shows how to fine-tune [Flux.1 Dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) with LoRA and quantization. We show this by using the [`Norod78/Yarn-art-style`](https://huggingface.co/datasets/Norod78/Yarn-art-style) dataset. Steps below summarize the workflow:
 
-* We precompute the text embeddings in `compute_embeddings.py` and serialize them into a parquet file. 
+* We precompute the text embeddings in `compute_embeddings.py` and serialize them into a parquet file.
+  * Even though optional, we load the T5-xxl in NF4 to further reduce the memory foot-print. 
 * `train_dreambooth_lora_flux_miniature.py` takes care of training:
   * Since we already precomputed the text embeddings, we don't load the text encoders.
   * We load the VAE and use it to precompute the image latents and we then delete it. 
