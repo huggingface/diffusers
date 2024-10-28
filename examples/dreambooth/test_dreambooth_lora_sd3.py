@@ -38,6 +38,8 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sd3-pipe"
     script_path = "examples/dreambooth/train_dreambooth_lora_sd3.py"
 
+    LORA_BLOCK_TO_TEST = 0
+    LORA_LAYER_TO_TEST = "attn.to_k"
     def test_dreambooth_lora_sd3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -147,7 +149,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
-                --lora_blocks 0
+                --lora_blocks {LORA_BLOCK_TO_TEST}
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -183,7 +185,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
-                --lora_layers attn.to_k
+                --lora_layers {LORA_LAYER_TO_TEST}
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -200,9 +202,7 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
             is_lora = all("lora" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
-            # when not training the text encoder, all the parameters in the state dict should start
-            # with `"transformer"` in their names.
-            # In this test, only params of transformer block 0 should be in the state dict
+            # In this test, only transformer params of attention layers `attn.to_k` should be in the state dict
             starts_with_transformer = all("attn.to_k" in key for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
 

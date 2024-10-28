@@ -174,7 +174,7 @@ By default, the trained layers are -
 `attn.add_k_proj,attn.add_q_proj,attn.add_v_proj,attn.to_add_out,attn.to_k,attn.to_out.0,attn.to_q,attn.to_v`
 If you wish to have a leaner LoRA / train more blocks over layers you could pass - 
 ```diff
---lora_layers attn.to_k,attn.to_q,attn.to_v,attn.to_out.0
++ --lora_layers attn.to_k,attn.to_q,attn.to_v,attn.to_out.0
 ```
 This will reduce LoRA size by roughly 50% for the same rank compared to the default. 
 However, if you're after compact LoRAs, it's our impression that maintaining the default setting for `--lora_layers` and
