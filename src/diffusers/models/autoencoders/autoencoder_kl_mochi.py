@@ -104,8 +104,6 @@ class MochiChunkedCausalConv3d(nn.Module):
 
         # Memory-efficient chunked operation
         memory_count = torch.prod(torch.tensor(hidden_states.shape)).item() * 2 / 1024**3
-        # YiYI Notes: testing only!! please remove
-        memory_count = 3
         # YiYI Notes: this number 2 should be a config: max_memory_chunk_size (2 is 2GB)
         if memory_count > 2:
             part_num = int(memory_count / 2) + 1
