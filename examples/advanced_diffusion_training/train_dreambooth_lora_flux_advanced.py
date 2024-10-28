@@ -1650,6 +1650,8 @@ def main(args):
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
+                    pass  # when --train_text_encoder_ti and --enable_t5_ti we don't save the layers
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
