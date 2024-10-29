@@ -52,7 +52,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
+        >>> pipe.enable_model_cpu_offload()
+        >>> pipe.enable_vae_tiling()
         >>> prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
         >>> frames = pipe(prompt, num_inference_steps=28, guidance_scale=3.5).frames[0]
         >>> export_to_video(frames, "mochi.mp4")
