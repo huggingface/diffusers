@@ -373,7 +373,7 @@ class MochiDecoder3D(nn.Module):
         )
 
         hidden_states = self.nonlinearity(hidden_states)
-        
+
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_out(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
@@ -633,13 +633,19 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 conv_cache = None
 
                 for k in range(0, num_frames, self.num_latent_frames_batch_size):
-                    tile = z[:, :, k : k + self.num_latent_frames_batch_size, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                    tile = z[
+                        :,
+                        :,
+                        k : k + self.num_latent_frames_batch_size,
+                        i : i + tile_latent_min_height,
+                        j : j + tile_latent_min_width,
+                    ]
                     tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
                     time.append(tile)
-                
+
                 if time[-1].size(2) >= self.temporal_compression_ratio:
                     time[-1] = time[-1][:, :, self.temporal_compression_ratio - 1 :]
-                
+
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
 
