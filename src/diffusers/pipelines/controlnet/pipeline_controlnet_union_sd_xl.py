@@ -16,8 +16,6 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import (
@@ -48,7 +46,6 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -615,8 +612,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         self,
         prompt,
         prompt_2,
-        image,
-        callback_steps,
+        image: PipelineImageInput,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -630,12 +626,6 @@ class StableDiffusionXLControlNetUnionPipeline(
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -767,43 +757,25 @@ class StableDiffusionXLControlNetUnionPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
-    def check_image(self, image, prompt, prompt_embeds):
-        image_is_pil = isinstance(image, PIL.Image.Image)
-        image_is_tensor = isinstance(image, torch.Tensor)
-        image_is_np = isinstance(image, np.ndarray)
-        image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
-        image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
-        image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
+    def check_input(
+        self,
+        image: Union[ControlNetUnionInput, ControlNetUnionInputProMax],
+    ):
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        if (
-            not image_is_pil
-            and not image_is_tensor
-            and not image_is_np
-            and not image_is_pil_list
-            and not image_is_tensor_list
-            and not image_is_np_list
-        ):
-            raise TypeError(
-                f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image)}"
-            )
-
-        if image_is_pil:
-            image_batch_size = 1
-        else:
-            image_batch_size = len(image)
-
-        if prompt is not None and isinstance(prompt, str):
-            prompt_batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            prompt_batch_size = len(prompt)
-        elif prompt_embeds is not None:
-            prompt_batch_size = prompt_embeds.shape[0]
-
-        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
+        if not isinstance(image, (ControlNetUnionInput, ControlNetUnionInputProMax)):
             raise ValueError(
-                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
+                "Expected type of `image` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
             )
+        if len(image) != controlnet.config.num_control_type:
+            if isinstance(image, ControlNetUnionInput):
+                raise ValueError(
+                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image)}. Try `ControlNetUnionInputProMax`."
+                )
+            elif isinstance(image, ControlNetUnionInputProMax):
+                raise ValueError(
+                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image)}. Try `ControlNetUnionInput`."
+                )
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
@@ -823,9 +795,11 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         if image_batch_size == 1:
             repeat_by = batch_size
-        else:
+        elif image_batch_size == batch_size:
             # image batch size is the same as prompt batch size
             repeat_by = num_images_per_prompt
+        else:
+            raise ValueError(f"Expected image batch size == 1 or `batch_size`, got {image_batch_size}.")
 
         image = image.repeat_interleave(repeat_by, dim=0)
 
@@ -964,7 +938,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image_list: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
+        image: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -1002,7 +976,6 @@ class StableDiffusionXLControlNetUnionPipeline(
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1013,7 +986,7 @@ class StableDiffusionXLControlNetUnionPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders.
-            image_list (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
+            image (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
                 In turn this supports (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
                     `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]`
                     or `List[List[PIL.Image.Image]]`):
@@ -1158,40 +1131,12 @@ class StableDiffusionXLControlNetUnionPipeline(
                 otherwise a `tuple` is returned containing the output images.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        if not isinstance(image_list, (ControlNetUnionInput, ControlNetUnionInputProMax)):
-            raise ValueError(
-                "Expected type of `image_list` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
-            )
-        if len(image_list) != controlnet.config.num_control_type:
-            if isinstance(image_list, ControlNetUnionInput):
-                raise ValueError(
-                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image_list)}. Try `ControlNetUnionInputProMax`."
-                )
-            elif isinstance(image_list, ControlNetUnionInputProMax):
-                raise ValueError(
-                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(image_list)}. Try `ControlNetUnionInput`."
-                )
+        self.check_input(image)
 
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
@@ -1201,13 +1146,12 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         # 1. Check inputs. Raise error if not correct
         control_type = []
-        for image_type in image_list:
-            if image_list[image_type]:
+        for image_type in image:
+            if image[image_type]:
                 self.check_inputs(
                     prompt,
                     prompt_2,
-                    image_list[image_type],
-                    callback_steps,
+                    image[image_type],
                     negative_prompt,
                     negative_prompt_2,
                     prompt_embeds,
@@ -1282,10 +1226,10 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 4. Prepare image
-        for image_type in image_list:
-            if image_list[image_type]:
+        for image_type in image:
+            if image[image_type]:
                 image = self.prepare_image(
-                    image=image_list[image_type],
+                    image=image[image_type],
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -1296,7 +1240,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                     guess_mode=guess_mode,
                 )
                 height, width = image.shape[-2:]
-                image_list[image_type] = image
+                image[image_type] = image
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -1337,9 +1281,9 @@ class StableDiffusionXLControlNetUnionPipeline(
             )
 
         # 7.2 Prepare added time ids & embeddings
-        for image_type in image_list:
-            if isinstance(image_list[image_type], torch.Tensor):
-                original_size = original_size or image_list[image_type].shape[-2:]
+        for image_type in image:
+            if isinstance(image[image_type], torch.Tensor):
+                original_size = original_size or image[image_type].shape[-2:]
 
         target_size = target_size or (height, width)
         add_text_embeds = pooled_prompt_embeds
@@ -1449,7 +1393,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image_list,
+                    controlnet_cond=image,
                     control_type=control_type,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
@@ -1508,9 +1452,6 @@ class StableDiffusionXLControlNetUnionPipeline(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
