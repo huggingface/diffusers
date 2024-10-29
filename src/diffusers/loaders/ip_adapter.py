@@ -357,10 +357,10 @@ class FluxIPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
-        subfolder: Union[str, List[str]],
         weight_name: Union[str, List[str]],
+        subfolder: Optional[Union[str, List[str]]] = "",
         image_encoder_pretrained_model_name_or_path: Optional[str] = "image_encoder",
-        image_encoder_subfolder: Optional[str] = None,
+        image_encoder_subfolder: Optional[str] = "",
         **kwargs,
     ):
         """
@@ -492,6 +492,7 @@ class FluxIPAdapterMixin:
                                     ".".join(key.split(".")[1:])
                                     .replace("ip_adapter_double_stream_k_proj", "to_k_ip")
                                     .replace("ip_adapter_double_stream_v_proj", "to_v_ip")
+                                    .replace("processor.", "")
                                 )
                                 state_dict["ip_adapter"][diffusers_name] = f.get_tensor(key)
                 else:
@@ -555,10 +556,22 @@ class FluxIPAdapterMixin:
         ```
         """
         transformer = self.transformer
+        if not isinstance(scale, list):
+            scale = [scale]
+
+        scale_configs = scale
 
         for attn_name, attn_processor in transformer.attn_processors.items():
             if isinstance(attn_processor, (FluxIPAdapterAttnProcessor2_0)):
-                attn_processor.scale = scale
+                if len(scale_configs) != len(attn_processor.scale):
+                    raise ValueError(
+                        f"Cannot assign {len(scale_configs)} scale_configs to "
+                        f"{len(attn_processor.scale)} IP-Adapter."
+                    )
+                elif len(scale_configs) == 1:
+                    scale_configs = scale_configs * len(attn_processor.scale)
+                for i, scale_config in enumerate(scale_configs):
+                    attn_processor.scale[i] = scale_config
 
     def unload_ip_adapter(self):
         """

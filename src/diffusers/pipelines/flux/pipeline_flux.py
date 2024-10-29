@@ -17,12 +17,18 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.embeddings import ImageProjection
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -184,6 +190,8 @@ class FluxPipeline(
         text_encoder_2: T5EncoderModel,
         tokenizer_2: T5TokenizerFast,
         transformer: FluxTransformer2DModel,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
     ):
         super().__init__()
 
@@ -195,6 +203,8 @@ class FluxPipeline(
             tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -404,12 +414,13 @@ class FluxPipeline(
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.transformer.encoder_hid_proj.image_projection_layers
             ):
-                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
-                single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1, output_hidden_state)
+                single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
 
                 image_embeds.append(single_image_embeds[None, :])
+                image_embeds = self.transformer.encoder_hid_proj(image_embeds)
         else:
             for single_image_embeds in ip_adapter_image_embeds:
+                image_embeds = self.transformer.encoder_hid_proj(single_image_embeds)
                 image_embeds.append(single_image_embeds)
 
         ip_adapter_image_embeds = []
@@ -779,7 +790,9 @@ class FluxPipeline(
                 device,
                 batch_size * num_images_per_prompt,
             )
-            joint_attention_kwargs["image_projection"] = image_embeds
+            if self.joint_attention_kwargs is None:
+                self._joint_attention_kwargs = {}
+            self._joint_attention_kwargs["image_projection"] = image_embeds
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:

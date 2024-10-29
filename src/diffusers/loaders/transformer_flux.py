@@ -84,7 +84,7 @@ class FluxTransformer2DLoadersMixin:
 
         return image_projection
 
-    def _convert_ip_adapter_attn_to_diffusers(self, state_dict, low_cpu_mem_usage=False):
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
             FluxIPAdapterAttnProcessor2_0,
         )
@@ -110,35 +110,47 @@ class FluxTransformer2DLoadersMixin:
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
-        key_id = 1
+        key_id = 0
         init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for name in self.attn_processors.keys():
             if name.startswith("single_transformer_blocks"):
-                continue
-
-            cross_attention_dim = self.config.joint_attention_dim
-            hidden_size = self.config.inner_dim
-            attn_processor_class = FluxIPAdapterAttnProcessor2_0
-
-            with init_context():
-                attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                    scale=1.0,
-                )
-
-            value_dict = {}
-            value_dict.update({"to_k_ip.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
-            value_dict.update({"to_v_ip.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
-
-            if not low_cpu_mem_usage:
-                attn_procs[name].load_state_dict(value_dict)
+                attn_processor_class = self.attn_processors[name].__class__
+                attn_procs[name] = attn_processor_class()
             else:
-                device = next(iter(value_dict.values())).device
-                dtype = next(iter(value_dict.values())).dtype
-                load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+                cross_attention_dim = self.config.joint_attention_dim
+                hidden_size = self.inner_dim
+                attn_processor_class = FluxIPAdapterAttnProcessor2_0
+                num_image_text_embeds = []
+                for state_dict in state_dicts:
+                    if "proj.weight" in state_dict["image_proj"]:
+                        # IP-Adapter
+                        num_image_text_embeds += [4]
 
-            key_id += 1
+                with init_context():
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        num_tokens=num_image_text_embeds,
+                        dtype=self.dtype,
+                        device=self.device,
+                    )
+
+                value_dict = {}
+                for i, state_dict in enumerate(state_dicts):
+                    value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
+                    value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
+                    value_dict.update({f"to_k_ip.{i}.bias": state_dict["ip_adapter"][f"{key_id}.to_k_ip.bias"]})
+                    value_dict.update({f"to_v_ip.{i}.bias": state_dict["ip_adapter"][f"{key_id}.to_v_ip.bias"]})
+
+                if not low_cpu_mem_usage:
+                    attn_procs[name].load_state_dict(value_dict)
+                else:
+                    device = self.device
+                    dtype = self.dtype
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+
+                key_id += 1
 
         return attn_procs
 
@@ -160,5 +172,3 @@ class FluxTransformer2DLoadersMixin:
 
         self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
         self.config.encoder_hid_dim_type = "ip_image_proj"
-
-        self.to(dtype=self.dtype, device=self.device)
