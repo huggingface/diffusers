@@ -14,95 +14,21 @@
 # limitations under the License.
 
 import functools
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_utils import ModelMixin
+from .autoencoder_kl_cogvideox import CogVideoXCausalConv3d
 from .vae import DecoderOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class MochiChunkedCausalConv3d(nn.Module):
-    r"""A 3D causal convolution layer that pads the input tensor to ensure causality in Mochi Model.
-    It also supports memory-efficient chunked 3D convolutions.
-
-    Args:
-        in_channels (`int`): Number of channels in the input tensor.
-        out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
-        stride (`int` or `Tuple[int, int, int]`, defaults to `1`): Stride of the convolution.
-        padding_mode (`str`, defaults to `"replicate"`): Padding mode.
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
-        stride: Union[int, Tuple[int, int, int]],
-        padding_mode: str = "replicate",
-    ):
-        super().__init__()
-
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size,) * 3
-        if isinstance(stride, int):
-            stride = (stride,) * 3
-
-        _, height_kernel_size, width_kernel_size = kernel_size
-
-        self.padding_mode = padding_mode
-        height_pad = (height_kernel_size - 1) // 2
-        width_pad = (width_kernel_size - 1) // 2
-
-        self.conv = nn.Conv3d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            dilation=(1, 1, 1),
-            padding=(0, height_pad, width_pad),
-            padding_mode=padding_mode,
-        )
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        time_kernel_size = self.conv.kernel_size[0]
-        context_size = time_kernel_size - 1
-        time_casual_padding = (0, 0, 0, 0, context_size, 0)
-        hidden_states = F.pad(hidden_states, time_casual_padding, mode=self.padding_mode)
-
-        # Memory-efficient chunked operation
-        memory_count = torch.prod(torch.tensor(hidden_states.shape)).item() * 2 / 1024**3
-        # YiYI Notes: this number 2 should be a config: max_memory_chunk_size (2 is 2GB)
-        if memory_count > 2:
-            part_num = int(memory_count / 2) + 1
-            num_frames = hidden_states.shape[2]
-            frames_idx = torch.arange(context_size, num_frames)
-            frames_chunks_idx = torch.chunk(frames_idx, part_num, dim=0)
-
-            output_chunks = []
-            for frames_chunk_idx in frames_chunks_idx:
-                frames_s = frames_chunk_idx[0] - context_size
-                frames_e = frames_chunk_idx[-1] + 1
-                frames_chunk = hidden_states[:, :, frames_s:frames_e, :, :]
-                output_chunk = self.conv(frames_chunk)
-                output_chunks.append(output_chunk)  # Append each output chunk to the list
-
-            # Concatenate all output chunks along the temporal dimension
-            hidden_states = torch.cat(output_chunks, dim=2)
-
-            return hidden_states
-        else:
-            return self.conv(hidden_states)
 
 
 class MochiChunkedGroupNorm3D(nn.Module):
@@ -167,30 +93,32 @@ class MochiResnetBlock3D(nn.Module):
         self.nonlinearity = get_activation(act_fn)
 
         self.norm1 = MochiChunkedGroupNorm3D(num_channels=in_channels)
-        self.conv1 = MochiChunkedCausalConv3d(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1
-        )
+        self.conv1 = CogVideoXCausalConv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1)
         self.norm2 = MochiChunkedGroupNorm3D(num_channels=out_channels)
-        self.conv2 = MochiChunkedCausalConv3d(
+        self.conv2 = CogVideoXCausalConv3d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1
         )
 
     def forward(
         self,
         inputs: torch.Tensor,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
+
         hidden_states = inputs
 
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
-        hidden_states = self.conv1(hidden_states)
+        hidden_states, new_conv_cache["conv1"] = self.conv1(hidden_states, conv_cache=conv_cache.get("conv1"))
 
         hidden_states = self.norm2(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
-        hidden_states = self.conv2(hidden_states)
+        hidden_states, new_conv_cache["conv2"] = self.conv2(hidden_states, conv_cache=conv_cache.get("conv2"))
 
         hidden_states = hidden_states + inputs
-        return hidden_states
+        return hidden_states, new_conv_cache
 
 
 class MochiUpBlock3D(nn.Module):
@@ -238,10 +166,16 @@ class MochiUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
 
-        for resnet in self.resnets:
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
+
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -250,34 +184,31 @@ class MochiUpBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
+                    conv_cache=conv_cache.get(conv_cache_key),
                 )
             else:
-                hidden_states = resnet(hidden_states)
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
-        # Calculate new shape
-        B, C, T, H, W = hidden_states.shape
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
         st = self.temporal_expansion
         sh = self.spatial_expansion
         sw = self.spatial_expansion
-        new_C = C // (st * sh * sw)
 
-        # Reshape and permute
-        hidden_states = hidden_states.view(B, new_C, st, sh, sw, T, H, W)
-        hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4)
-        hidden_states = hidden_states.contiguous().view(B, new_C, T * st, H * sh, W * sw)
+        # Reshape and unpatchify
+        hidden_states = hidden_states.view(batch_size, -1, st, sh, sw, num_frames, height, width)
+        hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4).contiguous()
+        hidden_states = hidden_states.view(batch_size, -1, num_frames * st, height * sh, width * sw)
 
-        if self.temporal_expansion > 1:
-            # Drop the first self.temporal_expansion - 1 frames.
-            hidden_states = hidden_states[:, :, self.temporal_expansion - 1 :]
-
-        return hidden_states
+        return hidden_states, new_conv_cache
 
 
 class MochiMidBlock3D(nn.Module):
@@ -308,10 +239,16 @@ class MochiMidBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiMidBlock3D` class."""
 
-        for resnet in self.resnets:
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
+
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -320,11 +257,15 @@ class MochiMidBlock3D(nn.Module):
 
                     return create_forward
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states)
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
             else:
-                hidden_states = resnet(hidden_states)
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
-        return hidden_states
+        return hidden_states, new_conv_cache
 
 
 class MochiDecoder3D(nn.Module):
@@ -368,6 +309,7 @@ class MochiDecoder3D(nn.Module):
             in_channels=block_out_channels[-1],
             num_layers=layers_per_block[-1],
         )
+
         self.up_blocks = nn.ModuleList([])
         for i in range(len(block_out_channels) - 1):
             up_block = MochiUpBlock3D(
@@ -378,6 +320,7 @@ class MochiDecoder3D(nn.Module):
                 spatial_expansion=spatial_expansions[-i - 1],
             )
             self.up_blocks.append(up_block)
+
         self.block_out = MochiMidBlock3D(
             in_channels=block_out_channels[0],
             num_layers=layers_per_block[0],
@@ -386,8 +329,13 @@ class MochiDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
+    ) -> torch.Tensor:
         r"""Forward method of the `MochiDecoder3D` class."""
+
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
 
         hidden_states = self.conv_in(hidden_states)
 
@@ -400,25 +348,37 @@ class MochiDecoder3D(nn.Module):
 
                 return create_forward
 
-            hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.block_in), hidden_states)
+            hidden_states, new_conv_cache["block_in"] = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.block_in), hidden_states, conv_cache=conv_cache.get("block_in")
+            )
 
-            for up_block in self.up_blocks:
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), hidden_states)
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"up_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(up_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
         else:
-            hidden_states = self.block_in(hidden_states)
+            hidden_states, new_conv_cache["block_in"] = self.block_in(
+                hidden_states, conv_cache=conv_cache.get("block_in")
+            )
 
-            for up_block in self.up_blocks:
-                hidden_states = up_block(hidden_states)
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"up_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = up_block(
+                    hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
 
-        hidden_states = self.block_out(hidden_states)
+        hidden_states, new_conv_cache["block_out"] = self.block_out(
+            hidden_states, conv_cache=conv_cache.get("block_out")
+        )
 
         hidden_states = self.nonlinearity(hidden_states)
-
+        
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.conv_out(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
-        return hidden_states
+        return hidden_states, new_conv_cache
 
 
 class AutoencoderKLMochi(ModelMixin, ConfigMixin):
@@ -505,6 +465,8 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
+        self.num_latent_frames_batch_size = 2
+
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
 
@@ -574,7 +536,18 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        dec = self.decoder(z)
+        conv_cache = None
+        dec = []
+
+        for i in range(0, num_frames, self.num_latent_frames_batch_size):
+            z_intermediate = z[:, :, i : i + self.num_latent_frames_batch_size]
+            z_intermediate, conv_cache = self.decoder(z_intermediate, conv_cache=conv_cache)
+            dec.append(z_intermediate)
+
+        if dec[-1].size(2) >= self.temporal_compression_ratio:
+            dec[-1] = dec[-1][:, :, self.temporal_compression_ratio - 1 :]
+
+        dec = torch.cat(dec, dim=2)
 
         if not return_dict:
             return (dec,)
@@ -656,10 +629,18 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, tile_latent_stride_height):
             row = []
             for j in range(0, width, tile_latent_stride_width):
-                # TODO(aryan): Implement frame-wise tiling
-                tile = z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
-                tile = self.decoder(tile)
-                row.append(tile)
+                time = []
+                conv_cache = None
+
+                for k in range(0, num_frames, self.num_latent_frames_batch_size):
+                    tile = z[:, :, k : k + self.num_latent_frames_batch_size, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                    tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
+                    time.append(tile)
+                
+                if time[-1].size(2) >= self.temporal_compression_ratio:
+                    time[-1] = time[-1][:, :, self.temporal_compression_ratio - 1 :]
+                
+                row.append(torch.cat(time, dim=2))
             rows.append(row)
 
         result_rows = []
