@@ -75,6 +75,7 @@ if is_torch_npu_available():
     torch.npu.config.allow_internal_format = False
     torch.npu.set_compile_mode(jit_compile=False)
 
+
 def save_model_card(
     repo_id: str,
     images=None,
@@ -1084,7 +1085,6 @@ def main(args):
                 torch.cuda.empty_cache()
             elif is_torch_npu_available():
                 torch_npu.npu.empty_cache()
-
 
     # Handle the repository creation
     if accelerator.is_main_process:
