@@ -252,6 +252,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/allegro_transformer3d
+        title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -300,6 +302,8 @@
     - sections:
       - local: api/models/autoencoderkl
         title: AutoencoderKL
+      - local: api/models/autoencoderkl_allegro
+        title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
       - local: api/models/asymmetricautoencoderkl
@@ -318,6 +322,8 @@
     sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/allegro
+      title: Allegro
     - local: api/pipelines/amused
       title: aMUSEd
     - local: api/pipelines/animatediff
