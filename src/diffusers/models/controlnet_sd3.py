@@ -56,6 +56,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
+        context_pre_only_last_layer: bool = False,
         dual_attention_layers: Tuple[
             int, ...
         ] = (), 
@@ -87,7 +88,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
-                    context_pre_only=False,
+                    context_pre_only=context_pre_only_last_layer and i == num_layers - 1,
                     qk_norm=qk_norm,
                     use_dual_attention=True if i in dual_attention_layers else False,
                 )
