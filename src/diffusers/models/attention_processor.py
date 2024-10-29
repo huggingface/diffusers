@@ -1798,12 +1798,15 @@ class FluxAttnProcessor2_0:
         else:
             return hidden_states
 
+
 class FluxAttnProcessor2_0_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0 and install torch NPU"
+            )
 
     def __call__(
         self,
@@ -1881,9 +1884,7 @@ class FluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, dropout_p=0.0, is_causal=False
-            )
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -1902,6 +1903,7 @@ class FluxAttnProcessor2_0_NPU:
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
+
 
 class FusedFluxAttnProcessor2_0:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
@@ -1996,13 +1998,14 @@ class FusedFluxAttnProcessor2_0:
         else:
             return hidden_states
 
+
 class FusedFluxAttnProcessor2_0_NPU:
     """Attention processor used typically in processing the SD3-like self-attention projections."""
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "FusedFluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0."
+                "FluxAttnProcessor2_0_NPU requires PyTorch 2.0 and torch NPU, to use it, please upgrade PyTorch to 2.0, and install torch NPU"
             )
 
     def __call__(
@@ -2085,9 +2088,7 @@ class FusedFluxAttnProcessor2_0_NPU:
                 inner_precise=0,
             )[0]
         else:
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, dropout_p=0.0, is_causal=False
-            )
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -2107,6 +2108,7 @@ class FusedFluxAttnProcessor2_0_NPU:
             return hidden_states, encoder_hidden_states
         else:
             return hidden_states
+
 
 class CogVideoXAttnProcessor2_0:
     r"""
