@@ -28,6 +28,7 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
@@ -54,6 +55,7 @@ if is_torch_available():
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
@@ -81,6 +83,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .autoencoders import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
@@ -97,6 +100,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
