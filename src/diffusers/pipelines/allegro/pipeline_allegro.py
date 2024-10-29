@@ -30,6 +30,7 @@ from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BACKENDS_MAPPING,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -219,6 +220,7 @@ class AllegroPipeline(DiffusionPipeline):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->512, num_images_per_prompt->num_videos_per_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -232,6 +234,7 @@ class AllegroPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
         max_sequence_length: int = 512,
+        **kwargs,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -245,7 +248,7 @@ class AllegroPipeline(DiffusionPipeline):
                 PixArt-Alpha, this should be "".
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 number of images that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
@@ -257,9 +260,12 @@ class AllegroPipeline(DiffusionPipeline):
                 string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            max_sequence_length (`int`, defaults to `512`):
-                Maximum sequence length to use for the prompt.
+            max_sequence_length (`int`, defaults to 512): Maximum sequence length to use for the prompt.
         """
+
+        if "mask_feature" in kwargs:
+            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
+            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
 
         if device is None:
             device = self._execution_device
@@ -292,7 +298,7 @@ class AllegroPipeline(DiffusionPipeline):
             ):
                 removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
                 logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    "The following part of your input was truncated because T5 can only handle sequences up to"
                     f" {max_length} tokens: {removed_text}"
                 )
 
@@ -320,7 +326,7 @@ class AllegroPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size
+            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -336,8 +342,7 @@ class AllegroPipeline(DiffusionPipeline):
             negative_prompt_attention_mask = negative_prompt_attention_mask.to(device)
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=negative_prompt_attention_mask,
+                uncond_input.input_ids.to(device), attention_mask=negative_prompt_attention_mask
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
