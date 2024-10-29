@@ -133,14 +133,14 @@ def retrieve_timesteps(
 
 class AllegroPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Allegro.
+    Pipeline for text-to-video generation using Allegro.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         vae ([`AllegroAutoEncoderKL3D`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+            Variational Auto-Encoder (VAE) Model to encode and decode video to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             Frozen text-encoder. PixArt-Alpha uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
@@ -149,9 +149,9 @@ class AllegroPipeline(DiffusionPipeline):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
         transformer ([`AllegroTransformer3DModel`]):
-            A text conditioned `AllegroTransformer3DModel` to denoise the encoded image latents.
+            A text conditioned `AllegroTransformer3DModel` to denoise the encoded video latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+            A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
 
     bad_punct_regex = re.compile(
@@ -692,14 +692,14 @@ class AllegroPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             num_inference_steps (`int`, *optional*, defaults to 100):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
@@ -708,16 +708,16 @@ class AllegroPipeline(DiffusionPipeline):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                1`. Higher guidance scale encourages to generate videos that are closely linked to the text `prompt`,
+                usually at the expense of lower video quality.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             num_frames: (`int`, *optional*, defaults to 88):
                 The number controls the generated video frames.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
-                The height in pixels of the generated image.
+                The height in pixels of the generated video.
             width (`int`, *optional*, defaults to self.unet.config.sample_size):
-                The width in pixels of the generated image.
+                The width in pixels of the generated video.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -725,8 +725,8 @@ class AllegroPipeline(DiffusionPipeline):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
                 tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
@@ -738,7 +738,7 @@ class AllegroPipeline(DiffusionPipeline):
             negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
+                The output format of the generate video. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
@@ -758,9 +758,9 @@ class AllegroPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
-                returned where the first element is a list with the generated images
+            [`~pipelines.allegro.pipeline_output.AllegroPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.allegro.pipeline_output.AllegroPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated videos.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
