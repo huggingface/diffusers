@@ -1841,6 +1841,7 @@ def main(args):
             optimizer_class = torch.optim.AdamW
         optimizer = optimizer_class(
             params_to_optimize,
+            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             weight_decay=args.adam_weight_decay,
             eps=args.adam_epsilon,
