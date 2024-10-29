@@ -65,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -1256,8 +1256,8 @@ def main(args):
 
                 latent_image_ids = FluxControlNetPipeline._prepare_latent_image_ids(
                     batch_size=pixel_latents_tmp.shape[0],
-                    height=pixel_latents_tmp.shape[2],
-                    width=pixel_latents_tmp.shape[3],
+                    height=pixel_latents_tmp.shape[2] // 2,
+                    width=pixel_latents_tmp.shape[3] // 2,
                     device=pixel_values.device,
                     dtype=pixel_values.dtype,
                 )
