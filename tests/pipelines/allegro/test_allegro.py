@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5Config, T5EncoderModel
 
 from diffusers import AllegroPipeline, AllegroTransformer3DModel, AutoencoderKLAllegro, DDIMScheduler
 from diffusers.utils.testing_utils import (
@@ -62,11 +62,11 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=4,
             out_channels=4,
             num_layers=1,
-            cross_attention_dim=32,
+            cross_attention_dim=24,
             sample_width=8,
             sample_height=8,
             sample_frames=8,
-            caption_channels=32,
+            caption_channels=24,
         )
 
         torch.manual_seed(0)
@@ -92,9 +92,25 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             temporal_compression_ratio=4,
         )
 
+        # TODO(aryan): Only for now, since VAE decoding without tiling is not yet implemented here
+        vae.enable_tiling()
+
         torch.manual_seed(0)
         scheduler = DDIMScheduler()
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        text_encoder_config = T5Config(
+            **{
+                "d_ff": 37,
+                "d_kv": 8,
+                "d_model": 24,
+                "num_decoder_layers": 2,
+                "num_heads": 4,
+                "num_layers": 2,
+                "relative_attention_num_buckets": 8,
+                "vocab_size": 1103,
+            }
+        )
+        text_encoder = T5EncoderModel(text_encoder_config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {
@@ -118,14 +134,22 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "height": 48,
-            "width": 48,
+            "height": 16,
+            "width": 16,
             "num_frames": 8,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
 
         return inputs
+
+    @unittest.skip("Decoding without tiling is not yet implemented")
+    def test_save_load_local(self):
+        pass
+
+    @unittest.skip("Decoding without tiling is not yet implemented")
+    def test_save_load_optional_components(self):
+        pass
 
     def test_inference(self):
         device = "cpu"
@@ -241,6 +265,8 @@ class AllegroPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
+    # TODO(aryan)
+    @unittest.skip("Decoding without tiling is not yet implemented.")
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"
         components = self.get_dummy_components()

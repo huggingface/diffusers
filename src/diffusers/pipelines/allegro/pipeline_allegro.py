@@ -188,7 +188,7 @@ class AllegroPipeline(DiffusionPipeline):
         + r"]{1,}"
     )  # noqa
 
-    _optional_components = ["tokenizer", "text_encoder", "vae", "transformer", "scheduler"]
+    _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     _callback_tensor_inputs = [
@@ -226,10 +226,10 @@ class AllegroPipeline(DiffusionPipeline):
         negative_prompt: str = "",
         num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.FloatTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
         max_sequence_length: int = 512,
     ):
@@ -249,10 +249,10 @@ class AllegroPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
                 string.
             clean_caption (`bool`, defaults to `False`):
@@ -632,15 +632,11 @@ class AllegroPipeline(DiffusionPipeline):
     ):
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_width = 1280 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_height = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
-        grid_crops_coords = get_resize_crop_region_for_grid(
-            (grid_height, grid_width), base_size_width, base_size_height
-        )
+        start, stop = (0, 0), (grid_height, grid_width)
         freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w = get_3d_rotary_pos_embed_allegro(
             embed_dim=self.transformer.config.attention_head_dim,
-            crops_coords=grid_crops_coords,
+            crops_coords=(start, stop),
             grid_size=(grid_height, grid_width),
             temporal_size=num_frames,
             interpolation_scale=(
@@ -655,7 +651,7 @@ class AllegroPipeline(DiffusionPipeline):
         grid_w = torch.from_numpy(grid_w).to(device=device, dtype=torch.long)
 
         pos = torch.cartesian_prod(grid_t, grid_h, grid_w)
-        pos = pos.reshape(-1, 3).transpose(0, 1).reshape(3, 1, -1).contiguous().expand(3, batch_size, -1)
+        pos = pos.reshape(-1, 3).transpose(0, 1).reshape(3, 1, -1).contiguous()
         grid_t, grid_h, grid_w = pos
 
         freqs_t = (freqs_t[0].to(device=device), freqs_t[1].to(device=device))
@@ -691,11 +687,11 @@ class AllegroPipeline(DiffusionPipeline):
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -742,18 +738,18 @@ class AllegroPipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            prompt_attention_mask (`torch.FloatTensor`, *optional*): Pre-generated attention mask for text embeddings.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_attention_mask (`torch.Tensor`, *optional*): Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
-            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
+            negative_prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
@@ -762,7 +758,7 @@ class AllegroPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
@@ -874,6 +870,7 @@ class AllegroPipeline(DiffusionPipeline):
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
