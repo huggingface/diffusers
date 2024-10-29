@@ -116,6 +116,7 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
@@ -454,6 +455,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .allegro import AllegroPipeline
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
