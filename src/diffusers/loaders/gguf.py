@@ -14,14 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 from array import array
+
 import gguf
+import torch
 from tqdm import tqdm
 
 from ..utils import is_torch_available
-from ..utils.logging import get_logger
 from ..utils.import_utils import is_gguf_available
+from ..utils.logging import get_logger
+
 
 TORCH_COMPATIBLE_QTYPES = {None, gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16}
 
@@ -108,18 +110,14 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
             and only loads the metadata in memory.
     """
 
-    """
     if is_gguf_available() and is_torch_available():
-        from gguf import GGUFReader, dequantize
+        from gguf import GGUFReader
     else:
         logger.error(
             "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
             "https://pytorch.org/ and https://github.com/ggerganov/llama.cpp/tree/master/gguf-py for installation instructions."
         )
         raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
-    """
-    if is_torch_available():
-        from gguf import GGUFReader, dequantize
 
     reader = GGUFReader(gguf_checkpoint_path)
     fields = reader.fields
