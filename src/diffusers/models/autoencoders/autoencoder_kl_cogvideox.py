@@ -425,7 +425,7 @@ class CogVideoXDownBlock3D(nn.Module):
                     hidden_states,
                     temb,
                     zq,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -523,7 +523,7 @@ class CogVideoXMidBlock3D(nn.Module):
                     return create_forward
 
                 hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache=conv_cache.get(conv_cache_key)
+                    create_custom_forward(resnet), hidden_states, temb, zq, conv_cache.get(conv_cache_key)
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -641,7 +641,7 @@ class CogVideoXUpBlock3D(nn.Module):
                     hidden_states,
                     temb,
                     zq,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
             else:
                 hidden_states, new_conv_cache[conv_cache_key] = resnet(
@@ -781,7 +781,7 @@ class CogVideoXEncoder3D(nn.Module):
                     hidden_states,
                     temb,
                     None,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
 
             # 2. Mid
@@ -790,14 +790,14 @@ class CogVideoXEncoder3D(nn.Module):
                 hidden_states,
                 temb,
                 None,
-                conv_cache=conv_cache.get("mid_block"),
+                conv_cache.get("mid_block"),
             )
         else:
             # 1. Down
             for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
                 hidden_states, new_conv_cache[conv_cache_key] = down_block(
-                    hidden_states, temb, None, conv_cache=conv_cache.get(conv_cache_key)
+                    hidden_states, temb, None, conv_cache.get(conv_cache_key)
                 )
 
             # 2. Mid
@@ -945,7 +945,7 @@ class CogVideoXDecoder3D(nn.Module):
                 hidden_states,
                 temb,
                 sample,
-                conv_cache=conv_cache.get("mid_block"),
+                conv_cache.get("mid_block"),
             )
 
             # 2. Up
@@ -956,7 +956,7 @@ class CogVideoXDecoder3D(nn.Module):
                     hidden_states,
                     temb,
                     sample,
-                    conv_cache=conv_cache.get(conv_cache_key),
+                    conv_cache.get(conv_cache_key),
                 )
         else:
             # 1. Mid

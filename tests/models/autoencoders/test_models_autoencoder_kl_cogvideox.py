@@ -156,7 +156,7 @@ class AutoencoderKLCogVideoXTests(ModelTesterMixin, UNetTesterMixin, unittest.Te
 
         assert not model.is_gradient_checkpointing and model.training
 
-        out = model(**inputs_dict).sample
+        out = model(**inputs_dict)
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model.zero_grad()
@@ -174,7 +174,7 @@ class AutoencoderKLCogVideoXTests(ModelTesterMixin, UNetTesterMixin, unittest.Te
 
         assert model_2.is_gradient_checkpointing and model_2.training
 
-        out_2 = model_2(**inputs_dict).sample
+        out_2 = model_2(**inputs_dict)
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model_2.zero_grad()
