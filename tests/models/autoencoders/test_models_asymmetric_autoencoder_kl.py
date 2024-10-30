@@ -19,7 +19,7 @@ import unittest
 import torch
 from parameterized import parameterized
 
-from diffusers import AutoencoderKL
+from diffusers import AsymmetricAutoencoderKL
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -27,8 +27,6 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_hf_numpy,
     require_torch_accelerator,
-    require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -43,21 +41,27 @@ enable_full_determinism()
 
 
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKL
+    model_class = AsymmetricAutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2
 
-    def get_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
+    def get_asym_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
         block_out_channels = block_out_channels or [2, 4]
         norm_num_groups = norm_num_groups or 2
         init_dict = {
-            "block_out_channels": block_out_channels,
             "in_channels": 3,
             "out_channels": 3,
             "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+            "down_block_out_channels": block_out_channels,
+            "layers_per_down_block": 1,
             "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+            "up_block_out_channels": block_out_channels,
+            "layers_per_up_block": 1,
+            "act_fn": "silu",
             "latent_channels": 4,
             "norm_num_groups": norm_num_groups,
+            "sample_size": 32,
+            "scaling_factor": 0.18215,
         }
         return init_dict
 
@@ -68,8 +72,9 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         sizes = (32, 32)
 
         image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        mask = torch.ones((batch_size, 1) + sizes).to(torch_device)
 
-        return {"sample": image}
+        return {"sample": image, "mask": mask}
 
     @property
     def input_shape(self):
@@ -80,199 +85,17 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_config()
+        init_dict = self.get_asym_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_enable_disable_tiling(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        inputs_dict.update({"return_dict": False})
-
-        torch.manual_seed(0)
-        output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_tiling()
-        output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertLess(
-            (output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE tiling should not affect the inference results",
-        )
-
-        torch.manual_seed(0)
-        model.disable_tiling()
-        output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertEqual(
-            output_without_tiling.detach().cpu().numpy().all(),
-            output_without_tiling_2.detach().cpu().numpy().all(),
-            "Without tiling outputs should match with the outputs when tiling is manually disabled.",
-        )
-
-    def test_enable_disable_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        inputs_dict.update({"return_dict": False})
-
-        torch.manual_seed(0)
-        output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_slicing()
-        output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertLess(
-            (output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE slicing should not affect the inference results",
-        )
-
-        torch.manual_seed(0)
-        model.disable_slicing()
-        output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertEqual(
-            output_without_slicing.detach().cpu().numpy().all(),
-            output_without_slicing_2.detach().cpu().numpy().all(),
-            "Without slicing outputs should match with the outputs when slicing is manually disabled.",
-        )
-
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        # (TODO: sayakpaul): should be grouped in https://github.com/huggingface/diffusers/pull/9494
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
-        model = model.to(torch_device)
-        model.eval()
-
-        # Keep generator on CPU for non-CUDA devices to compare outputs with CPU result tensors
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
-        if torch_device != "mps":
-            generator = torch.Generator(device=generator_device).manual_seed(0)
-        else:
-            generator = torch.manual_seed(0)
-
-        image = torch.randn(
-            1,
-            model.config.in_channels,
-            model.config.sample_size,
-            model.config.sample_size,
-            generator=torch.manual_seed(0),
-        )
-        image = image.to(torch_device)
-        with torch.no_grad():
-            output = model(image, sample_posterior=True, generator=generator).sample
-
-        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
-
-        # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
-        # the expected output slices are not the same for CPU and GPU.
-        if torch_device == "mps":
-            expected_output_slice = torch.tensor(
-                [
-                    -4.0078e-01,
-                    -3.8323e-04,
-                    -1.2681e-01,
-                    -1.1462e-01,
-                    2.0095e-01,
-                    1.0893e-01,
-                    -8.8247e-02,
-                    -3.0361e-01,
-                    -9.8644e-03,
-                ]
-            )
-        elif generator_device == "cpu":
-            expected_output_slice = torch.tensor(
-                [
-                    -0.1352,
-                    0.0878,
-                    0.0419,
-                    -0.0818,
-                    -0.1069,
-                    0.0688,
-                    -0.1458,
-                    -0.4446,
-                    -0.0026,
-                ]
-            )
-        else:
-            expected_output_slice = torch.tensor(
-                [
-                    -0.2421,
-                    0.4642,
-                    0.2507,
-                    -0.0438,
-                    0.0682,
-                    0.3160,
-                    -0.2018,
-                    -0.0727,
-                    0.2485,
-                ]
-            )
-
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
+    @unittest.skip("Unsupported test.")
+    def test_forward_with_norm_groups(self):
+        pass
 
 
 @slow
-class AutoencoderKLIntegrationTests(unittest.TestCase):
+class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
 
@@ -287,17 +110,16 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
-    def get_sd_vae_model(self, model_id="CompVis/stable-diffusion-v1-4", fp16=False):
-        revision = "fp16" if fp16 else None
-        torch_dtype = torch.float16 if fp16 else torch.float32
+    def get_sd_vae_model(self, model_id="cross-attention/asymmetric-autoencoder-kl-x-1-5", fp16=False):
+        revision = "main"
+        torch_dtype = torch.float32
 
-        model = AutoencoderKL.from_pretrained(
+        model = AsymmetricAutoencoderKL.from_pretrained(
             model_id,
-            subfolder="vae",
             torch_dtype=torch_dtype,
             revision=revision,
         )
-        model.to(torch_device)
+        model.to(torch_device).eval()
 
         return model
 
@@ -312,13 +134,13 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.1556, 0.9848, -0.0410, -0.0642, -0.2685, 0.8381, -0.2004, -0.0700],
-                [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
+                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
+                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
             ],
             [
                 47,
-                [-0.2376, 0.1200, 0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
-                [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
+                [0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529],
+                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
             ],
             # fmt: on
         ]
@@ -336,44 +158,20 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
-
-    @parameterized.expand(
-        [
-            # fmt: off
-            [33, [-0.0513, 0.0289, 1.3799, 0.2166, -0.2573, -0.0871, 0.5103, -0.0999]],
-            [47, [-0.4128, -0.1320, -0.3704, 0.1965, -0.4116, -0.2332, -0.3340, 0.2247]],
-            # fmt: on
-        ]
-    )
-    @require_torch_accelerator_with_fp16
-    def test_stable_diffusion_fp16(self, seed, expected_slice):
-        model = self.get_sd_vae_model(fp16=True)
-        image = self.get_sd_image(seed, fp16=True)
-        generator = self.get_generator(seed)
-
-        with torch.no_grad():
-            sample = model(image, generator=generator, sample_posterior=True).sample
-
-        assert sample.shape == image.shape
-
-        output_slice = sample[-1, -2:, :2, -2:].flatten().float().cpu()
-        expected_output_slice = torch.tensor(expected_slice)
-
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-2)
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
     @parameterized.expand(
         [
             # fmt: off
             [
                 33,
-                [-0.1609, 0.9866, -0.0487, -0.0777, -0.2716, 0.8368, -0.2055, -0.0814],
-                [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
+                [-0.0340, 0.2870, 0.1698, -0.0105, -0.3448, 0.3529, -0.1321, 0.1097],
+                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
             ],
             [
                 47,
-                [-0.2377, 0.1147, 0.1333, -0.4841, -0.2506, -0.0805, -0.0491, -0.4085],
-                [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
+                [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531],
+                [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531],
             ],
             # fmt: on
         ]
@@ -395,8 +193,8 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [13, [-0.2051, -0.1803, -0.2311, -0.2114, -0.3292, -0.3574, -0.2953, -0.3323]],
-            [37, [-0.2632, -0.2625, -0.2199, -0.2741, -0.4539, -0.4990, -0.3720, -0.4925]],
+            [13, [-0.0521, -0.2939, 0.1540, -0.1855, -0.5936, -0.3138, -0.4579, -0.2275]],
+            [37, [-0.1820, -0.4345, -0.0455, -0.2923, -0.8035, -0.5089, -0.4795, -0.3106]],
             # fmt: on
         ]
     )
@@ -414,51 +212,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
-
-    @parameterized.expand(
-        [
-            # fmt: off
-            [27, [-0.0369, 0.0207, -0.0776, -0.0682, -0.1747, -0.1930, -0.1465, -0.2039]],
-            [16, [-0.1628, -0.2134, -0.2747, -0.2642, -0.3774, -0.4404, -0.3687, -0.4277]],
-            # fmt: on
-        ]
-    )
-    @require_torch_accelerator_with_fp16
-    def test_stable_diffusion_decode_fp16(self, seed, expected_slice):
-        model = self.get_sd_vae_model(fp16=True)
-        encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
-
-        with torch.no_grad():
-            sample = model.decode(encoding).sample
-
-        assert list(sample.shape) == [3, 3, 512, 512]
-
-        output_slice = sample[-1, -2:, :2, -2:].flatten().float().cpu()
-        expected_output_slice = torch.tensor(expected_slice)
-
-        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
-
-    @parameterized.expand([(13,), (16,), (27,)])
-    @require_torch_gpu
-    @unittest.skipIf(
-        not is_xformers_available(),
-        reason="xformers is not required when using PyTorch 2.0.",
-    )
-    def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
-        model = self.get_sd_vae_model(fp16=True)
-        encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
-
-        with torch.no_grad():
-            sample = model.decode(encoding).sample
-
-        model.enable_xformers_memory_efficient_attention()
-        with torch.no_grad():
-            sample_2 = model.decode(encoding).sample
-
-        assert list(sample.shape) == [3, 3, 512, 512]
-
-        assert torch_all_close(sample, sample_2, atol=1e-1)
+        assert torch_all_close(output_slice, expected_output_slice, atol=2e-3)
 
     @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu
@@ -479,7 +233,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert list(sample.shape) == [3, 3, 512, 512]
 
-        assert torch_all_close(sample, sample_2, atol=1e-2)
+        assert torch_all_close(sample, sample_2, atol=5e-2)
 
     @parameterized.expand(
         [
