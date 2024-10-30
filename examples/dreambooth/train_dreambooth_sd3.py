@@ -973,7 +973,6 @@ def encode_prompt(
         max_sequence_length,
         prompt=prompt,
         num_images_per_prompt=num_images_per_prompt,
-        text_input_ids=text_input_ids_list[-1] if text_input_ids_list else None,
         device=device if device is not None else text_encoders[-1].device,
     )
 
