@@ -936,7 +936,7 @@ def _encode_prompt_with_clip(
     return prompt_embeds, pooled_prompt_embeds
 
 
-def _(
+def encode_prompt(
     text_encoders,
     tokenizers,
     prompt: str,
