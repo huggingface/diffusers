@@ -341,9 +341,6 @@ class EMAModel:
             )
             parameters = parameters.parameters()
 
-            # set use_ema_warmup to True if a torch.nn.Module is passed for backwards compatibility
-            use_ema_warmup = True
-
         if kwargs.get("max_value", None) is not None:
             deprecation_message = "The `max_value` argument is deprecated. Please use `decay` instead."
             deprecate("max_value", "1.0.0", deprecation_message, standard_warn=False)
@@ -414,7 +411,7 @@ class EMAModel:
         if self.use_ema_warmup:
             cur_decay_value = 1 - (1 + step / self.inv_gamma) ** -self.power
         else:
-            cur_decay_value = (1 + step) / (10 + step)
+            cur_decay_value = self.decay
 
         cur_decay_value = min(cur_decay_value, self.decay)
         # make sure decay is not smaller than min_decay
