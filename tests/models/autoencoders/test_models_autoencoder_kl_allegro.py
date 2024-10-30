@@ -15,14 +15,10 @@
 
 import unittest
 
-import torch
-
-from diffusers import AutoencoderKL
+from diffusers import AutoencoderKLAllegro
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    require_torch_accelerator_with_training,
-    torch_all_close,
     torch_device,
 )
 
@@ -32,230 +28,154 @@ from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 enable_full_determinism()
 
 
-class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKL
+class AutoencoderKLAllegroTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+    model_class = AutoencoderKLAllegro
     main_input_name = "sample"
     base_precision = 1e-2
 
-    def get_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
-        block_out_channels = block_out_channels or [2, 4]
-        norm_num_groups = norm_num_groups or 2
-        init_dict = {
-            "block_out_channels": block_out_channels,
+    def get_autoencoder_kl_allegro_config(self):
+        return {
             "in_channels": 3,
             "out_channels": 3,
-            "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
-            "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+            "down_block_types": (
+                "AllegroDownBlock3D",
+                "AllegroDownBlock3D",
+                "AllegroDownBlock3D",
+                "AllegroDownBlock3D",
+            ),
+            "up_block_types": ("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D"),
+            "block_out_channels": (8, 8, 8, 8),
             "latent_channels": 4,
-            "norm_num_groups": norm_num_groups,
+            "layers_per_block": 1,
+            "norm_num_groups": 2,
+            "temporal_compression_ratio": 4,
         }
-        return init_dict
 
     @property
     def dummy_input(self):
         batch_size = 4
+        num_frames = 8
         num_channels = 3
-        sizes = (32, 32)
+        sizes = (16, 16)
 
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
 
         return {"sample": image}
 
     @property
     def input_shape(self):
-        return (3, 32, 32)
+        return (3, 8, 16, 16)
 
     @property
     def output_shape(self):
-        return (3, 32, 32)
+        return (3, 8, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_config()
+        init_dict = self.get_autoencoder_kl_allegro_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_enable_disable_tiling(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+    # TODO: @a-r-r-o-w
+    # def test_enable_disable_tiling(self):
+    #     init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
+    #     torch.manual_seed(0)
+    #     model = self.model_class(**init_dict).to(torch_device)
 
-        inputs_dict.update({"return_dict": False})
+    #     inputs_dict.update({"return_dict": False})
 
-        torch.manual_seed(0)
-        output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        torch.manual_seed(0)
-        model.enable_tiling()
-        output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     model.enable_tiling()
+    #     output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertLess(
-            (output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE tiling should not affect the inference results",
-        )
+    #     self.assertLess(
+    #         (output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()).max(),
+    #         0.5,
+    #         "VAE tiling should not affect the inference results",
+    #     )
 
-        torch.manual_seed(0)
-        model.disable_tiling()
-        output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     model.disable_tiling()
+    #     output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertEqual(
-            output_without_tiling.detach().cpu().numpy().all(),
-            output_without_tiling_2.detach().cpu().numpy().all(),
-            "Without tiling outputs should match with the outputs when tiling is manually disabled.",
-        )
+    #     self.assertEqual(
+    #         output_without_tiling.detach().cpu().numpy().all(),
+    #         output_without_tiling_2.detach().cpu().numpy().all(),
+    #         "Without tiling outputs should match with the outputs when tiling is manually disabled.",
+    #     )
 
-    def test_enable_disable_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+    # def test_enable_disable_slicing(self):
+    #     init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
+    #     torch.manual_seed(0)
+    #     model = self.model_class(**init_dict).to(torch_device)
 
-        inputs_dict.update({"return_dict": False})
+    #     inputs_dict.update({"return_dict": False})
 
-        torch.manual_seed(0)
-        output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        torch.manual_seed(0)
-        model.enable_slicing()
-        output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     model.enable_slicing()
+    #     output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertLess(
-            (output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE slicing should not affect the inference results",
-        )
+    #     self.assertLess(
+    #         (output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()).max(),
+    #         0.5,
+    #         "VAE slicing should not affect the inference results",
+    #     )
 
-        torch.manual_seed(0)
-        model.disable_slicing()
-        output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
+    #     torch.manual_seed(0)
+    #     model.disable_slicing()
+    #     output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
 
-        self.assertEqual(
-            output_without_slicing.detach().cpu().numpy().all(),
-            output_without_slicing_2.detach().cpu().numpy().all(),
-            "Without slicing outputs should match with the outputs when slicing is manually disabled.",
-        )
+    #     self.assertEqual(
+    #         output_without_slicing.detach().cpu().numpy().all(),
+    #         output_without_slicing_2.detach().cpu().numpy().all(),
+    #         "Without slicing outputs should match with the outputs when slicing is manually disabled.",
+    #     )
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        # (TODO: sayakpaul): should be grouped in https://github.com/huggingface/diffusers/pull/9494
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
+    # @require_torch_accelerator_with_training
+    # def test_gradient_checkpointing(self):
+    #     # enable deterministic behavior for gradient checkpointing
+    #     # (TODO: sayakpaul): should be grouped in https://github.com/huggingface/diffusers/pull/9494
+    #     init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+    #     model = self.model_class(**init_dict)
+    #     model.to(torch_device)
 
-        assert not model.is_gradient_checkpointing and model.training
+    #     assert not model.is_gradient_checkpointing and model.training
 
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
+    #     out = model(**inputs_dict).sample
+    #     # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+    #     # we won't calculate the loss and rather backprop on out.sum()
+    #     model.zero_grad()
 
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
+    #     labels = torch.randn_like(out)
+    #     loss = (out - labels).mean()
+    #     loss.backward()
 
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
+    #     # re-instantiate the model now enabling gradient checkpointing
+    #     model_2 = self.model_class(**init_dict)
+    #     # clone model
+    #     model_2.load_state_dict(model.state_dict())
+    #     model_2.to(torch_device)
+    #     model_2.enable_gradient_checkpointing()
 
-        assert model_2.is_gradient_checkpointing and model_2.training
+    #     assert model_2.is_gradient_checkpointing and model_2.training
 
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
+    #     out_2 = model_2(**inputs_dict).sample
+    #     # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+    #     # we won't calculate the loss and rather backprop on out.sum()
+    #     model_2.zero_grad()
+    #     loss_2 = (out_2 - labels).mean()
+    #     loss_2.backward()
 
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
-        model = model.to(torch_device)
-        model.eval()
-
-        # Keep generator on CPU for non-CUDA devices to compare outputs with CPU result tensors
-        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
-        if torch_device != "mps":
-            generator = torch.Generator(device=generator_device).manual_seed(0)
-        else:
-            generator = torch.manual_seed(0)
-
-        image = torch.randn(
-            1,
-            model.config.in_channels,
-            model.config.sample_size,
-            model.config.sample_size,
-            generator=torch.manual_seed(0),
-        )
-        image = image.to(torch_device)
-        with torch.no_grad():
-            output = model(image, sample_posterior=True, generator=generator).sample
-
-        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
-
-        # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
-        # the expected output slices are not the same for CPU and GPU.
-        if torch_device == "mps":
-            expected_output_slice = torch.tensor(
-                [
-                    -4.0078e-01,
-                    -3.8323e-04,
-                    -1.2681e-01,
-                    -1.1462e-01,
-                    2.0095e-01,
-                    1.0893e-01,
-                    -8.8247e-02,
-                    -3.0361e-01,
-                    -9.8644e-03,
-                ]
-            )
-        elif generator_device == "cpu":
-            expected_output_slice = torch.tensor(
-                [
-                    -0.1352,
-                    0.0878,
-                    0.0419,
-                    -0.0818,
-                    -0.1069,
-                    0.0688,
-                    -0.1458,
-                    -0.4446,
-                    -0.0026,
-                ]
-            )
-        else:
-            expected_output_slice = torch.tensor(
-                [
-                    -0.2421,
-                    0.4642,
-                    0.2507,
-                    -0.0438,
-                    0.0682,
-                    0.3160,
-                    -0.2018,
-                    -0.0727,
-                    0.2485,
-                ]
-            )
-
-        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
+    #     # compare the output and parameters gradients
+    #     self.assertTrue((loss - loss_2).abs() < 1e-5)
+    #     named_params = dict(model.named_parameters())
+    #     named_params_2 = dict(model_2.named_parameters())
+    #     for name, param in named_params.items():
+    #         self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))

@@ -1467,7 +1467,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z)
+        dec = self.decode(z).sample
         if not return_dict:
             return (dec,)
         return dec
