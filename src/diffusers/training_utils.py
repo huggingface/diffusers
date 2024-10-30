@@ -24,6 +24,9 @@ from .utils import (
 if is_transformers_available():
     import transformers
 
+    if transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
+        import deepspeed
+
 if is_peft_available():
     from peft import set_peft_model_state_dict
 
@@ -281,7 +284,7 @@ def free_memory():
     elif torch.backends.mps.is_available():
         torch.mps.empty_cache()
     elif is_torch_npu_available():
-        torch_npu.empty_cache()
+        torch_npu.npu.empty_cache()
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
@@ -442,15 +445,13 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
-        context_manager = contextlib.nullcontext
-        if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
-            import deepspeed
+        context_manager = contextlib.nullcontext()
 
         if self.foreach:
             if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
                 context_manager = deepspeed.zero.GatheredParameters(parameters, modifier_rank=None)
 
-            with context_manager():
+            with context_manager:
                 params_grad = [param for param in parameters if param.requires_grad]
                 s_params_grad = [
                     s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad
@@ -472,7 +473,7 @@ class EMAModel:
                 if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
                     context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
 
-                with context_manager():
+                with context_manager:
                     if param.requires_grad:
                         s_param.sub_(one_minus_decay * (s_param - param))
                     else:

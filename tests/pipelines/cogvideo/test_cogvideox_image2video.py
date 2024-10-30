@@ -44,7 +44,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CogVideoXImageToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"image"})
@@ -392,7 +392,6 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ), "Original outputs should match when PAB is disabled."
 
 
-@unittest.skip("The model 'THUDM/CogVideoX-5b-I2V' is not public yet.")
 @slow
 @require_torch_gpu
 class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):
