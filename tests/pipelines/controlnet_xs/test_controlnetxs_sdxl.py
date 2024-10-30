@@ -34,7 +34,7 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...models.autoencoders.test_models_vae import (
+from ...models.autoencoders.vae import (
     get_asym_autoencoder_kl_config,
     get_autoencoder_kl_config,
     get_autoencoder_tiny_config,
