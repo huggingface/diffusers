@@ -21,6 +21,10 @@ import torch
 from datasets import load_dataset
 from parameterized import parameterized
 
+
+if is_peft_available():
+    from peft import LoraConfig
+
 from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
@@ -36,6 +40,7 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
+    is_peft_available,
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
@@ -298,6 +303,38 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             )
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
+
+    @require_peft_backend
+    def test_lora_adapter(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        vae = self.model_class(**init_dict)
+
+        target_modules_vae = [
+            "conv1",
+            "conv2",
+            "conv_in",
+            "conv_shortcut",
+            "conv",
+            "conv_out",
+            "skip_conv_1",
+            "skip_conv_2",
+            "skip_conv_3",
+            "skip_conv_4",
+            "to_k",
+            "to_q",
+            "to_v",
+            "to_out.0",
+        ]
+        vae_lora_config = LoraConfig(
+            r=16,
+            init_lora_weights="gaussian",
+            target_modules=target_modules_vae,
+        )
+
+        vae.add_adapter(vae_lora_config, adapter_name="vae_lora")
+        active_lora = vae.active_adapters()
+        self.assertTrue(len(active_lora) == 1)
+        self.assertTrue(active_lora[0] == "vae_lora")
 
 
 class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
