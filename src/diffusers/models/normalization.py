@@ -22,10 +22,7 @@ import torch.nn.functional as F
 
 from ..utils import is_torch_version
 from .activations import get_activation
-from .embeddings import (
-    CombinedTimestepLabelEmbeddings,
-    PixArtAlphaCombinedTimestepSizeEmbeddings,
-)
+from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):
@@ -266,6 +263,7 @@ class AdaLayerNormSingle(nn.Module):
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
+        added_cond_kwargs = added_cond_kwargs or {"resolution": None, "aspect_ratio": None}
         embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
         return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
