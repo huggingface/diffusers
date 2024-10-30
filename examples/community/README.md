@@ -73,6 +73,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
+PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixart alpha and its diffusers pipeline | [PIXART-α Controlnet pipeline](#pixart-α-controlnet-pipeline) | - | [Raul Ciotescu](https://github.com/raulc0399/) |
 | HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
 | [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
 
@@ -4445,3 +4446,94 @@ grid_image.save(grid_dir + "sample.png")
 `pag_scale` : guidance scale of PAG (ex: 5.0)
 
 `pag_applied_layers_index` : index of the layer to apply perturbation (ex: ['m0'])
+
+# PIXART-α Controlnet pipeline
+
+[Project](https://pixart-alpha.github.io/) / [GitHub](https://github.com/PixArt-alpha/PixArt-alpha/blob/master/asset/docs/pixart_controlnet.md)
+
+This the implementation of the controlnet model and the pipelne for the Pixart-alpha model, adapted to use the HuggingFace Diffusers.
+
+## Example Usage
+
+This example uses the Pixart HED Controlnet model, converted from the control net model as trained by the authors of the paper.
+
+```py
+import sys
+import os
+import torch
+import torchvision.transforms as T
+import torchvision.transforms.functional as TF
+
+from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
+from diffusers.utils import load_image
+
+from diffusers.image_processor import PixArtImageProcessor
+
+from controlnet_aux import HEDdetector
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel
+
+controlnet_repo_id = "raulc0399/pixart-alpha-hed-controlnet"
+
+weight_dtype = torch.float16
+image_size = 1024
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+torch.manual_seed(0)
+
+# load controlnet
+controlnet = PixArtControlNetAdapterModel.from_pretrained(
+    controlnet_repo_id,
+    torch_dtype=weight_dtype,
+    use_safetensors=True,
+).to(device)
+
+pipe = PixArtAlphaControlnetPipeline.from_pretrained(
+    "PixArt-alpha/PixArt-XL-2-1024-MS",
+    controlnet=controlnet,
+    torch_dtype=weight_dtype,
+    use_safetensors=True,
+).to(device)
+
+images_path = "images"
+control_image_file = "0_7.jpg"
+
+prompt = "battleship in space, galaxy in background"
+
+control_image_name = control_image_file.split('.')[0]
+
+control_image = load_image(f"{images_path}/{control_image_file}")
+print(control_image.size)
+height, width = control_image.size
+
+hed = HEDdetector.from_pretrained("lllyasviel/Annotators")
+
+condition_transform = T.Compose([
+    T.Lambda(lambda img: img.convert('RGB')),
+    T.CenterCrop([image_size, image_size]),
+])
+
+control_image = condition_transform(control_image)
+hed_edge = hed(control_image, detect_resolution=image_size, image_resolution=image_size)
+
+hed_edge.save(f"{images_path}/{control_image_name}_hed.jpg")
+
+# run pipeline
+with torch.no_grad():
+    out = pipe(
+        prompt=prompt,
+        image=hed_edge,
+        num_inference_steps=14,
+        guidance_scale=4.5,
+        height=image_size,
+        width=image_size,
+    )
+
+    out.images[0].save(f"{images_path}//{control_image_name}_output.jpg")
+    
+```
+
+In the folder examples/pixart there is also a script that can be used to train new models.
+Please check the script `train_controlnet_hf_diffusers.sh` on how to start the training.
