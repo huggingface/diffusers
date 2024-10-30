@@ -43,7 +43,6 @@ from .pipeline_output import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -116,8 +115,6 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
-
-
 
 
 class StableDiffusionXLInputStep(PipelineBlock):
@@ -837,7 +834,9 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
         if controlnet_guider is None:
             controlnet_guider = CFGGuider()
         if control_image_processor is None:
-            control_image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor, do_convert_rgb=True, do_normalize=False)
+            control_image_processor = VaeImageProcessor(
+                vae_scale_factor=vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            )
         super().__init__(
             unet=unet,
             controlnet=controlnet,
@@ -1155,24 +1154,22 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
         return pipeline, state
 
 
-
 class StableDiffusionXLModularPipeline(
     ModularPipelineBuilder,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
 ):
-    
     default_pipeline_blocks = [
         StableDiffusionXLInputStep,
-        StableDiffusionXLTextEncoderStep, 
+        StableDiffusionXLTextEncoderStep,
         StableDiffusionXLSetTimestepsStep,
         StableDiffusionXLPrepareLatentsStep,
         StableDiffusionXLPrepareAdditionalConditioningStep,
         StableDiffusionXLDenoiseStep,
-        StableDiffusionXLDecodeLatentsStep
+        StableDiffusionXLDecodeLatentsStep,
     ]
-    
+
     def __init__(self):
         super().__init__()
 
@@ -1817,4 +1814,3 @@ class StableDiffusionXLModularPipeline(
             emb = torch.nn.functional.pad(emb, (0, 1))
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
-

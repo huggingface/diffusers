@@ -220,8 +220,8 @@ def _get_model(pipeline_class_name):
             if pipeline.__name__ == pipeline_class_name:
                 return model_name
 
-def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
 
+def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool = True):
     model_name = _get_model(pipeline_class_name)
 
     if model_name is not None:

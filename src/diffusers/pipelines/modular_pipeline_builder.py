@@ -14,31 +14,22 @@
 
 import inspect
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
-import importlib
-from collections import OrderedDict
-import PIL
+from typing import Any, Dict, List, Tuple, Union
+
 import torch
 from tqdm.auto import tqdm
 
 from ..configuration_utils import ConfigMixin
-from ..loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ..models import ImageProjection
-from ..models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
-from ..models.lora import adjust_lora_scale_text_encoder
 from ..utils import (
-    USE_PEFT_BACKEND,
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ..utils.hub_utils import validate_hf_hub_args
-from ..utils.torch_utils import randn_tensor
-from .pipeline_loading_utils import _fetch_class_library_tuple, _get_pipeline_class
-from .pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .auto_pipeline import _get_model
+from .pipeline_loading_utils import _fetch_class_library_tuple, _get_pipeline_class
+from .pipeline_utils import DiffusionPipeline
+
 
 if is_accelerate_available():
     import accelerate
@@ -49,7 +40,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 MODULAR_PIPELINE_MAPPING = {
     "stable-diffusion-xl": "StableDiffusionXLModularPipeline",
 }
-
 
 
 @dataclass
@@ -225,6 +215,7 @@ class ModularPipelineBuilder(ConfigMixin):
     Base class for all Modular pipelines.
 
     """
+
     config_name = "model_index.json"
     model_cpu_offload_seq = None
     hf_device_map = None
@@ -316,7 +307,7 @@ class ModularPipelineBuilder(ConfigMixin):
         expected_components = set()
         for block in self.pipeline_blocks:
             expected_components.update(block.components.keys())
-        
+
         components = {}
         for name in expected_components:
             if hasattr(self, name):
@@ -349,8 +340,8 @@ class ModularPipelineBuilder(ConfigMixin):
     @property
     def configs(self) -> Dict[str, Any]:
         r"""
-        The `self.configs` property returns all configs needed to initialize the pipeline, as defined by the
-        pipeline blocks.
+        The `self.configs` property returns all configs needed to initialize the pipeline, as defined by the pipeline
+        blocks.
 
         Returns (`dict`):
             A dictionary containing all the configs defined in the pipeline blocks.
@@ -393,30 +384,31 @@ class ModularPipelineBuilder(ConfigMixin):
 
     def remove_blocks(self, indices: Union[int, List[int]]):
         """
-        Remove one or more blocks from the pipeline by their indices and clean up associated components, 
-        configs, and auxiliaries that are no longer needed by remaining blocks.
+        Remove one or more blocks from the pipeline by their indices and clean up associated components, configs, and
+        auxiliaries that are no longer needed by remaining blocks.
 
         Args:
             indices (Union[int, List[int]]): The index or list of indices of blocks to remove
         """
         # Convert single index to list
         indices = [indices] if isinstance(indices, int) else indices
-        
+
         # Validate indices
         for idx in indices:
             if not 0 <= idx < len(self.pipeline_blocks):
-                raise ValueError(f"Invalid block index {idx}. Index must be between 0 and {len(self.pipeline_blocks) - 1}")
-        
+                raise ValueError(
+                    f"Invalid block index {idx}. Index must be between 0 and {len(self.pipeline_blocks) - 1}"
+                )
+
         # Sort indices in descending order to avoid shifting issues when removing
         indices = sorted(indices, reverse=True)
-        
+
         # Store blocks to be removed
         blocks_to_remove = [self.pipeline_blocks[idx] for idx in indices]
-        
+
         # Remove blocks from pipeline
         for idx in indices:
             self.pipeline_blocks.pop(idx)
-
 
         # Consolidate items to remove from all blocks
         components_to_remove = {k: v for block in blocks_to_remove for k, v in block.components.items()}
@@ -448,7 +440,7 @@ class ModularPipelineBuilder(ConfigMixin):
 
     def add_blocks(self, pipeline_blocks, at: int = -1):
         """Add blocks to the pipeline.
-        
+
         Args:
             pipeline_blocks: A single PipelineBlock instance or a list of PipelineBlock instances.
             at (int, optional): Index at which to insert the blocks. Defaults to -1 (append at end).
@@ -456,7 +448,7 @@ class ModularPipelineBuilder(ConfigMixin):
         # Convert single block to list for uniform processing
         if not isinstance(pipeline_blocks, (list, tuple)):
             pipeline_blocks = [pipeline_blocks]
-        
+
         # Validate insert_at index
         if at != -1 and not 0 <= at <= len(self.pipeline_blocks):
             raise ValueError(f"Invalid at index {at}. Index must be between 0 and {len(self.pipeline_blocks)}")
@@ -465,7 +457,7 @@ class ModularPipelineBuilder(ConfigMixin):
         components_to_add = {}
         configs_to_add = {}
         auxiliaries_to_add = {}
-        
+
         # Add blocks in order
         for i, block in enumerate(pipeline_blocks):
             # Add block to pipeline at specified position
@@ -473,16 +465,16 @@ class ModularPipelineBuilder(ConfigMixin):
                 self.pipeline_blocks.append(block)
             else:
                 self.pipeline_blocks.insert(at + i, block)
-            
+
             # Collect components that don't already exist
             for k, v in block.components.items():
                 if not hasattr(self, k) or (getattr(self, k, None) is None and v is not None):
                     components_to_add[k] = v
-            
+
             # Collect configs and auxiliaries
             configs_to_add.update(block.configs)
             auxiliaries_to_add.update(block.auxiliaries)
-        
+
         # Validate all required components and auxiliaries after consolidation
         for block in pipeline_blocks:
             for required_component in block.required_components:
@@ -513,44 +505,37 @@ class ModularPipelineBuilder(ConfigMixin):
         if configs_to_add:
             self.register_to_config(**configs_to_add)
         for key, value in auxiliaries_to_add.items():
-
             setattr(self, key, value)
 
     def replace_blocks(self, pipeline_blocks, at: int):
         """Replace one or more blocks in the pipeline at the specified index.
-        
+
         Args:
-            pipeline_blocks: A single PipelineBlock instance or a list of PipelineBlock instances 
+            pipeline_blocks: A single PipelineBlock instance or a list of PipelineBlock instances
                 that will replace existing blocks.
             at (int): Index at which to replace the blocks.
         """
         # Convert single block to list for uniform processing
         if not isinstance(pipeline_blocks, (list, tuple)):
             pipeline_blocks = [pipeline_blocks]
-        
+
         # Validate replace_at index
         if not 0 <= at < len(self.pipeline_blocks):
-            raise ValueError(
-                f"Invalid at index {at}. Index must be between 0 and {len(self.pipeline_blocks) - 1}"
-            )
-        
+            raise ValueError(f"Invalid at index {at}. Index must be between 0 and {len(self.pipeline_blocks) - 1}")
+
         # Add new blocks first
         self.add_blocks(pipeline_blocks, at=at)
-        
+
         # Calculate indices to remove
         # We need to remove the original blocks that are now shifted by the length of pipeline_blocks
-        indices_to_remove = list(range(
-            at + len(pipeline_blocks), 
-            at + len(pipeline_blocks) * 2
-        ))
-        
+        indices_to_remove = list(range(at + len(pipeline_blocks), at + len(pipeline_blocks) * 2))
+
         # Remove the old blocks
         self.remove_blocks(indices_to_remove)
 
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
-
         # (1) create the base pipeline
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -579,11 +564,9 @@ class ModularPipelineBuilder(ConfigMixin):
         modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[_get_model(base_pipeline_class_name)]
         modular_pipeline_class = _get_pipeline_class(cls, config=None, class_name=modular_pipeline_class_name)
 
-
         # (3) create the pipeline blocks
         pipeline_blocks = [
-            block_class.from_pipe(base_pipeline) 
-            for block_class in modular_pipeline_class.default_pipeline_blocks
+            block_class.from_pipe(base_pipeline) for block_class in modular_pipeline_class.default_pipeline_blocks
         ]
 
         # (4) create the builder
@@ -591,35 +574,31 @@ class ModularPipelineBuilder(ConfigMixin):
         builder.add_blocks(pipeline_blocks)
 
         return builder
-    
+
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
         base_pipeline_class_name = pipeline.__class__.__name__
         modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[_get_model(base_pipeline_class_name)]
         modular_pipeline_class = _get_pipeline_class(cls, config=None, class_name=modular_pipeline_class_name)
-        
+
         pipeline_blocks = []
         # Create each block, passing only unused items that the block expects
         for block_class in modular_pipeline_class.default_pipeline_blocks:
             expected_components = set(block_class.required_components + block_class.optional_components)
             expected_auxiliaries = set(block_class.required_auxiliaries)
-            
+
             # Get init parameters to check for expected configs
             init_params = inspect.signature(block_class.__init__).parameters
             expected_configs = {
-                k for k in init_params 
-                if k not in expected_components 
-                and k not in expected_auxiliaries
+                k for k in init_params if k not in expected_components and k not in expected_auxiliaries
             }
-            
+
             block_kwargs = {}
-            
+
             for key, value in kwargs.items():
-                if (key in expected_components or 
-                    key in expected_auxiliaries or 
-                    key in expected_configs):
+                if key in expected_components or key in expected_auxiliaries or key in expected_configs:
                     block_kwargs[key] = value
-            
+
             # Create the block with filtered kwargs
             block = block_class.from_pipe(pipeline, **block_kwargs)
             pipeline_blocks.append(block)
@@ -630,10 +609,10 @@ class ModularPipelineBuilder(ConfigMixin):
 
         # Warn about unused kwargs
         unused_kwargs = {
-            k: v for k, v in kwargs.items() 
+            k: v
+            for k, v in kwargs.items()
             if not any(
-                k in block.components or k in block.auxiliaries or k in block.configs 
-                for block in pipeline_blocks
+                k in block.components or k in block.auxiliaries or k in block.configs for block in pipeline_blocks
             )
         }
         if unused_kwargs:
@@ -773,7 +752,6 @@ class ModularPipelineBuilder(ConfigMixin):
         for name, config in self.configs.items():
             output += f"{name}: {config!r}\n"
         output += "\n"
-
 
         # List the default call parameters
         output += "Default Call Parameters:\n"

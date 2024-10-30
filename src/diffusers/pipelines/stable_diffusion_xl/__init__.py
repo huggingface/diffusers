@@ -30,6 +30,7 @@ else:
     _import_structure["pipeline_stable_diffusion_xl_inpaint"] = ["StableDiffusionXLInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_instruct_pix2pix"] = ["StableDiffusionXLInstructPix2PixPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_modular"] = [
+        "StableDiffusionXLControlNetDenoiseStep",
         "StableDiffusionXLDecodeLatentsStep",
         "StableDiffusionXLDenoiseStep",
         "StableDiffusionXLInputStep",
@@ -38,7 +39,6 @@ else:
         "StableDiffusionXLPrepareLatentsStep",
         "StableDiffusionXLSetTimestepsStep",
         "StableDiffusionXLTextEncoderStep",
-        "StableDiffusionXLControlNetDenoiseStep",
     ]
 
 if is_transformers_available() and is_flax_available():
@@ -60,6 +60,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
         from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
         from .pipeline_stable_diffusion_xl_modular import (
+            StableDiffusionXLControlNetDenoiseStep,
             StableDiffusionXLDecodeLatentsStep,
             StableDiffusionXLDenoiseStep,
             StableDiffusionXLInputStep,
@@ -68,7 +69,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPrepareLatentsStep,
             StableDiffusionXLSetTimestepsStep,
             StableDiffusionXLTextEncoderStep,
-            StableDiffusionXLControlNetDenoiseStep,
         )
 
     try:
