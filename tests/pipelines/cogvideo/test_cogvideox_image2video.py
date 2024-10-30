@@ -43,7 +43,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = CogVideoXImageToVideoPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"image"})
@@ -269,8 +269,9 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator_device = "cpu"
         components = self.get_dummy_components()
 
-        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions.
-        # See the if-statement on "self.use_learned_positional_embeddings"
+        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initalization.
+        # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
+        # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
         components["transformer"] = CogVideoXTransformer3DModel.from_config(
             components["transformer"].config,
             sample_height=16,
@@ -342,7 +343,6 @@ class CogVideoXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ), "Original outputs should match when fused QKV projections are disabled."
 
 
-@unittest.skip("The model 'THUDM/CogVideoX-5b-I2V' is not public yet.")
 @slow
 @require_torch_gpu
 class CogVideoXImageToVideoPipelineIntegrationTests(unittest.TestCase):

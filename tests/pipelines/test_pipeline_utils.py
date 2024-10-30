@@ -18,7 +18,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_utils import is_safetensors_compatible
+from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible
 from diffusers.utils.testing_utils import torch_device
 
 
@@ -196,6 +196,18 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
         self.assertTrue(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_compatible_no_components(self):
+        filenames = [
+            "diffusion_pytorch_model.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
+
+    def test_diffusers_is_compatible_no_components_only_variants(self):
+        filenames = [
+            "diffusion_pytorch_model.fp16.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames))
 
 
 class ProgressBarTests(unittest.TestCase):
