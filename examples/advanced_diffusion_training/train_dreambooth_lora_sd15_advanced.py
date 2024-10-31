@@ -1358,10 +1358,7 @@ def main(args):
             else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        params_to_optimize = [
-            unet_lora_parameters_with_lr,
-            text_lora_parameters_one_with_lr,
-        ]
+        params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr]
     else:
         params_to_optimize = [unet_lora_parameters_with_lr]
 
@@ -1423,7 +1420,6 @@ def main(args):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
