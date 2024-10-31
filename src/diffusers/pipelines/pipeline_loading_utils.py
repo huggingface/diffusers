@@ -951,6 +951,15 @@ def _get_ignore_patterns(
 
 
 def model_has_device_map(model):
-    if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+    if not (is_accelerate_available() and not is_accelerate_version("<", "0.14.0")):
         return False
-    return getattr(model, "hf_device_map", None) is not None
+
+    # Check if the model has a device map that is not exclusively CPU
+    # `device_map` can only contain CPU when a model has sharded checkpoints.
+    # See here: https://github.com/huggingface/diffusers/blob/41e4779d988ead99e7acd78dc8e752de88777d0f/src/diffusers/models/modeling_utils.py#L883
+    device_map = getattr(model, "hf_device_map", None)
+    if device_map is not None:
+        unique_devices = set(device_map.values())
+        return len(unique_devices) > 1 or unique_devices != {"cpu"}
+
+    return False
