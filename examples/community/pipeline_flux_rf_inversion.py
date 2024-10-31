@@ -746,6 +746,17 @@ class RFInversionFluxPipeline(
             device,
             generator,
         )
+
+        packed_img_latents = self._pack_latents(
+            self.image_latents,
+            batch_size=self.image_latents.shape[0],
+            num_channels_latents=self.image_latents.shape[1],
+            height=self.image_latents.shape[2],
+            width=self.image_latents.shape[3],
+        )
+        target_img = packed_img_latents.clone().to(torch.float32)
+
+
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         image_seq_len = latents.shape[1]
@@ -770,20 +781,22 @@ class RFInversionFluxPipeline(
         # handle guidance
         if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(latents.shape[0])
+            guidance = guidance.expand(packed_inv_latents.shape[0])
         else:
             guidance = None
 
+        eta_values = self.generate_eta_values(timesteps, start_step, end_step, eta_base, eta_trend)
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
+            for idx, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
+                timestep = torch.full((packed_inv_latents.shape[0],), t_curr, dtype=packed_inv_latents.dtype,
+                                   device=packed_inv_latents.device)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                #timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                noise_pred = self.transformer(
+                velocity = self.transformer(
                     hidden_states=latents,
                     timestep=timestep / 1000,
                     guidance=guidance,
@@ -796,8 +809,22 @@ class RFInversionFluxPipeline(
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                #latents_dtype = latents.dtype
+                # Prevents precision issues
+                packed_inv_latents = packed_inv_latents.to(torch.float32)
+                velocity = velocity.to(torch.float32)
+
+                # Target image velocity
+                target_img_velocity = -(target_img - packed_inv_latents) / t_curr
+
+                # interpolated velocity
+                eta = eta_values[idx]
+                interpolated_velocity = eta * target_img_velocity + (1 - eta) * velocity
+                latents = packed_inv_latents + (t_prev - t_curr) * interpolated_velocity
+                print(
+                    f"X_{t_prev:.3f} = X_{t_curr:.3f} + {t_prev - t_curr:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * flux_velocity)")
+
+                #latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
@@ -836,6 +863,35 @@ class RFInversionFluxPipeline(
             return (image,)
 
         return FluxPipelineOutput(images=image)
+
+    def generate_eta_values(
+            self,
+            timesteps,
+            start_step,
+            end_step,
+            eta,
+            eta_trend,
+    ):
+        assert start_step < end_step and start_step >= 0 and end_step <= len(
+            timesteps), "Invalid start_step and end_step"
+        # timesteps are monotonically decreasing, from 1.0 to 0.0
+        eta_values = [0.0] * (len(timesteps) - 1)
+
+        if eta_trend == 'constant':
+            for i in range(start_step, end_step):
+                eta_values[i] = eta
+        elif eta_trend == 'linear_increase':
+            total_time = timesteps[start_step] - timesteps[end_step - 1]
+            for i in range(start_step, end_step):
+                eta_values[i] = eta * (timesteps[start_step] - timesteps[i]) / total_time
+        elif eta_trend == 'linear_decrease':
+            total_time = timesteps[start_step] - timesteps[end_step - 1]
+            for i in range(start_step, end_step):
+                eta_values[i] = eta * (timesteps[i] - timesteps[end_step - 1]) / total_time
+        else:
+            raise NotImplementedError(f"Unsupported eta_trend: {eta_trend}")
+
+        return eta_values
 
     @torch.no_grad()
     def invert(
@@ -913,7 +969,7 @@ class RFInversionFluxPipeline(
                 # interpolated velocity
                 interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * flux_velocity
 
-                # one step Euler
+                # one-step Euler
                 packed_latents = packed_latents + (t_prev - t_curr) * interpolated_velocity
 
                 packed_latents = packed_latents.to(dtype)
