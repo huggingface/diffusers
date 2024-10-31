@@ -111,3 +111,7 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             torch.allclose(output_1, output_2, atol=1e-5),
             msg="output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) are not equal as them as 2d inputs",
         )
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"FluxTransformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
