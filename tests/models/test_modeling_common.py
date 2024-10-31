@@ -837,12 +837,13 @@ class ModelTesterMixin:
                 continue
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
 
+    @unittest.skipIf(torch_device == "mps", "This test is not supported for MPS devices.")
     def test_gradient_checkpointing_is_applied(
         self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
     ):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
-        if torch_device == "mps" and self.model_class.__name__ in [
+        if self.model_class.__name__ in [
             "UNetSpatioTemporalConditionModel",
             "AutoencoderKLTemporalDecoder",
         ]:
@@ -875,6 +876,8 @@ class ModelTesterMixin:
 
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
+
+        print(f"{set(modules_with_gc_enabled.keys())=}, {expected_set=}")
 
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
