@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
@@ -34,7 +34,7 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-
+from diffusers.utils.torch_utils import randn_tensor
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -788,13 +788,13 @@ class RFInversionFluxPipeline(
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for idx, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
+            for i, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 # timestep = t.expand(latents.shape[0]).to(latents.dtype)
                 timestep = t_curr.expand(packed_inv_latents.shape[0]).to(packed_inv_latents.dtype)
 
                 velocity = self.transformer(
-                    hidden_states=latents,
+                    hidden_states=packed_inv_latents,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
@@ -815,7 +815,7 @@ class RFInversionFluxPipeline(
                 target_img_velocity = -(target_img - packed_inv_latents) / t_curr
 
                 # interpolated velocity
-                eta = eta_values[idx]
+                eta = eta_values[i]
                 interpolated_velocity = eta * target_img_velocity + (1 - eta) * velocity
                 latents = packed_inv_latents + (t_prev - t_curr) * interpolated_velocity
                 print(
@@ -824,16 +824,16 @@ class RFInversionFluxPipeline(
 
                 # latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
+                # if latents.dtype != latents_dtype:
+                #     if torch.backends.mps.is_available():
+                #         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                #         latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, t_curr, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -901,7 +901,8 @@ class RFInversionFluxPipeline(
         num_inversion_steps: int = 28,
         gamma: float = 0.5,
         use_shift_t_sampling: bool = False,
-        generator: Optional[torch.Generator] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         dtype: Optional[torch.dtype] = None,
     ):
         dtype = dtype or self.text_encoder.dtype
@@ -935,7 +936,7 @@ class RFInversionFluxPipeline(
 
         timesteps = timesteps[::-1]  # flip for inversion
 
-        prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(prompt=source_prompt)
+        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(prompt=source_prompt)
         latent_image_ids = self._prepare_latent_image_ids(
             img_latents.shape[0],
             img_latents.shape[2],
@@ -968,7 +969,7 @@ class RFInversionFluxPipeline(
                 timestep = t_curr.expand(packed_latents.shape[0]).to(packed_latents.dtype)
 
                 # Null text velocity
-                velocity = pipeline.transformer(
+                velocity = self.transformer(
                     hidden_states=packed_latents,
                     timestep=timestep,
                     guidance=guidance,
@@ -977,7 +978,7 @@ class RFInversionFluxPipeline(
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
                     joint_attention_kwargs=None,
-                    return_dict=pipeline,
+                    return_dict=False,
                 )[0]
 
                 # Prevents precision issues
