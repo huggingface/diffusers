@@ -36,6 +36,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
@@ -936,7 +937,9 @@ class RFInversionFluxPipeline(
 
         timesteps = timesteps[::-1]  # flip for inversion
 
-        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(prompt=source_prompt, prompt_2=source_prompt)
+        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
+            prompt=source_prompt, prompt_2=source_prompt
+        )
         latent_image_ids = self._prepare_latent_image_ids(
             img_latents.shape[0],
             img_latents.shape[2],
