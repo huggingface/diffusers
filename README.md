@@ -73,8 +73,12 @@ Generating outputs is super easy with 🤗 Diffusers. To generate an image from 
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipeline.to("cuda")
+pipeline = DiffusionPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+).to("cuda" if torch.cuda.is_available() else "cpu")
+
+
 pipeline("An image of a squirrel in Picasso style").images[0]
 ```
 
