@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 import torch.nn as nn
 
+from ..models.attention_processor import Attention
 from ..models.hooks import PyramidAttentionBroadcastHook, add_hook_to_module, remove_hook_from_module
-from ..models.attention_processor import Attention, AttentionProcessor
 from ..utils import logging
 
 
@@ -32,9 +32,21 @@ class PyramidAttentionBroadcastMixin:
 
         for name, module in denoiser.named_modules():
             if isinstance(module, Attention):
-                is_spatial_attention = any(x in name for x in self._pab_spatial_attn_layer_identifiers) and self._pab_spatial_attn_skip_range is not None and not module.is_cross_attention
-                is_temporal_attention = any(x in name for x in self._pab_temporal_attn_layer_identifiers) and self._pab_temporal_attn_skip_range is not None and not module.is_cross_attention
-                is_cross_attention = any(x in name for x in self._pab_cross_attn_layer_identifiers) and self._pab_cross_attn_skip_range is not None and module.is_cross_attention
+                is_spatial_attention = (
+                    any(x in name for x in self._pab_spatial_attn_layer_identifiers)
+                    and self._pab_spatial_attn_skip_range is not None
+                    and not module.is_cross_attention
+                )
+                is_temporal_attention = (
+                    any(x in name for x in self._pab_temporal_attn_layer_identifiers)
+                    and self._pab_temporal_attn_skip_range is not None
+                    and not module.is_cross_attention
+                )
+                is_cross_attention = (
+                    any(x in name for x in self._pab_cross_attn_layer_identifiers)
+                    and self._pab_cross_attn_skip_range is not None
+                    and module.is_cross_attention
+                )
 
                 if is_spatial_attention:
                     skip_range = self._pab_spatial_attn_skip_range
@@ -45,10 +57,10 @@ class PyramidAttentionBroadcastMixin:
                 if is_cross_attention:
                     skip_range = self._pab_cross_attn_skip_range
                     timestep_range = self._pab_cross_attn_timestep_range
-                
+
                 if skip_range is None:
                     continue
-                
+
                 # logger.debug(f"Enabling Pyramid Attention Broadcast in layer: {name}")
                 print(f"Enabling Pyramid Attention Broadcast in layer: {name}")
 
@@ -57,9 +69,9 @@ class PyramidAttentionBroadcastMixin:
                     PyramidAttentionBroadcastHook(
                         skip_range=skip_range,
                         timestep_range=timestep_range,
-                        timestep_callback=self._pyramid_attention_broadcast_timestep_callback
+                        timestep_callback=self._pyramid_attention_broadcast_timestep_callback,
                     ),
-                    append=True
+                    append=True,
                 )
 
     def _disable_pyramid_attention_broadcast(self) -> None:
@@ -116,7 +128,7 @@ class PyramidAttentionBroadcastMixin:
                 The timestep range between which PAB will remain activated in cross attention blocks. While activated,
                 PAB will re-use attention computations between inference steps.
         """
-        
+
         if spatial_attn_timestep_range[0] > spatial_attn_timestep_range[1]:
             raise ValueError(
                 "Expected `spatial_attn_timestep_range` to be a tuple of two integers, with first value lesser or equal than second. These correspond to the min and max timestep between which PAB will be applied."
@@ -139,7 +151,7 @@ class PyramidAttentionBroadcastMixin:
         self._pab_spatial_attn_layer_identifiers = spatial_attn_layer_identifiers
         self._pab_temporal_attn_layer_identifiers = temporal_attn_layer_identifiers
         self._pab_cross_attn_layer_identifiers = cross_attn_layer_identifiers
-        
+
         self._pab_enabled = spatial_attn_skip_range or temporal_attn_skip_range or cross_attn_skip_range
 
         self._enable_pyramid_attention_broadcast()

@@ -118,8 +118,13 @@ class SequentialHook(ModelHook):
 
 class PyramidAttentionBroadcastHook(ModelHook):
     _stateful_hook = True
-    
-    def __init__(self, skip_range: int, timestep_range: Tuple[int, int], timestep_callback: Callable[[], Union[torch.LongTensor, int]]) -> None:
+
+    def __init__(
+        self,
+        skip_range: int,
+        timestep_range: Tuple[int, int],
+        timestep_callback: Callable[[], Union[torch.LongTensor, int]],
+    ) -> None:
         super().__init__()
 
         self.skip_range = skip_range
@@ -128,10 +133,10 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
         self.attention_cache = None
         self._iteration = 0
-    
+
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-        
+
         current_timestep = self.timestep_callback()
         is_within_timestep_range = self.timestep_range[0] < current_timestep < self.timestep_range[1]
         should_compute_attention = self._iteration % self.skip_range == 0
@@ -140,15 +145,15 @@ class PyramidAttentionBroadcastHook(ModelHook):
             output = module._old_forward(*args, **kwargs)
         else:
             output = self.attention_cache
-        
+
         self._iteration = self._iteration + 1
 
         return module._diffusers_hook.post_forward(module, output)
-    
+
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         self.attention_cache = output
         return output
-    
+
     def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
         self.attention_cache = None
         self._iteration = 0
@@ -199,6 +204,7 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
     if hasattr(original_hook, "new_forward"):
         new_forward = original_hook.new_forward
     else:
+
         def new_forward(module, *args, **kwargs):
             args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
             output = module._old_forward(*args, **kwargs)

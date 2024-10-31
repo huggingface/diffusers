@@ -905,7 +905,7 @@ class AllegroPipeline(DiffusionPipeline, PyramidAttentionBroadcastMixin):
                     progress_bar.update()
 
         self._current_timestep = None
-        
+
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
             video = self.decode_latents(latents)
