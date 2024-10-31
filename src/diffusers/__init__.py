@@ -77,9 +77,11 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models"].extend(
         [
+            "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
+            "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
@@ -237,6 +239,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(
         [
+            "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
             "AmusedImg2ImgPipeline",
@@ -556,9 +559,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
+            AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
             AutoencoderKL,
+            AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
@@ -697,6 +702,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipelines import (
+            AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
             AmusedImg2ImgPipeline,
