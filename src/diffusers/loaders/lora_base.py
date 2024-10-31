@@ -25,13 +25,13 @@ from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
 from ..models.modeling_utils import ModelMixin, load_state_dict
+from ..pipelines.pipeline_loading_utils import model_has_device_map
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
     deprecate,
     is_accelerate_available,
-    is_accelerate_version,
     is_peft_available,
     is_transformers_available,
     logging,
@@ -214,11 +214,6 @@ class LoraBaseMixin:
         """
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-
-        def model_has_device_map(model):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-            return getattr(model, "hf_device_map", None) is not None
 
         if _pipeline is not None and _pipeline.hf_device_map is None:
             for _, component in _pipeline.components.items():

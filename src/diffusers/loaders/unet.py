@@ -32,6 +32,7 @@ from ..models.embeddings import (
     MultiIPAdapterImageProjection,
 )
 from ..models.modeling_utils import load_model_dict_into_meta, load_state_dict
+from ..pipelines.pipeline_loading_utils import model_has_device_map
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -39,7 +40,6 @@ from ..utils import (
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
-    is_accelerate_version,
     is_peft_version,
     is_torch_version,
     logging,
@@ -398,11 +398,6 @@ class UNet2DConditionLoadersMixin:
         """
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-
-        def model_has_device_map(model):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-            return getattr(model, "hf_device_map", None) is not None
 
         if _pipeline is not None and _pipeline.hf_device_map is None:
             for _, component in _pipeline.components.items():

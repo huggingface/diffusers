@@ -32,12 +32,13 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnet_xs import UNetControlNetXSModel
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import logging
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
@@ -1986,6 +1987,28 @@ class PipelineTesterMixin:
             "The following pipeline components have been found" in str(err_context.exception)
             and "This is incompatible with `enable_sequential_cpu_offload()`" in str(err_context.exception)
         )
+
+    def test_sharded_components_can_be_device_placed(self):
+        components = self.get_dummy_components()
+
+        component_selected = None
+        for component_name in components:
+            if isinstance(components[component_name], ModelMixin):
+                component_to_be_sharded = components[component_name]
+                component_cls = component_to_be_sharded.__class__
+                component_selected = component_name
+                break
+        model_size = compute_module_sizes(component_to_be_sharded)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            component_to_be_sharded.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
+            self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
+
+            loaded_sharded_component = component_cls.from_pretrained(tmp_dir)
+            _ = components.pop(component_selected)
+            components.update({component_selected: loaded_sharded_component})
+            _ = self.pipeline_class(**components).to(torch_device)
 
 
 @is_staging_test
