@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 
-# Add parent directory to path
+# add parent directory to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
@@ -16,9 +16,9 @@ def test_training_setup():
     """Test training initialization"""
     print("\nTesting training setup...")
     
-    # Create configs
+    # configs
     data_config = DataConfig(
-        dataset_path=os.path.join(parent_dir, "pusht_cchi_v7_replay.zarr"),
+        dataset_path=os.path.join(parent_dir, "pusht_cchi_v7_replay.zarr"),     # example data provided in readme
         pred_horizon=16,
         obs_horizon=2,
         action_horizon=8,
@@ -36,7 +36,7 @@ def test_mini_training(data_config, model_config):
     print("\nTesting mini training...")
     
     try:
-        # Run training for just 2 epochs with small batch
+        # run training for 2 epochs with small batch
         results = train_diffusion(
             data_config=data_config,
             model_config=model_config,
@@ -47,7 +47,7 @@ def test_mini_training(data_config, model_config):
         
         print("Mini training completed successfully")
         
-        # Check if all components are returned
+        # check if all components are returned
         required_keys = ['model', 'obs_encoder', 'obs_projection', 
                         'ema', 'noise_scheduler', 'optimizer', 'stats']
         
@@ -56,7 +56,7 @@ def test_mini_training(data_config, model_config):
         
         print("All model components returned correctly")
         
-        # Check if checkpoints were saved
+        # check if checkpoints were saved
         checkpoint_path = os.path.join(current_dir, "test_checkpoints", "diffusion_final.pt")
         assert os.path.exists(checkpoint_path), "Final checkpoint not saved"
         
@@ -75,16 +75,16 @@ def test_model_inference(results):
     print("\nTesting model inference...")
     
     try:
-        # Get components
+        # get components
         model = results['model']
         obs_encoder = results['obs_encoder']
         obs_projection = results['obs_projection']
         
-        # Create dummy data
+        # dummy data
         batch_size = 1
         state = torch.randn(batch_size, 2, 5)  # [batch, obs_horizon, state_dim]
         
-        # Run inference
+        # runs inference
         with torch.no_grad():
             # 1. Encode observation
             obs_embedding = obs_encoder(state)
@@ -119,17 +119,51 @@ def test_model_inference(results):
 def main():
     print("Starting training tests...")
     
-    # Test setup
+    # test setup
     data_config, model_config = test_training_setup()
     
-    # Test training
+    # test training
     results = test_mini_training(data_config, model_config)
     
     if results is not None:
-        # Test inference
+        # test inference
         test_model_inference(results)
     
     print("\nAll tests completed!")
 
 if __name__ == "__main__":
     main()
+
+"""
+EXAMPLE OUTPUT:
+
+Starting training tests...
+
+Testing training setup...
+Configurations created successfully
+
+Testing mini training...
+Using device: cuda
+Using device: cuda
+Sample output device: cuda:0
+Epoch 0: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 757/757 [00:41<00:00, 18.11it/s, loss=0.606]
+
+Epoch 0 average loss: 0.617402
+Epoch 1: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 757/757 [00:42<00:00, 18.01it/s, loss=0.551]
+
+Epoch 1 average loss: 0.575397
+Mini training completed successfully
+All model components returned correctly
+Checkpoints saved successfully
+
+Testing model inference...
+Models are on device: cuda:0
+Observation embedding shape: torch.Size([1, 512])
+Observation projection shape: torch.Size([1, 32])
+Expanded conditioning shape: torch.Size([1, 32, 16])
+Model input shape: torch.Size([1, 34, 16])
+Model output shape: torch.Size([1, 2, 16])
+Inference test successful
+
+All tests completed!
+"""
