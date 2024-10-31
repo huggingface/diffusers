@@ -17,6 +17,7 @@ import re
 from contextlib import nullcontext
 from typing import Optional
 
+from huggingface_hub import QuestionAnsweringInput
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
@@ -218,18 +219,15 @@ class FromOriginalModelMixin:
                 local_files_only=local_files_only,
                 revision=revision,
             )
+        is_gguf = "gguf_metadata" in checkpoint
+        gguf_metadata = checkpoint["gguf_metadata"] if is_gguf else None
 
-        pre_quantized = "quantization_config" in config and config["quantization_config"] is not None
-        if pre_quantized or quantization_config is not None:
-            if pre_quantized:
-                config["quantization_config"] = DiffusersAutoQuantizer.merge_quantization_configs(
-                    config["quantization_config"], quantization_config
-                )
-            else:
-                config["quantization_config"] = quantization_config
-            hf_quantizer = DiffusersAutoQuantizer.from_config(
-                config["quantization_config"], pre_quantized=pre_quantized
-            )
+        while "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
+        if is_gguf:
+            quantization_config = GGUFConfig()
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=False)
         else:
             hf_quantizer = None
 

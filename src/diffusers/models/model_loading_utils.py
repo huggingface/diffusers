@@ -25,6 +25,17 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
+from diffusers.utils.constants import GGUF_FILE_EXTENSION
+from array import array
+
+import torch
+from tqdm import tqdm
+
+from ..utils import is_torch_available
+from ..utils.import_utils import is_gguf_available
+from ..utils.logging import get_logger
+
+
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -140,6 +151,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
+        elif file_extension == GGUF_FILE_EXTENSION:
+            return load_gguf_checkpoint(checkpoint_file)
         else:
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             return torch.load(
@@ -389,3 +402,73 @@ def _fetch_index_file_legacy(
                 index_file = None
 
     return index_file
+
+
+def _gguf_parse_value(_value, data_type):
+    if not isinstance(data_type, list):
+        data_type = [data_type]
+    if len(data_type) == 1:
+        data_type = data_type[0]
+        array_data_type = None
+    else:
+        if data_type[0] != 9:
+            raise ValueError("Received multiple types, therefore expected the first type to indicate an array.")
+        data_type, array_data_type = data_type
+
+    if data_type in [0, 1, 2, 3, 4, 5, 10, 11]:
+        _value = int(_value[0])
+    elif data_type in [6, 12]:
+        _value = float(_value[0])
+    elif data_type in [7]:
+        _value = bool(_value[0])
+    elif data_type in [8]:
+        _value = array("B", list(_value)).tobytes().decode()
+    elif data_type in [9]:
+        _value = _gguf_parse_value(_value, array_data_type)
+    return _value
+
+
+def read_field(reader, field):
+    value = reader.fields[field]
+    return [_gguf_parse_value(value.parts[_data_index], value.types) for _data_index in value.data]
+
+
+def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
+    """
+    Load a GGUF file and return a dictionary of parsed parameters containing tensors, the parsed
+    tokenizer and config attributes.
+
+    Args:
+        gguf_checkpoint_path (`str`):
+            The path the to GGUF file to load
+        return_tensors (`bool`, defaults to `True`):
+            Whether to read the tensors from the file and return them. Not doing so is faster
+            and only loads the metadata in memory.
+    """
+
+    if is_gguf_available() and is_torch_available():
+        from gguf import GGUFReader
+    else:
+        logger.error(
+            "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
+            "https://pytorch.org/ and https://github.com/ggerganov/llama.cpp/tree/master/gguf-py for installation instructions."
+        )
+        raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
+
+    reader = GGUFReader(gguf_checkpoint_path)
+    fields = reader.fields
+    reader_keys = list(fields.keys())
+
+    parsed_parameters = {}
+    qtypes = {}
+    for tensor in tqdm(reader.tensors):
+        name = tensor.name
+        weights = torch.from_numpy(tensor.data)
+
+        parsed_parameters[name] = weights
+        qtypes[name] = str(tensor.tensor_type)
+
+    if len(reader_keys) > 0:
+        logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")
+
+    return {"state_dict": parsed_parameters, "gguf_metadata": qtypes}

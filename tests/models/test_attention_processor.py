@@ -6,6 +6,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
+import pytest
 
 
 class AttnAddedKVProcessorTests(unittest.TestCase):
@@ -83,6 +84,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         pipe = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
+        torch.cuda.synchronize()
 
         pre_conversion = pipe(
             "foo",
@@ -95,6 +97,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         pipe = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", device_map="balanced", safety_checker=None
         )
+        torch.cuda.synchronize()
 
         conversion = pipe(
             "foo",
