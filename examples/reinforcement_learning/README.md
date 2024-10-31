@@ -1,7 +1,7 @@
 
 ## Diffusion-based Policy Learning for RL
 
-`diffusion_policy` implements <a href="https://diffusion-policy.cs.columbia.edu/">Diffusion Policy</a>, a diffusion model to predict action sequences in reinforcement learning tasks. Built with Hugging Face's `diffusers` library, it includes custom dataset handling with `zarr` for efficient I/O, and supports model checkpointing, exponential moving average (EMA), and observation encoding. The training loop adds noise to actions following a schedule, learning denoising through MSE loss. 
+`diffusion_policy` implements <a href="https://diffusion-policy.cs.columbia.edu/">Diffusion Policy</a>, a diffusion model to predict action sequences in reinforcement learning tasks.
 
  The sample dataset can be downloaded <a href="https://diffusion-policy.cs.columbia.edu/data/training/">here</a>.
 
