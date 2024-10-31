@@ -951,7 +951,7 @@ def _get_ignore_patterns(
 
 
 def model_has_device_map(model):
-    if not (is_accelerate_available() and not is_accelerate_version("<", "0.14.0")):
+    if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
         return False
 
     # Check if the model has a device map that is not exclusively CPU
