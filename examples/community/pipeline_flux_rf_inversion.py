@@ -759,7 +759,7 @@ class RFInversionFluxPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = latents.shape[1]
+        image_seq_len = packed_inv_latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -790,11 +790,10 @@ class RFInversionFluxPipeline(
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for idx, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
-                timestep = torch.full((packed_inv_latents.shape[0],), t_curr, dtype=packed_inv_latents.dtype,
-                                   device=packed_inv_latents.device)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 #timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = t_curr.expand(packed_inv_latents.shape[0]).to(packed_inv_latents.dtype)
 
                 velocity = self.transformer(
                     hidden_states=latents,
@@ -908,14 +907,33 @@ class RFInversionFluxPipeline(
         dtype = dtype or self.text_encoder.dtype
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
+        device = self._execution_device
+
         # 1. prepare image
         img_latents, _ = self.encode_image(image, dtype=dtype)
 
-        timesteps = get_schedule(
-            num_steps=num_steps,
-            image_seq_len=(1024 // 16) * (1024 // 16),  # vae_scale_factor = 16
-            shift=use_shift_t_sampling,  # Set True for Flux-dev, False for Flux-schnell
-        )[::-1]  # flipped for inversion
+        # 2. Prepare timesteps
+        sigmas = np.linspace(1.0, 1 / num_inversion_steps, num_inversion_steps)
+        image_seq_len = img_latents.shape[1]
+        if use_shift_t_sampling:
+            mu = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.base_image_seq_len,
+                self.scheduler.config.max_image_seq_len,
+                self.scheduler.config.base_shift,
+                self.scheduler.config.max_shift,
+            )
+        else:
+            mu = None
+        timesteps, num_inversion_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inversion_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+
+        timesteps = timesteps[::-1] # flip for inversion
 
         prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
             prompt=source_prompt
@@ -924,7 +942,7 @@ class RFInversionFluxPipeline(
             img_latents.shape[0],
             img_latents.shape[2],
             img_latents.shape[3],
-            img_latents.device,
+            device,
             dtype,
         )
         packed_latents = self._pack_latents(
@@ -935,22 +953,28 @@ class RFInversionFluxPipeline(
             width=latents.shape[3],
         )
 
-        target_noise = torch.randn(packed_latents.shape, device=packed_latents.device, dtype=torch.float32)
+        target_noise = torch.randn(packed_latents.shape, device=device, dtype=torch.float32)
 
-        guidance_vec = torch.full((packed_latents.shape[0],), source_guidance_scale, device=packed_latents.device,
-                                  dtype=packed_latents.dtype)
+        # handle guidance
+        if self.transformer.config.guidance_embeds:
+            guidance = torch.full([1], source_guidance_scale, device=device, dtype=torch.float32)
+            guidance = guidance.expand(packed_latents.shape[0])
+        else:
+            guidance = None
 
         # Image inversion with interpolated velocity field.  t goes from 0.0 to 1.0
         with self.progress_bar(total=len(timesteps) - 1) as progress_bar:
             for t_curr, t_prev in zip(timesteps[:-1], timesteps[1:]):
-                t_vec = torch.full((packed_latents.shape[0],), t_curr, dtype=packed_latents.dtype,
-                                   device=packed_latents.device)
+
+                # t_vec = torch.full((packed_latents.shape[0],), t_curr, dtype=packed_latents.dtype,
+                #                    device=device)
+                timestep = t_curr.expand(packed_latents.shape[0]).to(packed_latents.dtype)
 
                 # Null text velocity
-                flux_velocity = pipeline.transformer(
+                velocity = pipeline.transformer(
                     hidden_states=packed_latents,
-                    timestep=t_vec,
-                    guidance=guidance_vec,
+                    timestep=timestep,
+                    guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
@@ -961,13 +985,13 @@ class RFInversionFluxPipeline(
 
                 # Prevents precision issues
                 packed_latents = packed_latents.to(torch.float32)
-                flux_velocity = flux_velocity.to(torch.float32)
+                velocity = velocity.to(torch.float32)
 
                 # Target noise velocity
                 target_noise_velocity = (target_noise - packed_latents) / (1.0 - t_curr)
 
                 # interpolated velocity
-                interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * flux_velocity
+                interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * velocity
 
                 # one-step Euler
                 packed_latents = packed_latents + (t_prev - t_curr) * interpolated_velocity
