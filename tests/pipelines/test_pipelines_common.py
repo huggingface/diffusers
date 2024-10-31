@@ -1993,7 +1993,9 @@ class PipelineTesterMixin:
 
         component_selected = None
         for component_name in components:
-            if isinstance(components[component_name], ModelMixin):
+            if isinstance(components[component_name], ModelMixin) and hasattr(
+                components[component_name], "load_config"
+            ):
                 component_to_be_sharded = components[component_name]
                 component_cls = component_to_be_sharded.__class__
                 component_selected = component_name
