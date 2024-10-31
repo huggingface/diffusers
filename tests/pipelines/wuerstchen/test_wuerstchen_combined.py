@@ -237,15 +237,3 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
     def test_callback_cfg(self):
         pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        pass

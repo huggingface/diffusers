@@ -205,18 +205,6 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_max_difference=False)
 
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        pass
-
 
 @nightly
 @require_torch_gpu

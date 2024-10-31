@@ -41,11 +41,8 @@ from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    nightly,
     require_torch,
-    require_torch_multi_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -60,10 +57,6 @@ from ..models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_state_dict,
 )
 from ..others.test_utils import TOKEN, USER, is_staging_test
-
-
-if is_accelerate_available():
-    from accelerate.utils import compute_module_sizes
 
 
 def to_np(tensor):
@@ -1913,78 +1906,6 @@ class PipelineTesterMixin:
                 pipe.unet,
                 (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel, UNetControlNetXSModel),
             )
-        )
-
-    @require_torch_multi_gpu
-    @slow
-    @nightly
-    def test_calling_to_raises_error_device_mapped_components(self, safe_serialization=True):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        max_model_size = max(
-            compute_module_sizes(module)[""]
-            for _, module in pipe.components.items()
-            if isinstance(module, torch.nn.Module)
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
-            max_memory = {0: max_model_size, 1: max_model_size}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
-
-        with self.assertRaises(ValueError) as err_context:
-            loaded_pipe.to(torch_device)
-
-        self.assertTrue(
-            "The following pipeline components have been found" in str(err_context.exception)
-            and "This is incompatible with explicitly setting the device using `to()`" in str(err_context.exception)
-        )
-
-    @require_torch_multi_gpu
-    @slow
-    @nightly
-    def test_calling_mco_raises_error_device_mapped_components(self, safe_serialization=True):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        max_model_size = max(
-            compute_module_sizes(module)[""]
-            for _, module in pipe.components.items()
-            if isinstance(module, torch.nn.Module)
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
-            max_memory = {0: max_model_size, 1: max_model_size}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
-
-        with self.assertRaises(ValueError) as err_context:
-            loaded_pipe.enable_model_cpu_offload()
-
-        self.assertTrue(
-            "The following pipeline components have been found" in str(err_context.exception)
-            and "This is incompatible with `enable_model_cpu_offload()`" in str(err_context.exception)
-        )
-
-    @require_torch_multi_gpu
-    @slow
-    @nightly
-    def test_calling_sco_raises_error_device_mapped_components(self, safe_serialization=True):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        max_model_size = max(
-            compute_module_sizes(module)[""]
-            for _, module in pipe.components.items()
-            if isinstance(module, torch.nn.Module)
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
-            max_memory = {0: max_model_size, 1: max_model_size}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
-
-        with self.assertRaises(ValueError) as err_context:
-            loaded_pipe.enable_sequential_cpu_offload()
-
-        self.assertTrue(
-            "The following pipeline components have been found" in str(err_context.exception)
-            and "This is incompatible with `enable_sequential_cpu_offload()`" in str(err_context.exception)
         )
 
 

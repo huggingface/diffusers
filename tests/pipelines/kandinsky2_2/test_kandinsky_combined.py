@@ -159,18 +159,6 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_callback_cfg(self):
         pass
 
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        pass
-
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22Img2ImgCombinedPipeline
@@ -291,18 +279,6 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
         pass
 
     def test_callback_cfg(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
         pass
 
 
@@ -427,16 +403,4 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
         pass
 
     def test_callback_cfg(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
         pass

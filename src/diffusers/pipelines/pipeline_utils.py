@@ -85,7 +85,6 @@ from .pipeline_loading_utils import (
     _update_init_kwargs_with_connected_pipeline,
     load_sub_model,
     maybe_raise_or_warn,
-    model_has_device_map,
     variant_compatible_siblings,
     warn_deprecated_model_variant,
 )
@@ -406,16 +405,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
-
-        # device-mapped modules should not go through any device placements.
-        device_mapped_components = [
-            key for key, component in self.components.items() if model_has_device_map(component)
-        ]
-        if device_mapped_components:
-            raise ValueError(
-                "The following pipeline components have been found to use a device map: "
-                f"{device_mapped_components}. This is incompatible with explicitly setting the device using `to()`."
-            )
 
         # .to("cuda") would raise an error if the pipeline is sequentially offloaded, so we raise our own to make it clearer
         pipeline_is_sequentially_offloaded = any(
@@ -1013,16 +1002,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
-        # device-mapped modules should not go through any device placements.
-        device_mapped_components = [
-            key for key, component in self.components.items() if model_has_device_map(component)
-        ]
-        if device_mapped_components:
-            raise ValueError(
-                "The following pipeline components have been found to use a device map: "
-                f"{device_mapped_components}. This is incompatible with `enable_model_cpu_offload()`."
-            )
-
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
@@ -1125,16 +1104,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
-        # device-mapped modules should not go through any device placements.
-        device_mapped_components = [
-            key for key, component in self.components.items() if model_has_device_map(component)
-        ]
-        if device_mapped_components:
-            raise ValueError(
-                "The following pipeline components have been found to use a device map: "
-                f"{device_mapped_components}. This is incompatible with `enable_sequential_cpu_offload()`."
-            )
-
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
