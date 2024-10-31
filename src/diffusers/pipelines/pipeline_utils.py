@@ -85,6 +85,7 @@ from .pipeline_loading_utils import (
     _update_init_kwargs_with_connected_pipeline,
     load_sub_model,
     maybe_raise_or_warn,
+    model_has_device_map,
     variant_compatible_siblings,
     warn_deprecated_model_variant,
 )
@@ -388,11 +389,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         device = device or device_arg
-
-        def model_has_device_map(model):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-            return getattr(model, "hf_device_map", None) is not None
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -1017,12 +1013,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
-
-        def model_has_device_map(model):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-            return getattr(model, "hf_device_map", None) is not None
-
         # device-mapped modules should not go through any device placements.
         device_mapped_components = [
             key for key, component in self.components.items() if model_has_device_map(component)
@@ -1135,12 +1125,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
-
-        def model_has_device_map(model):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
-                return False
-            return getattr(model, "hf_device_map", None) is not None
-
         # device-mapped modules should not go through any device placements.
         device_mapped_components = [
             key for key, component in self.components.items() if model_has_device_map(component)
