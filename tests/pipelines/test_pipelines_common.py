@@ -1921,9 +1921,6 @@ class PipelineTesterMixin:
     @slow
     @nightly
     def test_calling_to_raises_error_device_mapped_components(self):
-        if "Combined" in self.pipeline_class.__name__:
-            return
-
         # TODO (sayakpaul): skip these for now. revisit later.
         components = self.get_dummy_components()
         if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):
@@ -1952,9 +1949,6 @@ class PipelineTesterMixin:
     @slow
     @nightly
     def test_calling_mco_raises_error_device_mapped_components(self):
-        if "Combined" in self.pipeline_class.__name__:
-            return
-
         # TODO (sayakpaul): skip these for now. revisit later.
         components = self.get_dummy_components()
         if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):
@@ -1983,9 +1977,6 @@ class PipelineTesterMixin:
     @slow
     @nightly
     def test_calling_sco_raises_error_device_mapped_components(self):
-        if "Combined" in self.pipeline_class.__name__:
-            return
-
         # TODO (sayakpaul): skip these for now. revisit later.
         components = self.get_dummy_components()
         if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):

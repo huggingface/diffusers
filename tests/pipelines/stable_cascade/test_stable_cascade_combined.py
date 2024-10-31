@@ -279,3 +279,15 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         )
 
         assert np.abs(output_prompt.images - output_prompt_embeds.images).max() < 1e-5
+
+    @unittest.skip("Test not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_to_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        pass
