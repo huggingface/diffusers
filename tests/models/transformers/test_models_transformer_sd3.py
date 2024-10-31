@@ -84,6 +84,10 @@ class SD3TransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_set_attn_processor_for_determinism(self):
         pass
 
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"SD3Transformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
 
 class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = SD3Transformer2DModel
@@ -139,3 +143,7 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skip("SD3Transformer2DModel uses a dedicated attention processor. This test doesn't apply")
     def test_set_attn_processor_for_determinism(self):
         pass
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"SD3Transformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

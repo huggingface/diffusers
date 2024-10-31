@@ -43,7 +43,6 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -406,47 +405,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
-
     def test_model_with_attention_head_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -599,31 +557,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             check_sliceable_dim_attr(module)
 
     def test_gradient_checkpointing_is_applied(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["block_out_channels"] = (16, 32)
-        init_dict["attention_head_dim"] = (8, 16)
-
-        model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
-        model = model_class_copy(**init_dict)
-        model.enable_gradient_checkpointing()
-
-        EXPECTED_SET = {
+        expected_set = {
             "CrossAttnUpBlock2D",
             "CrossAttnDownBlock2D",
             "UNetMidBlock2DCrossAttn",
@@ -631,9 +565,11 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "Transformer2DModel",
             "DownBlock2D",
         }
-
-        assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
-        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+        attention_head_dim = (8, 16)
+        block_out_channels = (16, 32)
+        super().test_gradient_checkpointing_is_applied(
+            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
+        )
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):
