@@ -30,13 +30,11 @@ from diffusers import (
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
-from diffusers.models.adapter import MultiAdapter
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
-from diffusers.pipelines.controlnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -1920,12 +1918,8 @@ class PipelineTesterMixin:
     @require_torch_multi_gpu
     @slow
     @nightly
-    def test_calling_to_raises_error_device_mapped_components(self):
-        # TODO (sayakpaul): skip these for now. revisit later.
+    def test_calling_to_raises_error_device_mapped_components(self, safe_serialization=True):
         components = self.get_dummy_components()
-        if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):
-            return
-
         pipe = self.pipeline_class(**components)
         max_model_size = max(
             compute_module_sizes(module)[""]
@@ -1933,7 +1927,7 @@ class PipelineTesterMixin:
             if isinstance(module, torch.nn.Module)
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
             max_memory = {0: max_model_size, 1: max_model_size}
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
 
@@ -1948,12 +1942,8 @@ class PipelineTesterMixin:
     @require_torch_multi_gpu
     @slow
     @nightly
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        # TODO (sayakpaul): skip these for now. revisit later.
+    def test_calling_mco_raises_error_device_mapped_components(self, safe_serialization=True):
         components = self.get_dummy_components()
-        if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):
-            return
-
         pipe = self.pipeline_class(**components)
         max_model_size = max(
             compute_module_sizes(module)[""]
@@ -1961,7 +1951,7 @@ class PipelineTesterMixin:
             if isinstance(module, torch.nn.Module)
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
             max_memory = {0: max_model_size, 1: max_model_size}
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
 
@@ -1976,12 +1966,8 @@ class PipelineTesterMixin:
     @require_torch_multi_gpu
     @slow
     @nightly
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        # TODO (sayakpaul): skip these for now. revisit later.
+    def test_calling_sco_raises_error_device_mapped_components(self, safe_serialization=True):
         components = self.get_dummy_components()
-        if any(isinstance(component, (MultiControlNetModel, MultiAdapter)) for component in components):
-            return
-
         pipe = self.pipeline_class(**components)
         max_model_size = max(
             compute_module_sizes(module)[""]
@@ -1989,7 +1975,7 @@ class PipelineTesterMixin:
             if isinstance(module, torch.nn.Module)
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=safe_serialization)
             max_memory = {0: max_model_size, 1: max_model_size}
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map="balanced", max_memory=max_memory)
 

@@ -576,6 +576,15 @@ class UniDiffuserPipelineFastTests(
         expected_text_prefix = '" This This'
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        super().test_calling_mco_raises_error_device_mapped_components(safe_serialization=False)
+
+    def test_calling_to_raises_error_device_mapped_components(self):
+        super().test_calling_to_raises_error_device_mapped_components(safe_serialization=False)
+
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        super().test_calling_sco_raises_error_device_mapped_components(safe_serialization=False)
+
 
 @nightly
 @require_torch_gpu
