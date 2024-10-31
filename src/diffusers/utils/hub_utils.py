@@ -286,7 +286,6 @@ def _get_model_file(
     cache_dir: Optional[str] = None,
     force_download: bool = False,
     proxies: Optional[Dict] = None,
-    resume_download: Optional[bool] = None,
     local_files_only: bool = False,
     token: Optional[str] = None,
     user_agent: Optional[Union[Dict, str]] = None,
@@ -324,7 +323,6 @@ def _get_model_file(
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -349,7 +347,6 @@ def _get_model_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
                 user_agent=user_agent,
@@ -417,7 +414,6 @@ def _get_checkpoint_shard_files(
     index_filename,
     cache_dir=None,
     proxies=None,
-    resume_download=False,
     local_files_only=False,
     token=None,
     user_agent=None,
@@ -451,14 +447,17 @@ def _get_checkpoint_shard_files(
         _check_if_shards_exist_locally(
             pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
-        return pretrained_model_name_or_path, sharded_metadata
+        return shards_path, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
     allow_patterns = original_shard_filenames
+    if subfolder is not None:
+        allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
+
     ignore_patterns = ["*.json", "*.md"]
     if not local_files_only:
         # `model_info` call must guarded with the above condition.
-        model_files_info = model_info(pretrained_model_name_or_path)
+        model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
         for shard_file in original_shard_filenames:
             shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
             if not shard_file_present:
@@ -467,36 +466,52 @@ def _get_checkpoint_shard_files(
                     "required according to the checkpoint index."
                 )
 
-    try:
-        # Load from URL
-        cached_folder = snapshot_download(
-            pretrained_model_name_or_path,
-            cache_dir=cache_dir,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            allow_patterns=allow_patterns,
-            ignore_patterns=ignore_patterns,
-            user_agent=user_agent,
-        )
+        try:
+            # Load from URL
+            cached_folder = snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
+            )
+            if subfolder is not None:
+                cached_folder = os.path.join(cached_folder, subfolder)
 
-    # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
-    # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
-        raise EnvironmentError(
-            f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
-            " again after checking your internet connection."
-        ) from e
+        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+        # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+        except HTTPError as e:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+                " again after checking your internet connection."
+            ) from e
 
     # If `local_files_only=True`, `cached_folder` may not contain all the shard files.
-    if local_files_only:
+    elif local_files_only:
         _check_if_shards_exist_locally(
             local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
         )
+        if subfolder is not None:
+            cached_folder = os.path.join(cache_dir, subfolder)
 
     return cached_folder, sharded_metadata
+
+
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+    if filenames and folder:
+        raise ValueError("Both `filenames` and `folder` cannot be provided.")
+    if not filenames:
+        filenames = []
+        for _, _, files in os.walk(folder):
+            for file in files:
+                filenames.append(os.path.basename(file))
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+    return any(variant_file_re.match(f) is not None for f in filenames)
 
 
 class PushToHubMixin:

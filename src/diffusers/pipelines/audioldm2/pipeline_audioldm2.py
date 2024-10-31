@@ -286,6 +286,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The sequence of generated hidden-states.
         """
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
+        model_kwargs = self.language_model._get_initial_cache_position(inputs_embeds, model_kwargs)
         for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
