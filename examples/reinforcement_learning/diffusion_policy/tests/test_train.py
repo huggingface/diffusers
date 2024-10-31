@@ -36,13 +36,27 @@ def test_mini_training(data_config, model_config):
     print("\nTesting mini training...")
     
     try:
-        # run training for 2 epochs with small batch
+        # Set device explicitly with fallback
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+        
+        # Define save directory
+        save_dir = os.path.join(current_dir, "test_checkpoints")
+        
+        # Clean up save directory if it exists
+        if os.path.exists(save_dir):
+            import shutil
+            shutil.rmtree(save_dir)
+            print(f"Removed existing directory: {save_dir}")
+        
+        # Run training
         results = train_diffusion(
             data_config=data_config,
             model_config=model_config,
             num_epochs=2,
             batch_size=32,
-            save_dir=os.path.join(current_dir, "test_checkpoints")
+            device=device,  # Pass device explicitly
+            save_dir=save_dir
         )
         
         print("Mini training completed successfully")
@@ -56,7 +70,7 @@ def test_mini_training(data_config, model_config):
         
         print("All model components returned correctly")
         
-        # check if checkpoints were saved
+        # Check if checkpoints were saved
         checkpoint_path = os.path.join(current_dir, "test_checkpoints", "diffusion_final.pt")
         assert os.path.exists(checkpoint_path), "Final checkpoint not saved"
         
@@ -70,7 +84,7 @@ def test_mini_training(data_config, model_config):
         traceback.print_exc()
         return None
 
-def test_model_inference(results):
+def test_model_inference(results, model_config):
     """Test if trained model can do inference"""
     print("\nTesting model inference...")
     
@@ -80,9 +94,9 @@ def test_model_inference(results):
         obs_encoder = results['obs_encoder']
         obs_projection = results['obs_projection']
         
-        # dummy data
+        # Create dummy data
         batch_size = 1
-        state = torch.randn(batch_size, 2, 5)  # [batch, obs_horizon, state_dim]
+        state = torch.randn(batch_size, 2, 5, device=device)  # [batch, obs_horizon, state_dim]
         
         # runs inference
         with torch.no_grad():
@@ -95,15 +109,17 @@ def test_model_inference(results):
             print(f"Observation projection shape: {obs_cond.shape}")
             
             # 3. Prepare for model (just checking shapes)
-            obs_cond = obs_cond.unsqueeze(-1).expand(-1, -1, 16)  # 16 = pred_horizon
+            pred_horizon = model_config.sample_size  # Use sample_size instead of pred_horizon
+            obs_cond = obs_cond.unsqueeze(-1).expand(-1, -1, pred_horizon)  # [batch, proj_dim, pred_horizon]
             print(f"Expanded conditioning shape: {obs_cond.shape}")
             
-            # 4. Create dummy noisy actions
-            noisy_actions = torch.randn(batch_size, 2, 16)  # [batch, action_dim, pred_horizon]
-            model_input = torch.cat([noisy_actions, obs_cond], dim=1)
+            # 4. Create dummy noisy actions on the same device
+            noisy_actions = torch.randn(batch_size, 2, pred_horizon, device=device)  # [batch, action_dim, pred_horizon]
+            model_input = torch.cat([noisy_actions, obs_cond], dim=1)  # [batch, total_in_channels, pred_horizon]
+            print(f"Model input shape: {model_input.shape}")
             
             # 5. Run model
-            timesteps = torch.zeros(batch_size, dtype=torch.long)
+            timesteps = torch.zeros(batch_size, dtype=torch.long, device=device)
             output = model(model_input, timesteps).sample
             print(f"Model output shape: {output.shape}")
             
@@ -126,44 +142,10 @@ def main():
     results = test_mini_training(data_config, model_config)
     
     if results is not None:
-        # test inference
+        # Test inference
         test_model_inference(results)
     
     print("\nAll tests completed!")
 
 if __name__ == "__main__":
     main()
-
-"""
-EXAMPLE OUTPUT:
-
-Starting training tests...
-
-Testing training setup...
-Configurations created successfully
-
-Testing mini training...
-Using device: cuda
-Using device: cuda
-Sample output device: cuda:0
-Epoch 0: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 757/757 [00:41<00:00, 18.11it/s, loss=0.606]
-
-Epoch 0 average loss: 0.617402
-Epoch 1: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 757/757 [00:42<00:00, 18.01it/s, loss=0.551]
-
-Epoch 1 average loss: 0.575397
-Mini training completed successfully
-All model components returned correctly
-Checkpoints saved successfully
-
-Testing model inference...
-Models are on device: cuda:0
-Observation embedding shape: torch.Size([1, 512])
-Observation projection shape: torch.Size([1, 32])
-Expanded conditioning shape: torch.Size([1, 32, 16])
-Model input shape: torch.Size([1, 34, 16])
-Model output shape: torch.Size([1, 2, 16])
-Inference test successful
-
-All tests completed!
-"""

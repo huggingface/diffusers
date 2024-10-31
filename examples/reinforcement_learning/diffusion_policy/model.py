@@ -58,5 +58,18 @@ def create_model(data_config, model_config, device):
         clip_sample=True,
         prediction_type="epsilon"
     )
-    
+
+    with torch.no_grad():
+        sample_input = torch.randn(1, model_config.total_in_channels, model_config.sample_size).to(device)
+        sample_timesteps = torch.randint(
+            0, noise_scheduler.config.num_train_timesteps,
+            (1,), device=device
+        ).long()
+        try:
+            output = model(sample_input, sample_timesteps).sample
+            print(f"Sample output device: {output.device}")
+        except RuntimeError as e:
+            print(f"RuntimeError during sample forward pass: {e}")
+
+        
     return model, obs_encoder, obs_projection, noise_scheduler
