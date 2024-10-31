@@ -8,9 +8,11 @@ from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
+    require_torch_multi_gpu,
     slow,
     torch_device,
 )
@@ -282,3 +284,172 @@ class FluxPipelineSlowTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4
+
+    @require_torch_multi_gpu
+    @torch.no_grad()
+    def test_flux_component_sharding(self):
+        """
+        internal note: test was run on `audace`.
+        """
+
+        ckpt_id = "black-forest-labs/FLUX.1-dev"
+        dtype = torch.bfloat16
+        prompt = "a photo of a cat with tiger-like look"
+
+        pipeline = FluxPipeline.from_pretrained(
+            ckpt_id,
+            transformer=None,
+            vae=None,
+            device_map="balanced",
+            max_memory={0: "16GB", 1: "16GB"},
+            torch_dtype=dtype,
+        )
+        prompt_embeds, pooled_prompt_embeds, _ = pipeline.encode_prompt(
+            prompt=prompt, prompt_2=None, max_sequence_length=512
+        )
+
+        del pipeline.text_encoder
+        del pipeline.text_encoder_2
+        del pipeline.tokenizer
+        del pipeline.tokenizer_2
+        del pipeline
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        transformer = FluxTransformer2DModel.from_pretrained(
+            ckpt_id, subfolder="transformer", device_map="auto", max_memory={0: "16GB", 1: "16GB"}, torch_dtype=dtype
+        )
+        pipeline = FluxPipeline.from_pretrained(
+            ckpt_id,
+            text_encoder=None,
+            text_encoder_2=None,
+            tokenizer=None,
+            tokenizer_2=None,
+            vae=None,
+            transformer=transformer,
+            torch_dtype=dtype,
+        )
+
+        height, width = 768, 1360
+        # No need to wrap it up under `torch.no_grad()` as pipeline call method
+        # is already wrapped under that.
+        latents = pipeline(
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            num_inference_steps=10,
+            guidance_scale=3.5,
+            height=height,
+            width=width,
+            output_type="latent",
+            generator=torch.manual_seed(0),
+        ).images
+        latent_slice = latents[0, :3, :3].flatten().float().cpu().numpy()
+        expected_slice = np.array([-0.377, -0.3008, -0.5117, -0.252, 0.0615, -0.3477, -0.1309, -0.1914, 0.1533])
+
+        assert numpy_cosine_similarity_distance(latent_slice, expected_slice) < 1e-4
+
+        del pipeline.transformer
+        del pipeline
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=dtype).to(torch_device)
+        vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
+        image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+
+        latents = FluxPipeline._unpack_latents(latents, height, width, vae_scale_factor)
+        latents = (latents / vae.config.scaling_factor) + vae.config.shift_factor
+
+        image = vae.decode(latents, return_dict=False)[0]
+        image = image_processor.postprocess(image, output_type="np")
+        image_slice = image[0, :3, :3, -1].flatten()
+        expected_slice = np.array([0.127, 0.1113, 0.1055, 0.1172, 0.1172, 0.1074, 0.1191, 0.1191, 0.1152])
+
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
+
+    @require_torch_multi_gpu
+    @torch.no_grad()
+    def test_flux_component_sharding_with_lora(self):
+        """
+        internal note: test was run on `audace`.
+        """
+
+        ckpt_id = "black-forest-labs/FLUX.1-dev"
+        dtype = torch.bfloat16
+        prompt = "jon snow eating pizza."
+
+        pipeline = FluxPipeline.from_pretrained(
+            ckpt_id,
+            transformer=None,
+            vae=None,
+            device_map="balanced",
+            max_memory={0: "16GB", 1: "16GB"},
+            torch_dtype=dtype,
+        )
+        prompt_embeds, pooled_prompt_embeds, _ = pipeline.encode_prompt(
+            prompt=prompt, prompt_2=None, max_sequence_length=512
+        )
+
+        del pipeline.text_encoder
+        del pipeline.text_encoder_2
+        del pipeline.tokenizer
+        del pipeline.tokenizer_2
+        del pipeline
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        transformer = FluxTransformer2DModel.from_pretrained(
+            ckpt_id, subfolder="transformer", device_map="auto", max_memory={0: "16GB", 1: "16GB"}, torch_dtype=dtype
+        )
+        pipeline = FluxPipeline.from_pretrained(
+            ckpt_id,
+            text_encoder=None,
+            text_encoder_2=None,
+            tokenizer=None,
+            tokenizer_2=None,
+            vae=None,
+            transformer=transformer,
+            torch_dtype=dtype,
+        )
+        pipeline.load_lora_weights("TheLastBen/Jon_Snow_Flux_LoRA", weight_name="jon_snow.safetensors")
+
+        height, width = 768, 1360
+        # No need to wrap it up under `torch.no_grad()` as pipeline call method
+        # is already wrapped under that.
+        latents = pipeline(
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            num_inference_steps=10,
+            guidance_scale=3.5,
+            height=height,
+            width=width,
+            output_type="latent",
+            generator=torch.manual_seed(0),
+        ).images
+        latent_slice = latents[0, :3, :3].flatten().float().cpu().numpy()
+        expected_slice = np.array([-0.6523, -0.4961, -0.9141, -0.5, -0.2129, -0.6914, -0.375, -0.5664, -0.1699])
+
+        assert numpy_cosine_similarity_distance(latent_slice, expected_slice) < 1e-4
+
+        del pipeline.transformer
+        del pipeline
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=dtype).to(torch_device)
+        vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
+        image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
+
+        latents = FluxPipeline._unpack_latents(latents, height, width, vae_scale_factor)
+        latents = (latents / vae.config.scaling_factor) + vae.config.shift_factor
+
+        image = vae.decode(latents, return_dict=False)[0]
+        image = image_processor.postprocess(image, output_type="np")
+        image_slice = image[0, :3, :3, -1].flatten()
+        expected_slice = np.array([0.1211, 0.1094, 0.1035, 0.1094, 0.1113, 0.1074, 0.1133, 0.1133, 0.1094])
+
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4

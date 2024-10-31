@@ -184,6 +184,18 @@ class StableUnCLIPPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
+    @unittest.skip("Test not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_to_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        pass
+
 
 @nightly
 @require_torch_gpu
