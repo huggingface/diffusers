@@ -2000,6 +2000,9 @@ class PipelineTesterMixin:
                 component_cls = component_to_be_sharded.__class__
                 component_selected = component_name
                 break
+        
+        assert component_selected, "No component selected that can be sharded."
+
         model_size = compute_module_sizes(component_to_be_sharded)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))
 
