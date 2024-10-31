@@ -13,41 +13,47 @@ from model import create_model
 def train_diffusion(
     data_config: DataConfig,
     model_config: ModelConfig,
-    num_epochs: int = 100,              # training duration
-    batch_size: int = 256,              # samples per batch
-    learning_rate: float = 1e-4,        
-    save_dir: str = "checkpoints",      # save directory
-    device: torch.device = None         
+    num_epochs: int = 100,
+    batch_size: int = 256,
+    learning_rate: float = 1e-4,
+    save_dir: str = "checkpoints",
+    device: torch.device = None
 ):
-
+    """Train diffusion model using HuggingFace diffusers"""
+    
+    # Setup device
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda")
     print(f"Using device: {device}")
     
-    # dataset and dataloader
+    # Create dataset and dataloader
     dataset = SequentialDataset(data_config)
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         num_workers=4,
         shuffle=True,
-        pin_memory=True,
+        pin_memory=True,  # This helps with faster data transfer to GPU
         persistent_workers=True
     )
     
-    # model components
+    # Create model components - all moved to the same device
     model, obs_encoder, obs_projection, noise_scheduler = create_model(
         data_config, model_config, device
     )
     
-    # optimizer
+    # Ensure models are in training mode
+    model.train()
+    obs_encoder.train()
+    
+    # Setup optimizer
     optimizer = torch.optim.AdamW([
         {'params': model.parameters()},
         {'params': obs_encoder.parameters()},
         {'params': obs_projection.parameters()}
     ], lr=learning_rate)
     
-    # EMA
+    # Setup EMA
     ema = EMAModel(
         parameters=list(model.parameters()) + 
                   list(obs_encoder.parameters()) + 
@@ -55,74 +61,87 @@ def train_diffusion(
         power=0.75
     )
     
-    # save directory
+    # Create save directory
     os.makedirs(save_dir, exist_ok=True)
     
-    # training loop
+    # Training loop
     for epoch in range(num_epochs):
         progress_bar = tqdm(total=len(dataloader), desc=f'Epoch {epoch}')
         epoch_loss = []
         
         for batch in dataloader:
-            # get batch data
-            state = batch['state'].to(device)       # [batch, obs_horizon, state_dim]
-            actions = batch['action'].to(device)    # [batch, pred_horizon, action_dim]
+            # Move batch to device and ensure float32
+            state = batch['state'].to(device, dtype=torch.float32)  # Ensure float32
+            actions = batch['action'].to(device, dtype=torch.float32)  # Ensure float32
             batch_size = state.shape[0]
             
-            # encode observations for conditioning
-            obs_embedding = obs_encoder(state)      # [batch, obs_embed_dim * obs_horizon]
-            
-            # sample noise and timesteps
-            noise = torch.randn_like(actions)
-            timesteps = torch.randint(
-                0, noise_scheduler.config.num_train_timesteps,
-                (batch_size,), device=device
-            ).long()
-            
-            # add noise to actions according to noise schedule
-            noisy_actions = noise_scheduler.add_noise(actions, noise, timesteps)
-            
-            # reshape to channels format for UNet
-            noisy_actions = noisy_actions.transpose(1, 2)
-            noise = noise.transpose(1, 2)
-            
-            # project the observation embedding
-            obs_cond = obs_projection(obs_embedding)     # [batch, obs_embed_dim//8]
-            
-            # reshape to match sequence length
-            obs_cond = obs_cond.unsqueeze(-1).expand(-1, -1, noisy_actions.shape[-1])
-            
-            # concatenate along channel dimension
-            model_input = torch.cat([noisy_actions, obs_cond], dim=1)
-            
-            # predict noise
-            noise_pred = model(model_input, timesteps).sample
-            
-            # calculate loss
-            loss = F.mse_loss(noise_pred, noise)
-            epoch_loss.append(loss.item())
-            
-            # optimize
+            # Zero gradients
             optimizer.zero_grad()
+            
+            try:
+                # Encode observations
+                obs_embedding = obs_encoder(state)
+                
+                # Sample noise and timesteps
+                noise = torch.randn_like(actions, device=device)  # Create noise on same device
+                timesteps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps,
+                    (batch_size,), device=device
+                ).long()
+                
+                # Add noise to actions
+                noisy_actions = noise_scheduler.add_noise(actions, noise, timesteps)
+                
+                # Reshape to channels format for UNet
+                noisy_actions = noisy_actions.transpose(1, 2)
+                noise = noise.transpose(1, 2)
+                
+                # Project the observation embedding
+                obs_cond = obs_projection(obs_embedding)
+                
+                # Reshape to match sequence length
+                obs_cond = obs_cond.unsqueeze(-1).expand(-1, -1, noisy_actions.shape[-1])
+                
+                # Concatenate along channel dimension
+                model_input = torch.cat([noisy_actions, obs_cond], dim=1)
+                
+                # Predict noise
+                noise_pred = model(model_input, timesteps).sample
+                
+                # Calculate loss
+                loss = F.mse_loss(noise_pred, noise)
+                
+            except RuntimeError as e:
+                print(f"\nError in forward pass: {e}")
+                print(f"State device: {state.device}")
+                print(f"Actions device: {actions.device}")
+                print(f"Noise device: {noise.device}")
+                print(f"Model device: {next(model.parameters()).device}")
+                print(f"Encoder device: {next(obs_encoder.parameters()).device}")
+                raise e
+            
+            # Backward pass and optimize
             loss.backward()
             optimizer.step()
             
-            # update EMA parameters
+            # Update EMA parameters
             ema.step(list(model.parameters()) + 
                      list(obs_encoder.parameters()) + 
                      list(obs_projection.parameters()))
             
-            # update progress
+            epoch_loss.append(loss.item())
+            
+            # Update progress
             progress_bar.update(1)
             progress_bar.set_postfix(loss=loss.item())
         
         progress_bar.close()
         
-        # epoch stats
+        # Print epoch stats
         avg_loss = sum(epoch_loss) / len(epoch_loss)
         print(f"\nEpoch {epoch} average loss: {avg_loss:.6f}")
         
-        # save checkpoint every 10 epochs
+        # Save checkpoint
         if (epoch + 1) % 10 == 0:
             save_checkpoint(
                 save_dir=save_dir,
