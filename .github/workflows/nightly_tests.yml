@@ -2,7 +2,6 @@ name: Nightly and release tests on main/release branch
 
 on:
   workflow_dispatch:
-  pull_request:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
@@ -19,7 +18,6 @@ env:
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
-    if: github.event_name == 'schedule'
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
       group: aws-general-8-plus
@@ -51,7 +49,6 @@ jobs:
           path: reports
 
   run_nightly_tests_for_torch_pipelines:
-    if: github.event_name == 'schedule'
     name: Nightly Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -109,7 +106,6 @@ jobs:
           python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_tests_for_other_torch_modules:
-    if: github.event_name == 'schedule'
     name: Nightly Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -297,7 +293,6 @@ jobs:
         python utils/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_onnx_tests:
-    if: github.event_name == 'schedule'
     name: Nightly ONNXRuntime CUDA tests on Ubuntu
     runs-on:
       group: aws-g4dn-2xlarge
