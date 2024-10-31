@@ -1650,6 +1650,8 @@ def main(args):
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
+                    pass  # when --train_text_encoder_ti and --enable_t5_ti we don't save the layers
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1776,15 +1778,10 @@ def main(args):
         if not args.enable_t5_ti:
             # pure textual inversion - only clip
             if pure_textual_inversion:
-                params_to_optimize = [
-                    text_parameters_one_with_lr,
-                ]
+                params_to_optimize = [text_parameters_one_with_lr]
                 te_idx = 0
             else:  # regular te training or regular pivotal for clip
-                params_to_optimize = [
-                    transformer_parameters_with_lr,
-                    text_parameters_one_with_lr,
-                ]
+                params_to_optimize = [transformer_parameters_with_lr, text_parameters_one_with_lr]
                 te_idx = 1
         elif args.enable_t5_ti:
             # pivotal tuning of clip & t5
@@ -1807,9 +1804,7 @@ def main(args):
                 ]
                 te_idx = 1
     else:
-        params_to_optimize = [
-            transformer_parameters_with_lr,
-        ]
+        params_to_optimize = [transformer_parameters_with_lr]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
@@ -1869,7 +1864,6 @@ def main(args):
             params_to_optimize[-1]["lr"] = args.learning_rate
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -2198,8 +2192,8 @@ def main(args):
 
                 latent_image_ids = FluxPipeline._prepare_latent_image_ids(
                     model_input.shape[0],
-                    model_input.shape[2],
-                    model_input.shape[3],
+                    model_input.shape[2] // 2,
+                    model_input.shape[3] // 2,
                     accelerator.device,
                     weight_dtype,
                 )
@@ -2253,8 +2247,8 @@ def main(args):
                 )[0]
                 model_pred = FluxPipeline._unpack_latents(
                     model_pred,
-                    height=int(model_input.shape[2] * vae_scale_factor / 2),
-                    width=int(model_input.shape[3] * vae_scale_factor / 2),
+                    height=model_input.shape[2] * vae_scale_factor,
+                    width=model_input.shape[3] * vae_scale_factor,
                     vae_scale_factor=vae_scale_factor,
                 )
 
