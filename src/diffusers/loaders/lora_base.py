@@ -25,7 +25,6 @@ from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
 from ..models.modeling_utils import ModelMixin, load_state_dict
-from ..pipelines.pipeline_loading_utils import model_has_device_map
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -212,6 +211,8 @@ class LoraBaseMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
+        from ..pipelines.pipeline_loading_utils import model_has_device_map
+
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
