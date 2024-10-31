@@ -528,3 +528,11 @@ class GlobalResponseNorm(nn.Module):
         gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * nx) + self.beta + x
+
+
+class RMSNorm2d(nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x / torch.sqrt(torch.square(x).mean(dim=1, keepdim=True) + self.eps)
+        if self.elementwise_affine:
+            x = x * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
+        return x
