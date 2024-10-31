@@ -936,7 +936,7 @@ class RFInversionFluxPipeline(
 
         timesteps = timesteps[::-1]  # flip for inversion
 
-        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(prompt=source_prompt)
+        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(prompt=source_prompt, prompt_2=source_prompt)
         latent_image_ids = self._prepare_latent_image_ids(
             img_latents.shape[0],
             img_latents.shape[2],
@@ -945,11 +945,11 @@ class RFInversionFluxPipeline(
             dtype,
         )
         packed_latents = self._pack_latents(
-            latents,
-            batch_size=latents.shape[0],
-            num_channels_latents=latents.shape[1],
-            height=latents.shape[2],
-            width=latents.shape[3],
+            img_latents,
+            batch_size=img_latents.shape[0],
+            num_channels_latents=img_latents.shape[1],
+            height=img_latents.shape[2],
+            width=img_latents.shape[3],
         )
 
         target_noise = torch.randn(packed_latents.shape, device=device, dtype=torch.float32)
