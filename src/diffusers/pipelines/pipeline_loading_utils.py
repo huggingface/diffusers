@@ -36,6 +36,7 @@ from ..utils import (
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
+    is_accelerate_version,
     is_peft_available,
     is_transformers_available,
     logging,
@@ -947,3 +948,9 @@ def _get_ignore_patterns(
             )
 
     return ignore_patterns
+
+
+def model_has_device_map(model):
+    if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+        return False
+    return getattr(model, "hf_device_map", None) is not None
