@@ -29,7 +29,6 @@ from ...models.attention_processor import (
     FluxAttnProcessor2_0,
     FluxAttnProcessor2_0_NPU,
     FusedFluxAttnProcessor2_0,
-    FusedFluxAttnProcessor2_0_NPU,
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -375,10 +374,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
-        if is_torch_npu_available():
-            self.set_attn_processor(FusedFluxAttnProcessor2_0_NPU())
-        else:
-            self.set_attn_processor(FusedFluxAttnProcessor2_0())
+        self.set_attn_processor(FusedFluxAttnProcessor2_0())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
