@@ -81,3 +81,7 @@ class CogVideoXTransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"CogVideoXTransformer3DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
