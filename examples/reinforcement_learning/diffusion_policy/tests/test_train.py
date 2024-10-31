@@ -16,9 +16,9 @@ def test_training_setup():
     """Test training initialization"""
     print("\nTesting training setup...")
     
-    # configs
+    # create configs
     data_config = DataConfig(
-        dataset_path=os.path.join(parent_dir, "pusht_cchi_v7_replay.zarr"),     # example data provided in readme
+        dataset_path=os.path.join(parent_dir, "pusht_cchi_v7_replay.zarr"),     # example data from reinforcement-learning/readme
         pred_horizon=16,
         obs_horizon=2,
         action_horizon=8,
@@ -36,26 +36,26 @@ def test_mini_training(data_config, model_config):
     print("\nTesting mini training...")
     
     try:
-        # Set device explicitly with fallback
+        # set device explicitly with fallback
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {device}")
         
-        # Define save directory
-        save_dir = os.path.join(current_dir, "test_checkpoints")
+        # save directory
+        save_dir = os.path.join(current_dir, "saved_model")
         
-        # Clean up save directory if it exists
+        # clean up save directory if it exists (Optional)
         if os.path.exists(save_dir):
             import shutil
             shutil.rmtree(save_dir)
             print(f"Removed existing directory: {save_dir}")
         
-        # Run training
+        # run training
         results = train_diffusion(
             data_config=data_config,
             model_config=model_config,
             num_epochs=2,
             batch_size=32,
-            device=device,  # Pass device explicitly
+            device=device,  # pass device explicitly
             save_dir=save_dir
         )
         
@@ -70,12 +70,10 @@ def test_mini_training(data_config, model_config):
         
         print("All model components returned correctly")
         
-        # Check if checkpoints were saved
-        checkpoint_path = os.path.join(current_dir, "test_checkpoints", "diffusion_final.pt")
+        # check if checkpoints were saved
+        checkpoint_path = os.path.join(save_dir, "diffusion_final.pt")
         assert os.path.exists(checkpoint_path), "Final checkpoint not saved"
-        
-        print("Checkpoints saved successfully")
-        
+                
         return results
     
     except Exception as e:
@@ -94,11 +92,15 @@ def test_model_inference(results, model_config):
         obs_encoder = results['obs_encoder']
         obs_projection = results['obs_projection']
         
-        # Create dummy data
+        # determine the device from the model
+        device = next(model.parameters()).device
+        print(f"Models are on device: {device}")
+        
+        # dummy data and move it to the same device as the models
         batch_size = 1
         state = torch.randn(batch_size, 2, 5, device=device)  # [batch, obs_horizon, state_dim]
         
-        # runs inference
+        # run inference
         with torch.no_grad():
             # 1. Encode observation
             obs_embedding = obs_encoder(state)
@@ -142,8 +144,8 @@ def main():
     results = test_mini_training(data_config, model_config)
     
     if results is not None:
-        # Test inference
-        test_model_inference(results)
+        # test inference
+        test_model_inference(results, model_config)
     
     print("\nAll tests completed!")
 
