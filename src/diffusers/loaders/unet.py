@@ -395,7 +395,6 @@ class UNet2DConditionLoadersMixin:
             tuple:
                 A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
         """
-
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
