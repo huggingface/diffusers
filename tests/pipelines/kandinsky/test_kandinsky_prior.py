@@ -30,7 +30,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.models.model_loading_utils import ModelMixin
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.testing_utils import enable_full_determinism, is_accelerate_available, skip_mps, torch_device
 
