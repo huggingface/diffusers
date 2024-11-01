@@ -32,7 +32,7 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 if is_wandb_available():
     pass
 
-PROFILE_DIR=os.environ.get('PROFILE_DIR', None)
+PROFILE_DIR = os.environ.get('PROFILE_DIR', None)
 CACHE_DIR = os.environ.get('CACHE_DIR', None)
 if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
@@ -364,6 +364,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--loader_prefetch_factor",
+        type=int,
+        default=2,
+        help=(
+            "Number of batches loaded in advance by each worker."
+        ),
+    )
+    parser.add_argument(
         "--device_prefetch_size",
         type=int,
         default=1,
@@ -579,7 +587,7 @@ def main(args):
         return examples
 
     train_dataset = dataset["train"]
-    train_dataset.set_format('torch')
+    train_dataset.set_format("torch")
     train_dataset.set_transform(preprocess_train)
 
     def collate_fn(examples):
@@ -601,6 +609,7 @@ def main(args):
         collate_fn=collate_fn,
         num_workers=args.dataloader_num_workers,
         batch_size=args.train_batch_size,
+        prefetch_factor=args.loader_prefetch_factor,
     )
 
     train_dataloader = pl.MpDeviceLoader(
