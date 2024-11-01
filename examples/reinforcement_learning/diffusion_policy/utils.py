@@ -1,16 +1,17 @@
 import numpy as np
 
+
 def create_sample_indices(episode_ends: np.ndarray, sequence_length: int,
                          pad_before: int = 0, pad_after: int = 0):
     """
     Creates valid indices for sampling sequences from episodes.
-    
+
     Example:
     If we have episode_ends = [100, 200] (meaning episode 1 is 0-99, episode 2 is 100-199)
     And we want sequence_length = 16
     pad_before = 2 (obs_horizon-1)
     pad_after = 8 (action_horizon-1)
-    
+
     For episode 1:
     - Can start 2 steps before (pad_before)
     - Can end 8 steps after (pad_after)
@@ -21,7 +22,7 @@ def create_sample_indices(episode_ends: np.ndarray, sequence_length: int,
       [1, 17, 0, 16]   # normal case
       ... and so on
     """
-    indices = list()
+    indices = []
     for i in range(len(episode_ends)):
         start_idx = 0 if i == 0 else episode_ends[i-1]
         end_idx = episode_ends[i]
@@ -49,7 +50,7 @@ def sample_sequence(train_data, sequence_length: int,
     """
     Gets actual data sequence using the indices from create_sample_indices.
     Handles padding for sequences at episode boundaries.
-    
+
     Example:
     If indices are [-2, 14, 2, 16]:
     - Tries to get data from index -2 to 14
@@ -57,14 +58,14 @@ def sample_sequence(train_data, sequence_length: int,
       - Creates array of length 16
       - Copies first available data (index 0) to fill first 2 positions
       - Puts actual data from 0-14 in positions 2-16
-    
+
     train_data = {
         'action': array of shape [total_timesteps, action_dim],
         'state': array of shape [total_timesteps, state_dim]
     }
     Returns same structure but with padded sequences
     """
-    result = dict()
+    result = {}
     for key, input_arr in train_data.items():
         sample = input_arr[buffer_start_idx:buffer_end_idx]
         data = sample
@@ -84,7 +85,7 @@ def sample_sequence(train_data, sequence_length: int,
 def get_data_stats(data):
     """
     Computes min and max for normalization.
-    
+
     Example:
     data = array of shape [1000, 2] (1000 timesteps, 2D actions)
     returns {

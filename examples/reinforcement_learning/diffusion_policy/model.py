@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
-from diffusers import UNet1DModel, DDPMScheduler
-from diffusers.training_utils import EMAModel
+
+from diffusers import DDPMScheduler, UNet1DModel
+
 
 class ObservationEncoder(nn.Module):
     """
-    Encodes observations for conditioning. 
+    Encodes observations for conditioning.
     Ie. takes raw observations and converts them to a fixed-size encoding.
     """
     def __init__(self, obs_dim: int, embed_dim: int):
@@ -15,7 +16,7 @@ class ObservationEncoder(nn.Module):
             nn.Mish(),
             nn.Linear(embed_dim * 2, embed_dim)
         )
-    
+
     def forward(self, x):
         # x: [batch, timesteps, obs_dim]
         batch_size, timesteps, obs_dim = x.shape
@@ -32,7 +33,7 @@ def create_model(data_config, model_config, device):
         obs_dim=data_config.state_dim,
         embed_dim=model_config.obs_embed_dim
     ).to(device)
-    
+
     # UNet1D model
     model = UNet1DModel(
         sample_size=model_config.sample_size,
@@ -44,13 +45,13 @@ def create_model(data_config, model_config, device):
         down_block_types=model_config.down_block_types,
         up_block_types=model_config.up_block_types,
     ).to(device)
-    
+
     # observation projection layer
     obs_projection = nn.Linear(
         model_config.obs_embed_dim * data_config.obs_horizon,
         model_config.obs_embed_dim // 8
     ).to(device)
-    
+
     # noise scheduler
     noise_scheduler = DDPMScheduler(
         num_train_timesteps=100,
@@ -71,5 +72,5 @@ def create_model(data_config, model_config, device):
         except RuntimeError as e:
             print(f"RuntimeError during sample forward pass: {e}")
 
-        
+
     return model, obs_encoder, obs_projection, noise_scheduler
