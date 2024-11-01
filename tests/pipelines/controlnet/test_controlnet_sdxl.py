@@ -683,18 +683,6 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
     def test_save_load_optional_components(self):
         return self._test_save_load_optional_components()
 
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        pass
-
 
 class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
     PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
@@ -898,18 +886,6 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
         image_slice_with_neg_cond = image[0, -3:, -3:, -1]
 
         self.assertTrue(np.abs(image_slice_without_neg_cond - image_slice_with_neg_cond).max() > 1e-2)
-
-    @unittest.skip("Test not supported.")
-    def test_calling_mco_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_to_raises_error_device_mapped_components(self):
-        pass
-
-    @unittest.skip("Test not supported.")
-    def test_calling_sco_raises_error_device_mapped_components(self):
-        pass
 
 
 @slow
