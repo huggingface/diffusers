@@ -89,6 +89,7 @@ class DiffusionPolicy:
 if __name__ == "__main__":
     policy = DiffusionPolicy()
     
+    # sample of a single observation
     obs = torch.tensor([[
         256.0,  # robot arm x position (middle of screen)
         256.0,  # robot arm y position (middle of screen)
