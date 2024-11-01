@@ -410,10 +410,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
+        pipeline_has_bnb = any(
+            (_check_bnb_status(module)[1] or _check_bnb_status(module)[-1]) for _, module in self.components.items()
+        )
         if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            raise ValueError(
-                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-            )
+            if not pipeline_has_bnb:
+                raise ValueError(
+                    "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+                )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
@@ -449,7 +453,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
             if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
-                module.to(device=device)
+                # Since it's already supposed on CUDA.
+                if torch.device(device).type != "cuda":
+                    module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
