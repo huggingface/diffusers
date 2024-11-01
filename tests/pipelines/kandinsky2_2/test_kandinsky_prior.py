@@ -306,7 +306,6 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             component_to_be_sharded.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
-            print(f"{os.listdir(tmp_dir)}")
             self.assertTrue(os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)))
 
             loaded_sharded_component = component_cls.from_pretrained(tmp_dir)
