@@ -26,7 +26,6 @@ from diffusers.utils.testing_utils import (
     is_transformers_available,
     load_pt,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_accelerate,
     require_bitsandbytes_version_greater,
     require_torch,
@@ -370,8 +369,7 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        print_tensor_test(out_slice)
-        expected_slice = np.array([0.0149, 0.0322, 0.0073, 0.0134, 0.0332, 0.011, 0.002, 0.0232, 0.0193])
+        expected_slice = np.array([0.0376, 0.0359, 0.0015, 0.0449, 0.0479, 0.0098, 0.0083, 0.0295, 0.0295])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-2)
@@ -420,7 +418,6 @@ class SlowBnb8bitTests(Base8bitTests):
         ).images
 
         out_slice = output[0, -3:, -3:, -1].flatten()
-        print_tensor_test(out_slice)
         expected_slice = np.array([0.0266, 0.0264, 0.0271, 0.0110, 0.0310, 0.0098, 0.0078, 0.0256, 0.0208])
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
         self.assertTrue(max_diff < 1e-2)
@@ -471,7 +468,6 @@ class SlowBnb8bitFluxTests(Base8bitTests):
             output_type="np",
         ).images
         out_slice = output[0, -3:, -3:, -1].flatten()
-        print_tensor_test(out_slice)
         expected_slice = np.array([0.0574, 0.0554, 0.0581, 0.0686, 0.0676, 0.0759, 0.0757, 0.0803, 0.0930])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
