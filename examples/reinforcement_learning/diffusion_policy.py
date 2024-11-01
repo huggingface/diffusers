@@ -76,13 +76,13 @@ class DiffusionPolicy:
         # takes in concatenated action (2 channels) and context (32 channels) = 34 channels
         # outputs predicted action (2 channels for x,y coordinates)
         self.model = UNet1DModel(
-            sample_size=16, # length of trajectory sequence
-            in_channels=34, 
+            sample_size=16,                             # length of trajectory sequence
+            in_channels=34,
             out_channels=2, 
-            layers_per_block=2, 
-            block_out_channels=(128,),
-            down_block_types=("DownBlock1D",), 
-            up_block_types=("UpBlock1D",)
+            layers_per_block=2,                         # number of layers per each UNet block 
+            block_out_channels=(128,),                  # number of output neurons per layer in each block
+            down_block_types=("DownBlock1D",),          # reduce the resolution of data
+            up_block_types=("UpBlock1D",)               # increase the resolution of data
         ).to(device)
 
         # noise scheduler that controls the denoising process
@@ -129,21 +129,26 @@ class DiffusionPolicy:
         
         # encode the observation into context values for the diffusion model
         cond = self.obs_projection(self.obs_encoder(normalized_obs))
+        # keeps first & second dimension sizes unchanged, and multiplies last dimension by 16
         cond = cond.view(normalized_obs.shape[0], -1, 1).expand(-1, -1, 16)
-        
+
         # initialize action with noise - random noise that will be refined into a trajectory
         action = torch.randn((observation.shape[0], 2, 16), device=self.device)
-        self.noise_scheduler.set_timesteps(100)
         
-        # denoise the random action into a smooth trajectory
+        # denoise
+            # at each step `t`, the current noisy trajectory (`action`) & conditioning info (context) are
+            # fed into the model to predict a denoised trajectory, then uses self.noise_scheduler.step to 
+            # apply this prediction & slightly reduce the noise in `action` more
+
+        self.noise_scheduler.set_timesteps(100)
         for t in self.noise_scheduler.timesteps:
             model_output = self.model(torch.cat([action, cond], dim=1), t)
             action = self.noise_scheduler.step(
-                model_output.sample, t, action
+                model_output.sample, t, action 
             ).prev_sample
         
         action = action.transpose(1, 2)  # reshape to [batch, 16, 2]
-        action = self.unnormalize_data(action, self.stats['action']) # scale back to pixel coordinates
+        action = self.unnormalize_data(action, self.stats['action']) # scale back to coordinates
         return action
 
 if __name__ == "__main__":
