@@ -27,6 +27,7 @@ from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransfo
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
+    nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
@@ -165,9 +166,10 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
 
 @slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
-# @unittest.skip("We cannot run inference on this model with the current CI hardware")
+@unittest.skip("We cannot run inference on this model with the current CI hardware")
 # TODO (DN6, sayakpaul): move these tests to a beefier GPU
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
