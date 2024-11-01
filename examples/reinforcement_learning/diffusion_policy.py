@@ -2,9 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
-
 from diffusers import DDPMScheduler, UNet1DModel
-
+from torch.serialization import add_safe_globals
+import numpy.core.multiarray as multiarray
+add_safe_globals([multiarray._reconstruct, np.ndarray, np.dtype, np.dtype(np.float32).type, np.dtype(np.float64).type, np.dtype(np.int32).type, np.dtype(np.int64).type, type(np.dtype(np.float32)), type(np.dtype(np.float64)), type(np.dtype(np.int32)), type(np.dtype(np.int64))])
 
 """
 An example of using HuggingFace's diffusers library for diffusion policy,
@@ -65,7 +66,7 @@ class DiffusionPolicy:
     The model expects observations in pixel coordinates (0-512 range) and block angle in radians.
     It generates trajectories as sequences of (x,y) coordinates also in the 0-512 range.
     """
-    def __init__(self, state_dim=5, device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, state_dim=5, device="cpu"):
         self.device = device
 
         # define valid ranges for inputs/outputs
@@ -94,8 +95,7 @@ class DiffusionPolicy:
         )
 
         # load pre-trained weights from HuggingFace
-        checkpoint = torch.load(hf_hub_download("dorsar/diffusion_policy", "push_tblock.pt"), map_location=device)
-
+        checkpoint = torch.load(hf_hub_download("dorsar/diffusion_policy", "push_tblock.pt"), weights_only=True, map_location=device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.obs_encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.obs_projection.load_state_dict(checkpoint['projection_state_dict'])
