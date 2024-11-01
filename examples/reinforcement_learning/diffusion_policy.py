@@ -95,8 +95,7 @@ class DiffusionPolicy:
         )
 
         # load pre-trained weights from HuggingFace
-        checkpoint = torch.load(hf_hub_download("dorsar/diffusion_policy", "push_tblock.pt"), map_location=device)
-
+        checkpoint = torch.load(hf_hub_download("dorsar/diffusion_policy", "push_tblock.pt"), weights_only=True, map_location=device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.obs_encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.obs_projection.load_state_dict(checkpoint['projection_state_dict'])
@@ -173,3 +172,4 @@ if __name__ == "__main__":
     print("\nPredicted trajectory:")
     for i, (x, y) in enumerate(action[0]):
         print(f"Step {i:2d}: x={x:6.1f}, y={y:6.1f}")
+
