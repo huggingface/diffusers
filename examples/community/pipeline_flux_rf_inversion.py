@@ -934,9 +934,11 @@ class RFInversionFluxPipeline(
             mu=mu,
         )
 
-        timesteps = timesteps[::-1]  # flip for inversion
+        timesteps = reversed(timesteps[-num_inversion_steps:])  # flip for inversion
 
-        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(prompt=source_prompt, prompt_2=source_prompt)
+        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
+            prompt=source_prompt, prompt_2=source_prompt
+        )
         latent_image_ids = self._prepare_latent_image_ids(
             img_latents.shape[0],
             img_latents.shape[2],
