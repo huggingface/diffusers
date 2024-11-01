@@ -477,7 +477,7 @@ class MochiPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_frames: int = 16,
+        num_frames: int = 19,
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
@@ -501,11 +501,11 @@ class MochiPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_frames (`int`, defaults to 16):
+            height (`int`, *optional*, defaults to `self.default_height`):
+                The height in pixels of the generated image. This is set to 480 by default for the best results.
+            width (`int`, *optional*, defaults to `self.default_width`):
+                The width in pixels of the generated image. This is set to 848 by default for the best results.
+            num_frames (`int`, defaults to `19`):
                 The number of video frames to generate
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
