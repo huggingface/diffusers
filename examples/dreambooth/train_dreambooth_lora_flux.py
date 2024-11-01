@@ -1844,6 +1844,9 @@ def main(args):
                     del text_encoder_one, text_encoder_two
                     free_memory()
 
+                images = None
+                del pipeline
+
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1907,6 +1910,9 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+        images = None
+        del pipeline
 
     accelerator.end_training()
 
