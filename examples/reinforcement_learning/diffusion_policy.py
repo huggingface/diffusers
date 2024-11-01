@@ -13,12 +13,17 @@ The model takes in the robot arm position, block position, and block angle,
 then outputs a sequence of 16 (x,y) positions for the robot arm to follow.
 """
 
-"""
-Converts raw robot observations (positions/angles) into a more compact representation
-- Input: 5 values (robot_x, robot_y, block_x, block_y, block_angle)
-- Output: 256-dimensional vector
-"""
 class ObservationEncoder(nn.Module):
+    """
+    Converts raw robot observations (positions/angles) into a more compact representation
+    
+    state_dim (int): Dimension of the input state vector (default: 5)
+        [robot_x, robot_y, block_x, block_y, block_angle]
+
+    - Input shape: (batch_size, state_dim)
+    - Output shape: (batch_size, 256)
+    """
+
     def __init__(self, state_dim):
         super().__init__()
         self.net = nn.Sequential(
@@ -29,15 +34,16 @@ class ObservationEncoder(nn.Module):
     
     def forward(self, x): return self.net(x)
 
-
-"""
-Takes the encoded observation and transforms it into 32 values that represent 
-the current robot/block situation. These values are used as additional contextual 
-information during the diffusion model's trajectory generation.
-- Input: 256-dim vector (padded to 512)
-- Output: 32 contextual information values for the diffusion model
-"""
 class ObservationProjection(nn.Module):
+    """
+    Takes the encoded observation and transforms it into 32 values that represent the current robot/block situation. 
+    These values are used as additional contextual information during the diffusion model's trajectory generation.
+
+    - Input: 256-dim vector (padded to 512)
+            Shape: (batch_size, 256)
+    - Output: 32 contextual information values for the diffusion model
+            Shape: (batch_size, 32)
+    """
     def __init__(self):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(32, 512))
@@ -49,6 +55,14 @@ class ObservationProjection(nn.Module):
         return nn.functional.linear(x, self.weight, self.bias)
 
 class DiffusionPolicy:
+    """
+    Implements diffusion policy for generating robot arm trajectories.
+    Uses diffusion to generate sequences of positions for a robot arm, conditioned on 
+    the current state of the robot and the block it needs to push.
+
+    The model expects observations in pixel coordinates (0-512 range) and block angle in radians.
+    It generates trajectories as sequences of (x,y) coordinates also in the 0-512 range.
+    """
     def __init__(self, state_dim=5, device="cuda" if torch.cuda.is_available() else "cpu"):
         self.device = device
 
@@ -94,6 +108,22 @@ class DiffusionPolicy:
 
     @torch.no_grad()
     def predict(self, observation):
+        """
+        Generates a trajectory of robot arm positions given the current state.
+        
+        Args:
+            observation (torch.Tensor): Current state [robot_x, robot_y, block_x, block_y, block_angle]
+                                    Shape: (batch_size, 5)
+        
+        Returns:
+            torch.Tensor: Sequence of (x,y) positions for the robot arm to follow
+                        Shape: (batch_size, 16, 2) where:
+                        - 16 is the number of steps in the trajectory
+                        - 2 is the (x,y) coordinates in pixel space (0-512)
+        
+        The function first encodes the observation, then uses it to condition a diffusion
+        process that gradually denoises random trajectories into smooth, purposeful movements.
+        """
         observation = observation.to(self.device)
         normalized_obs = self.normalize_data(observation, self.stats['obs'])
         
@@ -115,7 +145,6 @@ class DiffusionPolicy:
         action = action.transpose(1, 2)  # reshape to [batch, 16, 2]
         action = self.unnormalize_data(action, self.stats['action']) # scale back to pixel coordinates
         return action
-
 
 if __name__ == "__main__":
     policy = DiffusionPolicy()
