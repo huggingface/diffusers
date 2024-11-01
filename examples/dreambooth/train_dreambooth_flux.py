@@ -57,6 +57,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -67,6 +68,12 @@ if is_wandb_available():
 check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
+
+if is_torch_npu_available():
+    import torch_npu
+
+    torch.npu.config.allow_internal_format = False
+    torch.npu.set_compile_mode(jit_compile=False)
 
 
 def save_model_card(
@@ -189,6 +196,8 @@ def log_validation(
     del pipeline
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+    elif is_torch_npu_available():
+        torch_npu.npu.empty_cache()
 
     return images
 
@@ -1035,7 +1044,9 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            has_supported_fp16_accelerator = torch.cuda.is_available() or torch.backends.mps.is_available()
+            has_supported_fp16_accelerator = (
+                torch.cuda.is_available() or torch.backends.mps.is_available() or is_torch_npu_available()
+            )
             torch_dtype = torch.float16 if has_supported_fp16_accelerator else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
@@ -1073,6 +1084,8 @@ def main(args):
             del pipeline
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            elif is_torch_npu_available():
+                torch_npu.npu.empty_cache()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1354,6 +1367,8 @@ def main(args):
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif is_torch_npu_available():
+            torch_npu.npu.empty_cache()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1719,7 +1734,10 @@ def main(args):
                 )
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif is_torch_npu_available():
+                        torch_npu.npu.empty_cache()
                     gc.collect()
 
     # Save the lora layers
