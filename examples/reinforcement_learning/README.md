@@ -3,8 +3,6 @@
 
 `diffusion_policy` implements <a href="https://diffusion-policy.cs.columbia.edu/">Diffusion Policy</a>, a diffusion model to predict action sequences in reinforcement learning tasks.
 
- The sample dataset can be downloaded <a href="https://diffusion-policy.cs.columbia.edu/data/training/">here</a>.
-
 
 ## Diffuser Locomotion
 
