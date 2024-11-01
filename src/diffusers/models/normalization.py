@@ -554,3 +554,15 @@ class GlobalResponseNorm(nn.Module):
         gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * nx) + self.beta + x
+
+
+class LpNorm(nn.Module):
+    def __init__(self, p: int = 2, dim: int = -1, eps: float = 1e-12):
+        super().__init__()
+
+        self.p = p
+        self.dim = dim
+        self.eps = eps
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)

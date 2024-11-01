@@ -23,9 +23,11 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
+from ..attention_processor import Attention
+from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .autoencoder_kl_cogvideox import CogVideoXCausalConv3d
-from .vae import DecoderOutput
+from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -121,6 +123,187 @@ class MochiResnetBlock3D(nn.Module):
         return hidden_states, new_conv_cache
 
 
+class MochiDownBlock3D(nn.Module):
+    r"""
+    An downsampling block used in the Mochi model.
+
+    Args:
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`, *optional*):
+            Number of output channels. If None, defaults to `in_channels`.
+        num_layers (`int`, defaults to `1`):
+            Number of resnet blocks in the block.
+        temporal_expansion (`int`, defaults to `2`):
+            Temporal expansion factor.
+        spatial_expansion (`int`, defaults to `2`):
+            Spatial expansion factor.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_layers: int = 1,
+        temporal_expansion: int = 2,
+        spatial_expansion: int = 2,
+        add_attention: bool = True,
+    ):
+        super().__init__()
+        self.temporal_expansion = temporal_expansion
+        self.spatial_expansion = spatial_expansion
+
+        self.conv_in = CogVideoXCausalConv3d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=(temporal_expansion, spatial_expansion, spatial_expansion),
+            stride=(temporal_expansion, spatial_expansion, spatial_expansion),
+            pad_mode="replicate",
+        )
+
+        resnets = []
+        for _ in range(num_layers):
+            resnets.append(MochiResnetBlock3D(in_channels=out_channels))
+        self.resnets = nn.ModuleList(resnets)
+
+        self.attn = None
+        if add_attention:
+            self.norm = MochiChunkedGroupNorm3D(num_channels=out_channels)
+            self.attn = Attention(
+                query_dim=out_channels,
+                heads=out_channels // 32,
+                dim_head=32,
+                qk_norm="l2",
+            )
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        r"""Forward method of the `MochiUpBlock3D` class."""
+
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
+
+        hidden_states, new_conv_cache["conv_in"] = self.conv_in(hidden_states)
+
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def create_forward(*inputs):
+                        return module(*inputs)
+
+                    return create_forward
+
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    conv_cache=conv_cache.get(conv_cache_key),
+                )
+            else:
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
+
+        if self.attn is not None:
+            residual = hidden_states
+            hidden_states = self.norm(hidden_states)
+
+            batch_size, num_channels, num_frames, height, width = hidden_states.shape
+            hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
+            hidden_states = self.attn(hidden_states)
+            hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
+
+            hidden_states = residual + hidden_states
+
+        return hidden_states, new_conv_cache
+
+
+class MochiMidBlock3D(nn.Module):
+    r"""
+    A middle block used in the Mochi model.
+
+    Args:
+        in_channels (`int`):
+            Number of input channels.
+        num_layers (`int`, defaults to `3`):
+            Number of resnet blocks in the block.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,  # 768
+        num_layers: int = 3,
+        add_attention: bool = True,
+    ):
+        super().__init__()
+
+        resnets = []
+        for _ in range(num_layers):
+            resnets.append(MochiResnetBlock3D(in_channels=in_channels))
+        self.resnets = nn.ModuleList(resnets)
+
+        self.attn = None
+        if add_attention:
+            self.norm = MochiChunkedGroupNorm3D(num_channels=in_channels)
+            self.attn = Attention(
+                query_dim=in_channels,
+                heads=in_channels // 32,
+                dim_head=32,
+                qk_norm="l2",
+            )
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        r"""Forward method of the `MochiMidBlock3D` class."""
+
+        new_conv_cache = {}
+        conv_cache = conv_cache or {}
+
+        for i, resnet in enumerate(self.resnets):
+            conv_cache_key = f"resnet_{i}"
+
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def create_forward(*inputs):
+                        return module(*inputs)
+
+                    return create_forward
+
+                hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
+            else:
+                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+                    hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                )
+
+        if self.attn is not None:
+            residual = hidden_states
+            hidden_states = self.norm(hidden_states)
+
+            batch_size, num_channels, num_frames, height, width = hidden_states.shape
+            hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
+            hidden_states = self.attn(hidden_states)
+            hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
+
+            hidden_states = residual + hidden_states
+
+        return hidden_states, new_conv_cache
+
+
 class MochiUpBlock3D(nn.Module):
     r"""
     An upsampling block used in the Mochi model.
@@ -151,14 +334,10 @@ class MochiUpBlock3D(nn.Module):
         self.spatial_expansion = spatial_expansion
 
         resnets = []
-        for i in range(num_layers):
-            resnets.append(
-                MochiResnetBlock3D(
-                    in_channels=in_channels,
-                )
-            )
-
+        for _ in range(num_layers):
+            resnets.append(MochiResnetBlock3D(in_channels=in_channels))
         self.resnets = nn.ModuleList(resnets)
+
         self.proj = nn.Linear(in_channels, out_channels * temporal_expansion * spatial_expansion**2)
 
         self.gradient_checkpointing = False
@@ -211,59 +390,143 @@ class MochiUpBlock3D(nn.Module):
         return hidden_states, new_conv_cache
 
 
-class MochiMidBlock3D(nn.Module):
+class FourierFeatures(nn.Module):
+    def __init__(self, start: int = 6, stop: int = 8, step: int = 1):
+        super().__init__()
+
+        self.start = start
+        self.stop = stop
+        self.step = step
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        r"""Forward method of the `FourierFeatures` class."""
+
+        num_channels = inputs.shape[1]
+        num_freqs = (self.stop - self.start) // self.step
+
+        freqs = torch.arange(self.start, self.stop, self.step, dtype=inputs.dtype, device=inputs.device)
+        w = torch.pow(2.0, freqs) * (2 * torch.pi)  # [num_freqs]
+        w = w.repeat(num_channels)[None, :, None, None, None]  # [1, num_channels * num_freqs, 1, 1, 1]
+
+        # Interleaved repeat of input channels to match w
+        h = inputs.repeat_interleave(num_freqs, dim=1)  # [B, C * num_freqs, T, H, W]
+        # Scale channels by frequency.
+        h = w * h
+
+        return torch.cat([inputs, torch.sin(h), torch.cos(h)], dim=1)
+
+
+class MochiEncoder3D(nn.Module):
     r"""
-    A middle block used in the Mochi model.
+    The `MochiEncoder3D` layer of a variational autoencoder that encodes input video samples to its latent
+    representation.
 
     Args:
-        in_channels (`int`):
-            Number of input channels.
-        num_layers (`int`, defaults to `3`):
-            Number of resnet blocks in the block.
+        in_channels (`int`, *optional*):
+            The number of input channels.
+        out_channels (`int`, *optional*):
+            The number of output channels.
+        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
+            The number of output channels for each block.
+        layers_per_block (`Tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
+            The number of resnet blocks for each block.
+        temporal_expansions (`Tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
+            The temporal expansion factor for each of the up blocks.
+        spatial_expansions (`Tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
+            The spatial expansion factor for each of the up blocks.
+        non_linearity (`str`, *optional*, defaults to `"swish"`):
+            The non-linearity to use in the decoder.
     """
 
     def __init__(
         self,
-        in_channels: int,  # 768
-        num_layers: int = 3,
+        in_channels: int,
+        out_channels: int,
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 768),
+        layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
+        temporal_expansions: Tuple[int, ...] = (1, 2, 3),
+        spatial_expansions: Tuple[int, ...] = (2, 2, 2),
+        add_attention_block: Tuple[bool, ...] = (False, True, True, True, True),
+        act_fn: str = "swish",
     ):
         super().__init__()
 
-        resnets = []
-        for _ in range(num_layers):
-            resnets.append(MochiResnetBlock3D(in_channels=in_channels))
-        self.resnets = nn.ModuleList(resnets)
+        self.nonlinearity = get_activation(act_fn)
 
-        self.gradient_checkpointing = False
+        self.fourier_features = FourierFeatures()
+        self.proj_in = nn.Linear(in_channels, block_out_channels[0])
+        self.block_in = MochiMidBlock3D(
+            in_channels=block_out_channels[0], num_layers=layers_per_block[0], add_attention=add_attention_block[0]
+        )
+
+        down_blocks = []
+        for i in range(len(block_out_channels) - 1):
+            down_block = MochiDownBlock3D(
+                in_channels=block_out_channels[i],
+                out_channels=block_out_channels[i + 1],
+                num_layers=layers_per_block[i + 1],
+                temporal_expansion=temporal_expansions[i],
+                spatial_expansion=spatial_expansions[i],
+                add_attention=add_attention_block[i + 1],
+            )
+            down_blocks.append(down_block)
+        self.down_blocks = nn.ModuleList(down_blocks)
+
+        self.block_out = MochiMidBlock3D(
+            in_channels=block_out_channels[-1], num_layers=layers_per_block[-1], add_attention=add_attention_block[-1]
+        )
+        self.norm_out = MochiChunkedGroupNorm3D(block_out_channels[-1])
+        self.proj_out = nn.Linear(block_out_channels[-1], 2 * out_channels, bias=False)
 
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
-        r"""Forward method of the `MochiMidBlock3D` class."""
+        r"""Forward method of the `MochiEncoder3D` class."""
 
         new_conv_cache = {}
         conv_cache = conv_cache or {}
 
-        for i, resnet in enumerate(self.resnets):
-            conv_cache_key = f"resnet_{i}"
+        hidden_states = self.fourier_features(hidden_states)
+        hidden_states = self.proj_in(hidden_states)
 
-            if self.training and self.gradient_checkpointing:
+        if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module):
-                    def create_forward(*inputs):
-                        return module(*inputs)
+            def create_custom_forward(module):
+                def create_forward(*inputs):
+                    return module(*inputs)
 
-                    return create_forward
+                return create_forward
 
+            hidden_states, new_conv_cache["block_in"] = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.block_in), hidden_states, conv_cache=conv_cache.get("block_in")
+            )
+
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"down_block_{i}"
                 hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                    create_custom_forward(up_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
-            else:
-                hidden_states, new_conv_cache[conv_cache_key] = resnet(
+        else:
+            hidden_states, new_conv_cache["block_in"] = self.block_in(
+                hidden_states, conv_cache=conv_cache.get("block_in")
+            )
+
+            for i, up_block in enumerate(self.up_blocks):
+                conv_cache_key = f"down_block_{i}"
+                hidden_states, new_conv_cache[conv_cache_key] = up_block(
                     hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
+
+        hidden_states, new_conv_cache["block_out"] = self.block_out(
+            hidden_states, conv_cache=conv_cache.get("block_out")
+        )
+
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+
+        hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
+        hidden_states = self.proj_out(hidden_states)
+        hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         return hidden_states, new_conv_cache
 
@@ -308,9 +571,10 @@ class MochiDecoder3D(nn.Module):
         self.block_in = MochiMidBlock3D(
             in_channels=block_out_channels[-1],
             num_layers=layers_per_block[-1],
+            add_attention=False,
         )
 
-        self.up_blocks = nn.ModuleList([])
+        up_blocks = []
         for i in range(len(block_out_channels) - 1):
             up_block = MochiUpBlock3D(
                 in_channels=block_out_channels[-i - 1],
@@ -319,13 +583,15 @@ class MochiDecoder3D(nn.Module):
                 temporal_expansion=temporal_expansions[-i - 1],
                 spatial_expansion=spatial_expansions[-i - 1],
             )
-            self.up_blocks.append(up_block)
+            up_blocks.append(up_block)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
         self.block_out = MochiMidBlock3D(
             in_channels=block_out_channels[0],
             num_layers=layers_per_block[0],
+            add_attention=False,
         )
-        self.conv_out = nn.Linear(block_out_channels[0], out_channels)
+        self.proj_out = nn.Linear(block_out_channels[0], out_channels)
 
         self.gradient_checkpointing = False
 
@@ -375,7 +641,7 @@ class MochiDecoder3D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
-        hidden_states = self.conv_out(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         return hidden_states, new_conv_cache
@@ -410,13 +676,16 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
+        in_channels: int = 15,
         out_channels: int = 3,
-        block_out_channels: Tuple[int] = (128, 256, 512, 768),
+        encoder_block_out_channels: Tuple[int] = (64, 128, 256, 384),
+        decoder_block_out_channels: Tuple[int] = (128, 256, 512, 768),
         latent_channels: int = 12,
         layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
         act_fn: str = "silu",
         temporal_expansions: Tuple[int, ...] = (1, 2, 3),
         spatial_expansions: Tuple[int, ...] = (2, 2, 2),
+        add_attention_block: Tuple[bool, ...] = (False, True, True, True, True),
         latents_mean: Tuple[float, ...] = (
             -0.06730895953510081,
             -0.038011381506090416,
@@ -449,10 +718,20 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
+        self.encoder = MochiEncoder3D(
+            in_channels=in_channels,
+            out_channels=latent_channels,
+            block_out_channels=encoder_block_out_channels,
+            layers_per_block=layers_per_block,
+            temporal_expansions=temporal_expansions,
+            spatial_expansions=spatial_expansions,
+            add_attention_block=add_attention_block,
+            act_fn=act_fn,
+        )
         self.decoder = MochiDecoder3D(
             in_channels=latent_channels,
             out_channels=out_channels,
-            block_out_channels=block_out_channels,
+            block_out_channels=decoder_block_out_channels,
             layers_per_block=layers_per_block,
             temporal_expansions=temporal_expansions,
             spatial_expansions=spatial_expansions,
@@ -462,14 +741,39 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         self.spatial_compression_ratio = functools.reduce(lambda x, y: x * y, spatial_expansions, 1)
         self.temporal_compression_ratio = functools.reduce(lambda x, y: x * y, temporal_expansions, 1)
 
+        # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
+        # to perform decoding of a single video latent at a time.
         self.use_slicing = False
+
+        # When decoding spatially large video latents, the memory requirement is very high. By breaking the video latent
+        # frames spatially into smaller tiles and performing multiple forward passes for decoding, and then blending the
+        # intermediate tiles together, the memory requirement can be lowered.
         self.use_tiling = False
 
+        # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
+        # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
+        self.use_framewise_decoding = True
+
+        # This can be used to determine how the number of output frames in the final decoded video. To maintain consistency with
+        # the original implementation, this defaults to `True`.
+        #   - Original implementation (drop_last_temporal_frames=True):
+        #       Output frames = (latent_frames - 1) * temporal_compression_ratio + 1
+        #   - Without dropping additional temporal upscaled frames (drop_last_temporal_frames=False):
+        #       Output frames = latent_frames * temporal_compression_ratio
+        # The latter case is useful for frame packing and some training/finetuning scenarios where the additional.
+        self.drop_last_temporal_frames = True
+
+        # This can be configured based on the amount of GPU memory available.
+        # `12` for sample frames and `2` for latent frames are sensible defaults for consumer GPUs.
+        # Setting it to higher values results in higher memory usage.
+        self.num_sample_frames_batch_size = 12
         self.num_latent_frames_batch_size = 2
 
+        # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
 
+        # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
 
@@ -528,6 +832,57 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         """
         self.use_slicing = False
 
+    def _enable_original_implementation(self):
+        r"""
+        Enables the original VAE decoding implementation. By default, Diffusers uses framewise decoding and past latent
+        padding.
+        """
+        self.use_framewise_decoding = False
+        for name, module in self.named_modules():
+            if isinstance(module, CogVideoXCausalConv3d):
+                module.pad_mode = "replicate"
+
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, num_frames, height, width = x.shape
+
+        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+            return self.tiled_encode(x)
+
+        if self.use_framewise_decoding:
+            raise
+        else:
+            enc = self.encoder(x)
+
+        return enc
+
+    @apply_forward_hook
+    def encode(
+        self, x: torch.Tensor, return_dict: bool = True
+    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+        """
+        Encode a batch of images into latents.
+
+        Args:
+            x (`torch.Tensor`): Input batch of images.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+
+        Returns:
+                The latent representations of the encoded videos. If `return_dict` is True, a
+                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+        """
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
+            h = torch.cat(encoded_slices)
+        else:
+            h = self._encode(x)
+
+        posterior = DiagonalGaussianDistribution(h)
+
+        if not return_dict:
+            return (posterior,)
+        return AutoencoderKLOutput(latent_dist=posterior)
+
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
@@ -536,18 +891,21 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        conv_cache = None
-        dec = []
+        if self.use_framewise_decoding:
+            conv_cache = None
+            dec = []
 
-        for i in range(0, num_frames, self.num_latent_frames_batch_size):
-            z_intermediate = z[:, :, i : i + self.num_latent_frames_batch_size]
-            z_intermediate, conv_cache = self.decoder(z_intermediate, conv_cache=conv_cache)
-            dec.append(z_intermediate)
+            for i in range(0, num_frames, self.num_latent_frames_batch_size):
+                z_intermediate = z[:, :, i : i + self.num_latent_frames_batch_size]
+                z_intermediate, conv_cache = self.decoder(z_intermediate, conv_cache=conv_cache)
+                dec.append(z_intermediate)
 
-        if dec[-1].size(2) >= self.temporal_compression_ratio:
-            dec[-1] = dec[-1][:, :, self.temporal_compression_ratio - 1 :]
+            dec = torch.cat(dec, dim=2)
+        else:
+            dec, _ = self.decoder(z)
 
-        dec = torch.cat(dec, dim=2)
+        if self.drop_last_temporal_frames and dec.size(2) >= self.temporal_compression_ratio:
+            dec = dec[:, :, self.temporal_compression_ratio - 1 :]
 
         if not return_dict:
             return (dec,)
@@ -629,24 +987,29 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, tile_latent_stride_height):
             row = []
             for j in range(0, width, tile_latent_stride_width):
-                time = []
-                conv_cache = None
+                if self.use_framewise_decoding:
+                    time = []
+                    conv_cache = None
 
-                for k in range(0, num_frames, self.num_latent_frames_batch_size):
-                    tile = z[
-                        :,
-                        :,
-                        k : k + self.num_latent_frames_batch_size,
-                        i : i + tile_latent_min_height,
-                        j : j + tile_latent_min_width,
-                    ]
-                    tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
-                    time.append(tile)
+                    for k in range(0, num_frames, self.num_latent_frames_batch_size):
+                        tile = z[
+                            :,
+                            :,
+                            k : k + self.num_latent_frames_batch_size,
+                            i : i + tile_latent_min_height,
+                            j : j + tile_latent_min_width,
+                        ]
+                        tile, conv_cache = self.decoder(tile, conv_cache=conv_cache)
+                        time.append(tile)
 
-                if time[-1].size(2) >= self.temporal_compression_ratio:
-                    time[-1] = time[-1][:, :, self.temporal_compression_ratio - 1 :]
+                    time = torch.cat(time, dim=2)
+                else:
+                    time, _ = self.decoder(z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width])
 
-                row.append(torch.cat(time, dim=2))
+                if self.drop_last_temporal_frames and time.size(2) >= self.temporal_compression_ratio:
+                    time = time[:, :, self.temporal_compression_ratio - 1 :]
+
+                row.append(time)
             rows.append(row)
 
         result_rows = []
