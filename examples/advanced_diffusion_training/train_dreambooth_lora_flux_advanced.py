@@ -2371,6 +2371,9 @@ def main(args):
                     epoch=epoch,
                     torch_dtype=weight_dtype,
                 )
+                images = None
+                del pipeline
+
                 if freeze_text_encoder:
                     del text_encoder_one, text_encoder_two
                     free_memory()
@@ -2448,6 +2451,8 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+        images = None
+        del pipeline
 
     accelerator.end_training()
 
