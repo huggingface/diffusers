@@ -569,18 +569,20 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        if isinstance(image, torch.Tensor):
-            pass
-        else:
-            image = self.image_processor.preprocess(image, height=height, width=width)
-
+        
+        image = self.image_processor.preprocess(image, height=height, width=width)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
+            repeat_by = batch_size*num_images_per_prompt
+        elif image_batch_size == batch_size:
             # image batch size is the same as prompt batch size
             repeat_by = num_images_per_prompt
+        else:
+            raise ValueError(
+                "`image_batch_size` must be either 1 or equal to the prompt " + \
+                f"batch size, which is {batch_size}."
+            )
 
         image = image.repeat_interleave(repeat_by, dim=0)
 
@@ -773,7 +775,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 image=control_image,
                 width=width,
                 height=height,
-                batch_size=batch_size * num_images_per_prompt,
+                batch_size=batch_size,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=self.vae.dtype,
@@ -809,7 +811,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                     image=control_image_,
                     width=width,
                     height=height,
-                    batch_size=batch_size * num_images_per_prompt,
+                    batch_size=batch_size,
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=self.vae.dtype,
