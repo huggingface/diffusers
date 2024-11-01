@@ -75,6 +75,8 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: using-diffusers/cogvideox
+    title: CogVideoX
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -129,6 +131,8 @@
       title: T2I-Adapters
     - local: training/instructpix2pix
       title: InstructPix2Pix
+    - local: training/cogvideox
+      title: CogVideoX
     title: Models
   - isExpanded: false
     sections:
@@ -146,6 +150,12 @@
       title: Reinforcement learning training with DDPO
     title: Methods
   title: Training
+- sections:
+  - local: quantization/overview
+    title: Getting Started
+  - local: quantization/bitsandbytes
+    title: bitsandbytes
+  title: Quantization Methods
 - sections:
   - local: optimization/fp16
     title: Speed up inference
@@ -178,6 +188,8 @@
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
+    - local: optimization/neuron
+      title: AWS Neuron
     title: Optimized hardware
   title: Accelerate inference and reduce memory
 - sections:
@@ -205,6 +217,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/quantization
+      title: Quantization
     title: Main Classes
   - isExpanded: false
     sections:
@@ -238,6 +252,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/allegro_transformer3d
+        title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -286,6 +302,8 @@
     - sections:
       - local: api/models/autoencoderkl
         title: AutoencoderKL
+      - local: api/models/autoencoderkl_allegro
+        title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
       - local: api/models/asymmetricautoencoderkl
@@ -304,6 +322,8 @@
     sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/allegro
+      title: Allegro
     - local: api/pipelines/amused
       title: aMUSEd
     - local: api/pipelines/animatediff

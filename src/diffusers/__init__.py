@@ -1,4 +1,4 @@
-__version__ = "0.31.0.dev0"
+__version__ = "0.32.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -31,6 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
+    "quantizers.quantization_config": ["BitsAndBytesConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -76,9 +77,11 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models"].extend(
         [
+            "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AuraFlowTransformer2DModel",
             "AutoencoderKL",
+            "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderOobleck",
@@ -124,7 +127,6 @@ else:
             "VQModel",
         ]
     )
-
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -156,6 +158,7 @@ else:
             "StableDiffusionMixin",
         ]
     )
+    _import_structure["quantizers"] = ["DiffusersQuantizer"]
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
@@ -236,6 +239,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(
         [
+            "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
             "AmusedImg2ImgPipeline",
@@ -256,6 +260,7 @@ else:
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
+            "CogVideoXFunControlPipeline",
             "CogVideoXImageToVideoPipeline",
             "CogVideoXPipeline",
             "CogVideoXVideoToVideoPipeline",
@@ -537,6 +542,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
+    from .quantizers.quantization_config import BitsAndBytesConfig
 
     try:
         if not is_onnx_available():
@@ -553,9 +559,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
+            AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
             AutoencoderKL,
+            AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
@@ -631,6 +639,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
+        from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
             CMStochasticIterativeScheduler,
@@ -693,6 +702,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipelines import (
+            AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
             AmusedImg2ImgPipeline,
@@ -711,6 +721,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             AuraFlowPipeline,
             CLIPImageProjection,
+            CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
