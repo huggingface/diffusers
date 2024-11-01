@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+
 import time
 from pathlib import Path
 
@@ -28,12 +29,11 @@ from diffusers.training_utils import compute_snr
 from diffusers.utils import is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
-
 if is_wandb_available():
     pass
 
-PROFILE_DIR = os.environ.get("PROFILE_DIR", None)
-CACHE_DIR = os.environ.get("CACHE_DIR", None)
+PROFILE_DIR=os.environ.get('PROFILE_DIR', None)
+CACHE_DIR = os.environ.get('CACHE_DIR', None)
 if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
 xr.use_spmd()
@@ -140,39 +140,37 @@ class TrainSD:
         self.optimizer.step()
 
     def start_training(self):
-        times = []
-        last_time = time.time()
-        step = 0
-        while True:
-            if self.global_step >= self.args.max_train_steps:
-                xm.mark_step()
-                break
-            if step == 4 and PROFILE_DIR is not None:
-                xm.wait_device_ops()
-                xp.trace_detached(f"localhost:{PORT}", PROFILE_DIR, duration_ms=args.profile_duration)
+        dataloader_exception = False
+        measure_start_step = 10
+        assert measure_start_step < self.args.max_train_steps
+        total_time = 0
+        for step in range(0, self.args.max_train_steps):
             try:
                 batch = next(self.dataloader)
             except Exception as e:
+                dataloader_exception = True
                 print(e)
                 break
+            if step ==  measure_start_step and PROFILE_DIR is not None:
+                xm.wait_device_ops()
+                xp.trace_detached('localhost:9012', PROFILE_DIR, duration_ms=args.profile_duration)
+                last_time = time.time()     
             loss = self.step_fn(batch["pixel_values"], batch["input_ids"])
-            step_time = time.time() - last_time
-            if step >= 10:
-                times.append(step_time)
-            print(f"step: {step}, step_time: {step_time}")
-            if step % 5 == 0:
-                print(f"step: {step}, loss: {loss}")
-            last_time = time.time()
             self.global_step += 1
-            step += 1
-        # print(f"Average step time: {sum(times)/len(times)}")
-        xm.wait_device_ops()
+        xm.mark_step()
+        if not dataloader_exception:
+            xm.wait_device_ops()
+            total_time = time.time() - last_time
+            print(f"Average step time: {total_time/(self.args.max_train_steps-measure_start_step)}")
+        else:
+            print("dataloader exception happen, skip result")
+            return
 
     def step_fn(
         self,
         pixel_values,
         input_ids,
-    ):
+        ):
         with xp.Trace("model.forward"):
             self.optimizer.zero_grad()
             latents = self.vae.encode(pixel_values).latent_dist.sample()
@@ -180,7 +178,10 @@ class TrainSD:
             noise = torch.randn_like(latents).to(self.device, dtype=self.weight_dtype)
             bsz = latents.shape[0]
             timesteps = torch.randint(
-                0, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+                0,
+                self.noise_scheduler.config.num_train_timesteps,
+                (bsz,),
+                device=latents.device,
             )
             timesteps = timesteps.long()
 
@@ -195,8 +196,12 @@ class TrainSD:
             elif self.noise_scheduler.config.prediction_type == "v_prediction":
                 target = self.noise_scheduler.get_velocity(latents, noise, timesteps)
             else:
-                raise ValueError(f"Unknown prediction type {self.noise_scheduler.config.prediction_type}")
-            model_pred = self.unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                raise ValueError(
+                    f"Unknown prediction type {self.noise_scheduler.config.prediction_type}"
+                )
+            model_pred = self.unet(
+                noisy_latents, timesteps, encoder_hidden_states, return_dict=False
+            )[0]
         with xp.Trace("model.backward"):
             if self.args.snr_gamma is None:
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -205,9 +210,9 @@ class TrainSD:
                 # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                 # This is discussed in Section 4.2 of the same paper.
                 snr = compute_snr(self.noise_scheduler, timesteps)
-                mse_loss_weights = torch.stack([snr, self.args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
-                    dim=1
-                )[0]
+                mse_loss_weights = torch.stack(
+                    [snr, self.args.snr_gamma * torch.ones_like(timesteps)], dim=1
+                ).min(dim=1)[0]
                 if self.noise_scheduler.config.prediction_type == "epsilon":
                     mse_loss_weights = mse_loss_weights / snr
                 elif self.noise_scheduler.config.prediction_type == "v_prediction":
@@ -221,13 +226,11 @@ class TrainSD:
             self.run_optimizer()
         return loss
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
-        "--input_perturbation", type=float, default=0, help="The scale of input perturbation. Recommended 0.1."
+        "--profile_duration", type=int, default=10000, help="Profile duration in ms"
     )
-    parser.add_argument("--profile_duration", type=int, default=10000, help="Profile duration in ms")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -259,12 +262,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--dataset_config_name",
-        type=str,
-        default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
-    )
-    parser.add_argument(
         "--train_data_dir",
         type=str,
         default=None,
@@ -284,15 +281,6 @@ def parse_args():
         help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
-        "--max_train_samples",
-        type=int,
-        default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        ),
-    )
-    parser.add_argument(
         "--output_dir",
         type=str,
         default="sd-model-finetuned",
@@ -304,7 +292,6 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -372,13 +359,17 @@ def parse_args():
         "--loader_prefetch_size",
         type=int,
         default=1,
-        help=("Number of subprocesses to use for data loading to cpu."),
+        help=(
+            "Number of subprocesses to use for data loading to cpu."
+        ),
     )
     parser.add_argument(
         "--device_prefetch_size",
         type=int,
         default=1,
-        help=("Number of subprocesses to use for data loading to tpu from cpu. "),
+        help=(
+            "Number of subprocesses to use for data loading to tpu from cpu. "
+        ),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -394,12 +385,11 @@ def parse_args():
         "--mixed_precision",
         type=str,
         default=None,
-        choices=["no", "fp16", "bf16"],
+        choices=["no", "bf16"],
         help=(
-            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
-            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
-            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+            "Whether to use mixed precision. Bf16 requires PyTorch >= 1.10"
         ),
+        
     )
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -418,7 +408,6 @@ def parse_args():
 
     return args
 
-
 def setup_optimizer(unet, args):
     optimizer_cls = torch.optim.AdamW
     return optimizer_cls(
@@ -430,13 +419,11 @@ def setup_optimizer(unet, args):
         foreach=True,
     )
 
-
 def load_dataset(args):
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = datasets.load_dataset(
             args.dataset_name,
-            args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
         )
@@ -450,7 +437,6 @@ def load_dataset(args):
             cache_dir=args.cache_dir,
         )
     return dataset
-
 
 def get_column_names(dataset, args):
     column_names = dataset["train"].column_names
@@ -476,14 +462,13 @@ def get_column_names(dataset, args):
 
 
 def main(args):
+
     args = parse_args()
 
-    _ = xp.start_server(PORT)
+    server = xp.start_server(9012)
 
     num_devices = xr.global_runtime_device_count()
-    device_ids = np.arange(num_devices)
-    mesh_shape = (num_devices, 1)
-    mesh = xs.Mesh(device_ids, mesh_shape, ("x", "y"))
+    mesh = xs.get_1d_mesh('data')
     xs.set_global_mesh(mesh)
 
     text_encoder = CLIPTextModel.from_pretrained(
@@ -518,7 +503,6 @@ def main(args):
     )
 
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
-
     unet = apply_xla_patch_to_nn_linear(unet, xs.xla_patched_nn_linear_forward)
 
     vae.requires_grad_(False)
@@ -530,15 +514,12 @@ def main(args):
     # as these weights are only used for inference, keeping weights in full
     # precision is not required.
     weight_dtype = torch.float32
-    if args.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif args.mixed_precision == "bf16":
+    if args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     device = xm.xla_device()
-    print("device: ", device)
-    print("weight_dtype: ", weight_dtype)
 
+    # Move text_encode and vae to device and cast to weight_dtype
     text_encoder = text_encoder.to(device, dtype=weight_dtype)
     vae = vae.to(device, dtype=weight_dtype)
     unet = unet.to(device, dtype=weight_dtype)
@@ -573,9 +554,19 @@ def main(args):
 
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            (transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)),
-            (transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x)),
+            transforms.Resize(
+                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+            ),
+            (
+                transforms.CenterCrop(args.resolution)
+                if args.center_crop
+                else transforms.RandomCrop(args.resolution)
+            ),
+            (
+                transforms.RandomHorizontalFlip()
+                if args.random_flip
+                else transforms.Lambda(lambda x: x)
+            ),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -588,18 +579,22 @@ def main(args):
         return examples
 
     train_dataset = dataset["train"]
-    train_dataset.set_format("torch")
+    train_dataset.set_format('torch')
     train_dataset.set_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(weight_dtype)
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(
+            weight_dtype
+        )
         input_ids = torch.stack([example["input_ids"] for example in examples])
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     g = torch.Generator()
     g.manual_seed(xr.host_index())
-    sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10), generator=g)
+    sampler = torch.utils.data.RandomSampler(
+        train_dataset, replacement=True, num_samples=int(1e10), generator=g
+    )
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
@@ -612,32 +607,34 @@ def main(args):
         train_dataloader,
         device,
         input_sharding={
-            "pixel_values": xs.ShardingSpec(mesh, ("x", None, None, None), minibatch=True),
-            "input_ids": xs.ShardingSpec(mesh, ("x", None), minibatch=True),
+            "pixel_values": xs.ShardingSpec(
+                mesh, ("data", None, None, None), minibatch=True
+            ),
+            "input_ids": xs.ShardingSpec(mesh, ("data", None), minibatch=True),
         },
         loader_prefetch_size=args.loader_prefetch_size,
         device_prefetch_size=args.device_prefetch_size,
     )
 
+    num_hosts = xr.process_count()
+    num_devices_per_host = num_devices // num_hosts
     if xm.is_master_ordinal():
         print("***** Running training *****")
-        print(f"Instantaneous batch size per device = {args.train_batch_size}")
+        print(f"Instantaneous batch size per device = {args.train_batch_size // num_devices_per_host }")
         print(
-            f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size * num_devices}"
+            f"Total train batch size (w. parallel, distributed & accumulation) = {args.train_batch_size * num_hosts}"
         )
         print(f"  Total optimization steps = {args.max_train_steps}")
 
-    trainer = TrainSD(
-        vae=vae,
-        weight_dtype=weight_dtype,
-        device=device,
-        noise_scheduler=noise_scheduler,
-        unet=unet,
-        optimizer=optimizer,
-        text_encoder=text_encoder,
-        dataloader=train_dataloader,
-        args=args,
-    )
+    trainer = TrainSD(vae=vae,
+                      weight_dtype=weight_dtype,
+                      device=device,
+                      noise_scheduler=noise_scheduler,
+                      unet=unet,
+                      optimizer=optimizer,
+                      text_encoder=text_encoder,
+                      dataloader=train_dataloader,
+                      args=args)
 
     trainer.start_training()
     unet = trainer.unet.to("cpu")
