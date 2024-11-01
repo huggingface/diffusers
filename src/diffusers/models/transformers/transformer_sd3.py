@@ -334,12 +334,16 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     hidden_states,
                     encoder_hidden_states,
                     temb,
+                    joint_attention_kwargs,
                     **ckpt_kwargs,
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    joint_attention_kwargs=joint_attention_kwargs,
                 )
 
             # controlnet residual
