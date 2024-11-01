@@ -1,10 +1,13 @@
 import numpy as np
+import numpy.core.multiarray as multiarray
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
-from diffusers import DDPMScheduler, UNet1DModel
 from torch.serialization import add_safe_globals
-import numpy.core.multiarray as multiarray
+
+from diffusers import DDPMScheduler, UNet1DModel
+
+
 add_safe_globals([multiarray._reconstruct, np.ndarray, np.dtype, np.dtype(np.float32).type, np.dtype(np.float64).type, np.dtype(np.int32).type, np.dtype(np.int64).type, type(np.dtype(np.float32)), type(np.dtype(np.float64)), type(np.dtype(np.int32)), type(np.dtype(np.int64))])
 
 """
