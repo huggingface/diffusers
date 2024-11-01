@@ -451,7 +451,7 @@ def main(args):
         param.data = param.data.contiguous()
 
     pipe = MochiPipeline(
-        scheduler=FlowMatchEulerDiscreteScheduler(),
+        scheduler=FlowMatchEulerDiscreteScheduler(invert_sigmas=True),
         vae=vae,
         text_encoder=text_encoder,
         tokenizer=tokenizer,
