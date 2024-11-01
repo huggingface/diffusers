@@ -1,8 +1,11 @@
 
 ## Diffusion-based Policy Learning for RL
 
-`diffusion_policy` implements <a href="https://diffusion-policy.cs.columbia.edu/">Diffusion Policy</a>, a diffusion model to predict action sequences in reinforcement learning tasks.
+`diffusion_policy` implements <a href="https://diffusion-policy.cs.columbia.edu/">Diffusion Policy</a>, a diffusion model that predicts robot action sequences in reinforcement learning tasks.
 
+This example implements a robot control model for pushing a T-shaped block into a target area. The model takes in current state observations as input, and outputs a trajectory of subsequent steps to follow.
+
+To execute the script, run `diffusion_policy.py`
 
 ## Diffuser Locomotion
 
