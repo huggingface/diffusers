@@ -172,9 +172,8 @@ class LoraSD3IntegrationTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
 
         image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :-1]
-        expected_slice = np.array([0.67041016, 0.69921875, 0.6640625, 0.66796875, 0.65234375, 0.6665039, 0.67578125, 0.67626953, 0.67871094, 0.6928711])
-
+        image_slice = image[0, -3:, -3:]
+        expected_slice = np.array([0.5396, 0.5776, 0.7432, 0.5151, 0.5586, 0.7383, 0.5537, 0.5933, 0.7153])
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"
