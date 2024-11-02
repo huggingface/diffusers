@@ -9,6 +9,7 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils.testing_utils import (
+    nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
@@ -193,6 +194,7 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
+@nightly
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxPipelineSlowTests(unittest.TestCase):

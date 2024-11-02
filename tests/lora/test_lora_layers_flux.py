@@ -30,7 +30,6 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
@@ -195,7 +194,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
-        del self.pipeline 
+        del self.pipeline
         gc.collect()
         torch.cuda.empty_cache()
 

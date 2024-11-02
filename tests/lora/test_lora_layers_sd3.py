@@ -33,7 +33,6 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
@@ -184,7 +183,6 @@ class SD3LoraIntegrationTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
-        print_tensor_test(image[0, :10, :10].flatten())
         expected_slice = np.array(
             [
                 0.47827148,
