@@ -776,10 +776,8 @@ class FluxPipeline(
             image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
-        print("before maybe")
         self.maybe_free_model_hooks()
-        print("after maybe")
-
+        
         if not return_dict:
             return (image,)
 
