@@ -1039,9 +1039,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
         self._offload_device = device
+        print("Initial assignments done.")
 
         self.to("cpu", silence_dtype_warnings=True)
+        print("placed on CPU.")
         device_mod = getattr(torch, device.type, None)
+        print(f"{device=}")
         if hasattr(device_mod, "empty_cache") and device_mod.is_available():
             device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
         print("Empty cache called.")
