@@ -176,7 +176,9 @@ class SD3LoraIntegrationTests(unittest.TestCase):
     def test_sd3_img2img_lora(self):
         pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors")
-        pipe.enable_sequential_cpu_offload()
+        pipe.fuse_lora()
+        pipe.unload_lora_weights()
+        pipe = pipe.to("cuda")
 
         inputs = self.get_inputs(torch_device)
 

@@ -236,8 +236,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def test_flux_inference(self):
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
-        )
-        pipe.enable_model_cpu_offload()
+        ).to("cuda")
 
         inputs = self.get_inputs(torch_device)
 
