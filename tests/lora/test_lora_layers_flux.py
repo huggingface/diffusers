@@ -31,9 +31,12 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
+    print_tensor_test
 )
+import pytest
 
 
 if is_peft_available():
@@ -169,8 +172,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @nightly
 @require_torch_gpu
 @require_peft_backend
-@unittest.skip("We cannot run inference on this model with the current CI hardware")
-# TODO (DN6, sayakpaul): move these tests to a beefier GPU
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -211,6 +214,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(self.seed),
         ).images
         out_slice = out[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.1855, 0.1855, 0.1836, 0.1855, 0.1836, 0.1875, 0.1777, 0.1758, 0.2246])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
@@ -233,6 +237,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         ).images
 
         out_slice = out[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.6367, 0.6367, 0.6328, 0.6367, 0.6328, 0.6289, 0.6367, 0.6328, 0.6484])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
@@ -255,6 +260,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         ).images
 
         out_slice = out[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.4023, 0.4023, 0.4023, 0.3965, 0.3984, 0.3965, 0.3926, 0.3906, 0.4219])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
@@ -277,6 +283,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(self.seed),
         ).images
         out_slice = out[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
         expected_slice = np.array([0.3965, 0.4180, 0.4434, 0.4082, 0.4375, 0.4590, 0.4141, 0.4375, 0.4980])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)

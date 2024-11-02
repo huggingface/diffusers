@@ -34,7 +34,12 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_gpu,
     torch_device,
+    slow,
+    nightly,
+    require_big_gpu_with_torch_cuda,
+    print_tensor_test
 )
+import pytest
 
 
 if is_peft_available():
@@ -130,9 +135,13 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
 
+@slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
-class LoraSD3IntegrationTests(unittest.TestCase):
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
+class SD3LoraIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
@@ -173,6 +182,7 @@ class LoraSD3IntegrationTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
+        print_tensor_test(image[0, -3:, -3:, -1].flatten())
         expected_slice = np.array(
             [
                 0.47827148,
