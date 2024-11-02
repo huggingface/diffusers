@@ -76,7 +76,8 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         vae = AutoencoderKLMochi(
             latent_channels=12,
             out_channels=3,
-            block_out_channels=(32, 32, 32, 32),
+            encoder_block_out_channels=(32, 32, 32, 32),
+            decoder_block_out_channels=(32, 32, 32, 32),
             layers_per_block=(1, 1, 1, 1, 1),
         )
 

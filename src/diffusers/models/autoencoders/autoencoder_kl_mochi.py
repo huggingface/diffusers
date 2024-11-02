@@ -778,7 +778,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         self.tile_sample_stride_width = 192
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, MochiDecoder3D):
+        if isinstance(module, (MochiEncoder3D, MochiDecoder3D)):
             module.gradient_checkpointing = value
 
     def enable_tiling(
