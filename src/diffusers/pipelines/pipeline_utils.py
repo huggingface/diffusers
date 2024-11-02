@@ -988,6 +988,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
                 print(f"{model.__class__.__name__=}")
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
+                print("Done removing from the current model.")
         self._all_hooks = []
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
