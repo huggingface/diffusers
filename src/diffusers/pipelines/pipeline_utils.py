@@ -55,6 +55,7 @@ from ..utils import (
     is_accelerate_version,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_available,
     is_transformers_version,
     logging,
     numpy_to_pil,
@@ -66,6 +67,8 @@ from ..utils.torch_utils import is_compiled_module
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
 
+if is_transformers_available():
+    from transformers import PreTrainedModel
 
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
@@ -452,9 +455,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
-            if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
-                # Since a bnb module is already supposed be on CUDA. This helps us prevent `accelerate` warnings.
-                if torch.device(device).type != "cuda":
+            if is_loaded_in_4bit_bnb and device is not None:
+                if is_transformers_available() and isinstance(module, PreTrainedModel):
+                    if is_transformers_version(">", "4.44.0"):
+                        module.to(device=device)
+                    else:
+                        logger.warning(
+                            f"{module.__class__.__name__} could not be placed on {device}. Module is still on {module.device}. Please update your `transformers` installation to the latest."
+                        )
+                # For `diffusers` it should not be a problem.
+                else:
                     module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
