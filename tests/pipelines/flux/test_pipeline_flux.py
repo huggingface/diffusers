@@ -212,19 +212,16 @@ class FluxPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
+        generator = torch.Generator(device="cpu").manual_seed(seed)
 
         prompt_embeds = torch.load(
             hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
-        )
+        ).to(torch_device)
         pooled_prompt_embeds = torch.load(
             hf_hub_download(
                 repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
             )
-        )
+        ).to(torch_device)
         return {
             "prompt_embeds": prompt_embeds,
             "pooled_prompt_embeds": pooled_prompt_embeds,
@@ -238,7 +235,7 @@ class FluxPipelineSlowTests(unittest.TestCase):
     def test_flux_inference(self):
         pipe = self.pipeline_class.from_pretrained(
             self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
-        ).to("cuda")
+        ).to(torch_device)
 
         inputs = self.get_inputs(torch_device)
 
