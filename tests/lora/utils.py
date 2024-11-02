@@ -1787,7 +1787,7 @@ class PeftLoraLoaderMixinTests:
         logger = (
             logging.get_logger("diffusers.loaders.unet")
             if self.unet_kwargs is not None
-            else logging.get_logger("diffusers.loaders.lora_pipeline")
+            else logging.get_logger("diffusers.loaders.peft")
         )
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
@@ -1826,7 +1826,7 @@ class PeftLoraLoaderMixinTests:
         logger = (
             logging.get_logger("diffusers.loaders.unet")
             if self.unet_kwargs is not None
-            else logging.get_logger("diffusers.loaders.lora_pipeline")
+            else logging.get_logger("diffusers.loaders.peft")
         )
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
