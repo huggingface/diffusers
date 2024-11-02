@@ -16,6 +16,7 @@ try:
 except ImportError:
     Compel = None
 
+KBASE = "ADDBASE"
 KCOMM = "ADDCOMM"
 KBRK = "BREAK"
 
@@ -33,6 +34,11 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
         Optional
             rp_args["save_mask"]: True/False (save masks in prompt mode)
+            rp_args["power"]: int (power for attention maps in prompt mode)
+            rp_args["base_ratio"]: 
+                float (Sets the ratio of the base prompt)
+                ex) 0.2 (20%*BASE_PROMPT + 80%*REGION_PROMPT)
+                [Use base prompt](https://github.com/hako-mikan/sd-webui-regional-prompter?tab=readme-ov-file#use-base-prompt)
 
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -109,19 +115,44 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         rp_args: Dict[str, str] = None,
     ):
         active = KBRK in prompt[0] if isinstance(prompt, list) else KBRK in prompt
+        use_base = (
+            KBASE in prompt[0] if isinstance(prompt, list) else KBASE in prompt
+        )
         if negative_prompt is None:
             negative_prompt = "" if isinstance(prompt, str) else [""] * len(prompt)
 
         device = self._execution_device
         regions = 0
 
+        self.base_ratio = float(rp_args["base_ratio"]) if "base_ratio" in rp_args else 0.0
         self.power = int(rp_args["power"]) if "power" in rp_args else 1
 
         prompts = prompt if isinstance(prompt, list) else [prompt]
         n_prompts = negative_prompt if isinstance(prompt, list) else [negative_prompt]
         self.batch = batch = num_images_per_prompt * len(prompts)
+
         all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
         all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
+
+        if use_base:
+            bases = prompts.copy()
+            n_bases = n_prompts.copy()
+
+            for i, prompt in enumerate(prompts):
+                parts = prompt.split(KBASE)
+                if len(parts) == 2:
+                    bases[i], prompts[i] = parts
+                elif len(parts) > 2:
+                    raise ValueError(f"Multiple instances of {KBASE} found in prompt: {prompt}")
+            for i, prompt in enumerate(n_prompts):
+                n_parts = prompt.split(KBASE)
+                if len(n_parts) == 2:
+                    n_bases[i], n_prompts[i] = n_parts
+                elif len(n_parts) > 2:
+                    raise ValueError(f"Multiple instances of {KBASE} found in negative prompt: {prompt}")
+
+            all_bases_cn, _ = promptsmaker(bases, num_images_per_prompt)
+            all_n_bases_cn, _ = promptsmaker(n_bases, num_images_per_prompt)
 
         equal = len(all_prompts_cn) == len(all_n_prompts_cn)
 
@@ -136,8 +167,16 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
             conds = getcompelembs(all_prompts_cn)
             unconds = getcompelembs(all_n_prompts_cn)
-            embs = getcompelembs(prompts)
-            n_embs = getcompelembs(n_prompts)
+            base_embs = getcompelembs(all_bases_cn) if use_base else None
+            base_n_embs = getcompelembs(all_n_bases_cn) if use_base else None
+            # When using base, it seems more reasonable to use base prompts as prompt_embeddings rather than regional prompts
+            embs = getcompelembs(prompts) if not use_base else base_embs
+            n_embs = getcompelembs(n_prompts) if not use_base else base_n_embs
+
+            if use_base and self.base_ratio > 0:
+                conds = self.base_ratio * base_embs + (1 - self.base_ratio) * conds
+                unconds = self.base_ratio * base_n_embs + (1 - self.base_ratio) * unconds
+
             prompt = negative_prompt = None
         else:
             conds = self.encode_prompt(prompts, device, 1, True)[0]
@@ -146,6 +185,18 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                 if equal
                 else self.encode_prompt(all_n_prompts_cn, device, 1, True)[0]
             )
+
+            if use_base and self.base_ratio > 0:
+                base_embs = self.encode_prompt(bases, device, 1, True)[0]
+                base_n_embs = (
+                    self.encode_prompt(n_bases, device, 1, True)[0]
+                    if equal
+                    else self.encode_prompt(all_n_bases_cn, device, 1, True)[0]
+                )
+
+                conds = self.base_ratio * base_embs + (1 - self.base_ratio) * conds
+                unconds = self.base_ratio * base_n_embs + (1 - self.base_ratio) * unconds
+
             embs = n_embs = None
 
         if not active:
