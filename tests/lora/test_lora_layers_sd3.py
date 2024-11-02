@@ -184,7 +184,7 @@ class SD3LoraIntegrationTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
-        print_tensor_test(image[0, -3:, -3:, -1].flatten())
+        print_tensor_test(image[0, :10, :10].flatten())
         expected_slice = np.array(
             [
                 0.47827148,
