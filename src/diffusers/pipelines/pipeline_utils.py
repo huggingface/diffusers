@@ -983,14 +983,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         r"""
         Removes all hooks that were added when using `enable_sequential_cpu_offload` or `enable_model_cpu_offload`.
         """
-        print("Within remove_all_hooks().")
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
-                print(f"{model.__class__.__name__=}")
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
-                print("Done removing from the current model.")
+
         self._all_hooks = []
-        print("Done in remove.")
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
@@ -1039,21 +1036,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
         self._offload_device = device
-        print("Initial assignments done.")
 
         self.to("cpu", silence_dtype_warnings=True)
-        print("placed on CPU.")
         device_mod = getattr(torch, device.type, None)
-        print(f"{device=}")
         if hasattr(device_mod, "empty_cache") and device_mod.is_available():
             device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-        print("Empty cache called.")
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
         self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
-            print(f"Entering with {model_str}")
             model = all_model_components.pop(model_str, None)
 
             if not isinstance(model, torch.nn.Module):
@@ -1069,7 +1061,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
             self._all_hooks.append(hook)
-            print("Initial hooks appended.")
 
         # CPU offload models that are not in the seq chain unless they are explicitly excluded
         # these models will stay on CPU until maybe_free_model_hooks is called
@@ -1083,7 +1074,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 _, hook = cpu_offload_with_hook(model, device)
                 self._all_hooks.append(hook)
-                
+
     def maybe_free_model_hooks(self):
         r"""
         Function that offloads all components, removes all model hooks that were added when using

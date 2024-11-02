@@ -17,6 +17,7 @@ import sys
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -30,16 +31,15 @@ from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     is_peft_available,
+    nightly,
     numpy_cosine_similarity_distance,
+    print_tensor_test,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
-    torch_device,
     slow,
-    nightly,
-    require_big_gpu_with_torch_cuda,
-    print_tensor_test
+    torch_device,
 )
-import pytest
 
 
 if is_peft_available():

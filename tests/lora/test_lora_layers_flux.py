@@ -19,6 +19,7 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 import safetensors.torch
 import torch
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -29,14 +30,13 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
+    print_tensor_test,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
-    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
-    print_tensor_test
 )
-import pytest
 
 
 if is_peft_available():
