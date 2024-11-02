@@ -1040,7 +1040,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device_mod = getattr(torch, device.type, None)
         if hasattr(device_mod, "empty_cache") and device_mod.is_available():
             device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-        
+
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
         self._all_hooks = []
