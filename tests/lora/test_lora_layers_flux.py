@@ -195,6 +195,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
+        del self.pipeline 
         gc.collect()
         torch.cuda.empty_cache()
 
