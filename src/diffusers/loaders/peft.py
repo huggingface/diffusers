@@ -104,8 +104,49 @@ class PeftAdapterMixin:
         return (is_model_cpu_offload, is_sequential_cpu_offload)
 
     def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
-        """
-        TODO
+        r"""
+        Loads a LoRA adapter into the underlying model.
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
+            prefix (`str`, *optional*): Prefix to filter the state dict.
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
