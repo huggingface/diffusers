@@ -230,7 +230,7 @@ class MochiDownBlock3D(nn.Module):
                     hidden_states_chunk = self.attn(hidden_states_chunk)
                     hidden_states_chunks.append(hidden_states_chunk)
                 hidden_states = torch.cat(hidden_states_chunks)
-            
+
             hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
 
             hidden_states = residual + hidden_states
@@ -500,7 +500,7 @@ class MochiEncoder3D(nn.Module):
         conv_cache = conv_cache or {}
 
         hidden_states = self.fourier_features(hidden_states)
-        
+
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj_in(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
