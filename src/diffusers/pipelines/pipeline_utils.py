@@ -453,7 +453,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
             if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
-                # Since it's already supposed on CUDA.
+                # Since a bnb module is already supposed be on CUDA. This helps us prevent `accelerate` warnings.
                 if torch.device(device).type != "cuda":
                     module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
