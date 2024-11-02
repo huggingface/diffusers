@@ -990,6 +990,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
                 print("Done removing from the current model.")
         self._all_hooks = []
+        print("Done in remove.")
 
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
@@ -1064,6 +1065,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
             self._all_hooks.append(hook)
+            print("Initial hooks appended.")
 
         # CPU offload models that are not in the seq chain unless they are explicitly excluded
         # these models will stay on CPU until maybe_free_model_hooks is called
@@ -1077,6 +1079,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 _, hook = cpu_offload_with_hook(model, device)
                 self._all_hooks.append(hook)
+                print("Done second time.")
 
     def maybe_free_model_hooks(self):
         r"""
