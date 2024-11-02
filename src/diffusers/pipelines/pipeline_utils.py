@@ -1050,6 +1050,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
+            print(f"Entering with {model_str}")
             model = all_model_components.pop(model_str, None)
 
             if not isinstance(model, torch.nn.Module):
@@ -1079,8 +1080,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 _, hook = cpu_offload_with_hook(model, device)
                 self._all_hooks.append(hook)
-                print("Done second time.")
-
+                
     def maybe_free_model_hooks(self):
         r"""
         Function that offloads all components, removes all model hooks that were added when using
