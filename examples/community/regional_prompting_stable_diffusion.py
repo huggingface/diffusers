@@ -9,7 +9,6 @@ from diffusers import StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import USE_PEFT_BACKEND
 
 
 try:
@@ -119,7 +118,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         self.power = int(rp_args["power"]) if "power" in rp_args else 1
 
         prompts = prompt if isinstance(prompt, list) else [prompt]
-        n_prompts = negative_prompt if isinstance(prompt, str) else [negative_prompt]
+        n_prompts = negative_prompt if isinstance(prompt, list) else [negative_prompt]
         self.batch = batch = num_images_per_prompt * len(prompts)
         all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
         all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
@@ -225,8 +224,6 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
                     residual = hidden_states
 
-                    args = () if USE_PEFT_BACKEND else (scale,)
-
                     if attn.spatial_norm is not None:
                         hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -247,16 +244,15 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     if attn.group_norm is not None:
                         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-                    args = () if USE_PEFT_BACKEND else (scale,)
-                    query = attn.to_q(hidden_states, *args)
+                    query = attn.to_q(hidden_states)
 
                     if encoder_hidden_states is None:
                         encoder_hidden_states = hidden_states
                     elif attn.norm_cross:
                         encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-                    key = attn.to_k(encoder_hidden_states, *args)
-                    value = attn.to_v(encoder_hidden_states, *args)
+                    key = attn.to_k(encoder_hidden_states)
+                    value = attn.to_v(encoder_hidden_states)
 
                     inner_dim = key.shape[-1]
                     head_dim = inner_dim // attn.heads
@@ -283,7 +279,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     hidden_states = hidden_states.to(query.dtype)
 
                     # linear proj
-                    hidden_states = attn.to_out[0](hidden_states, *args)
+                    hidden_states = attn.to_out[0](hidden_states)
                     # dropout
                     hidden_states = attn.to_out[1](hidden_states)
 
