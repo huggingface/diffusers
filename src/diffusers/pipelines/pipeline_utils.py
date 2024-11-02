@@ -986,6 +986,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         print("Within remove_all_hooks().")
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
+                print(f"{model.__class__.__name__=}")
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
