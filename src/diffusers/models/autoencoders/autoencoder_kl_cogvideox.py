@@ -108,7 +108,7 @@ class CogVideoXCausalConv3d(nn.Module):
         self.temporal_dim = 2
         self.time_kernel_size = time_kernel_size
 
-        stride = (stride, 1, 1)
+        stride = stride if isinstance(stride, tuple) else (stride, 1, 1)
         dilation = (dilation, 1, 1)
         self.conv = CogVideoXSafeConv3d(
             in_channels=in_channels,

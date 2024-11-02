@@ -182,6 +182,7 @@ class MochiDownBlock3D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        chunk_size: int = 2**15,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
 
@@ -217,7 +218,19 @@ class MochiDownBlock3D(nn.Module):
 
             batch_size, num_channels, num_frames, height, width = hidden_states.shape
             hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
-            hidden_states = self.attn(hidden_states)
+
+            # Perform attention in chunks to avoid following error:
+            # RuntimeError: CUDA error: invalid configuration argument
+            if hidden_states.size(0) <= chunk_size:
+                hidden_states = self.attn(hidden_states)
+            else:
+                hidden_states_chunks = []
+                for i in range(0, hidden_states.size(0), chunk_size):
+                    hidden_states_chunk = hidden_states[i : i + chunk_size]
+                    hidden_states_chunk = self.attn(hidden_states_chunk)
+                    hidden_states_chunks.append(hidden_states_chunk)
+                hidden_states = torch.cat(hidden_states_chunks)
+            
             hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
 
             hidden_states = residual + hidden_states
@@ -487,7 +500,10 @@ class MochiEncoder3D(nn.Module):
         conv_cache = conv_cache or {}
 
         hidden_states = self.fourier_features(hidden_states)
+        
+        hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj_in(hidden_states)
+        hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
         if self.training and self.gradient_checkpointing:
 
@@ -501,19 +517,19 @@ class MochiEncoder3D(nn.Module):
                 create_custom_forward(self.block_in), hidden_states, conv_cache=conv_cache.get("block_in")
             )
 
-            for i, up_block in enumerate(self.up_blocks):
+            for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
                 hidden_states, new_conv_cache[conv_cache_key] = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
+                    create_custom_forward(down_block), hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
         else:
             hidden_states, new_conv_cache["block_in"] = self.block_in(
                 hidden_states, conv_cache=conv_cache.get("block_in")
             )
 
-            for i, up_block in enumerate(self.up_blocks):
+            for i, down_block in enumerate(self.down_blocks):
                 conv_cache_key = f"down_block_{i}"
-                hidden_states, new_conv_cache[conv_cache_key] = up_block(
+                hidden_states, new_conv_cache[conv_cache_key] = down_block(
                     hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
 
@@ -752,7 +768,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
         # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
-        self.use_framewise_decoding = True
+        self.use_framewise_processing = True
 
         # This can be used to determine how the number of output frames in the final decoded video. To maintain consistency with
         # the original implementation, this defaults to `True`.
@@ -837,7 +853,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         Enables the original VAE decoding implementation. By default, Diffusers uses framewise decoding and past latent
         padding.
         """
-        self.use_framewise_decoding = False
+        self.use_framewise_processing = False
         for name, module in self.named_modules():
             if isinstance(module, CogVideoXCausalConv3d):
                 module.pad_mode = "replicate"
@@ -848,10 +864,10 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
-        if self.use_framewise_decoding:
+        if self.use_framewise_processing:
             raise
         else:
-            enc = self.encoder(x)
+            enc, _ = self.encoder(x)
 
         return enc
 
@@ -891,7 +907,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        if self.use_framewise_decoding:
+        if self.use_framewise_processing:
             conv_cache = None
             dec = []
 
@@ -987,7 +1003,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, tile_latent_stride_height):
             row = []
             for j in range(0, width, tile_latent_stride_width):
-                if self.use_framewise_decoding:
+                if self.use_framewise_processing:
                     time = []
                     conv_cache = None
 
@@ -1031,3 +1047,21 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
+
+    def forward(
+        self,
+        sample: torch.Tensor,
+        sample_posterior: bool = False,
+        return_dict: bool = True,
+        generator: Optional[torch.Generator] = None,
+    ) -> Union[torch.Tensor, torch.Tensor]:
+        x = sample
+        posterior = self.encode(x).latent_dist
+        if sample_posterior:
+            z = posterior.sample(generator=generator)
+        else:
+            z = posterior.mode()
+        dec = self.decode(z)
+        if not return_dict:
+            return (dec,)
+        return dec
