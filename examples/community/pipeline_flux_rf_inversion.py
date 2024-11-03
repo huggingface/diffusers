@@ -136,7 +136,6 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-
 class RFInversionFluxPipeline(
     DiffusionPipeline,
     FluxLoraLoaderMixin,
@@ -565,6 +564,18 @@ class RFInversionFluxPipeline(
         latents = self._pack_latents(self.inverted_latents, batch_size, num_channels_latents, height, width)
         return latents, latent_image_ids
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -901,114 +912,101 @@ class RFInversionFluxPipeline(
         source_guidance_scale=0.0,
         num_inversion_steps: int = 28,
         gamma: float = 0.5,
-        use_shift_t_sampling: bool = False,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        timesteps: List[int] = None,
         dtype: Optional[torch.dtype] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
     ):
         dtype = dtype or self.text_encoder.dtype
+        batch_size = 1
+        num_channels_latents = self.transformer.config.in_channels // 4
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         device = self._execution_device
 
         # 1. prepare image
-        img_latents, _ = self.encode_image(image, dtype=dtype)
+        image_latents, _ = self.encode_image(image, dtype=dtype)
+        _, latent_image_ids = self.prepare_latents(batch_size,
+                                                   num_channels_latents,
+                                                   height, width,
+                                                   dtype, device, generator)
+        image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
+        self.image_latents = image_latents.clone()
 
-        # 2. Prepare timesteps
+        # 2. prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inversion_steps, num_inversion_steps)
-        image_seq_len = img_latents.shape[1]
-        if use_shift_t_sampling:
-            mu = calculate_shift(
-                image_seq_len,
-                self.scheduler.config.base_image_seq_len,
-                self.scheduler.config.max_image_seq_len,
-                self.scheduler.config.base_shift,
-                self.scheduler.config.max_shift,
-            )
-        else:
-            mu = None
-        timesteps, num_inversion_steps = retrieve_timesteps(
+        image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
+        mu = calculate_shift(
+            image_seq_len,
+            self.scheduler.config.base_image_seq_len,
+            self.scheduler.config.max_image_seq_len,
+            self.scheduler.config.base_shift,
+            self.scheduler.config.max_shift,
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inversion_steps,
             device,
-            sigmas=sigmas,
+            timesteps,
+            sigmas,
             mu=mu,
         )
+        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
-        timesteps = reversed(timesteps[-num_inversion_steps:])  # flip for inversion
-
-        prompt_embeds, pooled_prompt_embeds, text_ids = self.encode_prompt(
-            prompt=source_prompt, prompt_2=source_prompt
+        # 3. prepare text embeddings
+        (
+            prompt_embeds,
+            pooled_prompt_embeds,
+            text_ids,
+        ) = self.encode_prompt(
+            prompt=source_prompt,
+            prompt_2=source_prompt,
+            device=device,
         )
-        latent_image_ids = self._prepare_latent_image_ids(
-            img_latents.shape[0],
-            img_latents.shape[2],
-            img_latents.shape[3],
-            device,
-            dtype,
-        )
-        packed_latents = self._pack_latents(
-            img_latents,
-            batch_size=img_latents.shape[0],
-            num_channels_latents=img_latents.shape[1],
-            height=img_latents.shape[2],
-            width=img_latents.shape[3],
-        )
-
-        target_noise = torch.randn(packed_latents.shape, device=device, dtype=torch.float32)
-
-        # handle guidance
+        # 4. handle guidance
         if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], source_guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(packed_latents.shape[0])
         else:
             guidance = None
 
-        # Image inversion with interpolated velocity field.  t goes from 0.0 to 1.0
-        with self.progress_bar(total=len(timesteps) - 1) as progress_bar:
-            for t_curr, t_prev in zip(timesteps[:-1], timesteps[1:]):
-                # t_vec = torch.full((packed_latents.shape[0],), t_curr, dtype=packed_latents.dtype,
-                #                    device=device)
-                timestep = t_curr.expand(packed_latents.shape[0]).to(packed_latents.dtype)
+        # if num_inference_steps < 1:
+        #     raise ValueError(
+        #         f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+        #         f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+        #     )
+        # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-                # Null text velocity
-                velocity = self.transformer(
-                    hidden_states=packed_latents,
-                    timestep=timestep,
-                    guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    joint_attention_kwargs=None,
-                    return_dict=False,
-                )[0]
+        # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
+        Y_t = image_latents
+        y_1 = torch.randn_like(Y_t)
+        N = len(sigmas)
 
-                # Prevents precision issues
-                packed_latents = packed_latents.to(torch.float32)
-                velocity = velocity.to(torch.float32)
+        for i in range(N - 1):  # enumerate(timesteps):
+            t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
+            timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
+            # get the unconditional vector field
 
-                # Target noise velocity
-                target_noise_velocity = (target_noise - packed_latents) / (1.0 - t_curr)
+            u_t_i = self.transformer(
+                hidden_states=Y_t,
+                timestep=timestep,
+                guidance=guidance,
+                pooled_projections=pooled_prompt_embeds,
+                encoder_hidden_states=prompt_embeds,
+                txt_ids=text_ids,
+                img_ids=latent_image_ids,
+                joint_attention_kwargs=self.joint_attention_kwargs,
+                return_dict=False,
+            )[0]
 
-                # interpolated velocity
-                interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * velocity
+            # get the conditional vector field
+            u_t_i_cond = (y_1 - Y_t) / (1 - t_i)
 
-                # one-step Euler
-                packed_latents = packed_latents + (t_prev - t_curr) * interpolated_velocity
+            # controlled vector field
+            # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
+            u_hat_t_i = u_t_i + gamma * (u_t_i_cond - u_t_i)
+            Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i+1])
 
-                packed_latents = packed_latents.to(dtype)
-                progress_bar.update()
+        self.inverted_latents = Y_t
 
-        print("Mean Absolute Error", torch.mean(torch.abs(packed_latents - target_noise)))
-
-        latents = self._unpack_latents(
-            packed_latents,
-            height=height,
-            width=width,
-            vae_scale_factor=self.vae_scale_factor,
-        )
-        latents = latents.to(dtype)
-        self.inverted_latents = latents
-        self.image_latents = img_latents
-        return latents
+        return latent_image_ids
