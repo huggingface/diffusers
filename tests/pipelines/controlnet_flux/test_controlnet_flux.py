@@ -35,6 +35,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
+    nightly,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -183,6 +184,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
 @slow
+@nightly
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
 class FluxControlNetPipelineSlowTests(unittest.TestCase):
@@ -208,8 +210,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             text_encoder_2=None,
             controlnet=controlnet,
             torch_dtype=torch.bfloat16,
-        )
-        pipe.enable_model_cpu_offload()
+        ).to("cuda")
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
