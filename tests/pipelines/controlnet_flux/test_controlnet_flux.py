@@ -32,10 +32,10 @@ from diffusers.models import FluxControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     slow,
-    nightly,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
