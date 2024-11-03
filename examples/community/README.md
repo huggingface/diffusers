@@ -127,20 +127,19 @@ Then, run the below code under 'diffusers' directory.
 ```python
 import numpy as np
 import torch
-from easydict import EasyDict
 from PIL import Image
 
 from diffusers import DDIMScheduler
 from diffusers import DiffusionPipeline
 from diffusers.utils import load_image
 
-from examples.community.adaptive_mask_inpainting import(
-    download_file,
-    AdaptiveMaskInpaintPipeline, 
-    PointRendPredictor,
-    MaskDilateScheduler,
-    ProvokeScheduler,
-)
+from examples.community.adaptive_mask_inpainting import download_file, AdaptiveMaskInpaintPipeline, AMI_INSTALL_MESSAGE
+
+print(AMI_INSTALL_MESSAGE)
+
+from easydict import EasyDict
+
+
 
 if __name__ == "__main__":    
     """
@@ -214,7 +213,7 @@ if __name__ == "__main__":
     init_image = Image.open("./input_img.png").convert("RGB")
     
     
-    seed = 46
+    seed = 59
     generator = torch.Generator(device=device)
     generator.manual_seed(seed)
     
@@ -235,6 +234,12 @@ if __name__ == "__main__":
     
     image.save(f'final_img.png')
 ```
+#### [Troubleshooting]
+
+If you run into an error `cannot import name 'cached_download' from 'huggingface_hub'` (issue [1851](https://github.com/easydiffusion/easydiffusion/issues/1851)), remove `cached_download` from the import line in the file `diffusers/utils/dynamic_modules_utils.py`. 
+
+For example, change the import line from `.../env/lib/python3.8/site-packages/diffusers/utils/dynamic_modules_utils.py`.
+
 
 ### Flux with CFG
 

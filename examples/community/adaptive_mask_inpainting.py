@@ -15,48 +15,46 @@
 # This model implementation is heavily inspired by https://github.com/haofanwang/ControlNet-for-Diffusers/
 
 import inspect
+import os
+import shutil
+from glob import glob
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import cv2
 import numpy as np
 import PIL.Image
+import requests
 import torch
-import cv2
+from detectron2.config import get_cfg
+from detectron2.data import MetadataCatalog
+from detectron2.engine import DefaultPredictor
+from detectron2.projects import point_rend
+from detectron2.structures.instances import Instances
+from detectron2.utils.visualizer import ColorMode, Visualizer
 from packaging import version
-import torch.nn.functional as F
+from tqdm import tqdm
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from diffusers.models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
-
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-
-from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog
-from detectron2.structures.instances import Instances
-from detectron2.projects import point_rend
-from detectron2.utils.visualizer import ColorMode, Visualizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-message = """
+AMI_INSTALL_MESSAGE = """
 
 Example Demo of Adaptive Mask Inpainting
 
@@ -81,14 +79,12 @@ pip install numpy==1.24.1
 ```
 
 
-Put the code inside the root of diffusers library (i.e., as '/home/username/diffusers/adaptive_mask_inpainting_example.py') and run the python code.
+Put the code inside the root of diffusers library (e.g., as '/home/username/diffusers/adaptive_mask_inpainting_example.py') and run the python code.
 
 
 
 
 """
-print(message)
-
 
 
 EXAMPLE_DOC_STRING = """
@@ -150,12 +146,10 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-import requests
-from tqdm import tqdm
 def download_file(url, output_file, exist_ok: bool):
     if exist_ok and os.path.exists(output_file):
         return
-        
+
     response = requests.get(url, stream=True)
 
     with open(output_file, "wb") as file:
@@ -163,21 +157,18 @@ def download_file(url, output_file, exist_ok: bool):
             if chunk:
                 file.write(chunk)
 
-import os
-from glob import glob
-import shutil
-import cv2
-
 
 def generate_video_from_imgs(images_save_directory, fps=15.0, delete_dir=True):
     # delete videos if exists
-    if os.path.exists(f"{images_save_directory}.mp4"): os.remove(f"{images_save_directory}.mp4")
-    if os.path.exists(f"{images_save_directory}_before_process.mp4"): os.remove(f"{images_save_directory}_before_process.mp4")
-    
+    if os.path.exists(f"{images_save_directory}.mp4"):
+        os.remove(f"{images_save_directory}.mp4")
+    if os.path.exists(f"{images_save_directory}_before_process.mp4"):
+        os.remove(f"{images_save_directory}_before_process.mp4")
+
     # assume there are "enumerated" images under "images_save_directory"
     assert os.path.isdir(images_save_directory)
-    ImgPaths = sorted(list(glob(f"{images_save_directory}/*")))
-    
+    ImgPaths = sorted(glob(f"{images_save_directory}/*"))
+
     if len(ImgPaths) == 0:
         print("\tSkipping, since there must be at least one image to create mp4\n")
     else:
@@ -190,24 +181,24 @@ def generate_video_from_imgs(images_save_directory, fps=15.0, delete_dir=True):
         height, width, channels = frame.shape
 
         # create mp4 video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video = cv2.VideoWriter(video_path, fourcc, fps, (width,height))
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        video = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
         for image in images:
             video.write(cv2.imread(os.path.join(images_save_directory, image)))
         cv2.destroyAllWindows()
         video.release()
 
         # generated video is not compatible with HTML5. Post-process and change codec of video, so that it is applicable to HTML.
-        os.system(f"ffmpeg -i \"{images_save_directory}_before_process.mp4\" -vcodec libx264 -f mp4 \"{images_save_directory}.mp4\" ")
+        os.system(
+            f'ffmpeg -i "{images_save_directory}_before_process.mp4" -vcodec libx264 -f mp4 "{images_save_directory}.mp4" '
+        )
 
     # remove group of images, and remove video before post-process.
-    if delete_dir and os.path.exists(images_save_directory): shutil.rmtree(images_save_directory)
+    if delete_dir and os.path.exists(images_save_directory):
+        shutil.rmtree(images_save_directory)
     # remove 'before-process' video
-    if os.path.exists(f"{images_save_directory}_before_process.mp4"): os.remove(f"{images_save_directory}_before_process.mp4")
-
-
-
-
+    if os.path.exists(f"{images_save_directory}_before_process.mp4"):
+        os.remove(f"{images_save_directory}_before_process.mp4")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.prepare_mask_and_masked_image
@@ -328,7 +319,9 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
     return mask, masked_image
 
 
-class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class AdaptiveMaskInpaintPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion.
 
@@ -359,6 +352,7 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -374,11 +368,10 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        
+
         self.register_adaptive_mask_model()
         self.register_adaptive_mask_settings()
-        
-        
+
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -423,7 +416,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(version.parse(unet.config._diffusers_version).base_version) < version.parse("0.9.0.dev0")
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
         is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
             deprecation_message = (
@@ -460,8 +455,6 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
         """ Preparation for Adaptive Mask inpainting """
-        
-
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -557,9 +550,16 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             text_input_ids = text_inputs.input_ids
             untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
-                logger.warning("The following part of your input was truncated because CLIP can only handle sequences up to" f" {self.tokenizer.model_max_length} tokens: {removed_text}")
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                )
+                logger.warning(
+                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
@@ -592,7 +592,10 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !=" f" {type(prompt)}.")
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
@@ -654,7 +657,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values.to(dtype))
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -692,18 +697,31 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)):
-            raise ValueError(f"`callback_steps` has to be a positive integer but is {callback_steps} of type" f" {type(callback_steps)}.")
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
         if prompt is not None and prompt_embeds is not None:
-            raise ValueError(f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to" " only forward one of the two.")
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
         elif prompt is None and prompt_embeds is None:
-            raise ValueError("Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined.")
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:" f" {negative_prompt_embeds}. Please make sure to only forward one of the two.")
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -737,7 +755,10 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             )
 
         if (image is None or timestep is None) and not is_strength_max:
-            raise ValueError("Since strength < 1. initial latents are to be initialised as a combination of Image + Noise." "However, either the image or the noise timestep has not been provided.")
+            raise ValueError(
+                "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
+                "However, either the image or the noise timestep has not been provided."
+            )
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
@@ -765,7 +786,10 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
-            image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i]) for i in range(image.shape[0])]
+            image_latents = [
+                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                for i in range(image.shape[0])
+            ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
@@ -774,11 +798,15 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         return image_latents
 
-    def prepare_mask_latents(self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance):
+    def prepare_mask_latents(
+        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+    ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
-        mask = torch.nn.functional.interpolate(mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor))
+        mask = torch.nn.functional.interpolate(
+            mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
+        )
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
@@ -803,7 +831,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image_latents = torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+        masked_image_latents = (
+            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+        )
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
@@ -983,7 +1013,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
         prompt_embeds = self._encode_prompt(
             prompt,
             device,
@@ -997,7 +1029,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps=num_inference_steps, strength=strength, device=device)
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps=num_inference_steps, strength=strength, device=device
+        )
         # check that number of inference steps is not < 1 - as this doesn't make sense
         if num_inference_steps < 1:
             raise ValueError(
@@ -1010,7 +1044,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         is_strength_max = strength == 1.0
 
         # 5. Preprocess mask and image (will be used later, once again)
-        mask, masked_image, init_image = prepare_mask_and_masked_image(image, default_mask_image, height, width, return_image=True)
+        mask, masked_image, init_image = prepare_mask_and_masked_image(
+            image, default_mask_image, height, width, return_image=True
+        )
         default_mask_image_np = np.array(default_mask_image).astype(np.uint8) / 255
         mask_condition = mask.clone()
 
@@ -1067,7 +1103,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                     " `pipeline.unet` or your `default_mask_image` or `image` input."
                 )
         elif num_channels_unet != 4:
-            raise ValueError(f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}.")
+            raise ValueError(
+                f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
+            )
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -1141,19 +1179,18 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
                     if self.adaptive_mask_model.use_visualizer:
                         import matplotlib.pyplot as plt
-                        from PIL import Image
 
                         # mask_image_new_colormap = np.clip(0.6 + (1.0 - mask_image_np), a_min=0.0, a_max=1.0) * 255
-                        
+
                         os.makedirs(visualization_save_dir, exist_ok=True)
-                        
+
                         # Image.fromarray(mask_image_new_colormap).convert("L").save(f"{visualization_save_dir}/masks/{i:05}.png")
                         plt.axis("off")
-                        plt.subplot(1,2,1)
+                        plt.subplot(1, 2, 1)
                         plt.imshow(mask_image_np)
-                        plt.subplot(1,2,2)
+                        plt.subplot(1, 2, 2)
                         plt.imshow(pred_orig_image)
-                        plt.savefig(f"{visualization_save_dir}/{i:05}.png", bbox_inches='tight')
+                        plt.savefig(f"{visualization_save_dir}/{i:05}.png", bbox_inches="tight")
                         plt.close("all")
 
                 if num_channels_unet == 4:
@@ -1162,7 +1199,9 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.add_noise(init_latents_proper, noise, torch.tensor([noise_timestep]))
+                        init_latents_proper = self.scheduler.add_noise(
+                            init_latents_proper, noise, torch.tensor([noise_timestep])
+                        )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
@@ -1206,55 +1245,61 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
     def decode_to_npuint8_image(self, latents):
-        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **{})[0]  # torch, float32, -1.~1.
+        image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **{})[
+            0
+        ]  # torch, float32, -1.~1.
         image = self.image_processor.postprocess(image, output_type="pt", do_denormalize=[True] * image.shape[0])
         image = (image.squeeze().permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)  # np, uint8, 0~255
         return image
 
     def register_adaptive_mask_settings(self):
         from easydict import EasyDict
+
         num_steps = 50
 
         step_num = int(num_steps * 0.1)
         final_step_num = num_steps - step_num * 7
         # adaptive mask settings
         self.adaptive_mask_settings = EasyDict(
-            dict(
-                dilate_scheduler=MaskDilateScheduler(
-                    max_dilate_num=20,
-                    num_inference_steps=num_steps,
-                    schedule=[20] * step_num + [10] * step_num + [5] * step_num + [4] * step_num + [3] * step_num + [2] * step_num + [1] * step_num + [0] * final_step_num
-                ),
-                dilate_kernel=np.ones((3, 3), dtype=np.uint8),
-                provoke_scheduler=ProvokeScheduler(
-                    num_inference_steps=num_steps,
-                    schedule=list(range(2, 10 + 1, 2)) + list(range(12, 40 + 1, 2)) + [45],
-                    is_zero_indexing=False,
-                ),
-            )
+            dilate_scheduler=MaskDilateScheduler(
+                max_dilate_num=20,
+                num_inference_steps=num_steps,
+                schedule=[20] * step_num
+                + [10] * step_num
+                + [5] * step_num
+                + [4] * step_num
+                + [3] * step_num
+                + [2] * step_num
+                + [1] * step_num
+                + [0] * final_step_num,
+            ),
+            dilate_kernel=np.ones((3, 3), dtype=np.uint8),
+            provoke_scheduler=ProvokeScheduler(
+                num_inference_steps=num_steps,
+                schedule=list(range(2, 10 + 1, 2)) + list(range(12, 40 + 1, 2)) + [45],
+                is_zero_indexing=False,
+            ),
         )
-
 
     def register_adaptive_mask_model(self):
         # declare segmentation model used for mask adaptation
         use_visualizer = True
         # assert not use_visualizer, \
         # """
-        # If you plan to 'use_visualizer', USE WITH CAUTION. 
+        # If you plan to 'use_visualizer', USE WITH CAUTION.
         # It creates a directory of images and masks, which is used for merging into a video.
-        # The procedure involves deleting the directory of images, which means that 
+        # The procedure involves deleting the directory of images, which means that
         # if you set the directory wrong you can have other important files blown away.
         # """
-        
+
         self.adaptive_mask_model = PointRendPredictor(
             # pointrend_thres=0.2,
-            pointrend_thres=0.9, 
-            device="cuda" if torch.cuda.is_available() else "cpu", 
+            pointrend_thres=0.9,
+            device="cuda" if torch.cuda.is_available() else "cpu",
             use_visualizer=use_visualizer,
             config_pth="pointrend_rcnn_R_50_FPN_3x_coco.yaml",
             weights_pth="model_final_edd263.pkl",
         )
-
 
     def adapt_mask(self, init_image, pred_orig_image, default_mask_image, dilate_num, use_default_mask, **kwargs):
         ## predict mask to use for adaptation
@@ -1269,12 +1314,16 @@ class AdaptiveMaskInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         else:
             ## timestep-adaptive mask
-            mask = cv2.dilate(mask, self.adaptive_mask_settings.dilate_kernel, iterations=dilate_num)  # dilate_kernel: np.ones((3,3), np.uint8)
+            mask = cv2.dilate(
+                mask, self.adaptive_mask_settings.dilate_kernel, iterations=dilate_num
+            )  # dilate_kernel: np.ones((3,3), np.uint8)
             mask = np.logical_and(mask, default_mask_image)  # HxW
 
         ## prepare mask as pt tensor format
         mask = torch.tensor(mask, dtype=torch.float32).to(kwargs["device"])[None, None]  # 1 x 1 x H x W
-        mask, masked_image = prepare_mask_and_masked_image(init_image.to(kwargs["device"]), mask, kwargs["height"], kwargs["width"], return_image=False)
+        mask, masked_image = prepare_mask_and_masked_image(
+            init_image.to(kwargs["device"]), mask, kwargs["height"], kwargs["width"], return_image=False
+        )
 
         mask_image_np = mask.clone().squeeze().detach().cpu().numpy()
 
@@ -1316,7 +1365,16 @@ def merge_bbox(bboxes: list):
 
 
 class PointRendPredictor:
-    def __init__(self, cat_id_to_focus=0, pointrend_thres=0.9, device="cuda", use_visualizer=False, merge_mode="merge", config_pth=None, weights_pth=None):
+    def __init__(
+        self,
+        cat_id_to_focus=0,
+        pointrend_thres=0.9,
+        device="cuda",
+        use_visualizer=False,
+        merge_mode="merge",
+        config_pth=None,
+        weights_pth=None,
+    ):
         super().__init__()
 
         # category id to focus (default: 0, which is human)
@@ -1369,7 +1427,11 @@ class PointRendPredictor:
         masks = masks.detach().cpu().numpy()  # [N, img_size, img_size]
         mask = self.merge_mask(masks, scores=instances.scores[is_class])
 
-        return {"asset_mask": None, "mask": mask.astype(np.uint8), "vis": self.vis_seg_on_img(image, mask) if self.use_visualizer else None}
+        return {
+            "asset_mask": None,
+            "mask": mask.astype(np.uint8),
+            "vis": self.vis_seg_on_img(image, mask) if self.use_visualizer else None,
+        }
 
 
 class MaskDilateScheduler:
