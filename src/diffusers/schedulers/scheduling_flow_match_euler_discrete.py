@@ -293,7 +293,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 ),
             )
 
-        if self.step_index is None:
+        if self._step_index not in contextvars.copy_context():
             self._init_step_index(timestep)
 
         # Upcast to avoid precision issues when computing prev_sample
