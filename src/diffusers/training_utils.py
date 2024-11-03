@@ -284,7 +284,7 @@ def free_memory():
     elif torch.backends.mps.is_available():
         torch.mps.empty_cache()
     elif is_torch_npu_available():
-        torch_npu.empty_cache()
+        torch_npu.npu.empty_cache()
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
@@ -379,7 +379,7 @@ class EMAModel:
 
     @classmethod
     def from_pretrained(cls, path, model_cls, foreach=False) -> "EMAModel":
-        _, ema_kwargs = model_cls.load_config(path, return_unused_kwargs=True)
+        _, ema_kwargs = model_cls.from_config(path, return_unused_kwargs=True)
         model = model_cls.from_pretrained(path)
 
         ema_model = cls(model.parameters(), model_cls=model_cls, model_config=model.config, foreach=foreach)
