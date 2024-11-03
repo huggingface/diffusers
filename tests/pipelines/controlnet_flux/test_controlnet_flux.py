@@ -220,12 +220,12 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
 
         prompt_embeds = torch.load(
             hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
-        )
+        ).to(torch_device)
         pooled_prompt_embeds = torch.load(
             hf_hub_download(
                 repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
             )
-        )
+        ).to(torch_device)
 
         output = pipe(
             prompt_embeds=prompt_embeds,
