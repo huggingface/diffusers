@@ -577,11 +577,12 @@ class RFInversionFluxPipeline(
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        sigmas = self.scheduler.sigmas[t_start * self.scheduler.order :]
         if hasattr(self.scheduler, "set_begin_index"):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
-        return timesteps, num_inference_steps - t_start
+        return timesteps, sigmas, num_inference_steps - t_start
 
     @property
     def guidance_scale(self):
@@ -707,6 +708,8 @@ class RFInversionFluxPipeline(
             prompt_2,
             height,
             width,
+            start_timestep,
+            stop_timestep,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -907,25 +910,32 @@ class RFInversionFluxPipeline(
         source_guidance_scale=0.0,
         num_inversion_steps: int = 28,
         gamma: float = 0.5,
+        strength: float = 0.6,
         height: Optional[int] = None,
         width: Optional[int] = None,
         timesteps: List[int] = None,
         dtype: Optional[torch.dtype] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         dtype = dtype or self.text_encoder.dtype
         batch_size = 1
+        self._joint_attention_kwargs = joint_attention_kwargs
         num_channels_latents = self.transformer.config.in_channels // 4
+
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         device = self._execution_device
 
         # 1. prepare image
-        image_latents, _ = self.encode_image(image, dtype=dtype)
+        image_latents, _ = self.encode_image(image, height=height, width=width, dtype=dtype)
         _, latent_image_ids = self.prepare_latents(batch_size,
                                                    num_channels_latents,
                                                    height, width,
                                                    dtype, device, generator)
+
+        height = int(height) // self.vae_scale_factor
+        width = int(width) // self.vae_scale_factor
         image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
         self.image_latents = image_latents.clone()
 
