@@ -1,4 +1,5 @@
 # Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright (c) Alibaba, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +21,11 @@
 
 
 import inspect
+import math
+import os
 import re
+import sys
+from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
@@ -29,8 +34,12 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 from bert_tokenizer import BasicTokenizer
+from easydict import EasyDict as edict
 from frozen_clip_embedder_t3 import FrozenCLIPEmbedderT3
+from ocr_recog.RecModel import RecModel
 from PIL import Image, ImageDraw, ImageFont
+from safetensors.torch import load_file
+from skimage.transform._geometric import _umeyama as get_sym_mat
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -101,15 +110,6 @@ EXAMPLE_DOC_STRING = """
         >>> image
         ```
 """
-
-"""
-Copyright (c) Alibaba, Inc. and its affiliates.
-"""
-from functools import partial
-
-import torch
-import torch.nn as nn
-from safetensors.torch import load_file
 
 
 def get_clip_token_for_string(tokenizer, string):
@@ -203,25 +203,6 @@ class EmbeddingManager(nn.Module):
 
     def embedding_parameters(self):
         return self.parameters()
-
-
-
-"""
-Copyright (c) Alibaba, Inc. and its affiliates.
-"""
-import math
-import os
-import sys
-import time
-import traceback
-
-import cv2
-import numpy as np
-import torch
-import torch.nn.functional as F
-from easydict import EasyDict as edict
-from ocr_recog.RecModel import RecModel
-from skimage.transform._geometric import _umeyama as get_sym_mat
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
