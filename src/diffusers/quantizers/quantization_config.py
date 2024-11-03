@@ -32,7 +32,6 @@ from packaging import version
 
 from ..utils import is_torch_available, logging
 
-
 if is_torch_available():
     import torch
 
@@ -389,3 +388,16 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
                 serializable_config_dict[key] = value
 
         return serializable_config_dict
+
+
+class GGUFQuantizationConfig(QuantizationConfigMixin):
+    def __init__(self, quant_type: str, compute_dtype=None, quant_storage=None):
+        self.quant_type = quant_type
+        self.compute_dtype = compute_dtype
+        self.quant_storage = quant_storage
+
+        if self.compute_dtype is None:
+            self.compute_dtype = torch.float32
+
+        if self.quant_storage is None:
+            self.quant_storage = torch.uint8

@@ -222,11 +222,12 @@ class FromOriginalModelMixin:
         is_gguf = "gguf_metadata" in checkpoint
         gguf_metadata = checkpoint["gguf_metadata"] if is_gguf else None
 
+        # For GGUF models we nest the state_dict along with gguf_metadata
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
         if is_gguf:
-            quantization_config = GGUFConfig()
+            quantization_config = GGUFQuantizationConfig()
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=False)
         else:
             hf_quantizer = None

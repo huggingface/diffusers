@@ -60,6 +60,25 @@ _CLASS_REMAPPING_DICT = {
 }
 
 
+_GGUF_FILE_TYPE_MAPPING = {
+    0: "ALL_F32",
+    1: "MOSTLY_F16",
+    2: "MOSTLY_Q4_0",
+    3: "MOSTLY_Q4_1",
+    4: "MOSTLY_Q4_1_SOME_F16",
+    8: "MOSTLY_Q5_0",
+    9: "MOSTLY_Q5_1",
+    10: "MOSTLY_Q2_K",
+    11: "MOSTLY_Q3_K_S",
+    12: "MOSTLY_Q3_K_M",
+    13: "MOSTLY_Q3_K_L",
+    14: "MOSTLY_Q4_K_S",
+    15: "MOSTLY_Q4_K_M",
+    16: "MOSTLY_Q5_K_S",
+    17: "MOSTLY_Q5_K_M",
+    18: "MOSTLY_Q6_K",
+}
+
 if is_accelerate_available():
     from accelerate import infer_auto_device_map
     from accelerate.utils import get_balanced_memory, get_max_memory, set_module_tensor_to_device
@@ -460,15 +479,14 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     reader_keys = list(fields.keys())
 
     parsed_parameters = {}
-    qtypes = {}
+    metadata = {"gguf_file_type": _GGUF_FILE_TYPE_MAPPING[read_field(reader, "general.file_type")[0]]}
     for tensor in tqdm(reader.tensors):
         name = tensor.name
         weights = torch.from_numpy(tensor.data)
 
         parsed_parameters[name] = weights
-        qtypes[name] = str(tensor.tensor_type)
 
     if len(reader_keys) > 0:
         logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")
 
-    return {"state_dict": parsed_parameters, "gguf_metadata": qtypes}
+    return {"state_dict": parsed_parameters, "gguf_metadata": metadata}
