@@ -210,7 +210,7 @@ class FluxControlNetPipelineSlowTests(unittest.TestCase):
             text_encoder_2=None,
             controlnet=controlnet,
             torch_dtype=torch.bfloat16,
-        ).to("cuda")
+        ).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
