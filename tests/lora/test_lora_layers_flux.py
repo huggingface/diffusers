@@ -202,6 +202,9 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("TheLastBen/Jon_Snow_Flux_LoRA", weight_name="jon_snow.safetensors")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
+        # Instead of calling `enable_model_cpu_offload()`, we do a cuda placement here because the CI
+        # run supports it. We have about 34GB RAM in the CI runner which kills the test when run with
+        # `enable_model_cpu_offload()`. We repeat this for the other tests, too.
         self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "jon snow eating pizza with ketchup"
@@ -224,9 +227,6 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("Norod78/brain-slug-flux")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        # Instead of calling `enable_model_cpu_offload()`, we do a cuda placement here because the CI
-        # run supports it. We have about 34GB RAM in the CI runner which kills the test when run with
-        # `enable_model_cpu_offload()`.
         self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "The cat with a brain slug earring"
