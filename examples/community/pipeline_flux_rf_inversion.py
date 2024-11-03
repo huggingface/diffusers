@@ -401,10 +401,13 @@ class RFInversionFluxPipeline(
         prompt_2,
         height,
         width,
+        start_timestep,
+        stop_timestep,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
+
     ):
         if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
             raise ValueError(
@@ -444,6 +447,10 @@ class RFInversionFluxPipeline(
 
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
+
+        # check start_timestep and stop_timestep
+        if start_timestep < 0 or start_timestep > stop_timestep:
+            raise ValueError(f"`start_timestep` should be in [0, stop_timestep] but is {start_timestep}")
 
     @staticmethod
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
@@ -600,11 +607,12 @@ class RFInversionFluxPipeline(
         prompt_2: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        strength: float = 0.6,
+        eta: float = 1.0,
+        gamma: float = 1.0,
+        start_timestep: int = 0,
+        stop_timestep: int = 6,
         num_inference_steps: int = 28,
-        eta_base: float = 1.0,  # base eta value
-        eta_trend: str = "linear_decrease",  # constant, linear_increase, linear_decrease
-        start_step: int = 0,  # 0-based indexing, closed interval
-        end_step: int = 30,  # 0-based indexing, open interval
         timesteps: List[int] = None,
         use_shift_t_sampling: bool = True,
         guidance_scale: float = 3.5,
@@ -703,6 +711,7 @@ class RFInversionFluxPipeline(
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
+
         )
 
         self._guidance_scale = guidance_scale
@@ -739,6 +748,10 @@ class RFInversionFluxPipeline(
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
+        latents = self.inverted_latents
+        latent_image_ids = self.latent_image_ids
+        image_latents = self.image_latents
+
         # latents, latent_image_ids = self.prepare_latents(
         #     batch_size * num_images_per_prompt,
         #     num_channels_latents,
@@ -749,28 +762,10 @@ class RFInversionFluxPipeline(
         #     generator,
         #     latents,
         # )
-        packed_inv_latents, latent_image_ids = self.prepare_inverted_latents(
-            self.inverted_latents.shape[0],
-            self.inverted_latents.shape[1],
-            self.inverted_latents.shape[2],
-            self.inverted_latents.shape[3],
-            prompt_embeds.dtype,
-            device,
-            generator,
-        )
-
-        packed_img_latents = self._pack_latents(
-            self.image_latents,
-            batch_size=self.image_latents.shape[0],
-            num_channels_latents=self.image_latents.shape[1],
-            height=self.image_latents.shape[2],
-            width=self.image_latents.shape[3],
-        )
-        target_img = packed_img_latents.clone().to(torch.float32)
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = packed_inv_latents.shape[1]
+        image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -792,21 +787,25 @@ class RFInversionFluxPipeline(
         # handle guidance
         if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(packed_inv_latents.shape[0])
+            guidance = guidance.expand(latents.shape[0])
         else:
             guidance = None
 
-        eta_values = self.generate_eta_values(timesteps, start_step, end_step, eta_base, eta_trend)
-
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, (t_curr, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                # timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                timestep = t_curr.expand(packed_inv_latents.shape[0]).to(packed_inv_latents.dtype)
+            y_0 = image_latents.clone()
+            for i, t in enumerate(timesteps):
+                t_i = 1 - t / 1000  # torch.tensor((i+1) / (len(timesteps)-1), device=device)
+                # print(t_i, t)
+                dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
+                if self.interrupt:
+                    continue
 
-                velocity = self.transformer(
-                    hidden_states=packed_inv_latents,
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                v_t = -self.transformer(
+                    hidden_states=latents,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
@@ -817,35 +816,31 @@ class RFInversionFluxPipeline(
                     return_dict=False,
                 )[0]
 
+                v_t_cond = (y_0 - latents) / (1 - t_i)
+                eta_t = eta if start_timestep <= i < stop_timestep else 0.0
+                if start_timestep <= i < stop_timestep:
+                    # controlled vector field
+                    v_hat_t = v_t + eta * (v_t_cond - v_t)
+                    # v_hat_t = ((1 - t_i - eta_t) * latents  + eta_t * t_i * y_0) / (t_i*(1 - t_i)) + 2*(1-t_i)*(1 - eta_t) /t_i * v_t
+
+                else:
+                    v_hat_t = v_t
+                # SDE Eq: 17
+
                 # compute the previous noisy sample x_t -> x_t-1
-                # latents_dtype = latents.dtype
-                # Prevents precision issues
-                packed_inv_latents = packed_inv_latents.to(torch.float32)
-                velocity = velocity.to(torch.float32)
+                latents_dtype = latents.dtype
+                latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
 
-                # Target image velocity
-                target_img_velocity = -(target_img - packed_inv_latents) / t_curr
-
-                # interpolated velocity
-                eta = eta_values[i]
-                interpolated_velocity = eta * target_img_velocity + (1 - eta) * velocity
-                latents = packed_inv_latents + (t_prev - t_curr) * interpolated_velocity
-                print(
-                    f"X_{t_prev:.3f} = X_{t_curr:.3f} + {t_prev - t_curr:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * flux_velocity)"
-                )
-
-                # latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
-
-                # if latents.dtype != latents_dtype:
-                #     if torch.backends.mps.is_available():
-                #         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                #         latents = latents.to(latents_dtype)
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t_curr, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -1008,5 +1003,6 @@ class RFInversionFluxPipeline(
             Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i+1])
 
         self.inverted_latents = Y_t
+        self.latent_image_ids = latent_image_ids
 
-        return latent_image_ids
+        return self.image_latents, Y_t, latent_image_ids
