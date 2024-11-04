@@ -795,12 +795,13 @@ class RFInversionFluxPipeline(
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+
             y_0 = image_latents.clone()
-            print(f"y_0 shape: {y_0.shape}")
             for i, t in enumerate(timesteps):
-                t_i = 1 - t / 1000  # torch.tensor((i+1) / (len(timesteps)-1), device=device)
-                # print(t_i, t)
+
+                t_i = 1 - t / 1000
                 dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
+
                 if self.interrupt:
                     continue
 
@@ -824,13 +825,11 @@ class RFInversionFluxPipeline(
                 if start_timestep <= i < stop_timestep:
                     # controlled vector field
                     v_hat_t = v_t + eta * (v_t_cond - v_t)
-                    # v_hat_t = ((1 - t_i - eta_t) * latents  + eta_t * t_i * y_0) / (t_i*(1 - t_i)) + 2*(1-t_i)*(1 - eta_t) /t_i * v_t
 
                 else:
                     v_hat_t = v_t
                 # SDE Eq: 17
 
-                # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
 
@@ -918,7 +917,7 @@ class RFInversionFluxPipeline(
             self.scheduler.config.base_shift,
             self.scheduler.config.max_shift,
         )
-        timesteps, num_inference_steps = retrieve_timesteps(
+        timesteps, num_inversion_steps = retrieve_timesteps(
             self.scheduler,
             num_inversion_steps,
             device,
@@ -926,7 +925,7 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, strength, device)
 
         # 3. prepare text embeddings
         (
@@ -947,10 +946,9 @@ class RFInversionFluxPipeline(
         # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
         Y_t = image_latents
         y_1 = torch.randn_like(Y_t)
-        N = len(sigmas)
 
-        for i in range(N - 1):  # enumerate(timesteps):
-            t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
+        for i in range(num_inversion_steps - 1):
+            t_i = torch.tensor(i / (num_inversion_steps), dtype=Y_t.dtype, device=device)
             timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
 
             # get the unconditional vector field
