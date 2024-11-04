@@ -136,6 +136,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 class RFInversionFluxPipeline(
     DiffusionPipeline,
     FluxLoraLoaderMixin,
@@ -407,7 +408,6 @@ class RFInversionFluxPipeline(
         pooled_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
-
     ):
         if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
             raise ValueError(
@@ -713,7 +713,6 @@ class RFInversionFluxPipeline(
             pooled_prompt_embeds=pooled_prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
-
         )
 
         self._guidance_scale = guidance_scale
@@ -900,10 +899,9 @@ class RFInversionFluxPipeline(
 
         # 1. prepare image
         image_latents, _ = self.encode_image(image, height=height, width=width, dtype=dtype)
-        _, latent_image_ids = self.prepare_latents(batch_size,
-                                                   num_channels_latents,
-                                                   height, width,
-                                                   dtype, device, generator)
+        _, latent_image_ids = self.prepare_latents(
+            batch_size, num_channels_latents, height, width, dtype, device, generator
+        )
 
         height = int(height) // self.vae_scale_factor
         width = int(width) // self.vae_scale_factor
@@ -974,7 +972,7 @@ class RFInversionFluxPipeline(
             # controlled vector field
             # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
             u_hat_t_i = u_t_i + gamma * (u_t_i_cond - u_t_i)
-            Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i+1])
+            Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i + 1])
 
         self.inverted_latents = Y_t
         self.latent_image_ids = latent_image_ids
