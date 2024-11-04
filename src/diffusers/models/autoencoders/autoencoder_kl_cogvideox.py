@@ -94,10 +94,8 @@ class CogVideoXCausalConv3d(nn.Module):
 
         time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
 
-        temporal_stride = stride[0] if isinstance(stride, tuple) else stride
-
         # TODO(aryan): configure calculation based on stride and dilation in the future.
-        # Since CogVideoX does not use it, it is currently tailored to "just work" with Mochi 
+        # Since CogVideoX does not use it, it is currently tailored to "just work" with Mochi
         time_pad = time_kernel_size - 1
         height_pad = (height_kernel_size - 1) // 2
         width_pad = (width_kernel_size - 1) // 2

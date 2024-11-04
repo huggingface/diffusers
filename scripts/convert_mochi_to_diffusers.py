@@ -438,7 +438,7 @@ def main(args):
         vae.load_state_dict(converted_vae_state_dict, strict=True)
         if dtype is not None:
             vae = vae.to(dtype=dtype)
-    
+
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)

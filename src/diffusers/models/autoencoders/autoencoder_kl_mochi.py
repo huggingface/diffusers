@@ -168,16 +168,18 @@ class MochiDownBlock3D(nn.Module):
             resnets.append(MochiResnetBlock3D(in_channels=out_channels))
             if add_attention:
                 norms.append(MochiChunkedGroupNorm3D(num_channels=out_channels))
-                attentions.append(Attention(
-                    query_dim=out_channels,
-                    heads=out_channels // 32,
-                    dim_head=32,
-                    qk_norm="l2",
-                ))
+                attentions.append(
+                    Attention(
+                        query_dim=out_channels,
+                        heads=out_channels // 32,
+                        dim_head=32,
+                        qk_norm="l2",
+                    )
+                )
             else:
                 norms.append(None)
                 attentions.append(None)
-        
+
         self.resnets = nn.ModuleList(resnets)
         self.norms = nn.ModuleList(norms)
         self.attentions = nn.ModuleList(attentions)
@@ -266,22 +268,24 @@ class MochiMidBlock3D(nn.Module):
         resnets = []
         norms = []
         attentions = []
-        
+
         for _ in range(num_layers):
             resnets.append(MochiResnetBlock3D(in_channels=in_channels))
-            
+
             if add_attention:
                 norms.append(MochiChunkedGroupNorm3D(num_channels=in_channels))
-                attentions.append(Attention(
-                    query_dim=in_channels,
-                    heads=in_channels // 32,
-                    dim_head=32,
-                    qk_norm="l2",
-                ))
+                attentions.append(
+                    Attention(
+                        query_dim=in_channels,
+                        heads=in_channels // 32,
+                        dim_head=32,
+                        qk_norm="l2",
+                    )
+                )
             else:
                 norms.append(None)
                 attentions.append(None)
-        
+
         self.resnets = nn.ModuleList(resnets)
         self.norms = nn.ModuleList(norms)
         self.attentions = nn.ModuleList(attentions)
