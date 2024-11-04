@@ -1130,7 +1130,8 @@ def main(args):
             compute_embeddings_fn,
             batched=True,
             batch_size=args.dataset_preprocess_batch_size,
-            new_fingerprint=new_fingerprint)
+            new_fingerprint=new_fingerprint,
+        )
 
     del text_encoder_one, text_encoder_two, text_encoder_three
     del tokenizer_one, tokenizer_two, tokenizer_three
