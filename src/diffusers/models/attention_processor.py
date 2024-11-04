@@ -38,9 +38,11 @@ else:
 
 if is_torch_xla_available():
     from torch_xla.experimental.custom_kernel import flash_attention
+
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
+
 
 @maybe_allow_in_graph
 class Attention(nn.Module):
@@ -2483,12 +2485,16 @@ class AttnProcessor2_0:
             if attention_mask is not None:
                 attention_mask = attention_mask.view(batch_size, 1, 1, attention_mask.shape[-1])
                 # Convert mask to float and replace 0s with -inf and 1s with 0
-                attention_mask = attention_mask.float().masked_fill(attention_mask == 0, float('-inf')).masked_fill(attention_mask == 1, float(0.0))
+                attention_mask = (
+                    attention_mask.float()
+                    .masked_fill(attention_mask == 0, float("-inf"))
+                    .masked_fill(attention_mask == 1, float(0.0))
+                )
 
                 # Apply attention mask to key
                 key = key + attention_mask
             query /= math.sqrt(query.shape[3])
-            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=('data', None, None, None))
+            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=("data", None, None, None))
         else:
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False

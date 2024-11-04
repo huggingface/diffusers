@@ -1,7 +1,6 @@
 import argparse
 import os
 import random
-
 import time
 from pathlib import Path
 
@@ -29,11 +28,12 @@ from diffusers.training_utils import compute_snr
 from diffusers.utils import is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
+
 if is_wandb_available():
     pass
 
-PROFILE_DIR = os.environ.get('PROFILE_DIR', None)
-CACHE_DIR = os.environ.get('CACHE_DIR', None)
+PROFILE_DIR = os.environ.get("PROFILE_DIR", None)
+CACHE_DIR = os.environ.get("CACHE_DIR", None)
 if CACHE_DIR:
     xr.initialize_cache(CACHE_DIR, readonly=False)
 xr.use_spmd()
@@ -151,12 +151,24 @@ class TrainSD:
                 dataloader_exception = True
                 print(e)
                 break
-            if step ==  measure_start_step and PROFILE_DIR is not None:
+            if step == measure_start_step and PROFILE_DIR is not None:
                 xm.wait_device_ops()
-                xp.trace_detached('localhost:9012', PROFILE_DIR, duration_ms=args.profile_duration)
-                last_time = time.time()     
+                xp.trace_detached("localhost:9012", PROFILE_DIR, duration_ms=args.profile_duration)
+                last_time = time.time()
             loss = self.step_fn(batch["pixel_values"], batch["input_ids"])
             self.global_step += 1
+
+            def print_loss_closure(step, loss):
+                print(f"Step: {step}, Loss: {loss}")
+
+            if args.print_loss:
+                xm.add_step_closure(
+                    print_loss_closure,
+                    args=(
+                        self.global_step,
+                        loss,
+                    ),
+                )
         xm.mark_step()
         if not dataloader_exception:
             xm.wait_device_ops()
@@ -170,7 +182,7 @@ class TrainSD:
         self,
         pixel_values,
         input_ids,
-        ):
+    ):
         with xp.Trace("model.forward"):
             self.optimizer.zero_grad()
             latents = self.vae.encode(pixel_values).latent_dist.sample()
@@ -196,12 +208,8 @@ class TrainSD:
             elif self.noise_scheduler.config.prediction_type == "v_prediction":
                 target = self.noise_scheduler.get_velocity(latents, noise, timesteps)
             else:
-                raise ValueError(
-                    f"Unknown prediction type {self.noise_scheduler.config.prediction_type}"
-                )
-            model_pred = self.unet(
-                noisy_latents, timesteps, encoder_hidden_states, return_dict=False
-            )[0]
+                raise ValueError(f"Unknown prediction type {self.noise_scheduler.config.prediction_type}")
+            model_pred = self.unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
         with xp.Trace("model.backward"):
             if self.args.snr_gamma is None:
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -210,9 +218,9 @@ class TrainSD:
                 # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                 # This is discussed in Section 4.2 of the same paper.
                 snr = compute_snr(self.noise_scheduler, timesteps)
-                mse_loss_weights = torch.stack(
-                    [snr, self.args.snr_gamma * torch.ones_like(timesteps)], dim=1
-                ).min(dim=1)[0]
+                mse_loss_weights = torch.stack([snr, self.args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                    dim=1
+                )[0]
                 if self.noise_scheduler.config.prediction_type == "epsilon":
                     mse_loss_weights = mse_loss_weights / snr
                 elif self.noise_scheduler.config.prediction_type == "v_prediction":
@@ -226,11 +234,10 @@ class TrainSD:
             self.run_optimizer()
         return loss
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
-    parser.add_argument(
-        "--profile_duration", type=int, default=10000, help="Profile duration in ms"
-    )
+    parser.add_argument("--profile_duration", type=int, default=10000, help="Profile duration in ms")
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -359,25 +366,19 @@ def parse_args():
         "--loader_prefetch_size",
         type=int,
         default=1,
-        help=(
-            "Number of subprocesses to use for data loading to cpu."
-        ),
+        help=("Number of subprocesses to use for data loading to cpu."),
     )
     parser.add_argument(
         "--loader_prefetch_factor",
         type=int,
         default=2,
-        help=(
-            "Number of batches loaded in advance by each worker."
-        ),
+        help=("Number of batches loaded in advance by each worker."),
     )
     parser.add_argument(
         "--device_prefetch_size",
         type=int,
         default=1,
-        help=(
-            "Number of subprocesses to use for data loading to tpu from cpu. "
-        ),
+        help=("Number of subprocesses to use for data loading to tpu from cpu. "),
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -394,10 +395,7 @@ def parse_args():
         type=str,
         default=None,
         choices=["no", "bf16"],
-        help=(
-            "Whether to use mixed precision. Bf16 requires PyTorch >= 1.10"
-        ),
-        
+        help=("Whether to use mixed precision. Bf16 requires PyTorch >= 1.10"),
     )
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -407,6 +405,12 @@ def parse_args():
         default=None,
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
+    parser.add_argument(
+        "--print_loss",
+        default=False,
+        action="store_true",
+        help=("Print loss at every step."),
+    )
 
     args = parser.parse_args()
 
@@ -415,6 +419,7 @@ def parse_args():
         args.non_ema_revision = args.revision
 
     return args
+
 
 def setup_optimizer(unet, args):
     optimizer_cls = torch.optim.AdamW
@@ -426,6 +431,7 @@ def setup_optimizer(unet, args):
         eps=args.adam_epsilon,
         foreach=True,
     )
+
 
 def load_dataset(args):
     if args.dataset_name is not None:
@@ -445,6 +451,7 @@ def load_dataset(args):
             cache_dir=args.cache_dir,
         )
     return dataset
+
 
 def get_column_names(dataset, args):
     column_names = dataset["train"].column_names
@@ -470,13 +477,12 @@ def get_column_names(dataset, args):
 
 
 def main(args):
-
     args = parse_args()
 
-    server = xp.start_server(9012)
+    _ = xp.start_server(9012)
 
     num_devices = xr.global_runtime_device_count()
-    mesh = xs.get_1d_mesh('data')
+    mesh = xs.get_1d_mesh("data")
     xs.set_global_mesh(mesh)
 
     text_encoder = CLIPTextModel.from_pretrained(
@@ -511,6 +517,7 @@ def main(args):
     )
 
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
+
     unet = apply_xla_patch_to_nn_linear(unet, xs.xla_patched_nn_linear_forward)
 
     vae.requires_grad_(False)
@@ -562,19 +569,9 @@ def main(args):
 
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(
-                args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
-            ),
-            (
-                transforms.CenterCrop(args.resolution)
-                if args.center_crop
-                else transforms.RandomCrop(args.resolution)
-            ),
-            (
-                transforms.RandomHorizontalFlip()
-                if args.random_flip
-                else transforms.Lambda(lambda x: x)
-            ),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            (transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)),
+            (transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x)),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -592,17 +589,13 @@ def main(args):
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(
-            weight_dtype
-        )
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).to(weight_dtype)
         input_ids = torch.stack([example["input_ids"] for example in examples])
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     g = torch.Generator()
     g.manual_seed(xr.host_index())
-    sampler = torch.utils.data.RandomSampler(
-        train_dataset, replacement=True, num_samples=int(1e10), generator=g
-    )
+    sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=int(1e10), generator=g)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         sampler=sampler,
@@ -616,9 +609,7 @@ def main(args):
         train_dataloader,
         device,
         input_sharding={
-            "pixel_values": xs.ShardingSpec(
-                mesh, ("data", None, None, None), minibatch=True
-            ),
+            "pixel_values": xs.ShardingSpec(mesh, ("data", None, None, None), minibatch=True),
             "input_ids": xs.ShardingSpec(mesh, ("data", None), minibatch=True),
         },
         loader_prefetch_size=args.loader_prefetch_size,
@@ -635,15 +626,17 @@ def main(args):
         )
         print(f"  Total optimization steps = {args.max_train_steps}")
 
-    trainer = TrainSD(vae=vae,
-                      weight_dtype=weight_dtype,
-                      device=device,
-                      noise_scheduler=noise_scheduler,
-                      unet=unet,
-                      optimizer=optimizer,
-                      text_encoder=text_encoder,
-                      dataloader=train_dataloader,
-                      args=args)
+    trainer = TrainSD(
+        vae=vae,
+        weight_dtype=weight_dtype,
+        device=device,
+        noise_scheduler=noise_scheduler,
+        unet=unet,
+        optimizer=optimizer,
+        text_encoder=text_encoder,
+        dataloader=train_dataloader,
+        args=args,
+    )
 
     trainer.start_training()
     unet = trainer.unet.to("cpu")
