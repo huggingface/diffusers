@@ -55,11 +55,20 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
-        >>> image.save("flux.png")
+        
+         >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+
+        >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/tennis.jpg"
+        >>> image = download_image(img_url)
+
+        >>> _,__,___ = pipe.invert(image=image, num_inversion_steps=28)
+
+        >>> edited_image = pipe(
+        ...     prompt="a portrait of a tiger",
+        ... ).images[0]
         ```
 """
 
