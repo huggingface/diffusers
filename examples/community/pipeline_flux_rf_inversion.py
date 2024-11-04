@@ -615,7 +615,6 @@ class RFInversionFluxPipeline(
         stop_timestep: int = 6,
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
-        use_shift_t_sampling: bool = True,
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -874,36 +873,6 @@ class RFInversionFluxPipeline(
 
         return FluxPipelineOutput(images=image)
 
-    def generate_eta_values(
-        self,
-        timesteps,
-        start_step,
-        end_step,
-        eta,
-        eta_trend,
-    ):
-        assert (
-            start_step < end_step and start_step >= 0 and end_step <= len(timesteps)
-        ), "Invalid start_step and end_step"
-        # timesteps are monotonically decreasing, from 1.0 to 0.0
-        eta_values = [0.0] * (len(timesteps) - 1)
-
-        if eta_trend == "constant":
-            for i in range(start_step, end_step):
-                eta_values[i] = eta
-        elif eta_trend == "linear_increase":
-            total_time = timesteps[start_step] - timesteps[end_step - 1]
-            for i in range(start_step, end_step):
-                eta_values[i] = eta * (timesteps[start_step] - timesteps[i]) / total_time
-        elif eta_trend == "linear_decrease":
-            total_time = timesteps[start_step] - timesteps[end_step - 1]
-            for i in range(start_step, end_step):
-                eta_values[i] = eta * (timesteps[i] - timesteps[end_step - 1]) / total_time
-        else:
-            raise NotImplementedError(f"Unsupported eta_trend: {eta_trend}")
-
-        return eta_values
-
     @torch.no_grad()
     def invert(
         self,
@@ -977,13 +946,6 @@ class RFInversionFluxPipeline(
         else:
             guidance = None
 
-        # if num_inference_steps < 1:
-        #     raise ValueError(
-        #         f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
-        #         f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
-        #     )
-        # latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-
         # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
         Y_t = image_latents
         y_1 = torch.randn_like(Y_t)
@@ -992,8 +954,8 @@ class RFInversionFluxPipeline(
         for i in range(N - 1):  # enumerate(timesteps):
             t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
             timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
-            # get the unconditional vector field
 
+            # get the unconditional vector field
             u_t_i = self.transformer(
                 hidden_states=Y_t,
                 timestep=timestep,
