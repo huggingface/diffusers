@@ -764,17 +764,6 @@ class RFInversionFluxPipeline(
         latent_image_ids = self.latent_image_ids
         image_latents = self.image_latents
 
-        # latents, latent_image_ids = self.prepare_latents(
-        #     batch_size * num_images_per_prompt,
-        #     num_channels_latents,
-        #     height,
-        #     width,
-        #     prompt_embeds.dtype,
-        #     device,
-        #     generator,
-        #     latents,
-        # )
-
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         image_seq_len = latents.shape[1]
