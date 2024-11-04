@@ -162,19 +162,25 @@ class MochiDownBlock3D(nn.Module):
         )
 
         resnets = []
+        norms = []
+        attentions = []
         for _ in range(num_layers):
             resnets.append(MochiResnetBlock3D(in_channels=out_channels))
+            if add_attention:
+                norms.append(MochiChunkedGroupNorm3D(num_channels=out_channels))
+                attentions.append(Attention(
+                    query_dim=out_channels,
+                    heads=out_channels // 32,
+                    dim_head=32,
+                    qk_norm="l2",
+                ))
+            else:
+                norms.append(None)
+                attentions.append(None)
+        
         self.resnets = nn.ModuleList(resnets)
-
-        self.attn = None
-        if add_attention:
-            self.norm = MochiChunkedGroupNorm3D(num_channels=out_channels)
-            self.attn = Attention(
-                query_dim=out_channels,
-                heads=out_channels // 32,
-                dim_head=32,
-                qk_norm="l2",
-            )
+        self.norms = nn.ModuleList(norms)
+        self.attentions = nn.ModuleList(attentions)
 
         self.gradient_checkpointing = False
 
@@ -191,7 +197,7 @@ class MochiDownBlock3D(nn.Module):
 
         hidden_states, new_conv_cache["conv_in"] = self.conv_in(hidden_states)
 
-        for i, resnet in enumerate(self.resnets):
+        for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
             if self.training and self.gradient_checkpointing:
@@ -212,28 +218,28 @@ class MochiDownBlock3D(nn.Module):
                     hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
 
-        if self.attn is not None:
-            residual = hidden_states
-            hidden_states = self.norm(hidden_states)
+            if attn is not None:
+                residual = hidden_states
+                hidden_states = norm(hidden_states)
 
-            batch_size, num_channels, num_frames, height, width = hidden_states.shape
-            hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
+                batch_size, num_channels, num_frames, height, width = hidden_states.shape
+                hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
 
-            # Perform attention in chunks to avoid following error:
-            # RuntimeError: CUDA error: invalid configuration argument
-            if hidden_states.size(0) <= chunk_size:
-                hidden_states = self.attn(hidden_states)
-            else:
-                hidden_states_chunks = []
-                for i in range(0, hidden_states.size(0), chunk_size):
-                    hidden_states_chunk = hidden_states[i : i + chunk_size]
-                    hidden_states_chunk = self.attn(hidden_states_chunk)
-                    hidden_states_chunks.append(hidden_states_chunk)
-                hidden_states = torch.cat(hidden_states_chunks)
+                # Perform attention in chunks to avoid following error:
+                # RuntimeError: CUDA error: invalid configuration argument
+                if hidden_states.size(0) <= chunk_size:
+                    hidden_states = attn(hidden_states)
+                else:
+                    hidden_states_chunks = []
+                    for i in range(0, hidden_states.size(0), chunk_size):
+                        hidden_states_chunk = hidden_states[i : i + chunk_size]
+                        hidden_states_chunk = attn(hidden_states_chunk)
+                        hidden_states_chunks.append(hidden_states_chunk)
+                    hidden_states = torch.cat(hidden_states_chunks)
 
-            hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
+                hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
 
-            hidden_states = residual + hidden_states
+                hidden_states = residual + hidden_states
 
         return hidden_states, new_conv_cache
 
@@ -258,19 +264,27 @@ class MochiMidBlock3D(nn.Module):
         super().__init__()
 
         resnets = []
+        norms = []
+        attentions = []
+        
         for _ in range(num_layers):
             resnets.append(MochiResnetBlock3D(in_channels=in_channels))
+            
+            if add_attention:
+                norms.append(MochiChunkedGroupNorm3D(num_channels=in_channels))
+                attentions.append(Attention(
+                    query_dim=in_channels,
+                    heads=in_channels // 32,
+                    dim_head=32,
+                    qk_norm="l2",
+                ))
+            else:
+                norms.append(None)
+                attentions.append(None)
+        
         self.resnets = nn.ModuleList(resnets)
-
-        self.attn = None
-        if add_attention:
-            self.norm = MochiChunkedGroupNorm3D(num_channels=in_channels)
-            self.attn = Attention(
-                query_dim=in_channels,
-                heads=in_channels // 32,
-                dim_head=32,
-                qk_norm="l2",
-            )
+        self.norms = nn.ModuleList(norms)
+        self.attentions = nn.ModuleList(attentions)
 
         self.gradient_checkpointing = False
 
@@ -284,7 +298,7 @@ class MochiMidBlock3D(nn.Module):
         new_conv_cache = {}
         conv_cache = conv_cache or {}
 
-        for i, resnet in enumerate(self.resnets):
+        for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
             if self.training and self.gradient_checkpointing:
@@ -303,16 +317,16 @@ class MochiMidBlock3D(nn.Module):
                     hidden_states, conv_cache=conv_cache.get(conv_cache_key)
                 )
 
-        if self.attn is not None:
-            residual = hidden_states
-            hidden_states = self.norm(hidden_states)
+            if attn is not None:
+                residual = hidden_states
+                hidden_states = norm(hidden_states)
 
-            batch_size, num_channels, num_frames, height, width = hidden_states.shape
-            hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
-            hidden_states = self.attn(hidden_states)
-            hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
+                batch_size, num_channels, num_frames, height, width = hidden_states.shape
+                hidden_states = hidden_states.permute(0, 3, 4, 2, 1).flatten(0, 2).contiguous()
+                hidden_states = attn(hidden_states)
+                hidden_states = hidden_states.unflatten(0, (batch_size, height, width)).permute(0, 4, 3, 1, 2)
 
-            hidden_states = residual + hidden_states
+                hidden_states = residual + hidden_states
 
         return hidden_states, new_conv_cache
 

@@ -332,24 +332,21 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
             qkv_weight = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.attn_block.attn.qkv.weight")
             q, k, v = qkv_weight.chunk(3, dim=0)
 
-            new_state_dict[f"{prefix}down_blocks.{block}.attn.to_q.weight"] = q
-            new_state_dict[f"{prefix}down_blocks.{block}.attn.to_k.weight"] = k
-            new_state_dict[f"{prefix}down_blocks.{block}.attn.to_v.weight"] = v
-            new_state_dict[f"{prefix}down_blocks.{block}.attn.to_out.0.weight"] = encoder_state_dict.pop(
+            new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_q.weight"] = q
+            new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_k.weight"] = k
+            new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_v.weight"] = v
+            new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_out.0.weight"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.attn_block.attn.out.weight"
             )
-            new_state_dict[f"{prefix}down_blocks.{block}.attn.to_out.0.bias"] = encoder_state_dict.pop(
+            new_state_dict[f"{prefix}down_blocks.{block}.attentions.{i}.to_out.0.bias"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.attn_block.attn.out.bias"
             )
-            new_state_dict[f"{prefix}down_blocks.{block}.norm.norm_layer.weight"] = encoder_state_dict.pop(
+            new_state_dict[f"{prefix}down_blocks.{block}.norms.{i}.norm_layer.weight"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.attn_block.norm.weight"
             )
-            new_state_dict[f"{prefix}down_blocks.{block}.norm.norm_layer.bias"] = encoder_state_dict.pop(
+            new_state_dict[f"{prefix}down_blocks.{block}.norms.{i}.norm_layer.bias"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.attn_block.norm.bias"
             )
-
-        # new_state_dict[f"{prefix}down_blocks.{block}.proj.weight"] = encoder_state_dict.pop(f"layers.{block+4}.proj.weight")
-        # new_state_dict[f"{prefix}down_blocks.{block}.proj.bias"] = encoder_state_dict.pop(f"layers.{block+4}.proj.bias")
 
     # Convert block_out (MochiMidBlock3D)
     for i in range(3):  # layers_per_block[-1] = 3
@@ -383,19 +380,19 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
         qkv_weight = encoder_state_dict.pop(f"layers.{i+7}.attn_block.attn.qkv.weight")
         q, k, v = qkv_weight.chunk(3, dim=0)
 
-        new_state_dict[f"{prefix}block_out.attn.to_q.weight"] = q
-        new_state_dict[f"{prefix}block_out.attn.to_k.weight"] = k
-        new_state_dict[f"{prefix}block_out.attn.to_v.weight"] = v
-        new_state_dict[f"{prefix}block_out.attn.to_out.0.weight"] = encoder_state_dict.pop(
+        new_state_dict[f"{prefix}block_out.attentions.{i}.to_q.weight"] = q
+        new_state_dict[f"{prefix}block_out.attentions.{i}.to_k.weight"] = k
+        new_state_dict[f"{prefix}block_out.attentions.{i}.to_v.weight"] = v
+        new_state_dict[f"{prefix}block_out.attentions.{i}.to_out.0.weight"] = encoder_state_dict.pop(
             f"layers.{i+7}.attn_block.attn.out.weight"
         )
-        new_state_dict[f"{prefix}block_out.attn.to_out.0.bias"] = encoder_state_dict.pop(
+        new_state_dict[f"{prefix}block_out.attentions.{i}.to_out.0.bias"] = encoder_state_dict.pop(
             f"layers.{i+7}.attn_block.attn.out.bias"
         )
-        new_state_dict[f"{prefix}block_out.norm.norm_layer.weight"] = encoder_state_dict.pop(
+        new_state_dict[f"{prefix}block_out.norms.{i}.norm_layer.weight"] = encoder_state_dict.pop(
             f"layers.{i+7}.attn_block.norm.weight"
         )
-        new_state_dict[f"{prefix}block_out.norm.norm_layer.bias"] = encoder_state_dict.pop(
+        new_state_dict[f"{prefix}block_out.norms.{i}.norm_layer.bias"] = encoder_state_dict.pop(
             f"layers.{i+7}.attn_block.norm.bias"
         )
 
@@ -441,7 +438,7 @@ def main(args):
         vae.load_state_dict(converted_vae_state_dict, strict=True)
         if dtype is not None:
             vae = vae.to(dtype=dtype)
-
+    
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
