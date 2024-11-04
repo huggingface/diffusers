@@ -141,7 +141,7 @@ class TrainSD:
 
     def start_training(self):
         dataloader_exception = False
-        measure_start_step = 10
+        measure_start_step = args.measure_start_step
         assert measure_start_step < self.args.max_train_steps
         total_time = 0
         for step in range(0, self.args.max_train_steps):
@@ -380,6 +380,7 @@ def parse_args():
         default=1,
         help=("Number of subprocesses to use for data loading to tpu from cpu. "),
     )
+    parser.add_argument("--measure_start_step", type=int, default=10, help="Step to start profiling.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
