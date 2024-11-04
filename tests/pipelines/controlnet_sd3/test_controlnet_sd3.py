@@ -176,7 +176,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         return inputs
 
-    def run_pipe(self, components):
+    def run_pipe(self, components, use_sd35=False):
         sd_pipe = StableDiffusion3ControlNetPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -189,7 +189,10 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
+        if not use_sd35:
+            expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
+        else:
+            expected_slice = np.array([1.0000, 0.9072, 0.4209, 0.2744, 0.5737, 0.3840, 0.6113, 0.6250, 0.6328])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -201,7 +204,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
     def test_controlnet_sd35(self):
         components = self.get_dummy_components(qk_norm="rms_norm", use_dual_attention=True)
-        self.run_pipe(components)
+        self.run_pipe(components, use_sd35=True)
 
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
     def test_xformers_attention_forwardGenerator_pass(self):
