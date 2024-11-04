@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import torch
 import torchvision.transforms.functional as FF
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers import StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
@@ -75,6 +75,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__(
@@ -85,6 +86,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             scheduler,
             safety_checker,
             feature_extractor,
+            image_encoder,
             requires_safety_checker,
         )
         self.register_modules(
@@ -95,6 +97,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
 
     @torch.no_grad()
@@ -450,7 +453,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
 
 ### Make prompt list for each regions
-def promptsmaker(prompts, batch):
+def promptsmaker(prompts, batch, use_base=False):
     out_p = []
     plen = len(prompts)
     for prompt in prompts:
@@ -459,7 +462,7 @@ def promptsmaker(prompts, batch):
             add, prompt = prompt.split(KCOMM)
             add = add + " "
         prompts = prompt.split(KBRK)
-        out_p.append([add + p for p in prompts])
+        out_p.append([add + p if i != 0 else p for i, p in enumerate(prompts)])
     out = [None] * batch * len(out_p[0]) * len(out_p)
     for p, prs in enumerate(out_p):  # inputs prompts
         for r, pr in enumerate(prs):  # prompts for regions
@@ -496,7 +499,6 @@ def make_cells(ratios):
             add = []
             startend(add, inratios[1:])
             icells.append(add)
-
     return ocells, icells, sum(len(cell) for cell in icells)
 
 
