@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from functools import partial
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+import safetensors
+import torch
 import torch.nn as nn
 
 from ..utils import (
@@ -203,7 +207,7 @@ class PeftAdapterMixin:
 
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
+                    f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
                 )
 
             rank = {}
@@ -275,6 +279,52 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
+
+    def save_lora_adapter(
+        self,
+        save_directory,
+        adapter_name: str = "default",
+        upcast_before_saving: bool = False,
+        safe_serialization: bool = True,
+        weight_name: str = None,
+    ):
+        """TODO"""
+        from peft.utils import get_peft_model_state_dict
+
+        from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+
+        if adapter_name is None:
+            adapter_name = get_adapter_name(self)
+
+        if adapter_name not in getattr(self, "peft_config", {}):
+            raise ValueError(f"Adapter name {adapter_name} not found in the model.")
+
+        lora_layers_to_save = get_peft_model_state_dict(
+            self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
+        )
+        if os.path.isfile(save_directory):
+            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
+            return
+
+        if safe_serialization:
+
+            def save_function(weights, filename):
+                return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+        else:
+            save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
+        if weight_name is None:
+            if safe_serialization:
+                weight_name = LORA_WEIGHT_NAME_SAFE
+            else:
+                weight_name = LORA_WEIGHT_NAME
+
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(lora_layers_to_save, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def set_adapters(
         self,
