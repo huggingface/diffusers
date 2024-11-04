@@ -153,7 +153,7 @@ class TrainSD:
                 break
             if step == measure_start_step and PROFILE_DIR is not None:
                 xm.wait_device_ops()
-                xp.trace_detached("localhost:9012", PROFILE_DIR, duration_ms=args.profile_duration)
+                xp.trace_detached(f"localhost:{PORT}", PROFILE_DIR, duration_ms=args.profile_duration)
                 last_time = time.time()
             loss = self.step_fn(batch["pixel_values"], batch["input_ids"])
             self.global_step += 1
@@ -480,7 +480,7 @@ def get_column_names(dataset, args):
 def main(args):
     args = parse_args()
 
-    _ = xp.start_server(9012)
+    _ = xp.start_server(PORT)
 
     num_devices = xr.global_runtime_device_count()
     mesh = xs.get_1d_mesh("data")
