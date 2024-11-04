@@ -572,7 +572,7 @@ class RFInversionFluxPipeline(
         return latents, latent_image_ids
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
+    def get_timesteps(self, num_inference_steps, strength):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
@@ -610,7 +610,6 @@ class RFInversionFluxPipeline(
         width: Optional[int] = None,
         strength: float = 0.6,
         eta: float = 1.0,
-        gamma: float = 1.0,
         start_timestep: int = 0,
         stop_timestep: int = 6,
         num_inference_steps: int = 28,
@@ -642,6 +641,9 @@ class RFInversionFluxPipeline(
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            eta (`float`, *optional*, defaults to 1.0):
+                The controller guidance, balancing faithfulness & editability:
+                higher eta - better faithfullness, less editability. For more significant edits, lower the value of eta.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -782,7 +784,7 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -887,6 +889,33 @@ class RFInversionFluxPipeline(
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
+        r"""
+        Performs Algorithm 1: Controlled Forward ODE from https://arxiv.org/pdf/2410.10792
+        Args:
+            image (`PipelineImageInput`):
+                Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
+                ratio.
+            source_prompt (`str` or `List[str]`, *optional* defaults to an empty prompt as done in the original paper):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            source_guidance_scale (`float`, *optional*, defaults to 0.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). For this algorithm, it's better to keep it 0.
+            num_inversion_steps (`int`, *optional*, defaults to 28):
+                The number of discretization steps.
+            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The height in pixels of the generated image. This is set to 1024 by default for the best results.
+            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                The width in pixels of the generated image. This is set to 1024 by default for the best results.
+            gamma (`float`, *optional*, defaults to 0.5):
+                The controller guidance for the forward ODE, balancing faithfulness & editability:
+                higher eta - better faithfullness, less editability. For more significant edits, lower the value of eta.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
+        """
         dtype = dtype or self.text_encoder.dtype
         batch_size = 1
         self._joint_attention_kwargs = joint_attention_kwargs
@@ -925,7 +954,7 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, strength, device)
+        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, strength)
 
         # 3. prepare text embeddings
         (
