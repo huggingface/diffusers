@@ -51,9 +51,9 @@ Please download the dataset and unzip it in the directory `fill50k` in the `exam
 
 ## Training
 
-First download the SD3 model from [Hugging Face Hub](https://huggingface.co/stabilityai/stable-diffusion-3-medium) or the SD3.5 model from [Hugging Face Hub](https://huggingface.co/stabilityai/stable-diffusion-3.5-large). We will use it as a base model for the ControlNet training.
+First download the SD3 model from [Hugging Face Hub](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) or the SD3.5 model from [Hugging Face Hub](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium). We will use it as a base model for the ControlNet training.
 > [!NOTE]
-> As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) or [Stable Diffusion 3.5 Large Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3.5-large), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
+> As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) or [Stable Diffusion 3.5 Large Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
 huggingface-cli login
@@ -73,7 +73,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 Then run the following commands to train a ControlNet model.
 
 ```bash
-export MODEL_DIR="stabilityai/stable-diffusion-3-medium"
+export MODEL_DIR="stabilityai/stable-diffusion-3-medium-diffusers"
 export OUTPUT_DIR="sd3-controlnet-out"
 
 accelerate launch train_controlnet_sd3.py \
@@ -90,7 +90,7 @@ accelerate launch train_controlnet_sd3.py \
     --gradient_accumulation_steps=4
 ```
 
-To train a ControlNet model for Stable Diffusion 3.5, replace the `MODEL_DIR` with `stabilityai/stable-diffusion-3.5-large`.
+To train a ControlNet model for Stable Diffusion 3.5, replace the `MODEL_DIR` with `stabilityai/stable-diffusion-3.5-medium`.
 
 To better track our training experiments, we're using flags `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
 
@@ -105,7 +105,7 @@ from diffusers import StableDiffusion3ControlNetPipeline, SD3ControlNetModel
 from diffusers.utils import load_image
 import torch
 
-base_model_path = "stabilityai/stable-diffusion-3-medium"
+base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
 controlnet_path = "DavyMorgan/sd3-controlnet-out"
 
 controlnet = SD3ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
@@ -126,7 +126,7 @@ image = pipe(
 image.save("./output.png")
 ```
 
-Similarly, for SD3.5, replace the `base_model_path` with `stabilityai/stable-diffusion-3.5-large` and controlnet_path `DavyMorgan/sd35-controlnet-out'.
+Similarly, for SD3.5, replace the `base_model_path` with `stabilityai/stable-diffusion-3.5-medium` and controlnet_path `DavyMorgan/sd35-controlnet-out'.
 
 ## Notes
 
@@ -155,4 +155,21 @@ Make sure to use the right GPU when configuring the [accelerator](https://huggin
 |-------------------|:-------------------------:|
 || pale golden rod circle with old lace background |
  ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![pale golden rod circle with old lace background](https://huggingface.co/datasets/DavyMorgan/sd3-controlnet-results/resolve/main/step-6500.png) |
+
+### SD3.5
+
+#### After 500 steps with batch size 8
+
+| |                                                                                                                                                     |
+|-------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------:|
+||                                                   pale golden rod circle with old lace background                                                   |
+ ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![pale golden rod circle with old lace background](https://huggingface.co/datasets/DavyMorgan/sd3-controlnet-results/resolve/main/step-500-3.5.png) |
+
+
+#### After 3000 steps with batch size 8:
+
+| |                                                                                                                                                      |
+|-------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------:|
+||                                                   pale golden rod circle with old lace background                                                    |
+ ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![pale golden rod circle with old lace background](https://huggingface.co/datasets/DavyMorgan/sd3-controlnet-results/resolve/main/step-3000-3.5.png) |
 
