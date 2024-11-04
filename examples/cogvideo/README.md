@@ -10,6 +10,11 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 
 At the moment, LoRA finetuning has only been tested for [CogVideoX-2b](https://huggingface.co/THUDM/CogVideoX-2b).
 
+> [!NOTE]
+> The scripts for CogVideoX come with limited support and may not be fully compatible with different training techniques. They are not feature-rich either and simply serve as minimal examples of finetuning to take inspiration from and improve.
+>
+> A repository containing memory-optimized finetuning scripts with support for multiple resolutions, dataset preparation, captioning, etc. is available [here](https://github.com/a-r-r-o-w/cogvideox-factory), which will be maintained jointly by the CogVideoX and Diffusers team.
+
 ## Data Preparation
 
 The training scripts accepts data in two formats.
@@ -132,6 +137,8 @@ Assuming you are training on 50 videos of a similar concept, we have found 1500-
 - 1500 steps on 50 videos would correspond to `30` training epochs
 - 4000 steps on 100 videos would correspond to `40` training epochs
 
+The following bash script launches training for text-to-video lora.
+
 ```bash
 #!/bin/bash
 
@@ -172,6 +179,8 @@ accelerate launch --gpu_ids $GPU_IDS examples/cogvideo/train_cogvideox_lora.py \
   --report_to wandb
 ```
 
+For launching image-to-video finetuning instead, run the `train_cogvideox_image_to_video_lora.py` file instead. Additionally, you will have to pass `--validation_images` as paths to initial images corresponding to `--validation_prompts` for I2V validation to work.
+
 To better track our training experiments, we're using the following flags in the command above:
 * `--report_to wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
 * `validation_prompt` and `validation_epochs` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected.
@@ -180,6 +189,7 @@ Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimen
 
 > [!TIP]
 > You can pass `--use_8bit_adam` to reduce the memory requirements of training.
+> You can pass `--video_reshape_mode` video cropping functionality, supporting options: ['center', 'random', 'none']. See [this](https://gist.github.com/glide-the/7658dbfd5f555be0a1a687a4139dba40) notebook for examples.
 
 > [!IMPORTANT]
 > The following settings have been tested at the time of adding CogVideoX LoRA training support:
@@ -195,8 +205,6 @@ Note that setting the `<ID_TOKEN>` is not necessary. From some limited experimen
 > - The recommended learning rate by the CogVideoX authors and from our experimentation with Adam/AdamW is between `1e-3` and `1e-4` for a dataset of 25+ videos.
 >
 > Note that our testing is not exhaustive due to limited time for exploration. Our recommendation would be to play around with the different knobs and dials to find the best settings for your data.
-
-<!-- TODO: Test finetuning with CogVideoX-5b and CogVideoX-5b-I2V and update scripts accordingly -->
 
 ## Inference
 
@@ -226,3 +234,5 @@ prompt = (
 frames = pipe(prompt, guidance_scale=6, use_dynamic_cfg=True).frames[0]
 export_to_video(frames, "output.mp4", fps=8)
 ```
+
+If you've trained a LoRA for `CogVideoXImageToVideoPipeline` instead, everything in the above example remains the same except you must also pass an image as initial condition for generation.

@@ -22,10 +22,7 @@ import torch.nn.functional as F
 
 from ..utils import is_torch_version
 from .activations import get_activation
-from .embeddings import (
-    CombinedTimestepLabelEmbeddings,
-    PixArtAlphaCombinedTimestepSizeEmbeddings,
-)
+from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):
@@ -95,6 +92,40 @@ class FP32LayerNorm(nn.LayerNorm):
             self.bias.float() if self.bias is not None else None,
             self.eps,
         ).to(origin_dtype)
+
+
+class SD35AdaLayerNormZeroX(nn.Module):
+    r"""
+    Norm layer adaptive layer norm zero (AdaLN-Zero).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
+    """
+
+    def __init__(self, embedding_dim: int, norm_type: str = "layer_norm", bias: bool = True) -> None:
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 9 * embedding_dim, bias=bias)
+        if norm_type == "layer_norm":
+            self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        else:
+            raise ValueError(f"Unsupported `norm_type` ({norm_type}) provided. Supported ones are: 'layer_norm'.")
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        emb: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, ...]:
+        emb = self.linear(self.silu(emb))
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, shift_msa2, scale_msa2, gate_msa2 = emb.chunk(
+            9, dim=1
+        )
+        norm_hidden_states = self.norm(hidden_states)
+        hidden_states = norm_hidden_states * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        norm_hidden_states2 = norm_hidden_states * (1 + scale_msa2[:, None]) + shift_msa2[:, None]
+        return hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2
 
 
 class AdaLayerNormZero(nn.Module):
@@ -232,6 +263,7 @@ class AdaLayerNormSingle(nn.Module):
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
+        added_cond_kwargs = added_cond_kwargs or {"resolution": None, "aspect_ratio": None}
         embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
         return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
@@ -353,6 +385,51 @@ class LuminaLayerNormContinuous(nn.Module):
             x = self.linear_2(x)
 
         return x
+
+
+class CogView3PlusAdaLayerNormZeroTextImage(nn.Module):
+    r"""
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
+    """
+
+    def __init__(self, embedding_dim: int, dim: int):
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 12 * dim, bias=True)
+        self.norm_x = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
+        self.norm_c = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-5)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor,
+        emb: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb = self.linear(self.silu(emb))
+        (
+            shift_msa,
+            scale_msa,
+            gate_msa,
+            shift_mlp,
+            scale_mlp,
+            gate_mlp,
+            c_shift_msa,
+            c_scale_msa,
+            c_gate_msa,
+            c_shift_mlp,
+            c_scale_mlp,
+            c_gate_mlp,
+        ) = emb.chunk(12, dim=1)
+        normed_x = self.norm_x(x)
+        normed_context = self.norm_c(context)
+        x = normed_x * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        context = normed_context * (1 + c_scale_msa[:, None]) + c_shift_msa[:, None]
+        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp, context, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp
 
 
 class CogVideoXLayerNormZero(nn.Module):
