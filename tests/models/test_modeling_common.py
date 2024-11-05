@@ -54,7 +54,6 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     get_python_version,
     is_torch_compile,
-    require_peft_backend,
     require_torch_2,
     require_torch_accelerator_with_training,
     require_torch_gpu,
@@ -918,9 +917,9 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @require_peft_backend
     @torch.no_grad()
     @parameterized.expand([True, False])
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
     def test_save_load_lora_adapter(self, use_dora=False):
         from peft import LoraConfig
 
@@ -962,7 +961,7 @@ class ModelTesterMixin:
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
-    @require_peft_backend
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
     def test_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig
 
