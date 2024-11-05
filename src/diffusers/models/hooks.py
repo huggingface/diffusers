@@ -25,8 +25,6 @@ class ModelHook:
     with PyTorch existing hooks is that they get passed along the kwargs.
     """
 
-    _stateful_hook = False
-
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
@@ -117,8 +115,6 @@ class SequentialHook(ModelHook):
 
 
 class PyramidAttentionBroadcastHook(ModelHook):
-    _stateful_hook = True
-
     def __init__(
         self,
         skip_range: int,
