@@ -922,8 +922,9 @@ class ModelTesterMixin:
             )
 
     @require_peft_backend
+    @torch.no_grad()
     @parameterized.expand([True, False])
-    def test_load_save_lora_adapter(self, use_dora=False):
+    def test_save_load_lora_adapter(self, use_dora=False):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
 

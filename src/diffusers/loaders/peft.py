@@ -195,11 +195,12 @@ class PeftAdapterMixin:
         )
 
         keys = list(state_dict.keys())
-        transformer_keys = [k for k in keys if k.startswith(prefix)]
-        if len(transformer_keys) > 0:
-            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in transformer_keys}
+        model_keys = [k for k in keys if k.startswith(prefix)]
+        if len(model_keys) > 0:
+            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
 
         if len(state_dict.keys()) > 0:
+            print("Within actual.")
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
@@ -221,12 +222,14 @@ class PeftAdapterMixin:
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
                 else:
-                    lora_config_kwargs.pop("use_dora")
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
