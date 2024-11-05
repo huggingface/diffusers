@@ -413,19 +413,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        pipeline_has_bnb = any(
-            (_check_bnb_status(module)[1] or _check_bnb_status(module)[-1]) for _, module in self.components.items()
-        )
         if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            if not pipeline_has_bnb:
-                raise ValueError(
-                    "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-                )
+            raise ValueError(
+                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+            )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
+            )
+
+        pipeline_has_bnb = any(
+            (_check_bnb_status(module)[1] or _check_bnb_status(module)[-1]) for _, module in self.components.items()
+        )
+        # PR: https://github.com/huggingface/accelerate/pull/3223/
+        if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
+            raise ValueError(
+                "You are trying to call `to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` does not support it. Please upgrade the installation."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
@@ -455,6 +460,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
+            # Additionally, bnb models are supposed to be on CUDA already.
             if is_loaded_in_4bit_bnb and device is not None:
                 if is_transformers_available() and isinstance(module, PreTrainedModel):
                     if is_transformers_version(">", "4.44.0"):
