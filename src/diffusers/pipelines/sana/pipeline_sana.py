@@ -23,7 +23,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderKL, SanaTransformer2DModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import KarrasDiffusionSchedulers, FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -41,13 +41,6 @@ from ..pixart_alpha.pipeline_pixart_alpha import (
 )
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
 
-tokenizer = AutoTokenizer.from_pretrained(text_encoder_dict[name])
-tokenizer.padding_side = "right"
-text_encoder = (
-    AutoModelForCausalLM.from_pretrained(text_encoder_dict[name], torch_dtype=torch.bfloat16)
-    .get_decoder()
-    .to(device)
-)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -210,8 +203,8 @@ class SanaPipeline(DiffusionPipeline):
         tokenizer: AutoTokenizer,
         text_encoder: AutoModelForCausalLM,
         vae: AutoencoderKL,
-        transformer: PixArtTransformer2DModel,
-        scheduler: KarrasDiffusionSchedulers,
+        transformer: SanaTransformer2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
