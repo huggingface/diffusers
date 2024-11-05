@@ -68,7 +68,6 @@ from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 if is_peft_available():
-    from peft import LoraConfig
     from peft.tuners.tuners_utils import BaseTunerLayer
 
 
@@ -923,6 +922,8 @@ class ModelTesterMixin:
     @torch.no_grad()
     @parameterized.expand([True, False])
     def test_save_load_lora_adapter(self, use_dora=False):
+        from peft import LoraConfig
+
         from diffusers.loaders.peft import PeftAdapterMixin
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -963,6 +964,8 @@ class ModelTesterMixin:
 
     @require_peft_backend
     def test_wrong_adapter_name_raises_error(self):
+        from peft import LoraConfig
+
         from diffusers.loaders.peft import PeftAdapterMixin
 
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
