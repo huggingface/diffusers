@@ -219,9 +219,7 @@ class PeftAdapterMixin:
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
-                alpha_keys = [
-                    k for k in network_alphas.keys() if k.startswith(f"{prefix}.") and k.split(".")[0] == prefix
-                ]
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
