@@ -894,7 +894,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 x_intermediate = x[:, :, i : i + self.num_sample_frames_batch_size]
                 x_intermediate, conv_cache = self.encoder(x_intermediate, conv_cache=conv_cache)
                 enc.append(x_intermediate)
-            
+
             enc = torch.cat(enc, dim=2)
         else:
             enc, _ = self.encoder(x)
@@ -999,7 +999,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 x / blend_extent
             )
         return b
-    
+
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
@@ -1045,7 +1045,9 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
 
                     time = torch.cat(time, dim=2)
                 else:
-                    time, _ = self.encoder(x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width])
+                    time, _ = self.encoder(
+                        x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
+                    )
 
                 row.append(time)
             rows.append(row)
@@ -1060,7 +1062,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                     tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_width)
-                result_row.append(tile[:, :, :, : tile_latent_stride_height, : tile_latent_stride_width])
+                result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
             result_rows.append(torch.cat(result_row, dim=4))
 
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
