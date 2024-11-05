@@ -67,6 +67,7 @@ from diffusers.utils import (
     convert_state_dict_to_kohya,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -79,30 +80,27 @@ logger = get_logger(__name__)
 def save_model_card(
     repo_id: str,
     use_dora: bool,
-    images=None,
-    base_model=str,
+    images: list = None,
+    base_model: str = None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
     token_abstraction_dict=None,
-    instance_prompt=str,
-    validation_prompt=str,
+    instance_prompt=None,
+    validation_prompt=None,
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n"
     lora = "lora" if not use_dora else "dora"
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
-    if not images:
-        img_str += f"""
-        - text: '{instance_prompt}'
-        """
+
+    widget_dict = []
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            widget_dict.append(
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
+            )
+    else:
+        widget_dict.append({"text": instance_prompt})
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -137,24 +135,7 @@ pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_en
                 trigger_str += f"""
 to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
-
-    yaml = f"""---
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- diffusers-training
-- text-to-image
-- diffusers
-- {lora}
-- template:sd-lora
-{img_str}
-base_model: {base_model}
-instance_prompt: {instance_prompt}
-license: openrail++
----
-"""
-
-    model_card = f"""
+    model_description = f"""
 # SD1.5 LoRA DreamBooth - {repo_id}
 
 <Gallery />
@@ -202,8 +183,28 @@ Pivotal tuning was enabled: {train_text_encoder_ti}.
 Special VAE used for training: {vae_path}.
 
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="openrail++",
+        base_model=base_model,
+        prompt=instance_prompt,
+        model_description=model_description,
+        inference=True,
+        widget=widget_dict,
+    )
+
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        lora,
+        "template:sd-lora" "stable-diffusion",
+        "stable-diffusion-diffusers",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(
