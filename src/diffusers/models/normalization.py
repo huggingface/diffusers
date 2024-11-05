@@ -557,12 +557,11 @@ class GlobalResponseNorm(nn.Module):
 
 
 class LpNorm(nn.Module):
-    def __init__(self, p: int = 2, dim: int = -1, eps: float = 1e-12):
+    def __init__(self, p: int = 2, dim: int = -1):
         super().__init__()
 
         self.p = p
         self.dim = dim
-        self.eps = eps
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
+        return F.normalize(hidden_states, p=self.p, dim=self.dim)
