@@ -1792,7 +1792,6 @@ class PeftLoraLoaderMixinTests:
         # Since the missing key won't contain the adapter name ("default_0").
         # Also strip out the component prefix (such as "unet." from `missing_key`).
         component = list({k.split(".")[0] for k in state_dict})[0]
-        print(f"{cap_logger.out=}")
         self.assertTrue(missing_key.replace(f"{component}.", "") in cap_logger.out.replace("default_0.", ""))
 
     def test_unexpected_keys_warning(self):

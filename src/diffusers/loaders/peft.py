@@ -293,7 +293,7 @@ class PeftAdapterMixin:
         adapter_name: str = "default",
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
-        weight_name: str = None,
+        weight_name: Optional[str] = None,
     ):
         """TODO"""
         from peft.utils import get_peft_model_state_dict
@@ -310,8 +310,7 @@ class PeftAdapterMixin:
             self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
         )
         if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
-            return
+            raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
 
         if safe_serialization:
 
@@ -329,6 +328,7 @@ class PeftAdapterMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
+        # TODO: we could consider saving the `peft_config` as well.
         save_path = Path(save_directory, weight_name).as_posix()
         save_function(lora_layers_to_save, save_path)
         logger.info(f"Model weights saved in {save_path}")
