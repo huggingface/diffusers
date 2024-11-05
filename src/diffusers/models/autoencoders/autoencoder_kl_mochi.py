@@ -902,16 +902,11 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
-        if self.use_framewise_decoding:
-            conv_cache = None
-            enc = []
-
-            for i in range(0, num_frames, self.num_sample_frames_batch_size):
-                x_intermediate = x[:, :, i : i + self.num_sample_frames_batch_size]
-                x_intermediate, conv_cache = self.encoder(x_intermediate, conv_cache=conv_cache)
-                enc.append(x_intermediate)
-
-            enc = torch.cat(enc, dim=2)
+        if self.use_framewise_encoding:
+            raise NotImplementedError(
+                "Frame-wise encoding does not work with the Mochi VAE Encoder due to the presence of attention layers. "
+                "As intermediate frames are not independent from each other, they cannot be encoded frame-wise."
+            )
         else:
             enc, _ = self.encoder(x)
 
@@ -1044,22 +1039,11 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, self.tile_sample_stride_height):
             row = []
             for j in range(0, width, self.tile_sample_stride_width):
-                if self.use_framewise_decoding:
-                    time = []
-                    conv_cache = None
-
-                    for k in range(0, num_frames, self.num_sample_frames_batch_size):
-                        tile = x[
-                            :,
-                            :,
-                            k : k + self.num_sample_frames_batch_size,
-                            i : i + self.tile_sample_min_height,
-                            j : j + self.tile_sample_min_width,
-                        ]
-                        tile, conv_cache = self.encoder(tile, conv_cache=conv_cache)
-                        time.append(tile)
-
-                    time = torch.cat(time, dim=2)
+                if self.use_framewise_encoding:
+                    raise NotImplementedError(
+                        "Frame-wise encoding does not work with the Mochi VAE Encoder due to the presence of attention layers. "
+                        "As intermediate frames are not independent from each other, they cannot be encoded frame-wise."
+                    )
                 else:
                     time, _ = self.encoder(
                         x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
