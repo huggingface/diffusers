@@ -90,9 +90,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
     pipeline.unload_lora_weights()
+    assert not hasattr(pipeline.transformer, "peft_config")
+    
     pipeline.load_lora_weights(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"), low_cpu_mem_usage=True)
 
     images_lora_from_pretrained = pipeline(**pipeline_inputs, generator=torch.manual_seed(0))[0]
 
     assert not np.allclose(images_lora_from_pretrained, output_no_lora, atol=1e-4, rtol=1e-4)
-    assert np.allclose(output_lora, output_no_lora, atol=1e-4, rtol=1e-4)
+    assert np.allclose(output_lora, images_lora_from_pretrained, atol=1e-4, rtol=1e-4)

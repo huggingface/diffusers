@@ -199,8 +199,7 @@ class PeftAdapterMixin:
         if len(model_keys) > 0:
             state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
 
-        if len(state_dict.keys()) > 0:
-            print("Within actual.")
+        if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."

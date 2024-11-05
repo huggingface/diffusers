@@ -892,8 +892,6 @@ class ModelTesterMixin:
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
 
-        print(f"{set(modules_with_gc_enabled.keys())=}, {expected_set=}")
-
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
 
@@ -921,7 +919,9 @@ class ModelTesterMixin:
     @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
     def test_save_load_lora_adapter(self, use_dora=False):
+        import safetensors
         from peft import LoraConfig
+        from peft.utils import get_peft_model_state_dict
 
         from diffusers.loaders.peft import PeftAdapterMixin
 
@@ -951,8 +951,24 @@ class ModelTesterMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             model.save_lora_adapter(tmpdir)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            state_dict_loaded = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+
             model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
             model.load_lora_adapter(tmpdir, use_safetensors=True)
+            state_dict_retrieved = get_peft_model_state_dict(model, adapter_name="default_0")
+
+            print(f"{state_dict_loaded.keys()=}, {len(state_dict_loaded)}")
+            print(f"{state_dict_retrieved.keys()=} {len(state_dict_retrieved)}")
+
+            for k in state_dict_loaded:
+                loaded_v = state_dict_loaded[k]
+                retrieved_v = state_dict_retrieved[k]
+                self.assertTrue(torch.allclose(loaded_v, retrieved_v))
+
             self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
         torch.manual_seed(0)
