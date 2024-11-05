@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        
+
          >>> def download_image(url):
         ...     response = requests.get(url)
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
@@ -777,10 +777,8 @@ class RFInversionFluxPipeline(
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-
             y_0 = image_latents.clone()
             for i, t in enumerate(timesteps):
-
                 t_i = 1 - t / 1000
                 dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
 
