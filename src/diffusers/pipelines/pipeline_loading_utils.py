@@ -198,12 +198,21 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
             variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
         return variant_filename
 
-    components_with_variant = {filename.split("/")[0] for filename in variant_filenames}
+    components_with_variant = set()
+    for filename in variant_filenames:
+        if not len(filename.split("/")) == 2:
+            continue
+        component, component_filename = filename.split("/")
+        components_with_variant.add(component)
+
     for f in non_variant_filenames:
-        component, component_filename = f.split("/")
+        component = f.split("/")[0]
+        # If a component already has a variant skip including any other files
         if component in components_with_variant:
             continue
-        usable_filenames.add(f)
+        # If a variant version of a file doesn't exist add the file to the allowed patterns list
+        if convert_to_variant(f) not in variant_filenames:
+            usable_filenames.add(f)
 
     return usable_filenames, variant_filenames
 
