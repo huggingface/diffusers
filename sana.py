@@ -1,5 +1,5 @@
 from diffusers import DCAE, DCAE_HF
-# from diffusers import SanaPipeline
+from diffusers import SanaPipeline
 
 
 # vae = DCAE()
