@@ -488,7 +488,7 @@ class MochiEncoder3D(nn.Module):
 
         self.nonlinearity = get_activation(act_fn)
 
-        # self.fourier_features = FourierFeatures()
+        self.fourier_features = FourierFeatures()
         self.proj_in = nn.Linear(in_channels, block_out_channels[0])
         self.block_in = MochiMidBlock3D(
             in_channels=block_out_channels[0], num_layers=layers_per_block[0], add_attention=add_attention_block[0]
@@ -521,7 +521,7 @@ class MochiEncoder3D(nn.Module):
         new_conv_cache = {}
         conv_cache = conv_cache or {}
 
-        # hidden_states = self.fourier_features(hidden_states)
+        hidden_states = self.fourier_features(hidden_states)
 
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj_in(hidden_states)
@@ -887,7 +887,15 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
             return self.tiled_encode(x)
 
         if self.use_framewise_processing:
-            raise
+            conv_cache = None
+            enc = []
+
+            for i in range(0, num_frames, self.num_sample_frames_batch_size):
+                x_intermediate = x[:, :, i : i + self.num_sample_frames_batch_size]
+                x_intermediate, conv_cache = self.encoder(x_intermediate, conv_cache=conv_cache)
+                enc.append(x_intermediate)
+            
+            enc = torch.cat(enc, dim=2)
         else:
             enc, _ = self.encoder(x)
 
@@ -991,6 +999,72 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
                 x / blend_extent
             )
         return b
+    
+    def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Encode a batch of images using a tiled encoder.
+
+        Args:
+            x (`torch.Tensor`): Input batch of videos.
+
+        Returns:
+            `torch.Tensor`:
+                The latent representation of the encoded videos.
+        """
+        batch_size, num_channels, num_frames, height, width = x.shape
+        latent_height = height // self.spatial_compression_ratio
+        latent_width = width // self.spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+
+        blend_height = tile_latent_min_height - tile_latent_stride_height
+        blend_width = tile_latent_min_width - tile_latent_stride_width
+
+        # Split x into overlapping tiles and encode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        rows = []
+        for i in range(0, height, self.tile_sample_stride_height):
+            row = []
+            for j in range(0, width, self.tile_sample_stride_width):
+                if self.use_framewise_processing:
+                    time = []
+                    conv_cache = None
+
+                    for k in range(0, num_frames, self.num_sample_frames_batch_size):
+                        tile = x[
+                            :,
+                            :,
+                            k : k + self.num_sample_frames_batch_size,
+                            i : i + self.tile_sample_min_height,
+                            j : j + self.tile_sample_min_width,
+                        ]
+                        tile, conv_cache = self.encoder(tile, conv_cache=conv_cache)
+                        time.append(tile)
+
+                    time = torch.cat(time, dim=2)
+                else:
+                    time, _ = self.encoder(x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width])
+
+                row.append(time)
+            rows.append(row)
+
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :, : tile_latent_stride_height, : tile_latent_stride_width])
+            result_rows.append(torch.cat(result_row, dim=4))
+
+        enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
+        return enc
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""

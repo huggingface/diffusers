@@ -197,8 +197,8 @@ class Attention(nn.Module):
             self.norm_q = RMSNorm(dim_head, eps=eps)
             self.norm_k = RMSNorm(dim_head, eps=eps)
         elif qk_norm == "l2":
-            self.norm_q = LpNorm(p=2, dim=-1)
-            self.norm_k = LpNorm(p=2, dim=-1)
+            self.norm_q = LpNorm(p=2, dim=-1, eps=eps)
+            self.norm_k = LpNorm(p=2, dim=-1, eps=eps)
         else:
             raise ValueError(f"unknown qk_norm: {qk_norm}. Should be None,'layer_norm','fp32_layer_norm','rms_norm'")
 
