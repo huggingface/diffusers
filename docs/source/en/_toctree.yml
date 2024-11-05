@@ -270,6 +270,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/mochi_transformer3d
+        title: MochiTransformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -306,6 +308,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_mochi
+        title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/consistency_decoder_vae
@@ -400,6 +404,8 @@
       title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
+    - local: api/pipelines/mochi
+      title: Mochi
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
