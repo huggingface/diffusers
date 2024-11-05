@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import Attention
+from ..attention_processor import Attention, MochiVaeAttnProcessor2_0
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .autoencoder_kl_cogvideox import CogVideoXCausalConv3d
@@ -174,6 +174,8 @@ class MochiDownBlock3D(nn.Module):
                         heads=out_channels // 32,
                         dim_head=32,
                         qk_norm="l2",
+                        is_causal=True,
+                        processor=MochiVaeAttnProcessor2_0(),
                     )
                 )
             else:
@@ -280,6 +282,8 @@ class MochiMidBlock3D(nn.Module):
                         heads=in_channels // 32,
                         dim_head=32,
                         qk_norm="l2",
+                        is_causal=True,
+                        processor=MochiVaeAttnProcessor2_0(),
                     )
                 )
             else:
@@ -484,7 +488,7 @@ class MochiEncoder3D(nn.Module):
 
         self.nonlinearity = get_activation(act_fn)
 
-        self.fourier_features = FourierFeatures()
+        # self.fourier_features = FourierFeatures()
         self.proj_in = nn.Linear(in_channels, block_out_channels[0])
         self.block_in = MochiMidBlock3D(
             in_channels=block_out_channels[0], num_layers=layers_per_block[0], add_attention=add_attention_block[0]
@@ -517,7 +521,7 @@ class MochiEncoder3D(nn.Module):
         new_conv_cache = {}
         conv_cache = conv_cache or {}
 
-        hidden_states = self.fourier_features(hidden_states)
+        # hidden_states = self.fourier_features(hidden_states)
 
         hidden_states = hidden_states.permute(0, 2, 3, 4, 1)
         hidden_states = self.proj_in(hidden_states)
