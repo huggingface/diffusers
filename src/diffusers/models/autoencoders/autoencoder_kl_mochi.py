@@ -95,10 +95,12 @@ class MochiResnetBlock3D(nn.Module):
         self.nonlinearity = get_activation(act_fn)
 
         self.norm1 = MochiChunkedGroupNorm3D(num_channels=in_channels)
-        self.conv1 = CogVideoXCausalConv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1)
+        self.conv1 = CogVideoXCausalConv3d(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, pad_mode="replicate"
+        )
         self.norm2 = MochiChunkedGroupNorm3D(num_channels=out_channels)
         self.conv2 = CogVideoXCausalConv3d(
-            in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1
+            in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, pad_mode="replicate"
         )
 
     def forward(
@@ -790,7 +792,8 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
         # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
-        self.use_framewise_processing = True
+        self.use_framewise_encoding = False
+        self.use_framewise_decoding = False
 
         # This can be used to determine how the number of output frames in the final decoded video. To maintain consistency with
         # the original implementation, this defaults to `True`.
@@ -870,15 +873,28 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         """
         self.use_slicing = False
 
-    def _enable_original_implementation(self):
+    def _enable_framewise_encoding(self):
         r"""
-        Enables the original VAE decoding implementation. By default, Diffusers uses framewise decoding and past latent
-        padding.
+        Enables the framewise VAE encoding implementation with past latent padding. By default, Diffusers uses the
+        oneshot encoding implementation without current latent replicate padding.
+
+        Warning: Framewise encoding may not work as expected due to the causal attention layers. If you enable
+        framewise encoding, encode a video, and try to decode it, there will be noticeable jittering effect.
         """
-        self.use_framewise_processing = False
+        self.use_framewise_encoding = True
         for name, module in self.named_modules():
             if isinstance(module, CogVideoXCausalConv3d):
-                module.pad_mode = "replicate"
+                module.pad_mode = "constant"
+
+    def _enable_framewise_decoding(self):
+        r"""
+        Enables the framewise VAE decoding implementation with past latent padding. By default, Diffusers uses the
+        oneshot decoding implementation without current latent replicate padding.
+        """
+        self.use_framewise_decoding = True
+        for name, module in self.named_modules():
+            if isinstance(module, CogVideoXCausalConv3d):
+                module.pad_mode = "constant"
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape
@@ -886,7 +902,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
-        if self.use_framewise_processing:
+        if self.use_framewise_decoding:
             conv_cache = None
             enc = []
 
@@ -937,7 +953,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
 
-        if self.use_framewise_processing:
+        if self.use_framewise_decoding:
             conv_cache = None
             dec = []
 
@@ -1028,7 +1044,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, self.tile_sample_stride_height):
             row = []
             for j in range(0, width, self.tile_sample_stride_width):
-                if self.use_framewise_processing:
+                if self.use_framewise_decoding:
                     time = []
                     conv_cache = None
 
@@ -1101,7 +1117,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         for i in range(0, height, tile_latent_stride_height):
             row = []
             for j in range(0, width, tile_latent_stride_width):
-                if self.use_framewise_processing:
+                if self.use_framewise_decoding:
                     time = []
                     conv_cache = None
 
