@@ -559,31 +559,10 @@ class RFInversionFluxPipeline(
 
         return latents, latent_image_ids
 
-    def prepare_inverted_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-    ):
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        latents = self._pack_latents(self.inverted_latents, batch_size, num_channels_latents, height, width)
-        return latents, latent_image_ids
-
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength):
+    def get_timesteps(self, num_inference_steps, timestep_offset):
         # get the original timestep using init_timestep
-        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+        init_timestep = min(num_inference_steps * timestep_offset, num_inference_steps)
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
@@ -612,29 +591,29 @@ class RFInversionFluxPipeline(
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-        self,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Optional[Union[str, List[str]]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        strength: float = 0.6,
-        eta: float = 1.0,
-        start_timestep: int = 0,
-        stop_timestep: int = 6,
-        num_inference_steps: int = 28,
-        timesteps: List[int] = None,
-        guidance_scale: float = 3.5,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 512,
+            self,
+            prompt: Union[str, List[str]] = None,
+            prompt_2: Optional[Union[str, List[str]]] = None,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
+            eta: float = 1.0,
+            timestep_offset: float = 0.6,
+            start_timestep: float = 0.,
+            stop_timestep: float = 0.25,
+            num_inference_steps: int = 28,
+            timesteps: List[int] = None,
+            guidance_scale: float = 3.5,
+            num_images_per_prompt: Optional[int] = 1,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+            callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+            max_sequence_length: int = 512,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -782,7 +761,10 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength)
+        start_timestep = int(start_timestep * num_inference_steps)
+        stop_timestep = min(int(stop_timestep * num_inference_steps), num_inference_steps)
+
+        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, timestep_offset)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -873,19 +855,19 @@ class RFInversionFluxPipeline(
 
     @torch.no_grad()
     def invert(
-        self,
-        image: PipelineImageInput,
-        source_prompt: str = "",
-        source_guidance_scale=0.0,
-        num_inversion_steps: int = 28,
-        gamma: float = 0.5,
-        strength: float = 0.6,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        timesteps: List[int] = None,
-        dtype: Optional[torch.dtype] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            image: PipelineImageInput,
+            source_prompt: str = "",
+            source_guidance_scale=0.0,
+            num_inversion_steps: int = 28,
+            timestep_offset: float = 0.6,
+            gamma: float = 0.5,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
+            timesteps: List[int] = None,
+            dtype: Optional[torch.dtype] = None,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Performs Algorithm 1: Controlled Forward ODE from https://arxiv.org/pdf/2410.10792
@@ -952,7 +934,7 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, strength)
+        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, timestep_offset=timestep_offset)
 
         # 3. prepare text embeddings
         (
