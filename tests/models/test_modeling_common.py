@@ -71,8 +71,6 @@ if is_peft_available():
     from peft import LoraConfig
     from peft.tuners.tuners_utils import BaseTunerLayer
 
-    from diffusers.loaders import PeftAdapterMixin
-
 
 def caculate_expected_num_shards(index_map_path):
     with open(index_map_path) as f:
@@ -925,6 +923,8 @@ class ModelTesterMixin:
     @torch.no_grad()
     @parameterized.expand([True, False])
     def test_save_load_lora_adapter(self, use_dora=False):
+        from diffusers.loaders.peft import PeftAdapterMixin
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
 
@@ -963,6 +963,8 @@ class ModelTesterMixin:
 
     @require_peft_backend
     def test_wrong_adapter_name_raises_error(self):
+        from diffusers.loaders.peft import PeftAdapterMixin
+
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
 
