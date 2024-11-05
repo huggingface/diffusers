@@ -917,8 +917,8 @@ class ModelTesterMixin:
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
 
-    @torch.no_grad()
     @parameterized.expand([True, False])
+    @torch.no_grad()
     @unittest.skipIf(not is_peft_available(), "Only with PEFT")
     def test_save_load_lora_adapter(self, use_dora=False):
         from peft import LoraConfig
@@ -932,7 +932,7 @@ class ModelTesterMixin:
             return
 
         torch.manual_seed(0)
-        output_no_lora = model(**inputs_dict).sample
+        output_no_lora = model(**inputs_dict, return_dict=False)[0]
 
         denoiser_lora_config = LoraConfig(
             r=4,
@@ -945,7 +945,7 @@ class ModelTesterMixin:
         self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
         torch.manual_seed(0)
-        outputs_with_lora = model(**inputs_dict).sample
+        outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
 
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4))
 
@@ -956,7 +956,7 @@ class ModelTesterMixin:
             self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
         torch.manual_seed(0)
-        outputs_with_lora_2 = model(**inputs_dict).sample
+        outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
 
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
