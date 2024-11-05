@@ -193,11 +193,14 @@ class PeftAdapterMixin:
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        if network_alphas is not None and prefix is None:
+            raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
-        keys = list(state_dict.keys())
-        model_keys = [k for k in keys if k.startswith(prefix)]
-        if len(model_keys) > 0:
-            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
+        if prefix is not None:
+            keys = list(state_dict.keys())
+            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
+            if len(model_keys) > 0:
+                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
 
         if len(state_dict) > 0:
             if adapter_name in getattr(self, "peft_config", {}):
@@ -216,7 +219,9 @@ class PeftAdapterMixin:
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+                alpha_keys = [
+                    k for k in network_alphas.keys() if k.startswith(f"{prefix}.") and k.split(".")[0] == prefix
+                ]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)

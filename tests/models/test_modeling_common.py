@@ -958,15 +958,12 @@ class ModelTesterMixin:
             model.unload_lora()
             self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
 
-            model.load_lora_adapter(tmpdir, use_safetensors=True)
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
             state_dict_retrieved = get_peft_model_state_dict(model, adapter_name="default_0")
-
-            print(f"{state_dict_loaded.keys()=}, {len(state_dict_loaded)}")
-            print(f"{state_dict_retrieved.keys()=} {len(state_dict_retrieved)}")
 
             for k in state_dict_loaded:
                 loaded_v = state_dict_loaded[k]
-                retrieved_v = state_dict_retrieved[k]
+                retrieved_v = state_dict_retrieved[k].to(loaded_v.device)
                 self.assertTrue(torch.allclose(loaded_v, retrieved_v))
 
             self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
