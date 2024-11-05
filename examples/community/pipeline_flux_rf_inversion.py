@@ -591,29 +591,29 @@ class RFInversionFluxPipeline(
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            prompt: Union[str, List[str]] = None,
-            prompt_2: Optional[Union[str, List[str]]] = None,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            eta: float = 1.0,
-            timestep_offset: float = 0.6,
-            start_timestep: float = 0.,
-            stop_timestep: float = 0.25,
-            num_inference_steps: int = 28,
-            timesteps: List[int] = None,
-            guidance_scale: float = 3.5,
-            num_images_per_prompt: Optional[int] = 1,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            prompt_embeds: Optional[torch.FloatTensor] = None,
-            pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-            callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-            max_sequence_length: int = 512,
+        self,
+        prompt: Union[str, List[str]] = None,
+        prompt_2: Optional[Union[str, List[str]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        eta: float = 1.0,
+        timestep_offset: float = 0.6,
+        start_timestep: float = 0.0,
+        stop_timestep: float = 0.25,
+        num_inference_steps: int = 28,
+        timesteps: List[int] = None,
+        guidance_scale: float = 3.5,
+        num_images_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 512,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -853,19 +853,19 @@ class RFInversionFluxPipeline(
 
     @torch.no_grad()
     def invert(
-            self,
-            image: PipelineImageInput,
-            source_prompt: str = "",
-            source_guidance_scale=0.0,
-            num_inversion_steps: int = 28,
-            timestep_offset: float = 0.6,
-            gamma: float = 0.5,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            timesteps: List[int] = None,
-            dtype: Optional[torch.dtype] = None,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        self,
+        image: PipelineImageInput,
+        source_prompt: str = "",
+        source_guidance_scale=0.0,
+        num_inversion_steps: int = 28,
+        timestep_offset: float = 0.6,
+        gamma: float = 0.5,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        timesteps: List[int] = None,
+        dtype: Optional[torch.dtype] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         Performs Algorithm 1: Controlled Forward ODE from https://arxiv.org/pdf/2410.10792
@@ -932,7 +932,9 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, timestep_offset=timestep_offset)
+        timesteps, sigmas, num_inversion_steps = self.get_timesteps(
+            num_inversion_steps, timestep_offset=timestep_offset
+        )
 
         # 3. prepare text embeddings
         (
