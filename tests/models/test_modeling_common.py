@@ -960,6 +960,7 @@ class ModelTesterMixin:
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
 
+    @require_peft_backend
     def test_wrong_adapter_name_raises_error(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
