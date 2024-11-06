@@ -22,7 +22,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, SanaTransformer2DModel
+from ...models import AutoencoderKL, SanaTransformer2DModel, DCAE_HF
 from ...schedulers import KarrasDiffusionSchedulers, FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -202,7 +202,7 @@ class SanaPipeline(DiffusionPipeline):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: AutoModelForCausalLM,
-        vae: AutoencoderKL,
+        vae: DCAE_HF,
         transformer: SanaTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -286,16 +286,6 @@ class SanaPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
-                logger.warning(
-                    "The following part of your input was truncated because T5 can only handle sequences up to"
-                    f" {max_length} tokens: {removed_text}"
-                )
 
             prompt_attention_mask = text_inputs.attention_mask
             prompt_attention_mask = prompt_attention_mask.to(device)
