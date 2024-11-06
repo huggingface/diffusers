@@ -95,7 +95,7 @@ class TemporalDecoder(nn.Module):
         sample = self.conv_in(sample)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        if self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
