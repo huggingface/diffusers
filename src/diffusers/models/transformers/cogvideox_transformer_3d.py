@@ -24,7 +24,7 @@ from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_lay
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
-from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
+from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, CogVideoX1_1PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -249,12 +249,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
 
         # 1. Patch embedding
-        self.patch_embed = CogVideoXPatchEmbed(
+        # self.patch_embed = CogVideoXPatchEmbed(
+        self.patch_embed = CogVideoX1_1PatchEmbed(
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
             text_embed_dim=text_embed_dim,
-            bias=True,
+            # bias=True,
             sample_width=sample_width,
             sample_height=sample_height,
             sample_frames=sample_frames,
@@ -298,7 +299,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             norm_eps=norm_eps,
             chunk_dim=1,
         )
-        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
+        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * patch_size * out_channels) # For CogVideoX1.1-5B
 
         self.gradient_checkpointing = False
 
