@@ -198,21 +198,31 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
             variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
         return variant_filename
 
-    components_with_variant = set()
-    for filename in variant_filenames:
+    def find_component(filename):
         if not len(filename.split("/")) == 2:
-            continue
-        component, component_filename = filename.split("/")
-        components_with_variant.add(component)
+            return
+        component = filename.split("/")[0]
+        return component
 
-    for f in non_variant_filenames:
-        component = f.split("/")[0]
-        # If a component already has a variant skip including any other files
-        if component in components_with_variant:
+    def has_sharded_variant(component, variant, variant_filenames):
+        # If component exists check for sharded variant index filename
+        # If component doesn't exist check main dir for sharded variant index filename
+        component = component + "/" if component else ""
+        variant_index_re = re.compile(
+            rf"{component}({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+        )
+        return any(f for f in variant_filenames if variant_index_re.match(f) is not None)
+
+    for filename in non_variant_filenames:
+        if convert_to_variant(filename) in variant_filenames:
             continue
-        # If a variant version of a file doesn't exist add the file to the allowed patterns list
-        if convert_to_variant(f) not in variant_filenames:
-            usable_filenames.add(f)
+
+        component = find_component(filename)
+        # If a sharded variant exists skip adding to allowed patterns
+        if has_sharded_variant(component, variant, variant_filenames):
+            continue
+
+        usable_filenames.add(filename)
 
     return usable_filenames, variant_filenames
 
