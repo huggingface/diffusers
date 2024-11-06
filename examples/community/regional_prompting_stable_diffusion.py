@@ -134,9 +134,6 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         n_prompts = negative_prompt if isinstance(prompt, list) else [negative_prompt]
         self.batch = batch = num_images_per_prompt * len(prompts)
 
-        all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
-        all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
-
         if use_base:
             bases = prompts.copy()
             n_bases = n_prompts.copy()
@@ -156,6 +153,9 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
             all_bases_cn, _ = promptsmaker(bases, num_images_per_prompt)
             all_n_bases_cn, _ = promptsmaker(n_bases, num_images_per_prompt)
+
+        all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
+        all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
 
         equal = len(all_prompts_cn) == len(all_n_prompts_cn)
 
@@ -460,9 +460,9 @@ def promptsmaker(prompts, batch):
         add = ""
         if KCOMM in prompt:
             add, prompt = prompt.split(KCOMM)
-            add = add + " "
-        prompts = prompt.split(KBRK)
-        out_p.append([add + p if i != 0 else p for i, p in enumerate(prompts)])
+            add = add.strip() + " "
+        prompts = [p.strip() for p in prompt.split(KBRK)]
+        out_p.append([add + p for i, p in enumerate(prompts)])
     out = [None] * batch * len(out_p[0]) * len(out_p)
     for p, prs in enumerate(out_p):  # inputs prompts
         for r, pr in enumerate(prs):  # prompts for regions
