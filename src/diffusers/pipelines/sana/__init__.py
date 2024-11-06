@@ -33,11 +33,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_sana import (
-            SanaPipeline,
             ASPECT_RATIO_256_BIN,
             ASPECT_RATIO_512_BIN,
             ASPECT_RATIO_1024_BIN,
             ASPECT_RATIO_2048_BIN,
+            SanaPipeline,
         )
 else:
     import sys

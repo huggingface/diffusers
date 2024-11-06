@@ -22,8 +22,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import AutoencoderKL, SanaTransformer2DModel, DCAE_HF
-from ...schedulers import KarrasDiffusionSchedulers, FlowMatchEulerDiscreteScheduler
+from ...models import DCAE_HF, SanaTransformer2DModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -35,7 +35,6 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..pixart_alpha.pipeline_pixart_alpha import (
-    ASPECT_RATIO_256_BIN,
     ASPECT_RATIO_512_BIN,
     ASPECT_RATIO_1024_BIN,
 )
@@ -212,7 +211,7 @@ class SanaPipeline(DiffusionPipeline):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vae.config.encoder_width_list) - 1)
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->300
@@ -293,10 +292,10 @@ class SanaPipeline(DiffusionPipeline):
             prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
             prompt_embeds = prompt_embeds[0]
 
-        if self.text_encoder is not None:
-            dtype = self.text_encoder.dtype
-        elif self.transformer is not None:
+        if self.transformer is not None:
             dtype = self.transformer.dtype
+        elif self.text_encoder is not None:
+            dtype = self.text_encoder.dtype
         else:
             dtype = None
 
@@ -593,8 +592,6 @@ class SanaPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     @torch.no_grad()
@@ -711,14 +708,12 @@ class SanaPipeline(DiffusionPipeline):
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         if use_resolution_binning:
-            if self.transformer.config.sample_size == 256:
+            if self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_2048_BIN
-            elif self.transformer.config.sample_size == 128:
-                aspect_ratio_bin = ASPECT_RATIO_1024_BIN
-            elif self.transformer.config.sample_size == 64:
-                aspect_ratio_bin = ASPECT_RATIO_512_BIN
             elif self.transformer.config.sample_size == 32:
-                aspect_ratio_bin = ASPECT_RATIO_256_BIN
+                aspect_ratio_bin = ASPECT_RATIO_1024_BIN
+            elif self.transformer.config.sample_size == 16:
+                aspect_ratio_bin = ASPECT_RATIO_512_BIN
             else:
                 raise ValueError("Invalid sample size")
             orig_height, orig_width = height, width
@@ -804,7 +799,6 @@ class SanaPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
@@ -853,7 +847,9 @@ class SanaPipeline(DiffusionPipeline):
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            # image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            # Temporary for DCAE_HF(the not ready version)
+            image = self.vae.decode(latents / self.vae.config.scaling_factor)
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:

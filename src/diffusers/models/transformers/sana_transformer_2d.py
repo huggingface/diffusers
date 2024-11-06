@@ -18,19 +18,71 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
-from ..attention import BasicTransformerBlock, _chunked_feed_forward
+from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import _chunked_feed_forward
 from ..attention_processor import (
-    Attention, AttentionProcessor, AttnProcessor, FusedAttnProcessor2_0, SanaLinearAttnProcessor2_0
+    Attention,
+    AttentionProcessor,
+    AttnProcessor,
+    FusedAttnProcessor2_0,
+    SanaLinearAttnProcessor2_0,
 )
 from ..autoencoders.dc_ae import GLUMBConv
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
-from ...utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Modified from diffusers.models.autoencoders.ecae.GLUMBConv
+@maybe_allow_in_graph
+class SanaGLUMBConv(GLUMBConv):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size=3,
+        stride=1,
+        mid_channels=None,
+        expand_ratio=2.5,
+        use_bias=False,
+        norm=(None, None, None),
+        act_func=("silu", "silu", None),
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            mid_channels=mid_channels,
+            expand_ratio=expand_ratio,
+            use_bias=use_bias,
+            norm=norm,
+            act_func=act_func,
+        )
+
+    def forward(self, x: torch.Tensor, HW=None) -> torch.Tensor:
+        B, N, C = x.shape
+        if HW is None:
+            H = W = int(N**0.5)
+        else:
+            H, W = HW
+
+        x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
+        x = self.inverted_conv(x)
+        x = self.depth_conv(x)
+
+        x, gate = torch.chunk(x, 2, dim=1)
+        gate = self.glu_act(gate)
+        x = x * gate
+
+        x = self.point_conv(x)
+        x = x.reshape(B, C, N).permute(0, 2, 1)
+
+        return x
 
 
 # Modified from diffusers.models.attention.BasicTransformerBlock
@@ -65,9 +117,10 @@ class SanaLinearTransformerBlock(nn.Module):
         norm_eps: float = 1e-5,
         attention_out_bias: bool = True,
         use_pe: bool = False,
+        num_positional_embeddings: Optional[int] = None,
         expand_ratio: float = 2.5,
         ff_bias: tuple =(True, True, False),
-        norm=(None, None, None),
+        ff_norm: tuple =(None, None, None),
     ):
         super().__init__()
         self.dim = dim
@@ -118,12 +171,12 @@ class SanaLinearTransformerBlock(nn.Module):
                 processor=AttnProcessor(),
             )
 
-        self.ff = GLUMBConv(
+        self.ff = SanaGLUMBConv(
             in_channels=dim,
             out_channels=dim,
             expand_ratio=expand_ratio,
             use_bias=ff_bias,
-            norm=norm,
+            norm=ff_norm,
             act_func=activation_fn,
         )
 
@@ -166,6 +219,8 @@ class SanaLinearTransformerBlock(nn.Module):
 
         if self.pos_embed is not None:
             norm_hidden_states = self.pos_embed(norm_hidden_states)
+
+        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         attn_output = self.attn1(
             norm_hidden_states,
@@ -253,8 +308,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         attention_type (str, optional, defaults to "default"): Kind of attention mechanism to be used.
         caption_channels (int, optional, defaults to None):
             Number of channels to use for projecting the caption embeddings.
-        use_linear_projection (bool, optional, defaults to False):
-            Deprecated argument. Will be removed in a future version.
         num_vector_embeds (bool, optional, defaults to False):
             Deprecated argument. Will be removed in a future version.
     """
@@ -265,18 +318,18 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_attention_heads: int = 16,
-        attention_head_dim: int = 72,
-        in_channels: int = 4,
-        out_channels: Optional[int] = 8,
+        num_attention_heads: int = 32,
+        attention_head_dim: int = 36,
+        in_channels: int = 32,
+        out_channels: Optional[int] = 32,
         num_layers: int = 28,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = 1152,
         attention_bias: bool = True,
-        sample_size: int = 128,
-        patch_size: int = 2,
-        activation_fn: str = "gelu-approximate",
+        sample_size: int = 32,
+        patch_size: int = 1,
+        activation_fn: tuple = ("silu", "silu", None),
         num_embeds_ada_norm: Optional[int] = 1000,
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_single",
@@ -287,6 +340,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         caption_channels: Optional[int] = None,
         attention_type: Optional[str] = "default",
         use_pe: Optional[bool] = False,
+        expand_ratio=2.5,
+        ff_bias: tuple =(True, True, False),
+        ff_norm: tuple =(None, None, None),
     ):
         super().__init__()
 
@@ -348,7 +404,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
-                    attention_type=self.config.attention_type,
+                    expand_ratio=self.config.expand_ratio,
+                    ff_bias=self.config.ff_bias,
+                    ff_norm=self.config.ff_norm,
                 )
                 for _ in range(self.config.num_layers)
             ]
