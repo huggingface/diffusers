@@ -444,9 +444,9 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
         # TODO: Here, compatibility is needed for both the CogVideoX-5B and CogVideoX1.1-5B models.
-        # CogVideoX1.0 is 720 X 480 and CogVideoX1.1-5B T2V is 768 * 1360, CogVideoX1.1-5B I2V use with image
-        base_size_width = 768 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_height = 1360 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        # CogVideoX1.0 is 720 X 480 and CogVideoX1.1-5B T2V is 1360 * 768, CogVideoX1.1-5B I2V use with image
+        base_size_width = 1360 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        base_size_height = 768 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height

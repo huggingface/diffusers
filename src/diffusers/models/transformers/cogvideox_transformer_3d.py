@@ -249,13 +249,15 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
 
         # 1. Patch embedding
+        #TODO： different git push --set-upstream origin cogvideox1.1-5b
+
         # self.patch_embed = CogVideoXPatchEmbed(
         self.patch_embed = CogVideoX1_1PatchEmbed(
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
             text_embed_dim=text_embed_dim,
-            # bias=True,
+            # bias=True, # Only using in CogVideoX-5B
             sample_width=sample_width,
             sample_height=sample_height,
             sample_frames=sample_frames,
