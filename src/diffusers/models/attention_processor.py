@@ -5195,8 +5195,10 @@ class SanaLinearAttnProcessor2_0:
     Processor for implementing scaled dot-product linear attention.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, pad_val=1.0, eps=1e-15):
+        self.pad_val = pad_val
+        self.eps = eps
+        self.kernel_func = nn.ReLU(inplace=False)
 
     def __call__(
         self,
@@ -5248,24 +5250,55 @@ class SanaLinearAttnProcessor2_0:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        if encoder_hidden_states is None:
+            dtype = query.dtype
 
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            query = query.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
 
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
+            key = key.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
+            value = value.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
 
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+            query = self.kernel_func(query)  # B, h, h_d, N
+            key = self.kernel_func(key)
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
+            if attn.norm_q is not None:
+                query = attn.norm_q(query)
+            if attn.norm_k is not None:
+                key = attn.norm_k(key)
+
+            # need torch.float
+            query, key, value = query.float(), key.float(), value.float()
+
+            value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+            vk = torch.matmul(value, key)
+            hidden_states = torch.matmul(vk, query).to(dtype)
+
+            if hidden_states.dtype in [torch.float16, torch.bfloat16]:
+                hidden_states = hidden_states.float()
+            hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
+
+            hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
+            hidden_states = hidden_states.to(dtype)
+
+        else:
+            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            if attn.norm_q is not None:
+                query = attn.norm_q(query)
+            if attn.norm_k is not None:
+                key = attn.norm_k(key)
+
+            # the output of sdp = (batch, num_heads, seq_len, head_dim)
+            # TODO: add support for attn.scale when we move to Torch 2.1
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
+
+            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -5279,6 +5312,9 @@ class SanaLinearAttnProcessor2_0:
             hidden_states = hidden_states + residual
 
         hidden_states = hidden_states / attn.rescale_output_factor
+
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
 
         return hidden_states
 

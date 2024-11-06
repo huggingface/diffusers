@@ -18,15 +18,196 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
-from ..attention import BasicTransformerBlock
-from ..attention_processor import Attention, AttentionProcessor, AttnProcessor, FusedAttnProcessor2_0
-from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
+from ..attention import BasicTransformerBlock, _chunked_feed_forward
+from ..attention_processor import (
+    Attention, AttentionProcessor, AttnProcessor, FusedAttnProcessor2_0, SanaLinearAttnProcessor2_0
+)
+from ..autoencoders.dc_ae import GLUMBConv
+from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+from ...utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Modified from diffusers.models.attention.BasicTransformerBlock
+@maybe_allow_in_graph
+class SanaLinearTransformerBlock(nn.Module):
+    r"""
+    A Transformer block following the Linear Transformer architecture, introduced in Sana
+
+    Reference: https://arxiv.org/abs/2410.10629
+
+    Parameters:
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+        context_pre_only (`bool`): Boolean to determine if we should add some blocks associated with the
+            processing of `context` conditions.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        dropout=0.0,
+        cross_attention_dim: Optional[int] = None,
+        activation_fn: tuple = ("silu", "silu", None),
+        num_embeds_ada_norm: Optional[int] = None,
+        attention_bias: bool = False,
+        upcast_attention: bool = False,
+        norm_type: str = "ada_norm_single",
+        norm_elementwise_affine: bool = False,
+        norm_eps: float = 1e-5,
+        attention_out_bias: bool = True,
+        use_pe: bool = False,
+        expand_ratio: float = 2.5,
+        ff_bias: tuple =(True, True, False),
+        norm=(None, None, None),
+    ):
+        super().__init__()
+        self.dim = dim
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        self.dropout = dropout
+        self.cross_attention_dim = cross_attention_dim
+        self.activation_fn = activation_fn
+        self.attention_bias = attention_bias
+        self.norm_elementwise_affine = norm_elementwise_affine
+
+        self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
+        self.norm_type = norm_type
+        self.num_embeds_ada_norm = num_embeds_ada_norm
+
+        self.use_pe = use_pe
+        if use_pe:
+            self.pos_embed = SinusoidalPositionalEmbedding(dim, max_seq_length=num_positional_embeddings)
+        else:
+            self.pos_embed = None
+
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=norm_eps)
+
+        self.attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            cross_attention_dim=None,
+            upcast_attention=upcast_attention,
+            processor=SanaLinearAttnProcessor2_0(),
+        )
+
+        # 2. Cross-Attn
+        if cross_attention_dim is not None:
+            self.norm2 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
+
+            self.attn2 = Attention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+                upcast_attention=upcast_attention,
+                out_bias=attention_out_bias,
+                processor=AttnProcessor(),
+            )
+
+        self.ff = GLUMBConv(
+            in_channels=dim,
+            out_channels=dim,
+            expand_ratio=expand_ratio,
+            use_bias=ff_bias,
+            norm=norm,
+            act_func=activation_fn,
+        )
+
+        # 5. Scale-shift for Sana.
+        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim ** 0.5)
+
+        # let chunk size default to None
+        self._chunk_size = None
+        self._chunk_dim = 0
+
+    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+        # Sets chunk feed-forward
+        self._chunk_size = chunk_size
+        self._chunk_dim = dim
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+
+        # Notice that normalization is always applied before the real computation in the following blocks.
+        # 0. Self-Attention
+        batch_size = hidden_states.shape[0]
+
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
+            self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
+        ).chunk(6, dim=1)
+        norm_hidden_states = self.norm1(hidden_states)
+        norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+
+        if self.pos_embed is not None:
+            norm_hidden_states = self.pos_embed(norm_hidden_states)
+
+        attn_output = self.attn1(
+            norm_hidden_states,
+            encoder_hidden_states=None,
+            attention_mask=attention_mask,
+            **cross_attention_kwargs,
+        )
+        attn_output = gate_msa * attn_output
+
+        hidden_states = attn_output + hidden_states
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
+
+        # 3. Cross-Attention
+        if self.attn2 is not None:
+            norm_hidden_states = hidden_states
+
+            if self.pos_embed is not None:
+                norm_hidden_states = self.pos_embed(norm_hidden_states)
+
+            attn_output = self.attn2(
+                norm_hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=encoder_attention_mask,
+                **cross_attention_kwargs,
+            )
+            hidden_states = attn_output + hidden_states
+
+        # 4. Feed-forward
+        if self._chunk_size is not None:
+            # "feed_forward_chunk_size" can be used to save memory
+            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
+        else:
+            ff_output = self.ff(norm_hidden_states)
+
+        ff_output = gate_mlp * ff_output
+
+        hidden_states = ff_output + hidden_states
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
+
+        return hidden_states
 
 
 class SanaTransformer2DModel(ModelMixin, ConfigMixin):
@@ -105,6 +286,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         use_additional_conditions: Optional[bool] = None,
         caption_channels: Optional[int] = None,
         attention_type: Optional[str] = "default",
+        use_pe: Optional[bool] = False,
     ):
         super().__init__()
 
@@ -140,6 +322,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             if self.config.interpolation_scale is not None
             else max(self.config.sample_size // 64, 1)
         )
+        self.use_pe = use_pe
         self.pos_embed = PatchEmbed(
             height=self.config.sample_size,
             width=self.config.sample_size,
@@ -147,11 +330,12 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             in_channels=self.config.in_channels,
             embed_dim=self.inner_dim,
             interpolation_scale=interpolation_scale,
+            pos_embed_type="sincos" if use_pe else None
         )
 
         self.transformer_blocks = nn.ModuleList(
             [
-                BasicTransformerBlock(
+                SanaLinearTransformerBlock(
                     self.inner_dim,
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
@@ -247,14 +431,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
-
-    def set_default_attn_processor(self):
-        """
-        Disables custom attention processors and sets the default attention implementation.
-
-        Safe to just use `AttnProcessor()` as PixArt doesn't have any exotic attention processors in default model.
-        """
-        self.set_attn_processor(AttnProcessor())
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
@@ -407,7 +583,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     encoder_attention_mask,
                     timestep,
                     cross_attention_kwargs,
-                    None,
                     **ckpt_kwargs,
                 )
             else:
