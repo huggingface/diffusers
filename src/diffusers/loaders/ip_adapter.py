@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
+
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -43,6 +44,7 @@ if is_transformers_available():
         AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
+        IPAdapterXformerAttnProcessor
     )
 
 logger = logging.get_logger(__name__)
@@ -284,7 +286,7 @@ class IPAdapterMixin:
         scale_configs = _maybe_expand_lora_scales(unet, scale, default_scale=0.0)
 
         for attn_name, attn_processor in unet.attn_processors.items():
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXformerAttnProcessor)):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
                         f"Cannot assign {len(scale_configs)} scale_configs to "
@@ -342,7 +344,7 @@ class IPAdapterMixin:
             )
             attn_procs[name] = (
                 attn_processor_class
-                if isinstance(value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+                if isinstance(value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXformerAttnProcessor))
                 else value.__class__()
             )
         self.unet.set_attn_processor(attn_procs)
