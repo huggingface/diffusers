@@ -1191,12 +1191,13 @@ def main(args):
             "init_lora_weights": "gaussian",
             "target_modules": target_modules,
         }
-        if use_dora and is_peft_version("<", "0.9.0"):
-            raise ValueError(
-                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-            )
-        else:
-            base_config["use_dora"] = True
+        if use_dora:
+            if is_peft_version("<", "0.9.0"):
+                raise ValueError(
+                    "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                )
+            else:
+                base_config["use_dora"] = True
 
         return LoraConfig(**base_config)
 
