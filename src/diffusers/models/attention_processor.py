@@ -371,7 +371,7 @@ class Attention(nn.Module):
             else:                
                 processor = self.processor
                 if isinstance(self.processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                    processor = IPAdapterXformerAttnProcessor(hidden_size=self.processor.hidden_size, 
+                    processor = IPAdapterXFormersAttnProcessor(hidden_size=self.processor.hidden_size, 
                                                               cross_attention_dim=self.processor.cross_attention_dim, 
                                                               scale=self.processor.scale,
                                                               attention_op=attention_op)
@@ -4554,7 +4554,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         return hidden_states
 
-class IPAdapterXformerAttnProcessor(torch.nn.Module):
+class IPAdapterXFormersAttnProcessor(torch.nn.Module):
     r"""
     Attention processor for IP-Adapter using xFormers.
 
@@ -4567,14 +4567,11 @@ class IPAdapterXformerAttnProcessor(torch.nn.Module):
             The context length of the image features.
         scale (`float` or `List[float]`, defaults to 1.0):
             the weight scale of image prompt.
+        attention_op (`Callable`, *optional*, defaults to `None`):
+        The base
+        [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to use
+        as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best operator.
     """
-    def _memory_efficient_attention_xformers(self, query, key, value, attention_mask):
-        # TODO attention_mask
-        query = query.contiguous()
-        key = key.contiguous()
-        value = value.contiguous()         
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask, op=self.attention_op)        
-        return hidden_states
       
     def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0, attention_op: Optional[Callable] = None):
         super().__init__()
@@ -4605,6 +4602,14 @@ class IPAdapterXformerAttnProcessor(torch.nn.Module):
             [nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
 
+    def _memory_efficient_attention_xformers(self, query, key, value, attention_mask):
+        # TODO attention_mask
+        query = query.contiguous()
+        key = key.contiguous()
+        value = value.contiguous()         
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask, op=self.attention_op)        
+        return hidden_states
+    
     def __call__(
         self,
         attn: Attention,

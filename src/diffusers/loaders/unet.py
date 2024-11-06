@@ -767,7 +767,7 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
-            IPAdapterXformerAttnProcessor
+            IPAdapterXFormersAttnProcessor
         )
 
         if low_cpu_mem_usage:
@@ -814,7 +814,7 @@ class UNet2DConditionLoadersMixin:
                     attn_procs[name] = self.attn_processors[name]
             else:                     
                 if ('XFormers' in str(self.attn_processors[name].__class__)):
-                    attn_processor_class = (IPAdapterXformerAttnProcessor)
+                    attn_processor_class = (IPAdapterXFormersAttnProcessor)
                 else:
                     attn_processor_class = (
                         IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
