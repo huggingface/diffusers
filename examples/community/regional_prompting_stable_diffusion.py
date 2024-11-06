@@ -35,7 +35,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         Optional
             rp_args["save_mask"]: True/False (save masks in prompt mode)
             rp_args["power"]: int (power for attention maps in prompt mode)
-            rp_args["base_ratio"]: 
+            rp_args["base_ratio"]:
                 float (Sets the ratio of the base prompt)
                 ex) 0.2 (20%*BASE_PROMPT + 80%*REGION_PROMPT)
                 [Use base prompt](https://github.com/hako-mikan/sd-webui-regional-prompter?tab=readme-ov-file#use-base-prompt)
@@ -453,7 +453,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
 
 ### Make prompt list for each regions
-def promptsmaker(prompts, batch, use_base=False):
+def promptsmaker(prompts, batch):
     out_p = []
     plen = len(prompts)
     for prompt in prompts:
