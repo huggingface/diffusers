@@ -23,7 +23,7 @@ from ..attention import _chunked_feed_forward
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
-    AttnProcessor,
+    AttnProcessor2_0,
     FusedAttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
 )
@@ -31,10 +31,17 @@ from ..autoencoders.dc_ae import GLUMBConv
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
+from ..normalization import AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@maybe_allow_in_graph
+class RMSNormScaled(RMSNorm):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True, scale_factor: float = 1.0):
+        super().__init__(dim, eps, elementwise_affine)
+        self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
 
 
 # Modified from diffusers.models.autoencoders.ecae.GLUMBConv
@@ -107,6 +114,8 @@ class SanaLinearTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
+        num_cross_attention_heads: Optional[int] = None,
+        cross_attention_head_dim: Optional[int] = None,
         cross_attention_dim: Optional[int] = None,
         activation_fn: tuple = ("silu", "silu", None),
         num_embeds_ada_norm: Optional[int] = None,
@@ -114,7 +123,7 @@ class SanaLinearTransformerBlock(nn.Module):
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_single",
         norm_elementwise_affine: bool = False,
-        norm_eps: float = 1e-5,
+        norm_eps: float = 1e-6,
         attention_out_bias: bool = True,
         use_pe: bool = False,
         num_positional_embeddings: Optional[int] = None,
@@ -162,13 +171,13 @@ class SanaLinearTransformerBlock(nn.Module):
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
+                heads=num_cross_attention_heads,
+                dim_head=cross_attention_head_dim,
                 dropout=dropout,
-                bias=attention_bias,
+                bias=True,
                 upcast_attention=upcast_attention,
                 out_bias=attention_out_bias,
-                processor=AttnProcessor(),
+                processor=AttnProcessor2_0(),
             )
 
         self.ff = SanaGLUMBConv(
@@ -250,13 +259,18 @@ class SanaLinearTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
+        if self.norm_type == "ada_norm_single":
+            norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
+
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)
 
-        ff_output = gate_mlp * ff_output
+        if self.norm_type == "ada_norm_single":
+            ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
@@ -325,6 +339,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         num_layers: int = 28,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
+        num_cross_attention_heads: Optional[int] = 20,
+        cross_attention_head_dim: Optional[int] = 112,
         cross_attention_dim: Optional[int] = 1152,
         attention_bias: bool = True,
         sample_size: int = 32,
@@ -338,6 +354,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         interpolation_scale: Optional[int] = None,
         use_additional_conditions: Optional[bool] = None,
         caption_channels: Optional[int] = None,
+        use_caption_norm: Optional[bool] = True,
+        caption_norm_scale_factor: Optional[float] = 0.1,
         attention_type: Optional[str] = "default",
         use_pe: Optional[bool] = False,
         expand_ratio=2.5,
@@ -378,7 +396,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             if self.config.interpolation_scale is not None
             else max(self.config.sample_size // 64, 1)
         )
-        self.use_pe = use_pe
         self.pos_embed = PatchEmbed(
             height=self.config.sample_size,
             width=self.config.sample_size,
@@ -386,7 +403,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             in_channels=self.config.in_channels,
             embed_dim=self.inner_dim,
             interpolation_scale=interpolation_scale,
-            pos_embed_type="sincos" if use_pe else None
+            pos_embed_type="sincos" if self.config.use_pe else None
         )
 
         self.transformer_blocks = nn.ModuleList(
@@ -396,6 +413,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
+                    num_cross_attention_heads=self.config.num_cross_attention_heads,
+                    cross_attention_head_dim=self.config.cross_attention_head_dim,
                     cross_attention_dim=self.config.cross_attention_dim,
                     activation_fn=self.config.activation_fn,
                     num_embeds_ada_norm=self.config.num_embeds_ada_norm,
@@ -404,6 +423,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
+                    use_pe=self.config.use_pe,
                     expand_ratio=self.config.expand_ratio,
                     ff_bias=self.config.ff_bias,
                     ff_norm=self.config.ff_norm,
@@ -425,6 +445,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             self.caption_projection = PixArtAlphaTextProjection(
                 in_features=self.config.caption_channels, hidden_size=self.inner_dim
             )
+        self.caption_norm = None
+        if self.config.use_caption_norm:
+            self.caption_norm = RMSNormScaled(self.inner_dim, eps=1e-5, scale_factor=caption_norm_scale_factor)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
@@ -533,13 +556,14 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         added_cond_kwargs: Dict[str, torch.Tensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
+        **kwargs,
     ):
         """
         The [`PixArtTransformer2DModel`] forward method.
@@ -618,6 +642,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         if self.caption_projection is not None:
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
+        if self.caption_norm is not None:
+            encoder_hidden_states = self.caption_norm(encoder_hidden_states)
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -677,3 +703,42 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
+
+
+if __name__ == "__main__":
+    import torch
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16
+
+    transformer = SanaTransformer2DModel.from_pretrained(
+        "/home/junsongc/junsongc/code/diffusion/Sana/output/Sana_1600M_1024px_diffusers",
+        subfolder="transformer",
+        torch_dtype=torch.float16,
+        use_safetensors=True,
+    ).to(device)
+
+    torch.manual_seed(0)
+    torch.set_grad_enabled(False)
+
+    latent_model_input = torch.randn(2, 32, 32, 32).to(device).to(dtype)
+    prompt_embeds = torch.randn(2, 300, 2304).to(device).to(dtype)
+    prompt_attention_mask = torch.ones((2, 300)).to(device)
+    current_timestep = torch.tensor([1000, 1000]).to(device)
+    added_cond_kwargs={}
+
+    print(latent_model_input.mean(), latent_model_input.std())
+    print(prompt_embeds.mean(), prompt_embeds.std())
+
+    # predict noise model_output
+    noise_pred = transformer(
+        latent_model_input,
+        encoder_hidden_states=prompt_embeds,
+        encoder_attention_mask=prompt_attention_mask,
+        timestep=current_timestep,
+        added_cond_kwargs=added_cond_kwargs,
+        return_dict=False,
+    )[0]
+
+    print(noise_pred.shape, noise_pred.mean(), noise_pred.std())
+

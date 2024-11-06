@@ -5228,15 +5228,6 @@ class SanaLinearAttnProcessor2_0:
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
 
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
@@ -5250,55 +5241,28 @@ class SanaLinearAttnProcessor2_0:
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        if encoder_hidden_states is None:
-            dtype = query.dtype
+        dtype = query.dtype
 
-            query = query.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
+        query = query.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+        key = key.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1).transpose(-1, -2)
+        value = value.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
 
-            key = key.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
-            value = value.view(batch_size, attn.heads, head_dim, -1).transpose(1, 2)
+        query = self.kernel_func(query)  # B, h, h_d, N
+        key = self.kernel_func(key)
 
-            query = self.kernel_func(query)  # B, h, h_d, N
-            key = self.kernel_func(key)
+        # need torch.float
+        query, key, value = query.float(), key.float(), value.float()
 
-            if attn.norm_q is not None:
-                query = attn.norm_q(query)
-            if attn.norm_k is not None:
-                key = attn.norm_k(key)
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        vk = torch.matmul(value, key)
+        hidden_states = torch.matmul(vk, query)
 
-            # need torch.float
-            query, key, value = query.float(), key.float(), value.float()
+        if hidden_states.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states = hidden_states.float()
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
 
-            value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
-            vk = torch.matmul(value, key)
-            hidden_states = torch.matmul(vk, query).to(dtype)
-
-            if hidden_states.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.float()
-            hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
-
-            hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
-            hidden_states = hidden_states.to(dtype)
-
-        else:
-            query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-            key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-            value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-            if attn.norm_q is not None:
-                query = attn.norm_q(query)
-            if attn.norm_k is not None:
-                key = attn.norm_k(key)
-
-            # the output of sdp = (batch, num_heads, seq_len, head_dim)
-            # TODO: add support for attn.scale when we move to Torch 2.1
-            hidden_states = F.scaled_dot_product_attention(
-                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-
-            hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-            hidden_states = hidden_states.to(query.dtype)
+        hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
+        hidden_states = hidden_states.to(dtype)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

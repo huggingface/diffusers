@@ -816,6 +816,11 @@ class SanaPipeline(DiffusionPipeline):
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
                 # predict noise model_output
+                print(latent_model_input.shape)
+                print(prompt_embeds.shape)
+                print(prompt_attention_mask.shape)
+                print(current_timestep.shape)
+                print(added_cond_kwargs)
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
