@@ -25,7 +25,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     skip_mps,
-    torch_all_close,
     torch_device,
 )
 
@@ -160,47 +159,6 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
-
     def test_model_with_num_attention_heads_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -239,30 +197,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_gradient_checkpointing_is_applied(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["num_attention_heads"] = (8, 16)
-
-        model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
-        model = model_class_copy(**init_dict)
-        model.enable_gradient_checkpointing()
-
-        EXPECTED_SET = {
+        expected_set = {
             "TransformerSpatioTemporalModel",
             "CrossAttnDownBlockSpatioTemporal",
             "DownBlockSpatioTemporal",
@@ -270,9 +205,10 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
             "CrossAttnUpBlockSpatioTemporal",
             "UNetMidBlockSpatioTemporal",
         }
-
-        assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
-        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+        num_attention_heads = (8, 16)
+        super().test_gradient_checkpointing_is_applied(
+            expected_set=expected_set, num_attention_heads=num_attention_heads
+        )
 
     def test_pickle(self):
         # enable deterministic behavior for gradient checkpointing
