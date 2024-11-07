@@ -36,12 +36,16 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
-    _import_structure["controlnet"] = ["ControlNetModel"]
-    _import_structure["controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
-    _import_structure["controlnet_hunyuan"] = ["HunyuanDiT2DControlNetModel", "HunyuanDiT2DMultiControlNetModel"]
-    _import_structure["controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
-    _import_structure["controlnet_sparsectrl"] = ["SparseControlNetModel"]
-    _import_structure["controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
+    _import_structure["controlnets.controlnet_hunyuan"] = [
+        "HunyuanDiT2DControlNetModel",
+        "HunyuanDiT2DMultiControlNetModel",
+    ]
+    _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
+    _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
+    _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -74,7 +78,7 @@ if is_torch_available():
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
 
 if is_flax_available():
-    _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
+    _import_structure["controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
@@ -94,12 +98,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
             VQModel,
         )
-        from .controlnet import ControlNetModel
-        from .controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
-        from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
-        from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
-        from .controlnet_sparsectrl import SparseControlNetModel
-        from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
+        from .controlnets import (
+            ControlNetModel,
+            ControlNetXSAdapter,
+            FluxControlNetModel,
+            FluxMultiControlNetModel,
+            HunyuanDiT2DControlNetModel,
+            HunyuanDiT2DMultiControlNetModel,
+            MultiControlNetModel,
+            SD3ControlNetModel,
+            SD3MultiControlNetModel,
+            SparseControlNetModel,
+            UNetControlNetXSModel,
+        )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
@@ -137,7 +148,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     if is_flax_available():
-        from .controlnet_flax import FlaxControlNetModel
+        from .controlnets import FlaxControlNetModel
         from .unets import FlaxUNet2DConditionModel
         from .vae_flax import FlaxAutoencoderKL
 
