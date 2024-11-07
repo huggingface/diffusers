@@ -675,7 +675,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
         for idx, encoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 encoder_states = encoder_states + (hidden_states,)
-            if self.gradient_checkpointing:
+            if self.gradient_checkpointing and torch.is_grad_enabled():
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
