@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import VQModel
-from ...utils import replace_example_docstring
+from ...models.transformers import MeissonicTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import MeissonicScheduler
-from ...models.transformers import MeissonicTransformer2DModel
-
-
+from ...utils import replace_example_docstring
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -30,12 +30,19 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
     latent_image_ids = torch.zeros(height // 2, width // 2, 3)
-    latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
-    latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+    latent_image_ids[..., 1] = (
+        latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
+    )
+    latent_image_ids[..., 2] = (
+        latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+    )
 
-    latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
+    latent_image_id_height, latent_image_id_width, latent_image_id_channels = (
+        latent_image_ids.shape
+    )
 
     latent_image_ids = latent_image_ids.reshape(
         latent_image_id_height * latent_image_id_width, latent_image_id_channels
@@ -50,7 +57,7 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
     vqvae: VQModel
     tokenizer: CLIPTokenizer
     text_encoder: CLIPTextModelWithProjection
-    transformer: MeissonicTransformer2DModel 
+    transformer: MeissonicTransformer2DModel
     scheduler: MeissonicScheduler
 
     model_cpu_offload_seq = "text_encoder->transformer->vqvae"
@@ -78,7 +85,9 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vqvae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_normalize=False)
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False
+        )
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor,
             do_normalize=False,
@@ -199,16 +208,24 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
         if (prompt_embeds is not None and encoder_hidden_states is None) or (
             prompt_embeds is None and encoder_hidden_states is not None
         ):
-            raise ValueError("pass either both `prompt_embeds` and `encoder_hidden_states` or neither")
+            raise ValueError(
+                "pass either both `prompt_embeds` and `encoder_hidden_states` or neither"
+            )
 
-        if (negative_prompt_embeds is not None and negative_encoder_hidden_states is None) or (
-            negative_prompt_embeds is None and negative_encoder_hidden_states is not None
+        if (
+            negative_prompt_embeds is not None
+            and negative_encoder_hidden_states is None
+        ) or (
+            negative_prompt_embeds is None
+            and negative_encoder_hidden_states is not None
         ):
             raise ValueError(
                 "pass either both `negatve_prompt_embeds` and `negative_encoder_hidden_states` or neither"
             )
 
-        if (prompt is None and prompt_embeds is None) or (prompt is not None and prompt_embeds is not None):
+        if (prompt is None and prompt_embeds is None) or (
+            prompt is not None and prompt_embeds is not None
+        ):
             raise ValueError("pass only one of `prompt` or `prompt_embeds`")
 
         if isinstance(prompt, str):
@@ -227,15 +244,19 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
                 return_tensors="pt",
                 padding="max_length",
                 truncation=True,
-                max_length=77, #self.tokenizer.model_max_length,
+                max_length=77,  # self.tokenizer.model_max_length,
             ).input_ids.to(self._execution_device)
 
-            outputs = self.text_encoder(input_ids, return_dict=True, output_hidden_states=True)
+            outputs = self.text_encoder(
+                input_ids, return_dict=True, output_hidden_states=True
+            )
             prompt_embeds = outputs.text_embeds
             encoder_hidden_states = outputs.hidden_states[-2]
 
         prompt_embeds = prompt_embeds.repeat(num_images_per_prompt, 1)
-        encoder_hidden_states = encoder_hidden_states.repeat(num_images_per_prompt, 1, 1)
+        encoder_hidden_states = encoder_hidden_states.repeat(
+            num_images_per_prompt, 1, 1
+        )
 
         if guidance_scale > 1.0:
             if negative_prompt_embeds is None:
@@ -250,18 +271,26 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
                     return_tensors="pt",
                     padding="max_length",
                     truncation=True,
-                    max_length=77, #self.tokenizer.model_max_length,
+                    max_length=77,  # self.tokenizer.model_max_length,
                 ).input_ids.to(self._execution_device)
 
-                outputs = self.text_encoder(input_ids, return_dict=True, output_hidden_states=True)
+                outputs = self.text_encoder(
+                    input_ids, return_dict=True, output_hidden_states=True
+                )
                 negative_prompt_embeds = outputs.text_embeds
                 negative_encoder_hidden_states = outputs.hidden_states[-2]
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(num_images_per_prompt, 1)
-            negative_encoder_hidden_states = negative_encoder_hidden_states.repeat(num_images_per_prompt, 1, 1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                num_images_per_prompt, 1
+            )
+            negative_encoder_hidden_states = negative_encoder_hidden_states.repeat(
+                num_images_per_prompt, 1, 1
+            )
 
             prompt_embeds = torch.concat([negative_prompt_embeds, prompt_embeds])
-            encoder_hidden_states = torch.concat([negative_encoder_hidden_states, encoder_hidden_states])
+            encoder_hidden_states = torch.concat(
+                [negative_encoder_hidden_states, encoder_hidden_states]
+            )
 
         image = self.image_processor.preprocess(image)
 
@@ -282,25 +311,37 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
         )
 
         micro_conds = micro_conds.unsqueeze(0)
-        micro_conds = micro_conds.expand(2 * batch_size if guidance_scale > 1.0 else batch_size, -1)
+        micro_conds = micro_conds.expand(
+            2 * batch_size if guidance_scale > 1.0 else batch_size, -1
+        )
 
-        self.scheduler.set_timesteps(num_inference_steps, temperature, self._execution_device)
+        self.scheduler.set_timesteps(
+            num_inference_steps, temperature, self._execution_device
+        )
         num_inference_steps = int(len(self.scheduler.timesteps) * strength)
         start_timestep_idx = len(self.scheduler.timesteps) - num_inference_steps
 
-        needs_upcasting = False #self.vqvae.dtype == torch.float16 and self.vqvae.config.force_upcast
+        needs_upcasting = False  # self.vqvae.dtype == torch.float16 and self.vqvae.config.force_upcast
 
         if needs_upcasting:
             self.vqvae.float()
 
-        latents = self.vqvae.encode(image.to(dtype=self.vqvae.dtype, device=self._execution_device)).latents
+        latents = self.vqvae.encode(
+            image.to(dtype=self.vqvae.dtype, device=self._execution_device)
+        ).latents
         latents_bsz, channels, latents_height, latents_width = latents.shape
-        latents = self.vqvae.quantize(latents)[2][2].reshape(latents_bsz, latents_height, latents_width)
+        latents = self.vqvae.quantize(latents)[2][2].reshape(
+            latents_bsz, latents_height, latents_width
+        )
 
         mask = self.mask_processor.preprocess(
             mask_image, height // self.vae_scale_factor, width // self.vae_scale_factor
         )
-        mask = mask.reshape(mask.shape[0], latents_height, latents_width).bool().to(latents.device)
+        mask = (
+            mask.reshape(mask.shape[0], latents_height, latents_width)
+            .bool()
+            .to(latents.device)
+        )
         latents[mask] = self.scheduler.config.mask_token_id
 
         starting_mask_ratio = mask.sum() / latents.numel()
@@ -316,25 +357,44 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
                 else:
                     model_input = latents
 
-                if height == 1024: #args.resolution == 1024:
-                    img_ids = _prepare_latent_image_ids(model_input.shape[0], model_input.shape[-2],model_input.shape[-1],model_input.device,model_input.dtype)
+                if height == 1024:  # args.resolution == 1024:
+                    img_ids = _prepare_latent_image_ids(
+                        model_input.shape[0],
+                        model_input.shape[-2],
+                        model_input.shape[-1],
+                        model_input.device,
+                        model_input.dtype,
+                    )
                 else:
-                    img_ids = _prepare_latent_image_ids(model_input.shape[0],2*model_input.shape[-2],2*model_input.shape[-1],model_input.device,model_input.dtype)
-                txt_ids = torch.zeros(encoder_hidden_states.shape[1],3).to(device = encoder_hidden_states.device, dtype = encoder_hidden_states.dtype)
+                    img_ids = _prepare_latent_image_ids(
+                        model_input.shape[0],
+                        2 * model_input.shape[-2],
+                        2 * model_input.shape[-1],
+                        model_input.device,
+                        model_input.dtype,
+                    )
+                txt_ids = torch.zeros(encoder_hidden_states.shape[1], 3).to(
+                    device=encoder_hidden_states.device,
+                    dtype=encoder_hidden_states.dtype,
+                )
                 model_output = self.transformer(
                     model_input,
                     micro_conds=micro_conds,
                     pooled_projections=prompt_embeds,
                     encoder_hidden_states=encoder_hidden_states,
                     # cross_attention_kwargs=cross_attention_kwargs,
-                    img_ids = img_ids,
-                    txt_ids = txt_ids,
-                    timestep = torch.tensor([timestep], device=model_input.device, dtype=torch.long),
+                    img_ids=img_ids,
+                    txt_ids=txt_ids,
+                    timestep=torch.tensor(
+                        [timestep], device=model_input.device, dtype=torch.long
+                    ),
                 )
 
                 if guidance_scale > 1.0:
                     uncond_logits, cond_logits = model_output.chunk(2)
-                    model_output = uncond_logits + guidance_scale * (cond_logits - uncond_logits)
+                    model_output = uncond_logits + guidance_scale * (
+                        cond_logits - uncond_logits
+                    )
 
                 latents = self.scheduler.step(
                     model_output=model_output,
@@ -344,7 +404,9 @@ class MeissonicInpaintPipeline(DiffusionPipeline):
                     starting_mask_ratio=starting_mask_ratio,
                 ).prev_sample
 
-                if i == len(self.scheduler.timesteps) - 1 or ((i + 1) % self.scheduler.order == 0):
+                if i == len(self.scheduler.timesteps) - 1 or (
+                    (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)

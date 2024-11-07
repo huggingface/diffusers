@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import sys
+
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -19,12 +19,10 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import VQModel
-
+from ...models.transformers import MeissonicTransformer2DModel
+from ...pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import MeissonicScheduler
 from ...utils import replace_example_docstring
-from ...pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-
-from ...models.transformers import MeissonicTransformer2DModel
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -40,12 +38,19 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
     latent_image_ids = torch.zeros(height // 2, width // 2, 3)
-    latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
-    latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+    latent_image_ids[..., 1] = (
+        latent_image_ids[..., 1] + torch.arange(height // 2)[:, None]
+    )
+    latent_image_ids[..., 2] = (
+        latent_image_ids[..., 2] + torch.arange(width // 2)[None, :]
+    )
 
-    latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
+    latent_image_id_height, latent_image_id_width, latent_image_id_channels = (
+        latent_image_ids.shape
+    )
 
     latent_image_ids = latent_image_ids.reshape(
         latent_image_id_height * latent_image_id_width, latent_image_id_channels
@@ -59,7 +64,7 @@ class MeissonicPipeline(DiffusionPipeline):
     vqvae: VQModel
     tokenizer: CLIPTokenizer
     text_encoder: CLIPTextModelWithProjection
-    transformer: MeissonicTransformer2DModel 
+    transformer: MeissonicTransformer2DModel
     scheduler: MeissonicScheduler
     # tokenizer_t5: T5Tokenizer
     # text_encoder_t5: T5ForConditionalGeneration
@@ -71,7 +76,7 @@ class MeissonicPipeline(DiffusionPipeline):
         vqvae: VQModel,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
-        transformer: MeissonicTransformer2DModel, 
+        transformer: MeissonicTransformer2DModel,
         scheduler: MeissonicScheduler,
         # tokenizer_t5: T5Tokenizer,
         # text_encoder_t5: T5ForConditionalGeneration,
@@ -88,7 +93,9 @@ class MeissonicPipeline(DiffusionPipeline):
             # text_encoder_t5=text_encoder_t5,
         )
         self.vae_scale_factor = 2 ** (len(self.vqvae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_normalize=False)
+        self.image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False
+        )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -188,16 +195,24 @@ class MeissonicPipeline(DiffusionPipeline):
         if (prompt_embeds is not None and encoder_hidden_states is None) or (
             prompt_embeds is None and encoder_hidden_states is not None
         ):
-            raise ValueError("pass either both `prompt_embeds` and `encoder_hidden_states` or neither")
+            raise ValueError(
+                "pass either both `prompt_embeds` and `encoder_hidden_states` or neither"
+            )
 
-        if (negative_prompt_embeds is not None and negative_encoder_hidden_states is None) or (
-            negative_prompt_embeds is None and negative_encoder_hidden_states is not None
+        if (
+            negative_prompt_embeds is not None
+            and negative_encoder_hidden_states is None
+        ) or (
+            negative_prompt_embeds is None
+            and negative_encoder_hidden_states is not None
         ):
             raise ValueError(
                 "pass either both `negatve_prompt_embeds` and `negative_encoder_hidden_states` or neither"
             )
 
-        if (prompt is None and prompt_embeds is None) or (prompt is not None and prompt_embeds is not None):
+        if (prompt is None and prompt_embeds is None) or (
+            prompt is not None and prompt_embeds is not None
+        ):
             raise ValueError("pass only one of `prompt` or `prompt_embeds`")
 
         if isinstance(prompt, str):
@@ -217,30 +232,33 @@ class MeissonicPipeline(DiffusionPipeline):
             width = self.transformer.config.sample_size * self.vae_scale_factor
 
         if prompt_embeds is None:
-                input_ids = self.tokenizer(
-                    prompt,
-                    return_tensors="pt",
-                    padding="max_length",
-                    truncation=True,
-                    max_length=77, #self.tokenizer.model_max_length,
-                ).input_ids.to(self._execution_device)
-                # input_ids_t5 = self.tokenizer_t5(
-                #     prompt,
-                #     return_tensors="pt",
-                #     padding="max_length",
-                #     truncation=True,
-                #     max_length=512,
-                # ).input_ids.to(self._execution_device)
-                
-       
-                outputs = self.text_encoder(input_ids, return_dict=True, output_hidden_states=True)
-                # outputs_t5 = self.text_encoder_t5(input_ids_t5, decoder_input_ids = input_ids_t5 ,return_dict=True, output_hidden_states=True)
-                prompt_embeds = outputs.text_embeds
-                encoder_hidden_states = outputs.hidden_states[-2]
-                # encoder_hidden_states = outputs_t5.encoder_hidden_states[-2]
+            input_ids = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=77,  # self.tokenizer.model_max_length,
+            ).input_ids.to(self._execution_device)
+            # input_ids_t5 = self.tokenizer_t5(
+            #     prompt,
+            #     return_tensors="pt",
+            #     padding="max_length",
+            #     truncation=True,
+            #     max_length=512,
+            # ).input_ids.to(self._execution_device)
+
+            outputs = self.text_encoder(
+                input_ids, return_dict=True, output_hidden_states=True
+            )
+            # outputs_t5 = self.text_encoder_t5(input_ids_t5, decoder_input_ids = input_ids_t5 ,return_dict=True, output_hidden_states=True)
+            prompt_embeds = outputs.text_embeds
+            encoder_hidden_states = outputs.hidden_states[-2]
+            # encoder_hidden_states = outputs_t5.encoder_hidden_states[-2]
 
         prompt_embeds = prompt_embeds.repeat(num_images_per_prompt, 1)
-        encoder_hidden_states = encoder_hidden_states.repeat(num_images_per_prompt, 1, 1)
+        encoder_hidden_states = encoder_hidden_states.repeat(
+            num_images_per_prompt, 1, 1
+        )
 
         if guidance_scale > 1.0:
             if negative_prompt_embeds is None:
@@ -255,7 +273,7 @@ class MeissonicPipeline(DiffusionPipeline):
                     return_tensors="pt",
                     padding="max_length",
                     truncation=True,
-                    max_length=77, #self.tokenizer.model_max_length,
+                    max_length=77,  # self.tokenizer.model_max_length,
                 ).input_ids.to(self._execution_device)
                 # input_ids_t5 = self.tokenizer_t5(
                 #     prompt,
@@ -265,19 +283,25 @@ class MeissonicPipeline(DiffusionPipeline):
                 #     max_length=512,
                 # ).input_ids.to(self._execution_device)
 
-                outputs = self.text_encoder(input_ids, return_dict=True, output_hidden_states=True)
+                outputs = self.text_encoder(
+                    input_ids, return_dict=True, output_hidden_states=True
+                )
                 # outputs_t5 = self.text_encoder_t5(input_ids_t5, decoder_input_ids = input_ids_t5 ,return_dict=True, output_hidden_states=True)
                 negative_prompt_embeds = outputs.text_embeds
                 negative_encoder_hidden_states = outputs.hidden_states[-2]
                 # negative_encoder_hidden_states = outputs_t5.encoder_hidden_states[-2]
-                
-              
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(num_images_per_prompt, 1)
-            negative_encoder_hidden_states = negative_encoder_hidden_states.repeat(num_images_per_prompt, 1, 1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(
+                num_images_per_prompt, 1
+            )
+            negative_encoder_hidden_states = negative_encoder_hidden_states.repeat(
+                num_images_per_prompt, 1, 1
+            )
 
             prompt_embeds = torch.concat([negative_prompt_embeds, prompt_embeds])
-            encoder_hidden_states = torch.concat([negative_encoder_hidden_states, encoder_hidden_states])
+            encoder_hidden_states = torch.concat(
+                [negative_encoder_hidden_states, encoder_hidden_states]
+            )
 
         # Note that the micro conditionings _do_ flip the order of width, height for the original size
         # and the crop coordinates. This is how it was done in the original code base
@@ -293,44 +317,76 @@ class MeissonicPipeline(DiffusionPipeline):
             dtype=encoder_hidden_states.dtype,
         )
         micro_conds = micro_conds.unsqueeze(0)
-        micro_conds = micro_conds.expand(2 * batch_size if guidance_scale > 1.0 else batch_size, -1)
+        micro_conds = micro_conds.expand(
+            2 * batch_size if guidance_scale > 1.0 else batch_size, -1
+        )
 
-        shape = (batch_size, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
 
         if latents is None:
             latents = torch.full(
-                shape, self.scheduler.config.mask_token_id, dtype=torch.long, device=self._execution_device
+                shape,
+                self.scheduler.config.mask_token_id,
+                dtype=torch.long,
+                device=self._execution_device,
             )
 
-        self.scheduler.set_timesteps(num_inference_steps, temperature, self._execution_device)
+        self.scheduler.set_timesteps(
+            num_inference_steps, temperature, self._execution_device
+        )
 
-        num_warmup_steps = len(self.scheduler.timesteps) - num_inference_steps * self.scheduler.order
+        num_warmup_steps = (
+            len(self.scheduler.timesteps) - num_inference_steps * self.scheduler.order
+        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, timestep in enumerate(self.scheduler.timesteps):
                 if guidance_scale > 1.0:
                     model_input = torch.cat([latents] * 2)
                 else:
                     model_input = latents
-                if height == 1024: #args.resolution == 1024:
-                    img_ids = _prepare_latent_image_ids(model_input.shape[0], model_input.shape[-2],model_input.shape[-1],model_input.device,model_input.dtype)
+                if height == 1024:  # args.resolution == 1024:
+                    img_ids = _prepare_latent_image_ids(
+                        model_input.shape[0],
+                        model_input.shape[-2],
+                        model_input.shape[-1],
+                        model_input.device,
+                        model_input.dtype,
+                    )
                 else:
-                    img_ids = _prepare_latent_image_ids(model_input.shape[0],2*model_input.shape[-2],2*model_input.shape[-1],model_input.device,model_input.dtype)
-                txt_ids = torch.zeros(encoder_hidden_states.shape[1],3).to(device = encoder_hidden_states.device, dtype = encoder_hidden_states.dtype)
+                    img_ids = _prepare_latent_image_ids(
+                        model_input.shape[0],
+                        2 * model_input.shape[-2],
+                        2 * model_input.shape[-1],
+                        model_input.device,
+                        model_input.dtype,
+                    )
+                txt_ids = torch.zeros(encoder_hidden_states.shape[1], 3).to(
+                    device=encoder_hidden_states.device,
+                    dtype=encoder_hidden_states.dtype,
+                )
                 model_output = self.transformer(
-                    hidden_states = model_input,
+                    hidden_states=model_input,
                     micro_conds=micro_conds,
                     pooled_projections=prompt_embeds,
                     encoder_hidden_states=encoder_hidden_states,
-                    img_ids = img_ids,
-                    txt_ids = txt_ids,
-                    timestep = torch.tensor([timestep], device=model_input.device, dtype=torch.long),
+                    img_ids=img_ids,
+                    txt_ids=txt_ids,
+                    timestep=torch.tensor(
+                        [timestep], device=model_input.device, dtype=torch.long
+                    ),
                     # guidance = 7,
                     # cross_attention_kwargs=cross_attention_kwargs,
                 )
 
                 if guidance_scale > 1.0:
                     uncond_logits, cond_logits = model_output.chunk(2)
-                    model_output = uncond_logits + guidance_scale * (cond_logits - uncond_logits)
+                    model_output = uncond_logits + guidance_scale * (
+                        cond_logits - uncond_logits
+                    )
 
                 latents = self.scheduler.step(
                     model_output=model_output,
@@ -350,7 +406,9 @@ class MeissonicPipeline(DiffusionPipeline):
         if output_type == "latent":
             output = latents
         else:
-            needs_upcasting = self.vqvae.dtype == torch.float16 and self.vqvae.config.force_upcast
+            needs_upcasting = (
+                self.vqvae.dtype == torch.float16 and self.vqvae.config.force_upcast
+            )
 
             if needs_upcasting:
                 self.vqvae.float()

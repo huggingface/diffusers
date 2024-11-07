@@ -13,38 +13,55 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.loaders import FromOriginalModelMixin, PeftAdapterMixin
-from diffusers.models.attention import FeedForward, BasicTransformerBlock, SkipFFTransformerBlock
-from diffusers.models.attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..attention import FeedForward, SkipFFTransformerBlock
+from ..attention_processor import (  # FusedFluxAttnProcessor2_0,
     Attention,
     AttentionProcessor,
     FluxAttnProcessor2_0,
-    # FusedFluxAttnProcessor2_0,
 )
-from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, GlobalResponseNorm, RMSNorm
-from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from diffusers.utils.torch_utils import maybe_allow_in_graph
-from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings,TimestepEmbedding, get_timestep_embedding #,FluxPosEmbed
-from diffusers.models.modeling_outputs import Transformer2DModelOutput 
-from diffusers.models.resnet import Downsample2D, Upsample2D
-
-from typing import List
+from ..embeddings import (  # ,FluxPosEmbed
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    TimestepEmbedding,
+    get_timestep_embedding,
+)
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import (
+    AdaLayerNormZero,
+    AdaLayerNormZeroSingle,
+    GlobalResponseNorm,
+    RMSNorm,
+)
+from ..resnet import Downsample2D, Upsample2D
+from ...utils import (
+    USE_PEFT_BACKEND,
+    is_torch_version,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
+from ...utils.torch_utils import maybe_allow_in_graph
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-
 def get_3d_rotary_pos_embed(
-    embed_dim, crops_coords, grid_size, temporal_size, theta: int = 10000, use_real: bool = True
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    theta: int = 10000,
+    use_real: bool = True,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
@@ -67,9 +84,15 @@ def get_3d_rotary_pos_embed(
         `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
     """
     start, stop = crops_coords
-    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
-    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+    grid_h = np.linspace(
+        start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32
+    )
+    grid_w = np.linspace(
+        start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32
+    )
+    grid_t = np.linspace(
+        0, temporal_size, temporal_size, endpoint=False, dtype=np.float32
+    )
 
     # Compute dimensions for each axis
     dim_t = embed_dim // 4
@@ -96,7 +119,9 @@ def get_3d_rotary_pos_embed(
     def broadcast(tensors, dim=-1):
         num_tensors = len(tensors)
         shape_lens = {len(t.shape) for t in tensors}
-        assert len(shape_lens) == 1, "tensors must all have the same number of dimensions"
+        assert (
+            len(shape_lens) == 1
+        ), "tensors must all have the same number of dimensions"
         shape_len = list(shape_lens)[0]
         dim = (dim + shape_len) if dim < 0 else dim
         dims = list(zip(*(list(t.shape) for t in tensors)))
@@ -111,7 +136,14 @@ def get_3d_rotary_pos_embed(
         tensors = [t[0].expand(*t[1]) for t in zip(tensors, expandable_shapes)]
         return torch.cat(tensors, dim=dim)
 
-    freqs = broadcast((freqs_t[:, None, None, :], freqs_h[None, :, None, :], freqs_w[None, None, :, :]), dim=-1)
+    freqs = broadcast(
+        (
+            freqs_t[:, None, None, :],
+            freqs_h[None, :, None, :],
+            freqs_w[None, None, :, :],
+        ),
+        dim=-1,
+    )
 
     t, h, w, d = freqs.shape
     freqs = freqs.view(t * h * w, d)
@@ -145,8 +177,12 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
         `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
-    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
+    grid_h = np.linspace(
+        start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32
+    )
+    grid_w = np.linspace(
+        start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32
+    )
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
     grid = np.stack(grid, axis=0)  # [2, W, H]
 
@@ -175,7 +211,9 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
         return emb
 
 
-def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
+def get_2d_rotary_pos_embed_lumina(
+    embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0
+):
     assert embed_dim % 4 == 0
 
     emb_h = get_1d_rotary_pos_embed(
@@ -184,8 +222,12 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
     emb_w = get_1d_rotary_pos_embed(
         embed_dim // 2, len_w, linear_factor=linear_factor, ntk_factor=ntk_factor
     )  # (W, D/4)
-    emb_h = emb_h.view(len_h, 1, embed_dim // 4, 1).repeat(1, len_w, 1, 1)  # (H, W, D/4, 1)
-    emb_w = emb_w.view(1, len_w, embed_dim // 4, 1).repeat(len_h, 1, 1, 1)  # (H, W, D/4, 1)
+    emb_h = emb_h.view(len_h, 1, embed_dim // 4, 1).repeat(
+        1, len_w, 1, 1
+    )  # (H, W, D/4, 1)
+    emb_w = emb_w.view(1, len_w, embed_dim // 4, 1).repeat(
+        len_h, 1, 1, 1
+    )  # (H, W, D/4, 1)
 
     emb = torch.cat([emb_h, emb_w], dim=-1).flatten(2)  # (H, W, D/2)
     return emb
@@ -232,7 +274,11 @@ def get_1d_rotary_pos_embed(
     if isinstance(pos, int):
         pos = np.arange(pos)
     theta = theta * ntk_factor
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype)[: (dim // 2)] / dim)) / linear_factor  # [D/2]
+    freqs = (
+        1.0
+        / (theta ** (torch.arange(0, dim, 2, dtype=freqs_dtype)[: (dim // 2)] / dim))
+        / linear_factor
+    )  # [D/2]
     t = torch.from_numpy(pos).to(freqs.device)  # type: ignore  # [S]
     freqs = torch.outer(t, freqs)  # type: ignore   # [S, D/2]
     if use_real and repeat_interleave_real:
@@ -244,7 +290,9 @@ def get_1d_rotary_pos_embed(
         freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1).float()  # [S, D]
         return freqs_cos, freqs_sin
     else:
-        freqs_cis = torch.polar(torch.ones_like(freqs), freqs).float()  # complex64     # [S, D/2]
+        freqs_cis = torch.polar(
+            torch.ones_like(freqs), freqs
+        ).float()  # complex64     # [S, D/2]
         return freqs_cis
 
 
@@ -264,14 +312,17 @@ class FluxPosEmbed(nn.Module):
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i], pos[:, i], repeat_interleave_real=True, use_real=True, freqs_dtype=freqs_dtype
+                self.axes_dim[i],
+                pos[:, i],
+                repeat_interleave_real=True,
+                use_real=True,
+                freqs_dtype=freqs_dtype,
             )
             cos_out.append(cos)
             sin_out.append(sin)
         freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
         freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
         return freqs_cos, freqs_sin
-
 
 
 class FusedFluxAttnProcessor2_0:
@@ -291,7 +342,11 @@ class FusedFluxAttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        batch_size, _, _ = (
+            hidden_states.shape
+            if encoder_hidden_states is None
+            else encoder_hidden_states.shape
+        )
 
         # `sample` projections.
         qkv = attn.to_qkv(hidden_states)
@@ -332,9 +387,13 @@ class FusedFluxAttnProcessor2_0:
             ).transpose(1, 2)
 
             if attn.norm_added_q is not None:
-                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+                encoder_hidden_states_query_proj = attn.norm_added_q(
+                    encoder_hidden_states_query_proj
+                )
             if attn.norm_added_k is not None:
-                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+                encoder_hidden_states_key_proj = attn.norm_added_k(
+                    encoder_hidden_states_key_proj
+                )
 
             # attention
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
@@ -347,8 +406,12 @@ class FusedFluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).reshape(
+            batch_size, -1, attn.heads * head_dim
+        )
         hidden_states = hidden_states.to(query.dtype)
 
         if encoder_hidden_states is not None:
@@ -368,9 +431,8 @@ class FusedFluxAttnProcessor2_0:
             return hidden_states
 
 
-
 @maybe_allow_in_graph
-class   SingleTransformerBlock(nn.Module):
+class SingleTransformerBlock(nn.Module):
     r"""
     A Transformer block following the MMDiT architecture, introduced in Stable Diffusion 3.
 
@@ -431,6 +493,7 @@ class   SingleTransformerBlock(nn.Module):
 
         return hidden_states
 
+
 @maybe_allow_in_graph
 class TransformerBlock(nn.Module):
     r"""
@@ -446,7 +509,9 @@ class TransformerBlock(nn.Module):
             processing of `context` conditions.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6):
+    def __init__(
+        self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6
+    ):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim)
@@ -478,7 +543,9 @@ class TransformerBlock(nn.Module):
         # self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="swiglu")
 
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+        self.ff_context = FeedForward(
+            dim=dim, dim_out=dim, activation_fn="gelu-approximate"
+        )
         # self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="swiglu")
 
         # let chunk size default to None
@@ -492,10 +559,12 @@ class TransformerBlock(nn.Module):
         temb: torch.FloatTensor,
         image_rotary_emb=None,
     ):
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+            hidden_states, emb=temb
+        )
 
-        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-            encoder_hidden_states, emb=temb
+        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = (
+            self.norm1_context(encoder_hidden_states, emb=temb)
         )
         # Attention.
         attn_output, context_attn_output = self.attn(
@@ -509,7 +578,9 @@ class TransformerBlock(nn.Module):
         hidden_states = hidden_states + attn_output
 
         norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        norm_hidden_states = (
+            norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        )
 
         ff_output = self.ff(norm_hidden_states)
         ff_output = gate_mlp.unsqueeze(1) * ff_output
@@ -522,10 +593,15 @@ class TransformerBlock(nn.Module):
         encoder_hidden_states = encoder_hidden_states + context_attn_output
 
         norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+        norm_encoder_hidden_states = (
+            norm_encoder_hidden_states * (1 + c_scale_mlp[:, None])
+            + c_shift_mlp[:, None]
+        )
 
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        encoder_hidden_states = (
+            encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        )
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
@@ -533,7 +609,9 @@ class TransformerBlock(nn.Module):
 
 
 class UVit2DConvEmbed(nn.Module):
-    def __init__(self, in_channels, block_out_channels, vocab_size, elementwise_affine, eps, bias):
+    def __init__(
+        self, in_channels, block_out_channels, vocab_size, elementwise_affine, eps, bias
+    ):
         super().__init__()
         self.embeddings = nn.Embedding(vocab_size, in_channels)
         self.layer_norm = RMSNorm(in_channels, eps, elementwise_affine)
@@ -546,6 +624,7 @@ class UVit2DConvEmbed(nn.Module):
         embeddings = self.conv(embeddings)
         return embeddings
 
+
 class ConvMlmLayer(nn.Module):
     def __init__(
         self,
@@ -557,15 +636,20 @@ class ConvMlmLayer(nn.Module):
         codebook_size: int,
     ):
         super().__init__()
-        self.conv1 = nn.Conv2d(block_out_channels, in_channels, kernel_size=1, bias=use_bias)
+        self.conv1 = nn.Conv2d(
+            block_out_channels, in_channels, kernel_size=1, bias=use_bias
+        )
         self.layer_norm = RMSNorm(in_channels, layer_norm_eps, ln_elementwise_affine)
         self.conv2 = nn.Conv2d(in_channels, codebook_size, kernel_size=1, bias=use_bias)
 
     def forward(self, hidden_states):
         hidden_states = self.conv1(hidden_states)
-        hidden_states = self.layer_norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        hidden_states = self.layer_norm(hidden_states.permute(0, 2, 3, 1)).permute(
+            0, 3, 1, 2
+        )
         logits = self.conv2(hidden_states)
         return logits
+
 
 class SwiGLU(nn.Module):
     r"""
@@ -588,9 +672,17 @@ class SwiGLU(nn.Module):
         hidden_states, gate = hidden_states.chunk(2, dim=-1)
         return hidden_states * self.activation(gate)
 
+
 class ConvNextBlock(nn.Module):
     def __init__(
-        self, channels, layer_norm_eps, ln_elementwise_affine, use_bias, hidden_dropout, hidden_size, res_ffn_factor=4
+        self,
+        channels,
+        layer_norm_eps,
+        ln_elementwise_affine,
+        use_bias,
+        hidden_dropout,
+        hidden_size,
+        res_ffn_factor=4,
     ):
         super().__init__()
         self.depthwise = nn.Conv2d(
@@ -602,10 +694,14 @@ class ConvNextBlock(nn.Module):
             bias=use_bias,
         )
         self.norm = RMSNorm(channels, layer_norm_eps, ln_elementwise_affine)
-        self.channelwise_linear_1 = nn.Linear(channels, int(channels * res_ffn_factor), bias=use_bias)
+        self.channelwise_linear_1 = nn.Linear(
+            channels, int(channels * res_ffn_factor), bias=use_bias
+        )
         self.channelwise_act = nn.GELU()
         self.channelwise_norm = GlobalResponseNorm(int(channels * res_ffn_factor))
-        self.channelwise_linear_2 = nn.Linear(int(channels * res_ffn_factor), channels, bias=use_bias)
+        self.channelwise_linear_2 = nn.Linear(
+            int(channels * res_ffn_factor), channels, bias=use_bias
+        )
         self.channelwise_dropout = nn.Dropout(hidden_dropout)
         self.cond_embeds_mapper = nn.Linear(hidden_size, channels * 2, use_bias)
 
@@ -631,6 +727,7 @@ class ConvNextBlock(nn.Module):
         x = x * (1 + scale[:, :, None, None]) + shift[:, :, None, None]
 
         return x
+
 
 class Simple_UVitBlock(nn.Module):
     def __init__(
@@ -767,7 +864,9 @@ class UVitBlock(nn.Module):
         else:
             self.upsample = None
 
-    def forward(self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs):
+    def forward(
+        self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs
+    ):
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -777,7 +876,9 @@ class UVitBlock(nn.Module):
             batch_size, channels, height, width = x.shape
             x = x.view(batch_size, channels, height * width).permute(0, 2, 1)
             x = attention_block(
-                x, encoder_hidden_states=encoder_hidden_states, cross_attention_kwargs=cross_attention_kwargs
+                x,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
             )
             x = x.permute(0, 2, 1).view(batch_size, channels, height, width)
 
@@ -786,7 +887,10 @@ class UVitBlock(nn.Module):
 
         return x
 
-class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+
+class MeissonicTransformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin
+):
     """
     The Transformer model introduced in Meissonic.
 
@@ -804,8 +908,8 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
     """
 
-    _supports_gradient_checkpointing = False #True 
-    # Due to NotImplementedError: DDPOptimizer backend: Found a higher order op in the graph. This is not supported. Please turn off DDP optimizer using torch._dynamo.config.optimize_ddp=False. Note that this can cause performance degradation because there will be one bucket for the entire Dynamo graph. 
+    _supports_gradient_checkpointing = False  # True
+    # Due to NotImplementedError: DDPOptimizer backend: Found a higher order op in the graph. This is not supported. Please turn off DDP optimizer using torch._dynamo.config.optimize_ddp=False. Note that this can cause performance degradation because there will be one bucket for the entire Dynamo graph.
     # Please refer to this issue - https://github.com/pytorch/pytorch/issues/104674.
     _no_split_modules = ["TransformerBlock", "SingleTransformerBlock"]
 
@@ -820,7 +924,7 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
-        guidance_embeds: bool = False, # unused in our implementation
+        guidance_embeds: bool = False,  # unused in our implementation
         axes_dims_rope: Tuple[int] = (16, 56, 56),
         vocab_size: int = 8256,
         codebook_size: int = 8192,
@@ -829,18 +933,25 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
     ):
         super().__init__()
         self.out_channels = in_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim 
+        self.inner_dim = (
+            self.config.num_attention_heads * self.config.attention_head_dim
+        )
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
         text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+            CombinedTimestepGuidanceTextProjEmbeddings
+            if guidance_embeds
+            else CombinedTimestepTextProjEmbeddings
         )
         self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim,
+            pooled_projection_dim=self.config.pooled_projection_dim,
         )
 
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
-     
+        self.context_embedder = nn.Linear(
+            self.config.joint_attention_dim, self.inner_dim
+        )
+
         self.transformer_blocks = nn.ModuleList(
             [
                 TransformerBlock(
@@ -863,31 +974,52 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             ]
         )
 
-
         self.gradient_checkpointing = False
 
-        in_channels_embed = self.inner_dim 
+        in_channels_embed = self.inner_dim
         ln_elementwise_affine = True
         layer_norm_eps = 1e-06
         use_bias = False
         micro_cond_embed_dim = 1280
         self.embed = UVit2DConvEmbed(
-            in_channels_embed, self.inner_dim, self.config.vocab_size, ln_elementwise_affine, layer_norm_eps, use_bias
+            in_channels_embed,
+            self.inner_dim,
+            self.config.vocab_size,
+            ln_elementwise_affine,
+            layer_norm_eps,
+            use_bias,
         )
         self.mlm_layer = ConvMlmLayer(
-            self.inner_dim, in_channels_embed, use_bias, ln_elementwise_affine, layer_norm_eps, self.config.codebook_size
+            self.inner_dim,
+            in_channels_embed,
+            use_bias,
+            ln_elementwise_affine,
+            layer_norm_eps,
+            self.config.codebook_size,
         )
-        self.cond_embed = TimestepEmbedding( 
-            micro_cond_embed_dim + self.config.pooled_projection_dim, self.inner_dim, sample_proj_bias=use_bias
+        self.cond_embed = TimestepEmbedding(
+            micro_cond_embed_dim + self.config.pooled_projection_dim,
+            self.inner_dim,
+            sample_proj_bias=use_bias,
         )
-        self.encoder_proj_layer_norm = RMSNorm(self.inner_dim, layer_norm_eps, ln_elementwise_affine)
-        self.project_to_hidden_norm = RMSNorm(in_channels_embed, layer_norm_eps, ln_elementwise_affine)
-        self.project_to_hidden = nn.Linear(in_channels_embed, self.inner_dim, bias=use_bias)
-        self.project_from_hidden_norm = RMSNorm(self.inner_dim, layer_norm_eps, ln_elementwise_affine)
-        self.project_from_hidden = nn.Linear(self.inner_dim, in_channels_embed, bias=use_bias)
-        
+        self.encoder_proj_layer_norm = RMSNorm(
+            self.inner_dim, layer_norm_eps, ln_elementwise_affine
+        )
+        self.project_to_hidden_norm = RMSNorm(
+            in_channels_embed, layer_norm_eps, ln_elementwise_affine
+        )
+        self.project_to_hidden = nn.Linear(
+            in_channels_embed, self.inner_dim, bias=use_bias
+        )
+        self.project_from_hidden_norm = RMSNorm(
+            self.inner_dim, layer_norm_eps, ln_elementwise_affine
+        )
+        self.project_from_hidden = nn.Linear(
+            self.inner_dim, in_channels_embed, bias=use_bias
+        )
+
         self.down_block = Simple_UVitBlock(
-            self.inner_dim, 
+            self.inner_dim,
             ln_elementwise_affine,
             layer_norm_eps,
             use_bias,
@@ -895,14 +1027,14 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             False,
         )
         self.up_block = Simple_UVitBlock(
-            self.inner_dim, #block_out_channels,
+            self.inner_dim,  # block_out_channels,
             ln_elementwise_affine,
             layer_norm_eps,
             use_bias,
             False,
             upsample=upsample,
         )
-       
+
         # self.fuse_qkv_projections()
 
     @property
@@ -916,7 +1048,11 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(
+            name: str,
+            module: torch.nn.Module,
+            processors: Dict[str, AttentionProcessor],
+        ):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -931,7 +1067,9 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
+    ):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -981,7 +1119,9 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+                raise ValueError(
+                    "`fuse_qkv_projections()` is not supported for models having added KV projections."
+                )
 
         self.original_attn_processors = self.attn_processors
 
@@ -1019,7 +1159,7 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples= None,
+        controlnet_block_samples=None,
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         micro_conds: torch.Tensor = None,
@@ -1050,29 +1190,36 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        micro_cond_encode_dim = 256 # same as self.config.micro_cond_encode_dim = 256 from amused
+        micro_cond_encode_dim = (
+            256  # same as self.config.micro_cond_encode_dim = 256 from amused
+        )
         micro_cond_embeds = get_timestep_embedding(
-            micro_conds.flatten(), micro_cond_encode_dim, flip_sin_to_cos=True, downscale_freq_shift=0
-        ) 
-        micro_cond_embeds = micro_cond_embeds.reshape((hidden_states.shape[0], -1)) 
+            micro_conds.flatten(),
+            micro_cond_encode_dim,
+            flip_sin_to_cos=True,
+            downscale_freq_shift=0,
+        )
+        micro_cond_embeds = micro_cond_embeds.reshape((hidden_states.shape[0], -1))
 
         pooled_projections = torch.cat([pooled_projections, micro_cond_embeds], dim=1)
         pooled_projections = pooled_projections.to(dtype=self.dtype)
-        pooled_projections = self.cond_embed(pooled_projections).to(encoder_hidden_states.dtype)    
-       
+        pooled_projections = self.cond_embed(pooled_projections).to(
+            encoder_hidden_states.dtype
+        )
 
-        hidden_states = self.embed(hidden_states) 
+        hidden_states = self.embed(hidden_states)
 
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states) 
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
         hidden_states = self.down_block(hidden_states)
 
         batch_size, channels, height, width = hidden_states.shape
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_size, height * width, channels)
-        hidden_states = self.project_to_hidden_norm(hidden_states) 
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(
+            batch_size, height * width, channels
+        )
+        hidden_states = self.project_to_hidden_norm(hidden_states)
         hidden_states = self.project_to_hidden(hidden_states)
 
-       
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
@@ -1083,7 +1230,10 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+            if (
+                joint_attention_kwargs is not None
+                and joint_attention_kwargs.get("scale", None) is not None
+            ):
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
@@ -1093,11 +1243,11 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             guidance = guidance.to(hidden_states.dtype) * 1000
         else:
             guidance = None
-        temb = (      
+        temb = (
             self.time_text_embed(timestep, pooled_projections)
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
-        ) 
+        )
 
         if txt_ids.ndim == 3:
             logger.warning(
@@ -1112,8 +1262,8 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
             )
             img_ids = img_ids[0]
         ids = torch.cat((txt_ids, img_ids), dim=0)
-       
-        image_rotary_emb = self.pos_embed(ids) 
+
+        image_rotary_emb = self.pos_embed(ids)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
@@ -1127,30 +1277,38 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
+                encoder_hidden_states, hidden_states = (
+                    torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,  
+                    temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
-                
 
             # controlnet residual
             if controlnet_block_samples is not None:
-                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
+                interval_control = len(self.transformer_blocks) / len(
+                    controlnet_block_samples
+                )
                 interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+                hidden_states = (
+                    hidden_states
+                    + controlnet_block_samples[index_block // interval_control]
+                )
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
@@ -1166,7 +1324,9 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
@@ -1184,32 +1344,33 @@ class MeissonicTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
             # controlnet residual
             if controlnet_single_block_samples is not None:
-                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
+                interval_control = len(self.single_transformer_blocks) / len(
+                    controlnet_single_block_samples
+                )
                 interval_control = int(np.ceil(interval_control))
                 hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
                     hidden_states[:, encoder_hidden_states.shape[1] :, ...]
                     + controlnet_single_block_samples[index_block // interval_control]
                 )
 
-        hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...] 
+        hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
-       
         hidden_states = self.project_from_hidden_norm(hidden_states)
         hidden_states = self.project_from_hidden(hidden_states)
-       
 
-        hidden_states = hidden_states.reshape(batch_size, height, width, channels).permute(0, 3, 1, 2)
+        hidden_states = hidden_states.reshape(
+            batch_size, height, width, channels
+        ).permute(0, 3, 1, 2)
 
         hidden_states = self.up_block(hidden_states)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
-        
+
         output = self.mlm_layer(hidden_states)
         # self.unfuse_qkv_projections()
         if not return_dict:
             return (output,)
 
-    
         return output
