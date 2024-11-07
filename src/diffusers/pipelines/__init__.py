@@ -247,6 +247,7 @@ else:
             "MarigoldNormalsPipeline",
         ]
     )
+    _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -571,6 +572,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
+        from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
