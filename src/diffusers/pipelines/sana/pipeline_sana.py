@@ -849,7 +849,7 @@ class SanaPipeline(DiffusionPipeline):
         if not output_type == "latent":
             # image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             # Temporary for DCAE_HF(the not ready version)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor)
+            image = self.vae.decode(latents.to(self.vae.dtype) / self.vae.config.scaling_factor)
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
