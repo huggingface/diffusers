@@ -443,11 +443,13 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
-        # TODO: Here, compatibility is needed for both the CogVideoX-5B and CogVideoX1.1-5B models.
-        # CogVideoX1.0 is 720 X 480 and CogVideoX1.1-5B T2V is 1360 * 768, CogVideoX1.1-5B I2V use with image
-        base_size_width = 1360 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_height = 768 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        p = self.transformer.config.patch_size
+        p_t = self.transformer.config.patch_size_t or 1
 
+        base_size_width = self.transformer.config.sample_width // p
+        base_size_height = self.transformer.config.sample_height // p
+        base_num_frames = (num_frames + p_t - 1) // p_t
+        
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height
         )
@@ -455,7 +457,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             embed_dim=self.transformer.config.attention_head_dim,
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
-            temporal_size=num_frames,
+            temporal_size=base_num_frames,
         )
 
         freqs_cos = freqs_cos.to(device=device)
@@ -484,9 +486,9 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 480,
-        width: int = 720,
-        num_frames: int = 49,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_frames: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
@@ -588,6 +590,10 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
+        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
+        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
+        num_frames = num_frames or self.transformer.config.sample_frames
 
         num_videos_per_prompt = 1
 

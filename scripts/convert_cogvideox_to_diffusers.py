@@ -140,6 +140,7 @@ def convert_transformer(
     use_rotary_positional_embeddings: bool,
     i2v: bool,
     dtype: torch.dtype,
+    init_kwargs: Dict[str, Any]
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -150,6 +151,7 @@ def convert_transformer(
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
         use_learned_positional_embeddings=i2v,
+        **init_kwargs,
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
@@ -163,6 +165,7 @@ def convert_transformer(
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+    
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
@@ -185,6 +188,34 @@ def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
 
     vae.load_state_dict(original_state_dict, strict=True)
     return vae
+
+
+def get_init_kwargs(version: str):
+    if version == "1.0":
+        vae_scale_factor_spatial = 8
+        init_kwargs = {
+            "patch_size": 2,
+            "patch_size_t": None,
+            "patch_bias": True,
+            "sample_height": 480 // vae_scale_factor_spatial,
+            "sample_width": 720 // vae_scale_factor_spatial,
+            "sample_frames": 49,
+        }
+    
+    elif version == "1.5":
+        vae_scale_factor_spatial = 8
+        init_kwargs = {
+            "patch_size": 2,
+            "patch_size_t": 2,
+            "patch_bias": False,
+            "sample_height": 768 // vae_scale_factor_spatial,
+            "sample_width": 1360 // vae_scale_factor_spatial,
+            "sample_frames": 81,
+        }
+    else:
+        raise ValueError("Unsupported version of CogVideoX.")
+    
+    return init_kwargs
 
 
 def get_args():
@@ -214,7 +245,8 @@ def get_args():
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
     parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
-    parser.add_argument("--i2v", action="store_true", default=False, help="Whether to save the model weights in fp16")
+    parser.add_argument("--i2v", action="store_true", default=False, help="Whether the model to be converted is the Image-to-Video version of CogVideoX.")
+    parser.add_argument("--version", choices=["1.0", "1.5"], default="1.0", help="Which version of CogVideoX to use for initializing default modeling parameters.")
     return parser.parse_args()
 
 
@@ -230,6 +262,7 @@ if __name__ == "__main__":
     dtype = torch.float16 if args.fp16 else torch.bfloat16 if args.bf16 else torch.float32
 
     if args.transformer_ckpt_path is not None:
+        init_kwargs = get_init_kwargs(args.version)
         transformer = convert_transformer(
             args.transformer_ckpt_path,
             args.num_layers,
@@ -237,11 +270,12 @@ if __name__ == "__main__":
             args.use_rotary_positional_embeddings,
             args.i2v,
             dtype,
+            init_kwargs,
         )
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
 
-    text_encoder_id = "/share/home/zyx/Models/CogVideoX1.1-5B-SAT/t5-v1_1-xxl"
+    text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
 

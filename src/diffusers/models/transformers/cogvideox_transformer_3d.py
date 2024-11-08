@@ -24,7 +24,7 @@ from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_lay
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
-from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps, CogVideoX1_1PatchEmbed
+from ..embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
@@ -227,6 +227,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
+        patch_size_t: int = 2,
         temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
@@ -237,6 +238,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
         use_learned_positional_embeddings: bool = False,
+        patch_bias: bool = True,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -249,15 +251,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
 
         # 1. Patch embedding
-        #TODO： different git push --set-upstream origin cogvideox1.1-5b
-
-        # self.patch_embed = CogVideoXPatchEmbed(
-        self.patch_embed = CogVideoX1_1PatchEmbed(
+        self.patch_embed = CogVideoXPatchEmbed(
             patch_size=patch_size,
+            patch_size_t=patch_size_t,
             in_channels=in_channels,
             embed_dim=inner_dim,
             text_embed_dim=text_embed_dim,
-            # bias=True, # Only using in CogVideoX-5B
+            bias=patch_bias,
             sample_width=sample_width,
             sample_height=sample_height,
             sample_frames=sample_frames,
@@ -301,7 +301,15 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             norm_eps=norm_eps,
             chunk_dim=1,
         )
-        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * patch_size * out_channels) # For CogVideoX1.1-5B
+
+        if patch_size_t is None:
+            # For CogVideox 1.0
+            output_dim = patch_size * patch_size * out_channels
+        else:
+            # For CogVideoX 1.5
+            output_dim = patch_size * patch_size * patch_size_t * out_channels
+        
+        self.proj_out = nn.Linear(inner_dim, output_dim)
 
         self.gradient_checkpointing = False
 
@@ -446,6 +454,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
+        p = self.config.patch_size
+        p_t = self.config.patch_size_t
+
+        # We know that the hidden states height and width will always be divisible by patch_size.
+        # But, the number of frames may not be divisible by patch_size_t. So, we pad with the beginning frames.
+        if p_t is not None:
+            remaining_frames = p_t - num_frames % p_t
+            first_frame = hidden_states[:, :1].repeat(1, 1 + remaining_frames, 1, 1, 1)
+            hidden_states = torch.cat([first_frame, hidden_states[:, 1:]], dim=1)
+
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
         hidden_states = self.embedding_dropout(hidden_states)
 
@@ -494,12 +512,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
-        # Note: we use `-1` instead of `channels`:
-        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
-        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
-        p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
-        output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+        if p_t is None:
+            output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+            output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+        else:
+            output = hidden_states.reshape(batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p)
+            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
+            output = output[:, remaining_frames:]
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
