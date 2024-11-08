@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import json
 import os
@@ -57,6 +58,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     require_torch_multi_gpu,
     run_test_in_subprocess,
+    torch_all_close,
     torch_device,
 )
 
@@ -784,6 +786,101 @@ class ModelTesterMixin:
         # check disable works
         model.disable_gradient_checkpointing()
         self.assertFalse(model.is_gradient_checkpointing)
+
+    @require_torch_accelerator_with_training
+    def test_effective_gradient_checkpointing(self, loss_tolerance=1e-5, param_grad_tol=5e-5):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        inputs_dict_copy = copy.deepcopy(inputs_dict)
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        torch.manual_seed(0)
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict_copy).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < loss_tolerance)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+
+        for name, param in named_params.items():
+            if "post_quant_conv" in name:
+                continue
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol))
+
+    @unittest.skipIf(torch_device == "mps", "This test is not supported for MPS devices.")
+    def test_gradient_checkpointing_is_applied(
+        self, expected_set=None, attention_head_dim=None, num_attention_heads=None, block_out_channels=None
+    ):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+        if self.model_class.__name__ in [
+            "UNetSpatioTemporalConditionModel",
+            "AutoencoderKLTemporalDecoder",
+        ]:
+            return
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        if attention_head_dim is not None:
+            init_dict["attention_head_dim"] = attention_head_dim
+        if num_attention_heads is not None:
+            init_dict["num_attention_heads"] = num_attention_heads
+        if block_out_channels is not None:
+            init_dict["block_out_channels"] = block_out_channels
+
+        model_class_copy = copy.copy(self.model_class)
+
+        modules_with_gc_enabled = {}
+
+        # now monkey patch the following function:
+        #     def _set_gradient_checkpointing(self, module, value=False):
+        #         if hasattr(module, "gradient_checkpointing"):
+        #             module.gradient_checkpointing = value
+
+        def _set_gradient_checkpointing_new(self, module, value=False):
+            if hasattr(module, "gradient_checkpointing"):
+                module.gradient_checkpointing = value
+                modules_with_gc_enabled[module.__class__.__name__] = True
+
+        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
+
+        model = model_class_copy(**init_dict)
+        model.enable_gradient_checkpointing()
+
+        print(f"{set(modules_with_gc_enabled.keys())=}, {expected_set=}")
+
+        assert set(modules_with_gc_enabled.keys()) == expected_set
+        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
 
     def test_deprecated_kwargs(self):
         has_kwarg_in_model_class = "kwargs" in inspect.signature(self.model_class.__init__).parameters
