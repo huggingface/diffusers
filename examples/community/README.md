@@ -2659,7 +2659,7 @@ Output Image
 `prompt: 1 girl`
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20`
-![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+![Output_image](https://github.com/user-attachments/assets/4fd5bc0b-8df6-4581-9191-c07faaf10ce8)
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
@@ -2752,13 +2752,16 @@ Output Image
 `prompt: 1 girl`
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
-![Output_image]()
+
+![Output_image](https://github.com/user-attachments/assets/b320f081-2421-4b96-9ef1-4685b77179ba)
 
 `reference_attn=False, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
-![Output_image]()
+
+![Output_image](https://github.com/user-attachments/assets/05ee0816-6c4e-4f4b-81fc-71bb0082be1e)
 
 `reference_attn=True, reference_adain=False, num_inference_steps=20, style_fidelity=1.0`
-![Output_image]()
+
+![Output_image](https://github.com/user-attachments/assets/cfb7426b-9e1b-4401-8e7e-609d67b84f8b)
 
 ### Stable diffusion fabric pipeline
 
