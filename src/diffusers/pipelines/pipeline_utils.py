@@ -41,6 +41,7 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..loaders import LinFusionMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -952,6 +953,93 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
         return model
+
+    def load_linfusion(
+        self,
+        pretrained_model_name_or_path: Optional[Union[str, Path]] = None,
+        pipeline_name_or_path: Optional[Union[str, Path]] = None,
+        load_pretrained: Optional[bool] = True,
+        **kwargs,
+    ):
+        r"""
+        Load LinFusion modules into [`UNet2DConditionModel`].
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the model id (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a directory (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+            pipeline_name_or_path (`str` or `os.PathLike`, *optional*):
+                Pipeline for which linfusion is loaded
+                Can be either:
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                Only useful when `pretrained_model_name_or_path` is not provided.
+                If not provided, it will be automatically inferred from _internal_dict._name_or_path
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            adapter_name (`str`, *optional*, defaults to None):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+            weight_name (`str`, *optional*, defaults to None):
+                Name of the serialized state dict file.
+
+        Example:
+
+        ```py
+        from diffusers import StableDiffusionXLPipeline
+        import torch
+
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_linfusion()
+        ```
+        """
+        LinFusionMixin.load_linfusion(
+            self,
+            pretrained_model_name_or_path,
+            pipeline_name_or_path,
+            load_pretrained,
+            **kwargs
+        )
+
+    def unload_linfusion(self):
+        r"""
+        Unload pretrained LinFusion modules
+        """
+        LinFusionMixin.unload_linfusion(self)
 
     @property
     def name_or_path(self) -> str:
