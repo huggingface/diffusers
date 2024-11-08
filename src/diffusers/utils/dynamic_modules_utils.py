@@ -325,7 +325,7 @@ def get_cached_module_file(
         # We always copy local files (we could hash the file to see if there was a change, and give them the name of
         # that hash, to only copy when there is a modification but it seems overkill for now).
         # The only reason we do the copy is to avoid putting too many folders in sys.path.
-        shutil.copy(resolved_module_file, submodule_path / module_file)
+        shutil.copyfile(resolved_module_file, submodule_path / module_file)
         for module_needed in modules_needed:
             if len(module_needed.split(".")) == 2:
                 module_needed = "/".join(module_needed.split("."))
@@ -333,7 +333,7 @@ def get_cached_module_file(
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
             module_needed = f"{module_needed}.py"
-            shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+            shutil.copyfile(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
     else:
         # Get the commit hash
         # TODO: we will get this info in the etag soon, so retrieve it from there and not here.
@@ -350,7 +350,7 @@ def get_cached_module_file(
                 module_folder = module_file.split("/")[0]
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
-            shutil.copy(resolved_module_file, submodule_path / module_file)
+            shutil.copyfile(resolved_module_file, submodule_path / module_file)
 
         # Make sure we also have every file with relative
         for module_needed in modules_needed:
