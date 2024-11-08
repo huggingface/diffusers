@@ -318,7 +318,10 @@ class Attention(nn.Module):
                 XFormersAttnAddedKVProcessor,
             ),
         )
-
+        is_ip_adapter = hasattr(self, "processor") and isinstance(
+            self.processor,
+            (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor),
+        )
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and is_custom_diffusion:
                 raise NotImplementedError(
@@ -368,21 +371,17 @@ class Attention(nn.Module):
                     "Memory efficient attention with `xformers` might currently not work correctly if an attention mask is required for the attention operation."
                 )
                 processor = XFormersAttnAddedKVProcessor(attention_op=attention_op)
+            elif is_ip_adapter:
+                processor = IPAdapterXFormersAttnProcessor(hidden_size=self.processor.hidden_size,
+                    cross_attention_dim=self.processor.cross_attention_dim,
+                    scale=self.processor.scale,
+                    num_tokens=self.processor.num_tokens,
+                    attention_op=attention_op)
+                processor.load_state_dict(self.processor.state_dict())
+                if hasattr(self.processor, "to_k_ip"):
+                    processor.to(device=self.processor.to_k_ip[0].weight.device, dtype=self.processor.to_k_ip[0].weight.dtype)
             else:
-                processor = self.processor
-                if isinstance(self.processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                    processor = IPAdapterXFormersAttnProcessor(hidden_size=self.processor.hidden_size,
-                        cross_attention_dim=self.processor.cross_attention_dim,
-                        scale=self.processor.scale,
-                        num_tokens=self.processor.num_tokens,
-                        attention_op=attention_op)
-                    processor.load_state_dict(self.processor.state_dict())
-                    if len(self.processor._modules) > 0:
-                        module_list = list(self.processor._modules)
-                        if len(module_list) > 0:
-                            processor.to(device=self.processor._modules[module_list[0]][0].weight.device, dtype=self.processor._modules[module_list[0]][0].weight.dtype)
-                elif isinstance(self.processor, (AttnProcessor, AttnProcessor2_0)):
-                    processor = XFormersAttnProcessor(attention_op=attention_op)
+                processor = XFormersAttnProcessor(attention_op=attention_op)
         else:
             if is_custom_diffusion:
                 attn_processor_class = (
@@ -4554,6 +4553,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         return hidden_states
 
+
 class IPAdapterXFormersAttnProcessor(torch.nn.Module):
     r"""
     Attention processor for IP-Adapter using xFormers.
@@ -4575,11 +4575,6 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
     def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0, attention_op: Optional[Callable] = None):
         super().__init__()
 
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.attention_op = attention_op
@@ -4600,14 +4595,6 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         self.to_v_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
-
-    def _memory_efficient_attention_xformers(self, query, key, value, attention_mask):
-        # TODO attention_mask
-        query = query.contiguous()
-        key = key.contiguous()
-        value = value.contiguous()
-        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask, op=self.attention_op)
-        return hidden_states
 
     def __call__(
         self,
@@ -4674,12 +4661,11 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
+        query = attn.head_to_batch_dim(query).contiguous()
+        key = attn.head_to_batch_dim(key).contiguous()
+        value = attn.head_to_batch_dim(value).contiguous()
 
-        hidden_states = self._memory_efficient_attention_xformers(query, key, value, attention_mask)
-
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask, op=self.attention_op)
         hidden_states = hidden_states.to(query.dtype)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
@@ -4738,11 +4724,10 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
                             ip_key = to_k_ip(current_ip_hidden_states[:, i, :, :])
                             ip_value = to_v_ip(current_ip_hidden_states[:, i, :, :])
 
-                            ip_key = attn.head_to_batch_dim(ip_key)
-                            ip_value = attn.head_to_batch_dim(ip_value)
+                            ip_key = attn.head_to_batch_dim(ip_key).contiguous()
+                            ip_value = attn.head_to_batch_dim(ip_value).contiguous()
 
-                            _current_ip_hidden_states = self._memory_efficient_attention_xformers(query, ip_key, ip_value, None)
-
+                            _current_ip_hidden_states = xformers.ops.memory_efficient_attention(query, ip_key, ip_value, op=self.attention_op)
                             _current_ip_hidden_states = _current_ip_hidden_states.to(query.dtype)
                             _current_ip_hidden_states = attn.batch_to_head_dim(_current_ip_hidden_states)
 
@@ -4759,11 +4744,10 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
                         ip_key = to_k_ip(current_ip_hidden_states)
                         ip_value = to_v_ip(current_ip_hidden_states)
 
-                        ip_key = attn.head_to_batch_dim(ip_key)
-                        ip_value = attn.head_to_batch_dim(ip_value)
+                        ip_key = attn.head_to_batch_dim(ip_key).contiguous()
+                        ip_value = attn.head_to_batch_dim(ip_value).contiguous()
 
-                        current_ip_hidden_states = self._memory_efficient_attention_xformers(query, ip_key, ip_value, None)
-
+                        current_ip_hidden_states = xformers.ops.memory_efficient_attention(query, ip_key, ip_value, op=self.attention_op)
                         current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
                         current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
 
@@ -4783,6 +4767,8 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
+
+
 class PAGIdentitySelfAttnProcessor2_0:
     r"""
     Processor for implementing PAG using scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
