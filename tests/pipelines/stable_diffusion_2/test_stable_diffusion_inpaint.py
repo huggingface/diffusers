@@ -156,6 +156,12 @@ class StableDiffusion2InpaintPipelineFastTests(
 @slow
 @require_torch_gpu
 class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -255,7 +261,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             scheduler=pndm,
             torch_dtype=torch.float16,
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()

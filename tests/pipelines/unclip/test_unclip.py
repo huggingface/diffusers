@@ -421,6 +421,12 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @nightly
 class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -453,6 +459,12 @@ class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class UnCLIPPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -488,7 +500,6 @@ class UnCLIPPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.reset_peak_memory_stats()
 
         pipe = UnCLIPPipeline.from_pretrained("kakaobrain/karlo-v1-alpha", torch_dtype=torch.float16)
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.enable_sequential_cpu_offload()

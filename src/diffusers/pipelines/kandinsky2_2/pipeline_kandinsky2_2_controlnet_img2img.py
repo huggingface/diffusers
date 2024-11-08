@@ -206,10 +206,10 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
-        negative_image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
-        hint: torch.FloatTensor,
+        image_embeds: Union[torch.Tensor, List[torch.Tensor]],
+        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
+        negative_image_embeds: Union[torch.Tensor, List[torch.Tensor]],
+        hint: torch.Tensor,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
@@ -218,7 +218,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         return_dict: bool = True,
     ):
@@ -226,9 +226,9 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
@@ -238,9 +238,9 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
                 be maximum and the denoising process will run for the full number of iterations specified in
                 `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
-            hint (`torch.FloatTensor`):
+            hint (`torch.Tensor`):
                 The controlnet condition.
-            negative_image_embeds (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+            negative_image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
@@ -265,7 +265,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

@@ -28,7 +28,7 @@ specific language governing permissions and limitations under the License.
 >>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 ```
 
-[`DiffusionPipeline`]은 모든 모델링, 토큰화, 스케줄링 구성 요소를 다운로드하고 캐시합니다. 
+[`DiffusionPipeline`]은 모든 모델링, 토큰화, 스케줄링 구성 요소를 다운로드하고 캐시합니다.
 이 모델은 약 14억 개의 파라미터로 구성되어 있기 때문에 GPU에서 실행할 것을 강력히 권장합니다.
 PyTorch에서와 마찬가지로 생성기 객체를 GPU로 이동할 수 있습니다:
 

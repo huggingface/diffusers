@@ -9,7 +9,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
-                                                               
+
 # 有效且高效的扩散
 
 [[open-in-colab]]
@@ -22,12 +22,12 @@ specific language governing permissions and limitations under the License.
 本教程将指导您如何通过 [`DiffusionPipeline`]  更快、更好地生成图像。
 
 
-首先，加载 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 模型:
+首先，加载 [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 模型:
 
 ```python
 from diffusers import DiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 
@@ -51,7 +51,7 @@ prompt = "portrait photo of a old warrior chief"
 pipeline = pipeline.to("cuda")
 ```
 
-为了确保您可以使用相同的图像并对其进行改进，使用 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) 方法，然后设置一个随机数种子 以确保其 [复现性](./using-diffusers/reproducibility):
+为了确保您可以使用相同的图像并对其进行改进，使用 [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) 方法，然后设置一个随机数种子 以确保其 [复现性](./using-diffusers/reusing_seeds):
 
 ```python
 import torch
@@ -97,7 +97,7 @@ image
 
 </Tip>
 
-另一个选择是减少推理步数。 你可以选择一个更高效的调度器 (*scheduler*) 可以减少推理步数同时保证输出质量。您可以在 [DiffusionPipeline] 中通过调用compatibles方法找到与当前模型兼容的调度器 (*scheduler*)。 
+另一个选择是减少推理步数。 你可以选择一个更高效的调度器 (*scheduler*) 可以减少推理步数同时保证输出质量。您可以在 [DiffusionPipeline] 中通过调用compatibles方法找到与当前模型兼容的调度器 (*scheduler*)。
 
 ```python
 pipeline.scheduler.compatibles
@@ -159,7 +159,7 @@ def get_inputs(batch_size=1):
 设置 `batch_size=4` ，然后看一看我们消耗了多少内存:
 
 ```python
-from diffusers.utils import make_image_grid 
+from diffusers.utils import make_image_grid
 
 images = pipeline(**get_inputs(batch_size=4)).images
 make_image_grid(images, 2, 2)

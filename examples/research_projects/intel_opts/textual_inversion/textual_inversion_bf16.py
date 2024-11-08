@@ -378,6 +378,10 @@ def main():
         project_config=accelerator_project_config,
     )
 
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)

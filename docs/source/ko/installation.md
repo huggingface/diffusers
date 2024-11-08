@@ -93,19 +93,19 @@ cd diffusers
 
 **PyTorch의 경우**
 
-```
+```sh
 pip install -e ".[torch]"
 ```
 
 **Flax의 경우**
 
-```
+```sh
 pip install -e ".[flax]"
 ```
 
 이러한 명령어들은 저장소를 복제한 폴더와 Python 라이브러리 경로를 연결합니다.
 Python은 이제 일반 라이브러리 경로에 더하여 복제한 폴더 내부를 살펴봅니다.
-예를들어 Python 패키지가 `~/anaconda3/envs/main/lib/python3.8/site-packages/`에 설치되어 있는 경우 Python은 복제한 폴더인 `~/diffusers/`도 검색합니다.
+예를들어 Python 패키지가 `~/anaconda3/envs/main/lib/python3.10/site-packages/`에 설치되어 있는 경우 Python은 복제한 폴더인 `~/diffusers/`도 검색합니다.
 
 <Tip warning={true}>
 

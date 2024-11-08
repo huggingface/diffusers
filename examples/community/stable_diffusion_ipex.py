@@ -18,10 +18,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import intel_extension_for_pytorch as ipex
 import torch
 from packaging import version
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
-from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionIPEXPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
@@ -86,7 +86,7 @@ class StableDiffusionIPEXPipeline(
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -100,7 +100,7 @@ class StableDiffusionIPEXPipeline(
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -311,8 +311,8 @@ class StableDiffusionIPEXPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -330,10 +330,10 @@ class StableDiffusionIPEXPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -533,7 +533,12 @@ class StableDiffusionIPEXPipeline(
                 )
 
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -562,12 +567,12 @@ class StableDiffusionIPEXPipeline(
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -603,14 +608,14 @@ class StableDiffusionIPEXPipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -622,7 +627,7 @@ class StableDiffusionIPEXPipeline(
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.

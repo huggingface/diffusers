@@ -11,15 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.checkpoint
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import UNet2DConditionLoadersMixin
-from ...utils import logging
+from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ...utils.torch_utils import apply_freeu
+from ..attention import BasicTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -27,25 +32,1085 @@ from ..attention_processor import (
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
+    AttnProcessor2_0,
+    FusedAttnProcessor2_0,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
 )
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_temporal import TransformerTemporalModel
+from ..resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from ..transformers.dual_transformer_2d import DualTransformer2DModel
+from ..transformers.transformer_2d import Transformer2DModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
-from .unet_3d_blocks import (
-    CrossAttnDownBlockMotion,
-    CrossAttnUpBlockMotion,
-    DownBlockMotion,
-    UNetMidBlockCrossAttnMotion,
-    UpBlockMotion,
-    get_down_block,
-    get_up_block,
-)
-from .unet_3d_condition import UNet3DConditionOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class UNetMotionOutput(BaseOutput):
+    """
+    The output of [`UNetMotionOutput`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
+            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
+    """
+
+    sample: torch.Tensor
+
+
+class AnimateDiffTransformer3D(nn.Module):
+    """
+    A Transformer model for video-like data.
+
+    Parameters:
+        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
+        in_channels (`int`, *optional*):
+            The number of channels in the input and output (specify if the input is **continuous**).
+        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        attention_bias (`bool`, *optional*):
+            Configure if the `TransformerBlock` attention should contain a bias parameter.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`):
+            Activation function to use in feed-forward. See `diffusers.models.activations.get_activation` for supported
+            activation functions.
+        norm_elementwise_affine (`bool`, *optional*):
+            Configure if the `TransformerBlock` should use learnable elementwise affine parameters for normalization.
+        double_self_attention (`bool`, *optional*):
+            Configure if each `TransformerBlock` should contain two self-attention layers.
+        positional_embeddings: (`str`, *optional*):
+            The type of positional embeddings to apply to the sequence input before passing use.
+        num_positional_embeddings: (`int`, *optional*):
+            The maximum length of the sequence over which to apply positional embeddings.
+    """
+
+    def __init__(
+        self,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 88,
+        in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+        norm_num_groups: int = 32,
+        cross_attention_dim: Optional[int] = None,
+        attention_bias: bool = False,
+        sample_size: Optional[int] = None,
+        activation_fn: str = "geglu",
+        norm_elementwise_affine: bool = True,
+        double_self_attention: bool = True,
+        positional_embeddings: Optional[str] = None,
+        num_positional_embeddings: Optional[int] = None,
+    ):
+        super().__init__()
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        inner_dim = num_attention_heads * attention_head_dim
+
+        self.in_channels = in_channels
+
+        self.norm = nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.proj_in = nn.Linear(in_channels, inner_dim)
+
+        # 3. Define transformers blocks
+        self.transformer_blocks = nn.ModuleList(
+            [
+                BasicTransformerBlock(
+                    inner_dim,
+                    num_attention_heads,
+                    attention_head_dim,
+                    dropout=dropout,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    attention_bias=attention_bias,
+                    double_self_attention=double_self_attention,
+                    norm_elementwise_affine=norm_elementwise_affine,
+                    positional_embeddings=positional_embeddings,
+                    num_positional_embeddings=num_positional_embeddings,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.proj_out = nn.Linear(inner_dim, in_channels)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.LongTensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        num_frames: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> torch.Tensor:
+        """
+        The [`AnimateDiffTransformer3D`] forward method.
+
+        Args:
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.Tensor` of shape `(batch size, channel, height, width)` if continuous):
+                Input hidden_states.
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
+                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
+                self-attention.
+            timestep ( `torch.LongTensor`, *optional*):
+                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
+            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
+                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
+                `AdaLayerZeroNorm`.
+            num_frames (`int`, *optional*, defaults to 1):
+                The number of frames to be processed per batch. This is used to reshape the hidden states.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Returns:
+            torch.Tensor:
+                The output tensor.
+        """
+        # 1. Input
+        batch_frames, channel, height, width = hidden_states.shape
+        batch_size = batch_frames // num_frames
+
+        residual = hidden_states
+
+        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
+
+        hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
+
+        hidden_states = self.proj_in(input=hidden_states)
+
+        # 2. Blocks
+        for block in self.transformer_blocks:
+            hidden_states = block(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                timestep=timestep,
+                cross_attention_kwargs=cross_attention_kwargs,
+                class_labels=class_labels,
+            )
+
+        # 3. Output
+        hidden_states = self.proj_out(input=hidden_states)
+        hidden_states = (
+            hidden_states[None, None, :]
+            .reshape(batch_size, height, width, num_frames, channel)
+            .permute(0, 3, 4, 1, 2)
+            .contiguous()
+        )
+        hidden_states = hidden_states.reshape(batch_frames, channel, height, width)
+
+        output = hidden_states + residual
+        return output
+
+
+class DownBlockMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        output_scale_factor: float = 1.0,
+        add_downsample: bool = True,
+        downsample_padding: int = 1,
+        temporal_num_attention_heads: Union[int, Tuple[int]] = 1,
+        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_max_seq_length: int = 32,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
+    ):
+        super().__init__()
+        resnets = []
+        motion_modules = []
+
+        # support for variable transformer layers per temporal block
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = (temporal_transformer_layers_per_block,) * num_layers
+        elif len(temporal_transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"`temporal_transformer_layers_per_block` must be an integer or a tuple of integers of length {num_layers}"
+            )
+
+        # support for variable number of attention head per temporal layers
+        if isinstance(temporal_num_attention_heads, int):
+            temporal_num_attention_heads = (temporal_num_attention_heads,) * num_layers
+        elif len(temporal_num_attention_heads) != num_layers:
+            raise ValueError(
+                f"`temporal_num_attention_heads` must be an integer or a tuple of integers of length {num_layers}"
+            )
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            motion_modules.append(
+                AnimateDiffTransformer3D(
+                    num_attention_heads=temporal_num_attention_heads[i],
+                    in_channels=out_channels,
+                    num_layers=temporal_transformer_layers_per_block[i],
+                    norm_num_groups=resnet_groups,
+                    cross_attention_dim=temporal_cross_attention_dim,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    attention_head_dim=out_channels // temporal_num_attention_heads[i],
+                    double_self_attention=temporal_double_self_attention,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
+
+        if add_downsample:
+            self.downsamplers = nn.ModuleList(
+                [
+                    Downsample2D(
+                        out_channels,
+                        use_conv=True,
+                        out_channels=out_channels,
+                        padding=downsample_padding,
+                        name="op",
+                    )
+                ]
+            )
+        else:
+            self.downsamplers = None
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+        *args,
+        **kwargs,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        output_states = ()
+
+        blocks = zip(self.resnets, self.motion_modules)
+        for resnet, motion_module in blocks:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet),
+                        hidden_states,
+                        temb,
+                        use_reentrant=False,
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+
+            else:
+                hidden_states = resnet(input_tensor=hidden_states, temb=temb)
+
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
+
+            output_states = output_states + (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states=hidden_states)
+
+            output_states = output_states + (hidden_states,)
+
+        return hidden_states, output_states
+
+
+class CrossAttnDownBlockMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        num_attention_heads: int = 1,
+        cross_attention_dim: int = 1280,
+        output_scale_factor: float = 1.0,
+        downsample_padding: int = 1,
+        add_downsample: bool = True,
+        dual_cross_attention: bool = False,
+        use_linear_projection: bool = False,
+        only_cross_attention: bool = False,
+        upcast_attention: bool = False,
+        attention_type: str = "default",
+        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_num_attention_heads: int = 8,
+        temporal_max_seq_length: int = 32,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        temporal_double_self_attention: bool = True,
+    ):
+        super().__init__()
+        resnets = []
+        attentions = []
+        motion_modules = []
+
+        self.has_cross_attention = True
+        self.num_attention_heads = num_attention_heads
+
+        # support for variable transformer layers per block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = (transformer_layers_per_block,) * num_layers
+        elif len(transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"transformer_layers_per_block must be an integer or a list of integers of length {num_layers}"
+            )
+
+        # support for variable transformer layers per temporal block
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = (temporal_transformer_layers_per_block,) * num_layers
+        elif len(temporal_transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"temporal_transformer_layers_per_block must be an integer or a list of integers of length {num_layers}"
+            )
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=transformer_layers_per_block[i],
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                        use_linear_projection=use_linear_projection,
+                        only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
+                        attention_type=attention_type,
+                    )
+                )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
+
+            motion_modules.append(
+                AnimateDiffTransformer3D(
+                    num_attention_heads=temporal_num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=temporal_transformer_layers_per_block[i],
+                    norm_num_groups=resnet_groups,
+                    cross_attention_dim=temporal_cross_attention_dim,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    attention_head_dim=out_channels // temporal_num_attention_heads,
+                    double_self_attention=temporal_double_self_attention,
+                )
+            )
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
+
+        if add_downsample:
+            self.downsamplers = nn.ModuleList(
+                [
+                    Downsample2D(
+                        out_channels,
+                        use_conv=True,
+                        out_channels=out_channels,
+                        padding=downsample_padding,
+                        name="op",
+                    )
+                ]
+            )
+        else:
+            self.downsamplers = None
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        additional_residuals: Optional[torch.Tensor] = None,
+    ):
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+
+        output_states = ()
+
+        blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
+        for i, (resnet, attn, motion_module) in enumerate(blocks):
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = resnet(input_tensor=hidden_states, temb=temb)
+
+            hidden_states = attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
+                return_dict=False,
+            )[0]
+
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )
+
+            # apply additional residuals to the output of the last pair of resnet and attention blocks
+            if i == len(blocks) - 1 and additional_residuals is not None:
+                hidden_states = hidden_states + additional_residuals
+
+            output_states = output_states + (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states=hidden_states)
+
+            output_states = output_states + (hidden_states,)
+
+        return hidden_states, output_states
+
+
+class CrossAttnUpBlockMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        prev_output_channel: int,
+        temb_channels: int,
+        resolution_idx: Optional[int] = None,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        num_attention_heads: int = 1,
+        cross_attention_dim: int = 1280,
+        output_scale_factor: float = 1.0,
+        add_upsample: bool = True,
+        dual_cross_attention: bool = False,
+        use_linear_projection: bool = False,
+        only_cross_attention: bool = False,
+        upcast_attention: bool = False,
+        attention_type: str = "default",
+        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_num_attention_heads: int = 8,
+        temporal_max_seq_length: int = 32,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+    ):
+        super().__init__()
+        resnets = []
+        attentions = []
+        motion_modules = []
+
+        self.has_cross_attention = True
+        self.num_attention_heads = num_attention_heads
+
+        # support for variable transformer layers per block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = (transformer_layers_per_block,) * num_layers
+        elif len(transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"transformer_layers_per_block must be an integer or a list of integers of length {num_layers}, got {len(transformer_layers_per_block)}"
+            )
+
+        # support for variable transformer layers per temporal block
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = (temporal_transformer_layers_per_block,) * num_layers
+        elif len(temporal_transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"temporal_transformer_layers_per_block must be an integer or a list of integers of length {num_layers}, got {len(temporal_transformer_layers_per_block)}"
+            )
+
+        for i in range(num_layers):
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=transformer_layers_per_block[i],
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                        use_linear_projection=use_linear_projection,
+                        only_cross_attention=only_cross_attention,
+                        upcast_attention=upcast_attention,
+                        attention_type=attention_type,
+                    )
+                )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
+            motion_modules.append(
+                AnimateDiffTransformer3D(
+                    num_attention_heads=temporal_num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=temporal_transformer_layers_per_block[i],
+                    norm_num_groups=resnet_groups,
+                    cross_attention_dim=temporal_cross_attention_dim,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    attention_head_dim=out_channels // temporal_num_attention_heads,
+                )
+            )
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
+
+        if add_upsample:
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+        else:
+            self.upsamplers = None
+
+        self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+    ) -> torch.Tensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
+        blocks = zip(self.resnets, self.attentions, self.motion_modules)
+        for resnet, attn, motion_module in blocks:
+            # pop res hidden states
+            res_hidden_states = res_hidden_states_tuple[-1]
+            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
+            hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = resnet(input_tensor=hidden_states, temb=temb)
+
+            hidden_states = attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
+                return_dict=False,
+            )[0]
+
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )
+
+        if self.upsamplers is not None:
+            for upsampler in self.upsamplers:
+                hidden_states = upsampler(hidden_states=hidden_states, output_size=upsample_size)
+
+        return hidden_states
+
+
+class UpBlockMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        prev_output_channel: int,
+        out_channels: int,
+        temb_channels: int,
+        resolution_idx: Optional[int] = None,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        output_scale_factor: float = 1.0,
+        add_upsample: bool = True,
+        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_num_attention_heads: int = 8,
+        temporal_max_seq_length: int = 32,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+    ):
+        super().__init__()
+        resnets = []
+        motion_modules = []
+
+        # support for variable transformer layers per temporal block
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = (temporal_transformer_layers_per_block,) * num_layers
+        elif len(temporal_transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"temporal_transformer_layers_per_block must be an integer or a list of integers of length {num_layers}"
+            )
+
+        for i in range(num_layers):
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+            motion_modules.append(
+                AnimateDiffTransformer3D(
+                    num_attention_heads=temporal_num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=temporal_transformer_layers_per_block[i],
+                    norm_num_groups=resnet_groups,
+                    cross_attention_dim=temporal_cross_attention_dim,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    attention_head_dim=out_channels // temporal_num_attention_heads,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
+
+        if add_upsample:
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+        else:
+            self.upsamplers = None
+
+        self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+        upsample_size=None,
+        num_frames: int = 1,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
+        blocks = zip(self.resnets, self.motion_modules)
+
+        for resnet, motion_module in blocks:
+            # pop res hidden states
+            res_hidden_states = res_hidden_states_tuple[-1]
+            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
+            hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet),
+                        hidden_states,
+                        temb,
+                        use_reentrant=False,
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+            else:
+                hidden_states = resnet(input_tensor=hidden_states, temb=temb)
+
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)
+
+        if self.upsamplers is not None:
+            for upsampler in self.upsamplers:
+                hidden_states = upsampler(hidden_states=hidden_states, output_size=upsample_size)
+
+        return hidden_states
+
+
+class UNetMidBlockCrossAttnMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        num_attention_heads: int = 1,
+        output_scale_factor: float = 1.0,
+        cross_attention_dim: int = 1280,
+        dual_cross_attention: bool = False,
+        use_linear_projection: bool = False,
+        upcast_attention: bool = False,
+        attention_type: str = "default",
+        temporal_num_attention_heads: int = 1,
+        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_max_seq_length: int = 32,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+    ):
+        super().__init__()
+
+        self.has_cross_attention = True
+        self.num_attention_heads = num_attention_heads
+        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+
+        # support for variable transformer layers per block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = (transformer_layers_per_block,) * num_layers
+        elif len(transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"`transformer_layers_per_block` should be an integer or a list of integers of length {num_layers}."
+            )
+
+        # support for variable transformer layers per temporal block
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = (temporal_transformer_layers_per_block,) * num_layers
+        elif len(temporal_transformer_layers_per_block) != num_layers:
+            raise ValueError(
+                f"`temporal_transformer_layers_per_block` should be an integer or a list of integers of length {num_layers}."
+            )
+
+        # there is always at least one resnet
+        resnets = [
+            ResnetBlock2D(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=resnet_groups,
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+            )
+        ]
+        attentions = []
+        motion_modules = []
+
+        for i in range(num_layers):
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
+                        in_channels=in_channels,
+                        num_layers=transformer_layers_per_block[i],
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                        use_linear_projection=use_linear_projection,
+                        upcast_attention=upcast_attention,
+                        attention_type=attention_type,
+                    )
+                )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        num_attention_heads,
+                        in_channels // num_attention_heads,
+                        in_channels=in_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            motion_modules.append(
+                AnimateDiffTransformer3D(
+                    num_attention_heads=temporal_num_attention_heads,
+                    attention_head_dim=in_channels // temporal_num_attention_heads,
+                    in_channels=in_channels,
+                    num_layers=temporal_transformer_layers_per_block[i],
+                    norm_num_groups=resnet_groups,
+                    cross_attention_dim=temporal_cross_attention_dim,
+                    attention_bias=False,
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    activation_fn="geglu",
+                )
+            )
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+    ) -> torch.Tensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
+
+        hidden_states = self.resnets[0](input_tensor=hidden_states, temb=temb)
+
+        blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)
+        for attn, resnet, motion_module in blocks:
+            hidden_states = attn(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
+                return_dict=False,
+            )[0]
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+
+                    return custom_forward
+
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(motion_module),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = motion_module(
+                    hidden_states,
+                    num_frames=num_frames,
+                )
+                hidden_states = resnet(input_tensor=hidden_states, temb=temb)
+
+        return hidden_states
 
 
 class MotionModules(nn.Module):
@@ -53,7 +1118,8 @@ class MotionModules(nn.Module):
         self,
         in_channels: int,
         layers_per_block: int = 2,
-        num_attention_heads: int = 8,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 8,
+        num_attention_heads: Union[int, Tuple[int]] = 8,
         attention_bias: bool = False,
         cross_attention_dim: Optional[int] = None,
         activation_fn: str = "geglu",
@@ -63,10 +1129,19 @@ class MotionModules(nn.Module):
         super().__init__()
         self.motion_modules = nn.ModuleList([])
 
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = (transformer_layers_per_block,) * layers_per_block
+        elif len(transformer_layers_per_block) != layers_per_block:
+            raise ValueError(
+                f"The number of transformer layers per block must match the number of layers per block, "
+                f"got {layers_per_block} and {len(transformer_layers_per_block)}"
+            )
+
         for i in range(layers_per_block):
             self.motion_modules.append(
-                TransformerTemporalModel(
+                AnimateDiffTransformer3D(
                     in_channels=in_channels,
+                    num_layers=transformer_layers_per_block[i],
                     norm_num_groups=norm_num_groups,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
@@ -79,14 +1154,16 @@ class MotionModules(nn.Module):
             )
 
 
-class MotionAdapter(ModelMixin, ConfigMixin):
+class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @register_to_config
     def __init__(
         self,
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
-        motion_layers_per_block: int = 2,
+        motion_layers_per_block: Union[int, Tuple[int]] = 2,
+        motion_transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]] = 1,
         motion_mid_block_layers_per_block: int = 1,
-        motion_num_attention_heads: int = 8,
+        motion_transformer_layers_per_mid_block: Union[int, Tuple[int]] = 1,
+        motion_num_attention_heads: Union[int, Tuple[int]] = 8,
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
@@ -97,11 +1174,15 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         Args:
             block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each UNet block.
-            motion_layers_per_block (`int`, *optional*, defaults to 2):
+            motion_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 2):
                 The number of motion layers per UNet block.
+            motion_transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple[int]]`, *optional*, defaults to 1):
+                The number of transformer layers to use in each motion layer in each block.
             motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
                 The number of motion layers in the middle UNet block.
-            motion_num_attention_heads (`int`, *optional*, defaults to 8):
+            motion_transformer_layers_per_mid_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+                The number of transformer layers to use in each motion layer in the middle block.
+            motion_num_attention_heads (`int` or `Tuple[int]`, *optional*, defaults to 8):
                 The number of heads to use in each attention layer of the motion module.
             motion_norm_num_groups (`int`, *optional*, defaults to 32):
                 The number of groups to use in each group normalization layer of the motion module.
@@ -114,6 +1195,35 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         super().__init__()
         down_blocks = []
         up_blocks = []
+
+        if isinstance(motion_layers_per_block, int):
+            motion_layers_per_block = (motion_layers_per_block,) * len(block_out_channels)
+        elif len(motion_layers_per_block) != len(block_out_channels):
+            raise ValueError(
+                f"The number of motion layers per block must match the number of blocks, "
+                f"got {len(block_out_channels)} and {len(motion_layers_per_block)}"
+            )
+
+        if isinstance(motion_transformer_layers_per_block, int):
+            motion_transformer_layers_per_block = (motion_transformer_layers_per_block,) * len(block_out_channels)
+
+        if isinstance(motion_transformer_layers_per_mid_block, int):
+            motion_transformer_layers_per_mid_block = (
+                motion_transformer_layers_per_mid_block,
+            ) * motion_mid_block_layers_per_block
+        elif len(motion_transformer_layers_per_mid_block) != motion_mid_block_layers_per_block:
+            raise ValueError(
+                f"The number of layers per mid block ({motion_mid_block_layers_per_block}) "
+                f"must match the length of motion_transformer_layers_per_mid_block ({len(motion_transformer_layers_per_mid_block)})"
+            )
+
+        if isinstance(motion_num_attention_heads, int):
+            motion_num_attention_heads = (motion_num_attention_heads,) * len(block_out_channels)
+        elif len(motion_num_attention_heads) != len(block_out_channels):
+            raise ValueError(
+                f"The length of the attention head number tuple in the motion module must match the "
+                f"number of block, got {len(motion_num_attention_heads)} and {len(block_out_channels)}"
+            )
 
         if conv_in_channels:
             # input
@@ -130,9 +1240,10 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     cross_attention_dim=None,
                     activation_fn="geglu",
                     attention_bias=False,
-                    num_attention_heads=motion_num_attention_heads,
+                    num_attention_heads=motion_num_attention_heads[i],
                     max_seq_length=motion_max_seq_length,
-                    layers_per_block=motion_layers_per_block,
+                    layers_per_block=motion_layers_per_block[i],
+                    transformer_layers_per_block=motion_transformer_layers_per_block[i],
                 )
             )
 
@@ -143,15 +1254,20 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 cross_attention_dim=None,
                 activation_fn="geglu",
                 attention_bias=False,
-                num_attention_heads=motion_num_attention_heads,
-                layers_per_block=motion_mid_block_layers_per_block,
+                num_attention_heads=motion_num_attention_heads[-1],
                 max_seq_length=motion_max_seq_length,
+                layers_per_block=motion_mid_block_layers_per_block,
+                transformer_layers_per_block=motion_transformer_layers_per_mid_block,
             )
         else:
             self.mid_block = None
 
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
+
+        reversed_motion_layers_per_block = list(reversed(motion_layers_per_block))
+        reversed_motion_transformer_layers_per_block = list(reversed(motion_transformer_layers_per_block))
+        reversed_motion_num_attention_heads = list(reversed(motion_num_attention_heads))
         for i, channel in enumerate(reversed_block_out_channels):
             output_channel = reversed_block_out_channels[i]
             up_blocks.append(
@@ -161,9 +1277,10 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     cross_attention_dim=None,
                     activation_fn="geglu",
                     attention_bias=False,
-                    num_attention_heads=motion_num_attention_heads,
+                    num_attention_heads=reversed_motion_num_attention_heads[i],
                     max_seq_length=motion_max_seq_length,
-                    layers_per_block=motion_layers_per_block + 1,
+                    layers_per_block=reversed_motion_layers_per_block[i] + 1,
+                    transformer_layers_per_block=reversed_motion_transformer_layers_per_block[i],
                 )
             )
 
@@ -174,7 +1291,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         pass
 
 
-class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
     r"""
     A modified conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a
     sample shaped output.
@@ -204,20 +1321,31 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             "CrossAttnUpBlockMotion",
         ),
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
-        layers_per_block: int = 2,
+        layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
+        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
+        reverse_transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple]]] = None,
+        temporal_transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
+        reverse_temporal_transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple]]] = None,
+        transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
+        temporal_transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = 1,
         use_linear_projection: bool = False,
         num_attention_heads: Union[int, Tuple[int, ...]] = 8,
         motion_max_seq_length: int = 32,
-        motion_num_attention_heads: int = 8,
-        use_motion_mid_block: int = True,
+        motion_num_attention_heads: Union[int, Tuple[int, ...]] = 8,
+        reverse_motion_num_attention_heads: Optional[Union[int, Tuple[int, ...], Tuple[Tuple[int, ...], ...]]] = None,
+        use_motion_mid_block: bool = True,
+        mid_block_layers: int = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
+        addition_embed_type: Optional[str] = None,
+        addition_time_embed_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: Optional[int] = None,
         time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -240,6 +1368,31 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
+        if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`: {cross_attention_dim}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
+            )
+
+        if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
+            for layer_number_per_block in transformer_layers_per_block:
+                if isinstance(layer_number_per_block, list):
+                    raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
+
+        if (
+            isinstance(temporal_transformer_layers_per_block, list)
+            and reverse_temporal_transformer_layers_per_block is None
+        ):
+            for layer_number_per_block in temporal_transformer_layers_per_block:
+                if isinstance(layer_number_per_block, list):
+                    raise ValueError(
+                        "Must provide 'reverse_temporal_transformer_layers_per_block` if using asymmetrical motion module in UNet."
+                    )
+
         # input
         conv_in_kernel = 3
         conv_out_kernel = 3
@@ -260,12 +1413,39 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if encoder_hid_dim_type is None:
             self.encoder_hid_proj = None
 
+        if addition_embed_type == "text_time":
+            self.add_time_proj = Timesteps(addition_time_embed_dim, True, 0)
+            self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+
         # class embedding
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
+
+        if isinstance(cross_attention_dim, int):
+            cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
+
+        if isinstance(layers_per_block, int):
+            layers_per_block = [layers_per_block] * len(down_block_types)
+
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+
+        if isinstance(reverse_transformer_layers_per_block, int):
+            reverse_transformer_layers_per_block = [reverse_transformer_layers_per_block] * len(down_block_types)
+
+        if isinstance(temporal_transformer_layers_per_block, int):
+            temporal_transformer_layers_per_block = [temporal_transformer_layers_per_block] * len(down_block_types)
+
+        if isinstance(reverse_temporal_transformer_layers_per_block, int):
+            reverse_temporal_transformer_layers_per_block = [reverse_temporal_transformer_layers_per_block] * len(
+                down_block_types
+            )
+
+        if isinstance(motion_num_attention_heads, int):
+            motion_num_attention_heads = (motion_num_attention_heads,) * len(down_block_types)
 
         # down
         output_channel = block_out_channels[0]
@@ -274,27 +1454,53 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block = get_down_block(
-                down_block_type,
-                num_layers=layers_per_block,
-                in_channels=input_channel,
-                out_channels=output_channel,
-                temb_channels=time_embed_dim,
-                add_downsample=not is_final_block,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                resnet_groups=norm_num_groups,
-                cross_attention_dim=cross_attention_dim,
-                num_attention_heads=num_attention_heads[i],
-                downsample_padding=downsample_padding,
-                use_linear_projection=use_linear_projection,
-                dual_cross_attention=False,
-                temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_max_seq_length=motion_max_seq_length,
-            )
+            if down_block_type == "CrossAttnDownBlockMotion":
+                down_block = CrossAttnDownBlockMotion(
+                    in_channels=input_channel,
+                    out_channels=output_channel,
+                    temb_channels=time_embed_dim,
+                    num_layers=layers_per_block[i],
+                    transformer_layers_per_block=transformer_layers_per_block[i],
+                    resnet_eps=norm_eps,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    num_attention_heads=num_attention_heads[i],
+                    cross_attention_dim=cross_attention_dim[i],
+                    downsample_padding=downsample_padding,
+                    add_downsample=not is_final_block,
+                    use_linear_projection=use_linear_projection,
+                    temporal_num_attention_heads=motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                )
+            elif down_block_type == "DownBlockMotion":
+                down_block = DownBlockMotion(
+                    in_channels=input_channel,
+                    out_channels=output_channel,
+                    temb_channels=time_embed_dim,
+                    num_layers=layers_per_block[i],
+                    resnet_eps=norm_eps,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    add_downsample=not is_final_block,
+                    downsample_padding=downsample_padding,
+                    temporal_num_attention_heads=motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_transformer_layers_per_block=temporal_transformer_layers_per_block[i],
+                )
+            else:
+                raise ValueError(
+                    "Invalid `down_block_type` encountered. Must be one of `CrossAttnDownBlockMotion` or `DownBlockMotion`"
+                )
+
             self.down_blocks.append(down_block)
 
         # mid
+        if transformer_layers_per_mid_block is None:
+            transformer_layers_per_mid_block = (
+                transformer_layers_per_block[-1] if isinstance(transformer_layers_per_block[-1], int) else 1
+            )
+
         if use_motion_mid_block:
             self.mid_block = UNetMidBlockCrossAttnMotion(
                 in_channels=block_out_channels[-1],
@@ -302,13 +1508,16 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
-                cross_attention_dim=cross_attention_dim,
+                cross_attention_dim=cross_attention_dim[-1],
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
-                temporal_num_attention_heads=motion_num_attention_heads,
+                num_layers=mid_block_layers,
+                temporal_num_attention_heads=motion_num_attention_heads[-1],
                 temporal_max_seq_length=motion_max_seq_length,
+                transformer_layers_per_block=transformer_layers_per_mid_block,
+                temporal_transformer_layers_per_block=temporal_transformer_layers_per_mid_block,
             )
 
         else:
@@ -318,11 +1527,13 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
-                cross_attention_dim=cross_attention_dim,
+                cross_attention_dim=cross_attention_dim[-1],
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
                 use_linear_projection=use_linear_projection,
+                num_layers=mid_block_layers,
+                transformer_layers_per_block=transformer_layers_per_mid_block,
             )
 
         # count how many layers upsample the images
@@ -331,6 +1542,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_num_attention_heads = list(reversed(num_attention_heads))
+        reversed_layers_per_block = list(reversed(layers_per_block))
+        reversed_cross_attention_dim = list(reversed(cross_attention_dim))
+        reversed_motion_num_attention_heads = list(reversed(motion_num_attention_heads))
+
+        if reverse_transformer_layers_per_block is None:
+            reverse_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
+
+        if reverse_temporal_transformer_layers_per_block is None:
+            reverse_temporal_transformer_layers_per_block = list(reversed(temporal_transformer_layers_per_block))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -347,25 +1567,47 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             else:
                 add_upsample = False
 
-            up_block = get_up_block(
-                up_block_type,
-                num_layers=layers_per_block + 1,
-                in_channels=input_channel,
-                out_channels=output_channel,
-                prev_output_channel=prev_output_channel,
-                temb_channels=time_embed_dim,
-                add_upsample=add_upsample,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                resnet_groups=norm_num_groups,
-                cross_attention_dim=cross_attention_dim,
-                num_attention_heads=reversed_num_attention_heads[i],
-                dual_cross_attention=False,
-                resolution_idx=i,
-                use_linear_projection=use_linear_projection,
-                temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_max_seq_length=motion_max_seq_length,
-            )
+            if up_block_type == "CrossAttnUpBlockMotion":
+                up_block = CrossAttnUpBlockMotion(
+                    in_channels=input_channel,
+                    out_channels=output_channel,
+                    prev_output_channel=prev_output_channel,
+                    temb_channels=time_embed_dim,
+                    resolution_idx=i,
+                    num_layers=reversed_layers_per_block[i] + 1,
+                    transformer_layers_per_block=reverse_transformer_layers_per_block[i],
+                    resnet_eps=norm_eps,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    num_attention_heads=reversed_num_attention_heads[i],
+                    cross_attention_dim=reversed_cross_attention_dim[i],
+                    add_upsample=add_upsample,
+                    use_linear_projection=use_linear_projection,
+                    temporal_num_attention_heads=reversed_motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_transformer_layers_per_block=reverse_temporal_transformer_layers_per_block[i],
+                )
+            elif up_block_type == "UpBlockMotion":
+                up_block = UpBlockMotion(
+                    in_channels=input_channel,
+                    prev_output_channel=prev_output_channel,
+                    out_channels=output_channel,
+                    temb_channels=time_embed_dim,
+                    resolution_idx=i,
+                    num_layers=reversed_layers_per_block[i] + 1,
+                    resnet_eps=norm_eps,
+                    resnet_act_fn=act_fn,
+                    resnet_groups=norm_num_groups,
+                    add_upsample=add_upsample,
+                    temporal_num_attention_heads=reversed_motion_num_attention_heads[i],
+                    temporal_max_seq_length=motion_max_seq_length,
+                    temporal_transformer_layers_per_block=reverse_temporal_transformer_layers_per_block[i],
+                )
+            else:
+                raise ValueError(
+                    "Invalid `up_block_type` encountered. Must be one of `CrossAttnUpBlockMotion` or `UpBlockMotion`"
+                )
+
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
@@ -393,8 +1635,29 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     ):
         has_motion_adapter = motion_adapter is not None
 
+        if has_motion_adapter:
+            motion_adapter.to(device=unet.device)
+
+            # check compatibility of number of blocks
+            if len(unet.config["down_block_types"]) != len(motion_adapter.config["block_out_channels"]):
+                raise ValueError("Incompatible Motion Adapter, got different number of blocks")
+
+            # check layers compatibility for each block
+            if isinstance(unet.config["layers_per_block"], int):
+                expanded_layers_per_block = [unet.config["layers_per_block"]] * len(unet.config["down_block_types"])
+            else:
+                expanded_layers_per_block = list(unet.config["layers_per_block"])
+            if isinstance(motion_adapter.config["motion_layers_per_block"], int):
+                expanded_adapter_layers_per_block = [motion_adapter.config["motion_layers_per_block"]] * len(
+                    motion_adapter.config["block_out_channels"]
+                )
+            else:
+                expanded_adapter_layers_per_block = list(motion_adapter.config["motion_layers_per_block"])
+            if expanded_layers_per_block != expanded_adapter_layers_per_block:
+                raise ValueError("Incompatible Motion Adapter, got different number of layers per block")
+
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
-        config = unet.config
+        config = dict(unet.config)
         config["_class_name"] = cls.__name__
 
         down_blocks = []
@@ -411,13 +1674,20 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 up_blocks.append("CrossAttnUpBlockMotion")
             else:
                 up_blocks.append("UpBlockMotion")
-
         config["up_block_types"] = up_blocks
 
         if has_motion_adapter:
             config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
+            config["layers_per_block"] = motion_adapter.config["motion_layers_per_block"]
+            config["temporal_transformer_layers_per_mid_block"] = motion_adapter.config[
+                "motion_transformer_layers_per_mid_block"
+            ]
+            config["temporal_transformer_layers_per_block"] = motion_adapter.config[
+                "motion_transformer_layers_per_block"
+            ]
+            config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
 
             # For PIA UNets we need to set the number input channels to 9
             if motion_adapter.config["conv_in_channels"]:
@@ -427,6 +1697,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
+        expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
+        config = FrozenDict({k: config.get(k) for k in config if k in expected_kwargs or k in optional_kwargs})
+        config["_class_name"] = cls.__name__
         model = cls.from_config(config)
 
         if not load_weights:
@@ -445,6 +1718,36 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         model.time_proj.load_state_dict(unet.time_proj.state_dict())
         model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
+
+        if any(
+            isinstance(proc, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+            for proc in unet.attn_processors.values()
+        ):
+            attn_procs = {}
+            for name, processor in unet.attn_processors.items():
+                if name.endswith("attn1.processor"):
+                    attn_processor_class = (
+                        AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class()
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=processor.hidden_size,
+                        cross_attention_dim=processor.cross_attention_dim,
+                        scale=processor.scale,
+                        num_tokens=processor.num_tokens,
+                    )
+            for name, processor in model.attn_processors.items():
+                if name not in attn_procs:
+                    attn_procs[name] = processor.__class__()
+            model.set_attn_processor(attn_procs)
+            model.config.encoder_hid_dim_type = "ip_image_proj"
+            model.encoder_hid_proj = unet.encoder_hid_proj
 
         for i, down_block in enumerate(unet.down_blocks):
             model.down_blocks[i].resnets.load_state_dict(down_block.resnets.state_dict())
@@ -559,7 +1862,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -606,7 +1909,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
@@ -636,7 +1938,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, chunk_size, dim)
 
-    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self) -> None:
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
@@ -705,8 +2006,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
     def fuse_qkv_projections(self):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
 
         <Tip warning={true}>
 
@@ -726,6 +2027,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             if isinstance(module, Attention):
                 module.fuse_projections(fuse=True)
 
+        self.set_attn_processor(FusedAttnProcessor2_0())
+
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
@@ -742,7 +2045,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -752,15 +2055,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, Tuple[torch.Tensor]]:
+    ) -> Union[UNetMotionOutput, Tuple[torch.Tensor]]:
         r"""
         The [`UNetMotionModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
-            encoder_hidden_states (`torch.FloatTensor`):
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
                 Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
@@ -778,13 +2081,13 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_motion_model.UNetMotionOutput`] instead of a plain
                 tuple.
 
         Returns:
-            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unets.unet_motion_model.UNetMotionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_motion_model.UNetMotionOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
@@ -831,8 +2134,29 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         t_emb = t_emb.to(dtype=self.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        aug_emb = None
+
+        if self.config.addition_embed_type == "text_time":
+            if "text_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if "time_ids" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            time_embeds = self.add_time_proj(time_ids.flatten())
+            time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+
+            add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+            add_embeds = add_embeds.to(emb.dtype)
+            aug_emb = self.add_embedding(add_embeds)
+
+        emb = emb if aug_emb is None else emb + aug_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
             if "image_embeds" not in added_cond_kwargs:
@@ -945,4 +2269,4 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not return_dict:
             return (sample,)
 
-        return UNet3DConditionOutput(sample=sample)
+        return UNetMotionOutput(sample=sample)

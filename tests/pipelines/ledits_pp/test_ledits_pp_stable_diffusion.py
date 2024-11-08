@@ -204,6 +204,11 @@ class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -219,7 +224,7 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
 
     def test_ledits_pp_editing(self):
         pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

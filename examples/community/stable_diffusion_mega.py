@@ -99,8 +99,8 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
     def inpaint(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
+        mask_image: Union[torch.Tensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -110,7 +110,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ):
         # For more information on how this function works, please see: https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionImg2ImgPipeline
@@ -134,7 +134,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
     def img2img(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -144,7 +144,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         **kwargs,
     ):
@@ -177,10 +177,10 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ):
         # For more information on how this function https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionPipeline

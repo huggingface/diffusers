@@ -102,7 +102,6 @@ class Downsample2D(nn.Module):
         self.padding = padding
         stride = 2
         self.name = name
-        conv_cls = nn.Conv2d
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
@@ -114,7 +113,7 @@ class Downsample2D(nn.Module):
             raise ValueError(f"unknown norm_type: {norm_type}")
 
         if use_conv:
-            conv = conv_cls(
+            conv = nn.Conv2d(
                 self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias
             )
         else:
@@ -130,7 +129,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -181,24 +180,24 @@ class FirDownsample2D(nn.Module):
 
     def _downsample_2d(
         self,
-        hidden_states: torch.FloatTensor,
-        weight: Optional[torch.FloatTensor] = None,
-        kernel: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """Fused `Conv2d()` followed by `downsample_2d()`.
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
         efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of
         arbitrary order.
 
         Args:
-            hidden_states (`torch.FloatTensor`):
+            hidden_states (`torch.Tensor`):
                 Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight (`torch.FloatTensor`, *optional*):
+            weight (`torch.Tensor`, *optional*):
                 Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
                 performed by `inChannels = x.shape[0] // numGroups`.
-            kernel (`torch.FloatTensor`, *optional*):
+            kernel (`torch.Tensor`, *optional*):
                 FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
                 corresponds to average pooling.
             factor (`int`, *optional*, default to `2`):
@@ -207,7 +206,7 @@ class FirDownsample2D(nn.Module):
                 Scaling factor for signal magnitude.
 
         Returns:
-            output (`torch.FloatTensor`):
+            output (`torch.Tensor`):
                 Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same
                 datatype as `x`.
         """
@@ -245,7 +244,7 @@ class FirDownsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.use_conv:
             downsample_input = self._downsample_2d(hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
             hidden_states = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -286,12 +285,80 @@ class KDownsample2D(nn.Module):
         return F.conv2d(inputs, weight, stride=2)
 
 
+class CogVideoXDownsample3D(nn.Module):
+    # Todo: Wait for paper relase.
+    r"""
+    A 3D Downsampling layer using in [CogVideoX]() by Tsinghua University & ZhipuAI
+
+    Args:
+        in_channels (`int`):
+            Number of channels in the input image.
+        out_channels (`int`):
+            Number of channels produced by the convolution.
+        kernel_size (`int`, defaults to `3`):
+            Size of the convolving kernel.
+        stride (`int`, defaults to `2`):
+            Stride of the convolution.
+        padding (`int`, defaults to `0`):
+            Padding added to all four sides of the input.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to compress the time dimension.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: int = 2,
+        padding: int = 0,
+        compress_time: bool = False,
+    ):
+        super().__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+        self.compress_time = compress_time
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.compress_time:
+            batch_size, channels, frames, height, width = x.shape
+
+            # (batch_size, channels, frames, height, width) -> (batch_size, height, width, channels, frames) -> (batch_size * height * width, channels, frames)
+            x = x.permute(0, 3, 4, 1, 2).reshape(batch_size * height * width, channels, frames)
+
+            if x.shape[-1] % 2 == 1:
+                x_first, x_rest = x[..., 0], x[..., 1:]
+                if x_rest.shape[-1] > 0:
+                    # (batch_size * height * width, channels, frames - 1) -> (batch_size * height * width, channels, (frames - 1) // 2)
+                    x_rest = F.avg_pool1d(x_rest, kernel_size=2, stride=2)
+
+                x = torch.cat([x_first[..., None], x_rest], dim=-1)
+                # (batch_size * height * width, channels, (frames // 2) + 1) -> (batch_size, height, width, channels, (frames // 2) + 1) -> (batch_size, channels, (frames // 2) + 1, height, width)
+                x = x.reshape(batch_size, height, width, channels, x.shape[-1]).permute(0, 3, 4, 1, 2)
+            else:
+                # (batch_size * height * width, channels, frames) -> (batch_size * height * width, channels, frames // 2)
+                x = F.avg_pool1d(x, kernel_size=2, stride=2)
+                # (batch_size * height * width, channels, frames // 2) -> (batch_size, height, width, channels, frames // 2) -> (batch_size, channels, frames // 2, height, width)
+                x = x.reshape(batch_size, height, width, channels, x.shape[-1]).permute(0, 3, 4, 1, 2)
+
+        # Pad the tensor
+        pad = (0, 1, 0, 1)
+        x = F.pad(x, pad, mode="constant", value=0)
+        batch_size, channels, frames, height, width = x.shape
+        # (batch_size, channels, frames, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size * frames, channels, height, width)
+        x = x.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channels, height, width)
+        x = self.conv(x)
+        # (batch_size * frames, channels, height, width) -> (batch_size, frames, channels, height, width) -> (batch_size, channels, frames, height, width)
+        x = x.reshape(batch_size, frames, x.shape[1], x.shape[2], x.shape[3]).permute(0, 2, 1, 3, 4)
+        return x
+
+
 def downsample_2d(
-    hidden_states: torch.FloatTensor,
-    kernel: Optional[torch.FloatTensor] = None,
+    hidden_states: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
     factor: int = 2,
     gain: float = 1,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     r"""Downsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
     given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
@@ -299,9 +366,9 @@ def downsample_2d(
     shape is a multiple of the downsampling factor.
 
     Args:
-        hidden_states (`torch.FloatTensor`)
+        hidden_states (`torch.Tensor`)
             Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel (`torch.FloatTensor`, *optional*):
+        kernel (`torch.Tensor`, *optional*):
             FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
             corresponds to average pooling.
         factor (`int`, *optional*, default to `2`):
@@ -310,7 +377,7 @@ def downsample_2d(
             Scaling factor for signal magnitude.
 
     Returns:
-        output (`torch.FloatTensor`):
+        output (`torch.Tensor`):
             Tensor of the shape `[N, C, H // factor, W // factor]`
     """
 

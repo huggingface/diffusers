@@ -28,6 +28,12 @@ from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_
 
 
 class SafeDiffusionPipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -258,6 +264,12 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -265,7 +277,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_harm_safe_stable_diffusion(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        )
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -326,7 +340,9 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safe_stable_diffusion(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", safety_checker=None)
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        )
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -380,7 +396,7 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safetychecker_safe_stable_diffusion(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 

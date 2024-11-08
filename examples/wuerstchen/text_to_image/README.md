@@ -37,7 +37,7 @@ You can fine-tune the Würstchen prior model with the `train_text_to_image_prior
 
 <!-- accelerate_snippet_start -->
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch  train_text_to_image_prior.py \
   --mixed_precision="fp16" \
@@ -52,10 +52,10 @@ accelerate launch  train_text_to_image_prior.py \
   --max_grad_norm=1 \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="wuerstchen-prior-pokemon-model"
+  --output_dir="wuerstchen-prior-naruto-model"
 ```
 <!-- accelerate_snippet_end -->
 
@@ -72,10 +72,10 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 
 ### Prior Training
 
-First, you need to set up your development environment as explained in the [installation](#Running-locally-with-PyTorch) section. Make sure to set the `DATASET_NAME` environment variable. Here, we will use the [Pokemon captions dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).
+First, you need to set up your development environment as explained in the [installation](#Running-locally-with-PyTorch) section. Make sure to set the `DATASET_NAME` environment variable. Here, we will use the [Naruto captions dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch train_text_to_image_lora_prior.py \
   --mixed_precision="fp16" \
@@ -89,5 +89,5 @@ accelerate launch train_text_to_image_lora_prior.py \
   --validation_prompt="cute dragon creature" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="wuerstchen-prior-pokemon-lora"
+  --output_dir="wuerstchen-prior-naruto-lora"
 ```

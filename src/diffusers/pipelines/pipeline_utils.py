@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
@@ -43,22 +43,23 @@ from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
+from ..quantizers.bitsandbytes.utils import _check_bnb_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_version,
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -72,9 +73,16 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
+    _get_custom_components_and_folders,
+    _get_custom_pipeline_class,
+    _get_final_device_map,
+    _get_ignore_patterns,
     _get_pipeline_class,
+    _identify_model_variants,
+    _maybe_raise_warning_for_inpainting,
+    _resolve_custom_pipeline_and_cls,
     _unwrap_model,
-    is_safetensors_compatible,
+    _update_init_kwargs_with_connected_pipeline,
     load_sub_model,
     maybe_raise_or_warn,
     variant_compatible_siblings,
@@ -89,6 +97,8 @@ if is_accelerate_available():
 LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
+
+SUPPORTED_DEVICE_MAP = ["balanced"]
 
 logger = logging.get_logger(__name__)
 
@@ -140,6 +150,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     config_name = "model_index.json"
     model_cpu_offload_seq = None
+    hf_device_map = None
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
@@ -180,6 +191,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         save_directory: Union[str, os.PathLike],
         safe_serialization: bool = True,
         variant: Optional[str] = None,
+        max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -195,6 +207,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            max_shard_size (`int` or `str`, defaults to `None`):
+                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
+                If expressed as an integer, the unit is bytes. Note that this limit will be decreased after a certain
+                period of time (starting from Oct 2024) to allow users to upgrade to the latest version of `diffusers`.
+                This is to establish a common default size for this argument across different libraries in the Hugging
+                Face ecosystem (`transformers`, and `accelerate`, for example).
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
@@ -269,12 +288,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
+            save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
 
             save_kwargs = {}
             if save_method_accept_safe:
                 save_kwargs["safe_serialization"] = safe_serialization
             if save_method_accept_variant:
                 save_kwargs["variant"] = variant
+            if save_method_accept_max_shard_size and max_shard_size is not None:
+                # max_shard_size is expected to not be None in ModelMixin
+                save_kwargs["max_shard_size"] = max_shard_size
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
@@ -371,8 +394,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(
-                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
+            return hasattr(module, "_hf_hook") and (
+                isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
+                or hasattr(module._hf_hook, "hooks")
+                and isinstance(module._hf_hook.hooks[0], accelerate.hooks.AlignDevicesHook)
             )
 
         def module_is_offloaded(module):
@@ -390,6 +415,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
 
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
+            )
+
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
         if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
@@ -403,18 +434,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
-            is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
+            _, is_loaded_in_4bit_bnb, is_loaded_in_8bit_bnb = _check_bnb_status(module)
 
-            if is_loaded_in_8bit and dtype is not None:
+            if (is_loaded_in_4bit_bnb or is_loaded_in_8bit_bnb) and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {'4bit' if is_loaded_in_4bit_bnb else '8bit'} and conversion to {dtype} is not supported. Module is still in {'4bit' if is_loaded_in_4bit_bnb else '8bit'} precision."
                 )
 
-            if is_loaded_in_8bit and device is not None:
+            if is_loaded_in_8bit_bnb and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
-            else:
+
+            # This can happen for `transformer` models. CPU placement was added in
+            # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
+            if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
+                module.to(device=device)
+            elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
             if (
@@ -520,9 +556,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -539,7 +573,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 allowed by Git.
             custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
-                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers version.
+                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers
+                version.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
@@ -610,8 +645,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> pipeline.scheduler = scheduler
         ```
         """
+        # Copy the kwargs to re-use during loading connected pipeline.
+        kwargs_copied = kwargs.copy()
+
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -642,17 +679,34 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " install accelerate\n```\n."
             )
 
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
                 "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `device_map=None`."
             )
 
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+        if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
+                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
             )
+
+        if device_map is not None and not isinstance(device_map, str):
+            raise ValueError("`device_map` must be a string.")
+
+        if device_map is not None and device_map not in SUPPORTED_DEVICE_MAP:
+            raise NotImplementedError(
+                f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
+            )
+
+        if device_map is not None and device_map in SUPPORTED_DEVICE_MAP:
+            if is_accelerate_version("<", "0.28.0"):
+                raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
@@ -671,7 +725,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cached_folder = cls.download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
@@ -689,39 +742,43 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
+        # The variant filenames can have the legacy sharding checkpoint format that we check and throw
+        # a warning if detected.
+        if variant is not None and _check_legacy_sharding_variant_format(folder=cached_folder, variant=variant):
+            warn_msg = (
+                f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                "Please check your files carefully:\n\n"
+                "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                "If you find any files in the deprecated format:\n"
+                "1. Remove all existing checkpoint files for this variant.\n"
+                "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                "This will ensure you're using the most up-to-date and compatible checkpoint format."
+            )
+            logger.warning(warn_msg)
+
         config_dict = cls.load_config(cached_folder)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
 
         # 2. Define which model components should load variants
-        # We retrieve the information by matching whether variant
-        # model checkpoints exist in the subfolders
-        model_variants = {}
-        if variant is not None:
-            for folder in os.listdir(cached_folder):
-                folder_path = os.path.join(cached_folder, folder)
-                is_folder = os.path.isdir(folder_path) and folder in config_dict
-                variant_exists = is_folder and any(
-                    p.split(".")[1].startswith(variant) for p in os.listdir(folder_path)
-                )
-                if variant_exists:
-                    model_variants[folder] = variant
+        # We retrieve the information by matching whether variant model checkpoints exist in the subfolders.
+        # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
+        # with variant being `"fp16"`.
+        model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
+        if len(model_variants) == 0 and variant is not None:
+            error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
+            raise ValueError(error_message)
 
         # 3. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        custom_class_name = None
-        if os.path.isfile(os.path.join(cached_folder, f"{custom_pipeline}.py")):
-            custom_pipeline = os.path.join(cached_folder, f"{custom_pipeline}.py")
-        elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(
-            os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-        ):
-            custom_pipeline = os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-            custom_class_name = config_dict["_class_name"][1]
-
+        custom_pipeline, custom_class_name = _resolve_custom_pipeline_and_cls(
+            folder=cached_folder, config=config_dict, custom_pipeline=custom_pipeline
+        )
         pipeline_class = _get_pipeline_class(
             cls,
-            config_dict,
+            config=config_dict,
             load_connected_pipeline=load_connected_pipeline,
             custom_pipeline=custom_pipeline,
             class_name=custom_class_name,
@@ -729,24 +786,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             revision=custom_revision,
         )
 
+        if device_map is not None and pipeline_class._load_connected_pipes:
+            raise NotImplementedError("`device_map` is not yet supported for connected pipelines.")
+
         # DEPRECATED: To be removed in 1.0.0
-        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
-            version.parse(config_dict["_diffusers_version"]).base_version
-        ) <= version.parse("0.5.1"):
-            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
-
-            pipeline_class = StableDiffusionInpaintPipelineLegacy
-
-            deprecation_message = (
-                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
-                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
-                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
-                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
-                f" checkpoint {pretrained_model_name_or_path} to the format of"
-                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
-                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
-            )
-            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+        # we are deprecating the `StableDiffusionInpaintPipelineLegacy` pipeline which gets loaded
+        # when a user requests for a `StableDiffusionInpaintPipeline` with `diffusers` version being <= 0.5.1.
+        _maybe_raise_warning_for_inpainting(
+            pipeline_class=pipeline_class,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            config=config_dict,
+        )
 
         # 4. Define expected modules given pipeline signature
         # and define non-None initialized modules (=`init_kwargs`)
@@ -757,7 +807,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
-
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         # define init kwargs and make sure that optional component modules are filtered out
@@ -795,17 +844,45 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        # 6. Load each module in the pipeline
+        # 6. device map delegation
+        final_device_map = None
+        if device_map is not None:
+            final_device_map = _get_final_device_map(
+                device_map=device_map,
+                pipeline_class=pipeline_class,
+                passed_class_obj=passed_class_obj,
+                init_dict=init_dict,
+                library=library,
+                max_memory=max_memory,
+                torch_dtype=torch_dtype,
+                cached_folder=cached_folder,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+            )
+
+        # 7. Load each module in the pipeline
+        current_device_map = None
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
-            # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            # 7.1 device_map shenanigans
+            if final_device_map is not None and len(final_device_map) > 0:
+                component_device = final_device_map.get(name, None)
+                if component_device is not None:
+                    current_device_map = {"": component_device}
+                else:
+                    current_device_map = None
+
+            # 7.2 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
-            # 6.2 Define all importable classes
+            # 7.3 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
             importable_classes = ALL_IMPORTABLE_CLASSES
             loaded_sub_model = None
 
-            # 6.3 Use passed sub model or load class_name from library_name
+            # 7.4 Use passed sub model or load class_name from library_name
             if name in passed_class_obj:
                 # if the model is in a pipeline module, then we load it from the pipeline
                 # check that passed_class_obj has correct parent class
@@ -826,7 +903,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     torch_dtype=torch_dtype,
                     provider=provider,
                     sess_options=sess_options,
-                    device_map=device_map,
+                    device_map=current_device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
                     offload_state_dict=offload_state_dict,
@@ -836,6 +913,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
+                    use_safetensors=use_safetensors,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -843,57 +921,17 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
+        # 8. Handle connected pipelines.
         if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
-            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-            connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
-            load_kwargs = {
-                "cache_dir": cache_dir,
-                "resume_download": resume_download,
-                "force_download": force_download,
-                "proxies": proxies,
-                "local_files_only": local_files_only,
-                "token": token,
-                "revision": revision,
-                "torch_dtype": torch_dtype,
-                "custom_pipeline": custom_pipeline,
-                "custom_revision": custom_revision,
-                "provider": provider,
-                "sess_options": sess_options,
-                "device_map": device_map,
-                "max_memory": max_memory,
-                "offload_folder": offload_folder,
-                "offload_state_dict": offload_state_dict,
-                "low_cpu_mem_usage": low_cpu_mem_usage,
-                "variant": variant,
-                "use_safetensors": use_safetensors,
-            }
+            init_kwargs = _update_init_kwargs_with_connected_pipeline(
+                init_kwargs=init_kwargs,
+                passed_pipe_kwargs=passed_pipe_kwargs,
+                passed_class_objs=passed_class_obj,
+                folder=cached_folder,
+                **kwargs_copied,
+            )
 
-            def get_connected_passed_kwargs(prefix):
-                connected_passed_class_obj = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
-                }
-                connected_passed_pipe_kwargs = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
-                }
-
-                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
-                return connected_passed_kwargs
-
-            connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(
-                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
-                )
-                for prefix, repo_id in connected_pipes.items()
-                if repo_id is not None
-            }
-
-            for prefix, connected_pipe in connected_pipes.items():
-                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
-                init_kwargs.update(
-                    {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
-                )
-
-        # 7. Potentially add passed objects if expected
+        # 9. Potentially add passed objects if expected
         missing_modules = set(expected_modules) - set(init_kwargs.keys())
         passed_modules = list(passed_class_obj.keys())
         optional_modules = pipeline_class._optional_components
@@ -906,11 +944,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
-        # 8. Instantiate the pipeline
+        # 10. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
-        # 9. Save where the model was instantiated from
+        # 11. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        if device_map is not None:
+            setattr(model, "hf_device_map", final_device_map)
         return model
 
     @property
@@ -939,6 +979,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def remove_all_hooks(self):
+        r"""
+        Removes all hooks that were added when using `enable_sequential_cpu_offload` or `enable_model_cpu_offload`.
+        """
+        for _, model in self.components.items():
+            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
+                accelerate.hooks.remove_hook_from_module(model, recurse=True)
+        self._all_hooks = []
+
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -953,6 +1002,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_model_cpu_offload()`."
+            )
+
         if self.model_cpu_offload_seq is None:
             raise ValueError(
                 "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
@@ -962,6 +1017,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             from accelerate import cpu_offload_with_hook
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        self.remove_all_hooks()
 
         torch_device = torch.device(device)
         device_index = torch_device.index
@@ -979,11 +1036,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
         self._offload_device = device
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, self.device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        self.to("cpu", silence_dtype_warnings=True)
+        device_mod = getattr(torch, device.type, None)
+        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
@@ -991,7 +1047,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
+
             if not isinstance(model, torch.nn.Module):
+                continue
+
+            # This is because the model would already be placed on a CUDA device.
+            _, _, is_loaded_in_8bit_bnb = _check_bnb_status(model)
+            if is_loaded_in_8bit_bnb:
+                logger.info(
+                    f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` 8bit."
+                )
                 continue
 
             _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
@@ -1021,11 +1086,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return
 
-        for hook in self._all_hooks:
-            # offload model and remove hook from model
-            hook.offload()
-            hook.remove()
-
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
@@ -1048,6 +1108,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             from accelerate import cpu_offload
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+        self.remove_all_hooks()
+
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_sequential_cpu_offload()`."
+            )
 
         torch_device = torch.device(device)
         device_index = torch_device.index
@@ -1082,6 +1149,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 # are of type nn.Module
                 offload_buffers = len(model._parameters) > 0
                 cpu_offload(model, device, offload_buffers=offload_buffers)
+
+    def reset_device_map(self):
+        r"""
+        Resets the device maps (if any) to None.
+        """
+        if self.hf_device_map is None:
+            return
+        else:
+            self.remove_all_hooks()
+            for name, component in self.components.items():
+                if isinstance(component, torch.nn.Module):
+                    component.to("cpu")
+            self.hf_device_map = None
 
     @classmethod
     @validate_hf_hub_args
@@ -1121,9 +1201,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -1176,7 +1254,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         """
         cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
@@ -1209,6 +1286,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
         if not local_files_only:
+            filenames = {sibling.rfilename for sibling in info.siblings}
+            if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
+                warn_msg = (
+                    f"Warning: The repository contains sharded checkpoints for variant '{variant}' maybe in a deprecated format. "
+                    "Please check your files carefully:\n\n"
+                    "- Correct format example: diffusion_pytorch_model.fp16-00003-of-00003.safetensors\n"
+                    "- Deprecated format example: diffusion_pytorch_model-00001-of-00002.fp16.safetensors\n\n"
+                    "If you find any files in the deprecated format:\n"
+                    "1. Remove all existing checkpoint files for this variant.\n"
+                    "2. Re-obtain the correct files by running `save_pretrained()`.\n\n"
+                    "This will ensure you're using the most up-to-date and compatible checkpoint format."
+                )
+                logger.warning(warn_msg)
+
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
             config_file = hf_hub_download(
                 pretrained_model_name,
                 cls.config_name,
@@ -1216,59 +1309,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 revision=revision,
                 proxies=proxies,
                 force_download=force_download,
-                resume_download=resume_download,
                 token=token,
             )
 
             config_dict = cls._dict_from_json_file(config_file)
             ignore_filenames = config_dict.pop("_ignore_files", [])
 
-            # retrieve all folder_names that contain relevant files
-            folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
-
-            filenames = {sibling.rfilename for sibling in info.siblings}
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
-
-            diffusers_module = importlib.import_module(__name__.split(".")[0])
-            pipelines = getattr(diffusers_module, "pipelines")
-
-            # optionally create a custom component <> custom file mapping
-            custom_components = {}
-            for component in folder_names:
-                module_candidate = config_dict[component][0]
-
-                if module_candidate is None or not isinstance(module_candidate, str):
-                    continue
-
-                # We compute candidate file path on the Hub. Do not use `os.path.join`.
-                candidate_file = f"{component}/{module_candidate}.py"
-
-                if candidate_file in filenames:
-                    custom_components[component] = module_candidate
-                elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
-                    raise ValueError(
-                        f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
-                    )
-
-            if len(variant_filenames) == 0 and variant is not None:
-                deprecation_message = (
-                    f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
-                    f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
-                    "modeling files is deprecated."
-                )
-                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
-
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
             variant_filenames = set(variant_filenames) - set(ignore_filenames)
 
-            # if the whole pipeline is cached we don't have to ping the Hub
             if revision in DEPRECATED_REVISION_ARGS and version.parse(
                 version.parse(__version__).base_version
             ) >= version.parse("0.22.0"):
                 warn_deprecated_model_variant(pretrained_model_name, token, variant, revision, model_filenames)
 
+            custom_components, folder_names = _get_custom_components_and_folders(
+                pretrained_model_name, config_dict, filenames, variant_filenames, variant
+            )
             model_folder_names = {os.path.split(f)[0] for f in model_filenames if os.path.split(f)[0] in folder_names}
 
             custom_class_name = None
@@ -1328,49 +1386,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             expected_components, _ = cls._get_signature_keys(pipeline_class)
             passed_components = [k for k in expected_components if k in kwargs]
 
-            if (
-                use_safetensors
-                and not allow_pickle
-                and not is_safetensors_compatible(
-                    model_filenames, variant=variant, passed_components=passed_components
-                )
-            ):
-                raise EnvironmentError(
-                    f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
-                )
-            if from_flax:
-                ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-            elif use_safetensors and is_safetensors_compatible(
-                model_filenames, variant=variant, passed_components=passed_components
-            ):
-                ignore_patterns = ["*.bin", "*.msgpack"]
-
-                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
-                if not use_onnx:
-                    ignore_patterns += ["*.onnx", "*.pb"]
-
-                safetensors_variant_filenames = {f for f in variant_filenames if f.endswith(".safetensors")}
-                safetensors_model_filenames = {f for f in model_filenames if f.endswith(".safetensors")}
-                if (
-                    len(safetensors_variant_filenames) > 0
-                    and safetensors_model_filenames != safetensors_variant_filenames
-                ):
-                    logger.warning(
-                        f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
-                    )
-            else:
-                ignore_patterns = ["*.safetensors", "*.msgpack"]
-
-                use_onnx = use_onnx if use_onnx is not None else pipeline_class._is_onnx
-                if not use_onnx:
-                    ignore_patterns += ["*.onnx", "*.pb"]
-
-                bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
-                bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
-                if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                    logger.warning(
-                        f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
-                    )
+            # retrieve all patterns that should not be downloaded and error out when needed
+            ignore_patterns = _get_ignore_patterns(
+                passed_components,
+                model_folder_names,
+                model_filenames,
+                variant_filenames,
+                use_safetensors,
+                from_flax,
+                allow_pickle,
+                use_onnx,
+                pipeline_class._is_onnx,
+                variant,
+            )
 
             # Don't download any objects that are passed
             allow_patterns = [
@@ -1405,7 +1433,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cached_folder = snapshot_download(
                 pretrained_model_name,
                 cache_dir=cache_dir,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
@@ -1428,7 +1455,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 for connected_pipe_repo_id in connected_pipes:
                     download_kwargs = {
                         "cache_dir": cache_dir,
-                        "resume_download": resume_download,
                         "force_download": force_download,
                         "proxies": proxies,
                         "local_files_only": local_files_only,
@@ -1470,6 +1496,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 optional_parameters.remove(name)
 
         return expected_modules, optional_parameters
+
+    @classmethod
+    def _get_signature_types(cls):
+        signature_types = {}
+        for k, v in inspect.signature(cls.__init__).parameters.items():
+            if inspect.isclass(v.annotation):
+                signature_types[k] = (v.annotation,)
+            elif get_origin(v.annotation) == Union:
+                signature_types[k] = get_args(v.annotation)
+            else:
+                logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
+        return signature_types
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -1649,6 +1687,129 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
+    @classmethod
+    def from_pipe(cls, pipeline, **kwargs):
+        r"""
+        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing
+        pipeline components without reallocating additional memory.
+
+        Arguments:
+            pipeline (`DiffusionPipeline`):
+                The pipeline from which to create a new pipeline.
+
+        Returns:
+            `DiffusionPipeline`:
+                A new pipeline with the same weights and configurations as `pipeline`.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import StableDiffusionPipeline, StableDiffusionSAGPipeline
+
+        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> new_pipe = StableDiffusionSAGPipeline.from_pipe(pipe)
+        ```
+        """
+
+        original_config = dict(pipeline.config)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        # derive the pipeline class to instantiate
+        custom_pipeline = kwargs.pop("custom_pipeline", None)
+        custom_revision = kwargs.pop("custom_revision", None)
+
+        if custom_pipeline is not None:
+            pipeline_class = _get_custom_pipeline_class(custom_pipeline, revision=custom_revision)
+        else:
+            pipeline_class = cls
+
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        # true_optional_modules are optional components with default value in signature so it is ok not to pass them to `__init__`
+        # e.g. `image_encoder` for StableDiffusionPipeline
+        parameters = inspect.signature(cls.__init__).parameters
+        true_optional_modules = set(
+            {k for k, v in parameters.items() if v.default != inspect._empty and k in expected_modules}
+        )
+
+        # get the class of each component based on its type hint
+        # e.g. {"unet": UNet2DConditionModel, "text_encoder": CLIPTextMode}
+        component_types = pipeline_class._get_signature_types()
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+        # allow users pass modules in `kwargs` to override the original pipeline's components
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+
+        original_class_obj = {}
+        for name, component in pipeline.components.items():
+            if name in expected_modules and name not in passed_class_obj:
+                # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
+                if (
+                    not isinstance(component, ModelMixin)
+                    or type(component) in component_types[name]
+                    or (component is None and name in cls._optional_components)
+                ):
+                    original_class_obj[name] = component
+                else:
+                    logger.warning(
+                        f"component {name} is not switched over to new pipeline because type does not match the expected."
+                        f" {name} is {type(component)} while the new pipeline expect {component_types[name]}."
+                        f" please pass the component of the correct type to the new pipeline. `from_pipe(..., {name}={name})`"
+                    )
+
+        # allow users pass optional kwargs to override the original pipelines config attribute
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k in original_config.keys()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        # config attribute that were not expected by pipeline is stored as its private attribute
+        # (i.e. when the original pipeline was also instantiated with `from_pipe` from another pipeline that has this config)
+        # in this case, we will pass them as optional arguments if they can be accepted by the new pipeline
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
+
+        pipeline_kwargs = {
+            **passed_class_obj,
+            **original_class_obj,
+            **passed_pipe_kwargs,
+            **original_pipe_kwargs,
+            **kwargs,
+        }
+
+        # store unused config as private attribute in the new pipeline
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": v for k, v in original_config.items() if k not in pipeline_kwargs
+        }
+
+        missing_modules = (
+            set(expected_modules)
+            - set(pipeline._optional_components)
+            - set(pipeline_kwargs.keys())
+            - set(true_optional_modules)
+        )
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
+            )
+
+        new_pipeline = pipeline_class(**pipeline_kwargs)
+        if pretrained_model_name_or_path is not None:
+            new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        new_pipeline.register_to_config(**unused_original_config)
+
+        if torch_dtype is not None:
+            new_pipeline.to(dtype=torch_dtype)
+
+        return new_pipeline
+
 
 class StableDiffusionMixin:
     r"""
@@ -1712,8 +1873,8 @@ class StableDiffusionMixin:
 
     def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
 
         <Tip warning={true}>
 
