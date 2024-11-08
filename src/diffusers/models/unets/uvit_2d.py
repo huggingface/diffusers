@@ -181,7 +181,7 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         hidden_states = self.project_to_hidden(hidden_states)
 
         for layer in self.transformer_layers:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def layer_(*args):
                     return checkpoint(layer, *args)
