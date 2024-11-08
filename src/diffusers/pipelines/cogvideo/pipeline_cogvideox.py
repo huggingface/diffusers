@@ -683,6 +683,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
+
                 # predict noise model_output
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,

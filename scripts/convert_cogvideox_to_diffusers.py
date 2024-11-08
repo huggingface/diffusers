@@ -233,6 +233,12 @@ def get_args():
     parser.add_argument(
         "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
     )
+    parser.add_argument(
+        "--typecast_text_encoder",
+        action="store_true",
+        default=False,
+        help="Whether or not to apply fp16/bf16 precision to text_encoder",
+    )
     # For CogVideoX-2B, num_layers is 30. For 5B, it is 42
     parser.add_argument("--num_layers", type=int, default=30, help="Number of transformer blocks")
     # For CogVideoX-2B, num_attention_heads is 30. For 5B, it is 48
@@ -283,11 +289,15 @@ if __name__ == "__main__":
             init_kwargs,
         )
     if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
+        # Keep VAE in float32 for better quality
+        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, torch.float32)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
+
+    if args.typecast_text_encoder:
+        text_encoder = text_encoder.to(dtype=dtype)
 
     # Apparently, the conversion does not work anymore without this :shrug:
     for param in text_encoder.parameters():
@@ -319,11 +329,6 @@ if __name__ == "__main__":
         transformer=transformer,
         scheduler=scheduler,
     )
-
-    if args.fp16:
-        pipe = pipe.to(dtype=torch.float16)
-    if args.bf16:
-        pipe = pipe.to(dtype=torch.bfloat16)
 
     # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
     # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
