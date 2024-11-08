@@ -23,8 +23,6 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
-
 from ..models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
@@ -767,7 +765,7 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
-            IPAdapterXFormersAttnProcessor
+            IPAdapterXFormersAttnProcessor,
         )
 
         if low_cpu_mem_usage:
@@ -805,20 +803,15 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                if ('XFormers' not in str(self.attn_processors[name].__class__)):                
-                    attn_processor_class = (
-                        AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                    )
-                    attn_procs[name] = attn_processor_class()
-                else:
-                    attn_procs[name] = self.attn_processors[name]
-            else:                     
+                attn_processor_class = self.attn_processors[name].__class__
+                attn_procs[name] = attn_processor_class()
+            else:
                 if ('XFormers' in str(self.attn_processors[name].__class__)):
                     attn_processor_class = (IPAdapterXFormersAttnProcessor)
                 else:
                     attn_processor_class = (
-                        IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                    )               
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:

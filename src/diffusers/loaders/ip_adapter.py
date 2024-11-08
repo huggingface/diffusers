@@ -20,7 +20,6 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
-
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -34,17 +33,15 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPImageProcessor,
-        CLIPVisionModelWithProjection,
-    )
+
+    from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
     from ..models.attention_processor import (
         AttnProcessor,
         AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
-        IPAdapterXFormersAttnProcessor
+        IPAdapterXFormersAttnProcessor,
     )
 
 logger = logging.get_logger(__name__)
