@@ -375,8 +375,8 @@ class Attention(nn.Module):
                 processor = IPAdapterXFormersAttnProcessor(
                     hidden_size=self.processor.hidden_size,
                     cross_attention_dim=self.processor.cross_attention_dim,
-                    scale=self.processor.scale,
                     num_tokens=self.processor.num_tokens,
+                    scale=self.processor.scale,
                     attention_op=attention_op,
                 )
                 processor.load_state_dict(self.processor.state_dict())
@@ -402,6 +402,18 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 if hasattr(self.processor, "to_k_custom_diffusion"):
                     processor.to(self.processor.to_k_custom_diffusion.weight.device)
+            elif is_ip_adapter:
+                processor = IPAdapterAttnProcessor2_0(
+                    hidden_size=self.processor.hidden_size,
+                    cross_attention_dim=self.processor.cross_attention_dim,
+                    num_tokens=self.processor.num_tokens,
+                    scale=self.processor.scale,
+                )
+                processor.load_state_dict(self.processor.state_dict())
+                if hasattr(self.processor, "to_k_ip"):
+                    processor.to(
+                        device=self.processor.to_k_ip[0].weight.device, dtype=self.processor.to_k_ip[0].weight.dtype
+                    )
             else:
                 # set attention processor
                 # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
