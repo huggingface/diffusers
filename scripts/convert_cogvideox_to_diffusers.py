@@ -140,7 +140,7 @@ def convert_transformer(
     use_rotary_positional_embeddings: bool,
     i2v: bool,
     dtype: torch.dtype,
-    init_kwargs: Dict[str, Any]
+    init_kwargs: Dict[str, Any],
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -165,7 +165,7 @@ def convert_transformer(
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
-    
+
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
@@ -201,7 +201,7 @@ def get_init_kwargs(version: str):
             "sample_width": 720 // vae_scale_factor_spatial,
             "sample_frames": 49,
         }
-    
+
     elif version == "1.5":
         vae_scale_factor_spatial = 8
         init_kwargs = {
@@ -214,7 +214,7 @@ def get_init_kwargs(version: str):
         }
     else:
         raise ValueError("Unsupported version of CogVideoX.")
-    
+
     return init_kwargs
 
 
@@ -245,8 +245,18 @@ def get_args():
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
     parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
-    parser.add_argument("--i2v", action="store_true", default=False, help="Whether the model to be converted is the Image-to-Video version of CogVideoX.")
-    parser.add_argument("--version", choices=["1.0", "1.5"], default="1.0", help="Which version of CogVideoX to use for initializing default modeling parameters.")
+    parser.add_argument(
+        "--i2v",
+        action="store_true",
+        default=False,
+        help="Whether the model to be converted is the Image-to-Video version of CogVideoX.",
+    )
+    parser.add_argument(
+        "--version",
+        choices=["1.0", "1.5"],
+        default="1.0",
+        help="Which version of CogVideoX to use for initializing default modeling parameters.",
+    )
     return parser.parse_args()
 
 

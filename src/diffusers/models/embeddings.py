@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 from torch import nn
 
 from ..utils import deprecate
@@ -377,7 +376,7 @@ class CogVideoXPatchEmbed(nn.Module):
         else:
             # CogVideoX 1.5 checkpoints
             self.proj = nn.Linear(in_channels * patch_size * patch_size * patch_size_t, embed_dim)
-        
+
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
 
         if use_positional_embeddings or use_learned_positional_embeddings:
@@ -429,7 +428,9 @@ class CogVideoXPatchEmbed(nn.Module):
             p_t = self.patch_size_t
 
             image_embeds = image_embeds.permute(0, 1, 3, 4, 2)
-            image_embeds = image_embeds.reshape(batch_size, num_frames // p_t, p_t, height // p, p, width // p, p, channels)
+            image_embeds = image_embeds.reshape(
+                batch_size, num_frames // p_t, p_t, height // p, p, width // p, p, channels
+            )
             image_embeds = image_embeds.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(4, 7).flatten(1, 3)
             image_embeds = self.proj(image_embeds)
 

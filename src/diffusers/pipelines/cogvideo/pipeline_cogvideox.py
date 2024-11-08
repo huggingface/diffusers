@@ -449,7 +449,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         base_size_width = self.transformer.config.sample_width // p
         base_size_height = self.transformer.config.sample_height // p
         base_num_frames = (num_frames + p_t - 1) // p_t
-        
+
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height
         )
