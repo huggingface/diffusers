@@ -293,7 +293,24 @@ class PeftAdapterMixin:
         safe_serialization: bool = True,
         weight_name: Optional[str] = None,
     ):
-        """TODO"""
+        """
+        Save the LoRA parameters corresponding to the underlying model.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to save LoRA parameters to. Will be created if it doesn't exist.
+            adapter_name: (`str`, defaults to "default"): The name of the adapter to serialize. Useful when the
+                underlying model has multiple adapters loaded.
+            upcast_before_saving (`bool`, defaults to `False`):
+                Whether to cast the underlying model to `torch.float32` before serialization.
+            save_function (`Callable`):
+                The function to use to save the state dictionary. Useful during distributed training when you need to
+                replace `torch.save` with another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
+        """
         from peft.utils import get_peft_model_state_dict
 
         from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
