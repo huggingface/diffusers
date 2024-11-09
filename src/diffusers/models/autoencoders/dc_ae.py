@@ -30,9 +30,6 @@ from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannel
 from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
 
 
-__all__ = ["DCAE", "dc_ae_f32c32", "dc_ae_f64c128", "dc_ae_f128c512"]
-
-
 def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
     x = list(x) if isinstance(x, (list, tuple)) else [x]
     # repeat elements if necessary
@@ -55,6 +52,7 @@ class RMSNorm2d(nn.LayerNorm):
         if self.elementwise_affine:
             x = x * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
         return x
+
 
 def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> Optional[nn.Module]:
     if name is None:
@@ -472,7 +470,6 @@ class OpSequential(nn.Module):
         return x
 
 
-
 def build_block(
     block_type: str, in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str]
 ) -> nn.Module:
@@ -874,130 +871,3 @@ class DCAE(ModelMixin, ConfigMixin):
         x = self.encoder(x)
         x = self.decoder(x)
         return x, torch.tensor(0), {}
-
-
-def dc_ae_f32c32(name: str) -> dict:
-    if name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
-        cfg = {
-            "latent_channels": 32,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "encoder_width_list": [128, 256, 512, 512, 1024, 1024],
-            "encoder_depth_list": [0, 4, 8, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "decoder_width_list": [128, 256, 512, 512, 1024, 1024],
-            "decoder_depth_list": [0, 5, 10, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu"],
-        }
-    elif name in ["dc-ae-f32c32-sana-1.0"]:
-        cfg = {
-            "latent_channels": 32,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            "encoder_width_list": [128, 256, 512, 512, 1024, 1024],
-            "encoder_depth_list": [2, 2, 2, 3, 3, 3],
-            "downsample_block_type": "Conv",
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            "decoder_width_list": [128, 256, 512, 512, 1024, 1024],
-            "decoder_depth_list": [3, 3, 3, 3, 3, 3],
-            "upsample_block_type": "InterpolateConv",
-            "scaling_factor": 0.41407,
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-def dc_ae_f64c128(name: str,) -> dict:
-    if name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
-        cfg = {
-            "latent_channels": 128,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "encoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048],
-            "encoder_depth_list": [0, 4, 8, 2, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "decoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048],
-            "decoder_depth_list": [0, 5, 10, 2, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-def dc_ae_f128c512(name: str,) -> dict:
-    if name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
-        cfg = {
-            "latent_channels": 512,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "encoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
-            "encoder_depth_list": [0, 4, 8, 2, 2, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "decoder_width_list": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
-            "decoder_depth_list": [0, 5, 10, 2, 2, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-REGISTERED_DCAE_MODEL: dict[str, Callable] = {
-    "dc-ae-f32c32-in-1.0": dc_ae_f32c32,
-    "dc-ae-f64c128-in-1.0": dc_ae_f64c128,
-    "dc-ae-f128c512-in-1.0": dc_ae_f128c512,
-    #################################################################################################
-    "dc-ae-f32c32-mix-1.0": dc_ae_f32c32,
-    "dc-ae-f64c128-mix-1.0": dc_ae_f64c128,
-    "dc-ae-f128c512-mix-1.0": dc_ae_f128c512,
-    #################################################################################################
-    "dc-ae-f32c32-sana-1.0": dc_ae_f32c32,
-}
-
-
-def create_dc_ae_model_cfg(name: str) -> dict:
-    assert name in REGISTERED_DCAE_MODEL, f"{name} is not supported"
-    dc_ae_cls = REGISTERED_DCAE_MODEL[name]
-    model_cfg = dc_ae_cls(name)
-    return model_cfg
-
-
-class DCAE_HF(PyTorchModelHubMixin, DCAE):
-    def __init__(self, model_name: str):
-        cfg = create_dc_ae_model_cfg(model_name)
-        DCAE.__init__(self, **cfg)
-
-
-def main():
-    from PIL import Image
-    import torch
-    import torchvision.transforms as transforms
-    from torchvision.utils import save_image
-    import ipdb
-
-    torch.set_grad_enabled(False)
-    device = torch.device("cuda")
-    dtype = torch.float32
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-    image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
-    x = transform(image)[None].to(device=device, dtype=dtype)
-    for model_name in REGISTERED_DCAE_MODEL:
-        dc_ae = DCAE_HF.from_pretrained(f"mit-han-lab/{model_name}")
-        dc_ae = dc_ae.to(device=device, dtype=dtype).eval()
-        ipdb.set_trace()
-        latent = dc_ae.encode(x)
-        print(latent.shape)
-        y = dc_ae.decode(latent)
-        save_image(y * 0.5 + 0.5, f"demo_{model_name}.png")
-
-if __name__ == "__main__":
-    main()
-
-"""
-python -m src.diffusers.models.autoencoders.dc_ae
-"""
