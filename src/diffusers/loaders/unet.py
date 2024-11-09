@@ -765,6 +765,7 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
+            IPAdapterXFormersAttnProcessor,
         )
 
         if low_cpu_mem_usage:
@@ -804,11 +805,15 @@ class UNet2DConditionLoadersMixin:
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
-
             else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
+                if "XFormers" in str(self.attn_processors[name].__class__):
+                    attn_processor_class = IPAdapterXFormersAttnProcessor
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:
