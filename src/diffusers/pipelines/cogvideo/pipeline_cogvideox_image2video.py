@@ -671,11 +671,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
-        if num_frames > 49:
-            raise ValueError(
-                "The number of frames must be less than 49 for now due to static positional embeddings. This will be updated in the future to remove this limitation."
-            )
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 

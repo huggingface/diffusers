@@ -170,6 +170,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             Whether to flip the sin to cos in the time embedding.
         time_embed_dim (`int`, defaults to `512`):
             Output dimension of timestep embeddings.
+        ofs_embed_dim (`int`, defaults to `512`):
+            scaling factor in the VAE process for the Image-to-Video (I2V) transformation in CogVideoX1.5-5B.
         text_embed_dim (`int`, defaults to `4096`):
             Input dimension of text embeddings from the text encoder.
         num_layers (`int`, defaults to `30`):
@@ -177,7 +179,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         dropout (`float`, defaults to `0.0`):
             The dropout probability to use.
         attention_bias (`bool`, defaults to `True`):
-            Whether or not to use bias in the attention projection layers.
+            Whether to use bias in the attention projection layers.
         sample_width (`int`, defaults to `90`):
             The width of the input latents.
         sample_height (`int`, defaults to `60`):
@@ -198,7 +200,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep_activation_fn (`str`, defaults to `"silu"`):
             Activation function to use when generating the timestep embeddings.
         norm_elementwise_affine (`bool`, defaults to `True`):
-            Whether or not to use elementwise affine in normalization layers.
+            Whether to use elementwise affine in normalization layers.
         norm_eps (`float`, defaults to `1e-5`):
             The epsilon value to use in normalization layers.
         spatial_interpolation_scale (`float`, defaults to `1.875`):
@@ -219,7 +221,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         time_embed_dim: int = 512,
-        ofs_embed_dim: Optional[int] = 512,
+        ofs_embed_dim: Optional[int] = None,
         text_embed_dim: int = 4096,
         num_layers: int = 30,
         dropout: float = 0.0,
@@ -276,9 +278,10 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
+        self.ofs_embedding = None
+
         if ofs_embed_dim:
             self.ofs_embedding = TimestepEmbedding(ofs_embed_dim, ofs_embed_dim, timestep_activation_fn) # same as time embeddings, for ofs
-            self.ofs_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
 
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -458,6 +461,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
+        if self.ofs_embedding is not None:
+            emb_ofs = self.ofs_embedding(emb, timestep_cond)
+            emb = emb + emb_ofs
 
         # 2. Patch embedding
         p = self.config.patch_size
