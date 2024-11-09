@@ -20,12 +20,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import BatchNorm2d
 from huggingface_hub import PyTorchModelHubMixin
+import ipdb
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 
 from ..activations import get_activation
-from ..normalization import RMSNorm2d
+from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
+from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
 
 
 __all__ = ["DCAE", "dc_ae_f32c32", "dc_ae_f64c128", "dc_ae_f128c512"]
@@ -46,6 +48,13 @@ def get_same_padding(kernel_size: int | tuple[int, ...]) -> int | tuple[int, ...
         assert kernel_size % 2 > 0, "kernel size should be odd number"
         return kernel_size // 2
 
+
+class RMSNorm2d(nn.LayerNorm):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = (x / torch.sqrt(torch.square(x.float()).mean(dim=1, keepdim=True) + self.eps)).to(x.dtype)
+        if self.elementwise_affine:
+            x = x * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
+        return x
 
 def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> Optional[nn.Module]:
     if name is None:
@@ -100,133 +109,6 @@ class ConvLayer(nn.Module):
             x = self.norm(x)
         if self.act:
             x = self.act(x)
-        return x
-
-
-class ConvPixelUnshuffleDownSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        assert out_channels % out_ratio == 0
-        self.conv = ConvLayer(
-            in_channels=in_channels,
-            out_channels=out_channels // out_ratio,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_unshuffle(x, self.factor)
-        return x
-
-
-class PixelUnshuffleChannelAveragingDownSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert in_channels * factor**2 % out_channels == 0
-        self.group_size = in_channels * factor**2 // out_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.pixel_unshuffle(x, self.factor)
-        B, C, H, W = x.shape
-        x = x.view(B, self.out_channels, self.group_size, H, W)
-        x = x.mean(dim=2)
-        return x
-
-
-class ConvPixelShuffleUpSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        self.conv = ConvLayer(
-            in_channels=in_channels,
-            out_channels=out_channels * out_ratio,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
-class InterpolateConvUpSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-        mode: str = "nearest",
-    ) -> None:
-        super().__init__()
-        self.factor = factor
-        self.mode = mode
-        self.conv = ConvLayer(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.nn.functional.interpolate(x, scale_factor=self.factor, mode=self.mode)
-        x = self.conv(x)
-        return x
-
-
-class ChannelDuplicatingPixelUnshuffleUpSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert out_channels * factor**2 % in_channels == 0
-        self.repeats = out_channels * factor**2 // in_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.repeat_interleave(self.repeats, dim=1)
-        x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
-class IdentityLayer(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
 
 
@@ -512,7 +394,7 @@ class EfficientViTBlock(nn.Module):
                     norm=(None, norm),
                     scales=scales,
                 ),
-                IdentityLayer(),
+                nn.Identity(),
             )
         else:
             raise ValueError(f"context_module {context_module} is not supported")
@@ -526,7 +408,7 @@ class EfficientViTBlock(nn.Module):
                     norm=(None, None, norm),
                     act_func=(act_func, act_func, None),
                 ),
-                IdentityLayer(),
+                nn.Identity(),
             )
         else:
             raise NotImplementedError(f"local_module {local_module} is not supported")
@@ -605,7 +487,7 @@ def build_block(
             norm=(None, norm),
             act_func=(act, None),
         )
-        block = ResidualBlock(main_block, IdentityLayer())
+        block = ResidualBlock(main_block, nn.Identity())
     elif block_type == "EViT_GLU":
         assert in_channels == out_channels
         block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
@@ -637,17 +519,15 @@ def build_stage_main(
 
 def build_downsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
     if block_type == "Conv":
-        block = ConvLayer(
+        block = nn.Conv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
             stride=2,
-            use_bias=True,
-            norm=None,
-            act_func=None,
+            padding=1,
         )
     elif block_type == "ConvPixelUnshuffle":
-        block = ConvPixelUnshuffleDownSampleLayer(
+        block = ConvPixelUnshuffleDownsample2D(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
         )
     else:
@@ -655,7 +535,7 @@ def build_downsample_block(block_type: str, in_channels: int, out_channels: int,
     if shortcut is None:
         pass
     elif shortcut == "averaging":
-        shortcut_block = PixelUnshuffleChannelAveragingDownSampleLayer(
+        shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
             in_channels=in_channels, out_channels=out_channels, factor=2
         )
         block = ResidualBlock(block, shortcut_block)
@@ -666,19 +546,17 @@ def build_downsample_block(block_type: str, in_channels: int, out_channels: int,
 
 def build_upsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
     if block_type == "ConvPixelShuffle":
-        block = ConvPixelShuffleUpSampleLayer(
+        block = ConvPixelShuffleUpsample2D(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
         )
     elif block_type == "InterpolateConv":
-        block = InterpolateConvUpSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
-        )
+        block = Upsample2D(channels=in_channels, use_conv=True, out_channels=out_channels)
     else:
         raise ValueError(f"block_type {block_type} is not supported for upsampling")
     if shortcut is None:
         pass
     elif shortcut == "duplicating":
-        shortcut_block = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+        shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
             in_channels=in_channels, out_channels=out_channels, factor=2
         )
         block = ResidualBlock(block, shortcut_block)
@@ -689,14 +567,11 @@ def build_upsample_block(block_type: str, in_channels: int, out_channels: int, s
 
 def build_encoder_project_in_block(in_channels: int, out_channels: int, factor: int, downsample_block_type: str):
     if factor == 1:
-        block = ConvLayer(
+        block = nn.Conv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
-            stride=1,
-            use_bias=True,
-            norm=None,
-            act_func=None,
+            padding=1,
         )
     elif factor == 2:
         block = build_downsample_block(
@@ -728,7 +603,7 @@ def build_encoder_project_out_block(
     if shortcut is None:
         pass
     elif shortcut == "averaging":
-        shortcut_block = PixelUnshuffleChannelAveragingDownSampleLayer(
+        shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
             in_channels=in_channels, out_channels=out_channels, factor=1
         )
         block = ResidualBlock(block, shortcut_block)
@@ -750,7 +625,7 @@ def build_decoder_project_in_block(in_channels: int, out_channels: int, shortcut
     if shortcut is None:
         pass
     elif shortcut == "duplicating":
-        shortcut_block = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+        shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
             in_channels=in_channels, out_channels=out_channels, factor=1
         )
         block = ResidualBlock(block, shortcut_block)
@@ -947,15 +822,15 @@ class DCAE(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         latent_channels: int = 32,
+        encoder_block_type: str | list[str] = "ResBlock",
         encoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
         encoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
-        encoder_block_type: str | list[str] = "ResBlock",
         encoder_norm: str = "rms2d",
         encoder_act: str = "silu",
         downsample_block_type: str = "ConvPixelUnshuffle",
+        decoder_block_type: str | list[str] = "ResBlock",
         decoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
         decoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
-        decoder_block_type: str | list[str] = "ResBlock",
         decoder_norm: str = "rms2d",
         decoder_act: str = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
@@ -1103,16 +978,18 @@ def main():
 
     torch.set_grad_enabled(False)
     device = torch.device("cuda")
+    dtype = torch.float32
 
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
     image = Image.open("/home/junyuc/workspace/code/efficientvit/assets/fig/girl.png")
-    x = transform(image)[None].to(device)
+    x = transform(image)[None].to(device=device, dtype=dtype)
     for model_name in REGISTERED_DCAE_MODEL:
         dc_ae = DCAE_HF.from_pretrained(f"mit-han-lab/{model_name}")
-        dc_ae = dc_ae.to(device).eval()
+        dc_ae = dc_ae.to(device=device, dtype=dtype).eval()
+        ipdb.set_trace()
         latent = dc_ae.encode(x)
         print(latent.shape)
         y = dc_ae.decode(latent)
