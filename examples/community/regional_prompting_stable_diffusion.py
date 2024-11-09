@@ -118,9 +118,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         rp_args: Dict[str, str] = None,
     ):
         active = KBRK in prompt[0] if isinstance(prompt, list) else KBRK in prompt
-        use_base = (
-            KBASE in prompt[0] if isinstance(prompt, list) else KBASE in prompt
-        )
+        use_base = KBASE in prompt[0] if isinstance(prompt, list) else KBASE in prompt
         if negative_prompt is None:
             negative_prompt = "" if isinstance(prompt, str) else [""] * len(prompt)
 
