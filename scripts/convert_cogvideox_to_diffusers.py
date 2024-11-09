@@ -80,6 +80,8 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "post_attn1_layernorm": "norm2.norm",
     "time_embed.0": "time_embedding.linear_1",
     "time_embed.2": "time_embedding.linear_2",
+    "ofs_embed.0": "ofs_embedding.linear_1",
+    "ofs_embed.2": "ofs_embedding.linear_2",
     "mixins.patch_embed": "patch_embed",
     "mixins.final_layer.norm_final": "norm_out.norm",
     "mixins.final_layer.linear": "proj_out",
@@ -150,7 +152,8 @@ def convert_transformer(
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
-        use_learned_positional_embeddings=i2v,
+        ofs_embed_dim=512 if (i2v and init_kwargs["patch_size_t"] is not None) else None,  # CogVideoX1.5-5B-I2V
+        use_learned_positional_embeddings=i2v and init_kwargs["patch_size_t"] is None,  # CogVideoX-5B-I2V
         **init_kwargs,
     ).to(dtype=dtype)
 
@@ -210,7 +213,7 @@ def get_init_kwargs(version: str):
             "patch_bias": False,
             "sample_height": 768 // vae_scale_factor_spatial,
             "sample_width": 1360 // vae_scale_factor_spatial,
-            "sample_frames": 81,
+            "sample_frames": 81, # TODO: Need Test with 161 for 10 seconds
         }
     else:
         raise ValueError("Unsupported version of CogVideoX.")
