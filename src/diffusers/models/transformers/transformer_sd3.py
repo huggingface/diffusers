@@ -327,7 +327,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
                 continue
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):

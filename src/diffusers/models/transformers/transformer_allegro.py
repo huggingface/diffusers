@@ -371,7 +371,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             # TODO(aryan): Implement gradient checkpointing
-            if self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
