@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Callable
+from typing import Any, Optional, Callable, Union
 
 import torch
 import torch.nn as nn
@@ -29,6 +29,7 @@ from ..activations import get_activation
 from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
 from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
 
+from .vae import DecoderOutput
 
 def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
     x = list(x) if isinstance(x, (list, tuple)) else [x]
@@ -863,9 +864,12 @@ class DCAE(ModelMixin, ConfigMixin):
         x = self.encoder(x)
         return x
 
-    def decode(self, x: torch.Tensor) -> torch.Tensor:
+    def decode(self, x: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         x = self.decoder(x)
-        return x
+        if not return_dict:
+            return x
+        else:
+            return DecoderOutput(sample=x)
 
     def forward(self, x: torch.Tensor, global_step: int) -> torch.Tensor:
         x = self.encoder(x)
