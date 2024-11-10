@@ -438,6 +438,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         prompt,
         height,
         width,
+        num_frames,
         strength,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
@@ -448,6 +449,10 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        if self.transformer.config.patch_size_t is not None and latent_frames % self.transformer.config.patch_size_t != 0:
+            raise ValueError(f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}.")
 
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -563,8 +568,8 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         video: List[Image.Image] = None,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 480,
-        width: int = 720,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         strength: float = 0.8,
@@ -667,6 +672,10 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
+        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
+        num_frames = len(video) if latents is None else latents.size(1)
+        
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
@@ -674,6 +683,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             prompt=prompt,
             height=height,
             width=width,
+            num_frames=num_frames,
             strength=strength,
             negative_prompt=negative_prompt,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,

@@ -412,6 +412,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         prompt,
         height,
         width,
+        num_frames,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
         prompt_embeds=None,
@@ -421,6 +422,10 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        if self.transformer.config.patch_size_t is not None and latent_frames % self.transformer.config.patch_size_t != 0:
+            raise ValueError(f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -533,8 +538,8 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         control_video: Optional[List[Image.Image]] = None,
-        height: int = 480,
-        width: int = 720,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
@@ -638,7 +643,14 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        
+        if control_video is not None and isinstance(control_video[0], Image.Image):
+            control_video = [control_video]
 
+        height = height or self.transformer.config.sample_height * self.vae_scale_factor_spatial
+        width = width or self.transformer.config.sample_width * self.vae_scale_factor_spatial
+        num_frames = len(control_video[0]) if control_video is not None else control_video_latents.size(2)
+        
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
@@ -646,6 +658,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             prompt,
             height,
             width,
+            num_frames,
             negative_prompt,
             callback_on_step_end_tensor_inputs,
             prompt_embeds,
@@ -664,9 +677,6 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-
-        if control_video is not None and isinstance(control_video[0], Image.Image):
-            control_video = [control_video]
 
         device = self._execution_device
 
@@ -695,7 +705,6 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels // 2
-        num_frames = len(control_video[0]) if control_video is not None else control_video_latents.size(2)
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
