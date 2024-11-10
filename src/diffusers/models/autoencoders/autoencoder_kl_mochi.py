@@ -206,7 +206,7 @@ class MochiDownBlock3D(nn.Module):
         for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -311,7 +311,7 @@ class MochiMidBlock3D(nn.Module):
         for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -392,7 +392,7 @@ class MochiUpBlock3D(nn.Module):
         for i, resnet in enumerate(self.resnets):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -529,7 +529,7 @@ class MochiEncoder3D(nn.Module):
         hidden_states = self.proj_in(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def create_forward(*inputs):
@@ -646,7 +646,7 @@ class MochiDecoder3D(nn.Module):
         hidden_states = self.conv_in(hidden_states)
 
         # 1. Mid
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def create_forward(*inputs):
