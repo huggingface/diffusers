@@ -1466,7 +1466,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                 h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
             # apply base subblock
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 h_base = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(b_res),
@@ -1489,7 +1489,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
             # apply ctrl subblock
             if apply_control:
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
                     ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                     h_ctrl = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(c_res),
@@ -1898,7 +1898,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             hidden_states, res_h_base = maybe_apply_freeu_to_subblock(hidden_states, res_h_base)
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
