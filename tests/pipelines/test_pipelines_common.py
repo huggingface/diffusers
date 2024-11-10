@@ -31,7 +31,7 @@ from diffusers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.models.controlnet_xs import UNetControlNetXSModel
+from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
@@ -1103,6 +1103,7 @@ class PipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
+            print(batch_size, batched_input)
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 
