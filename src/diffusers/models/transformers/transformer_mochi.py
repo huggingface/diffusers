@@ -350,7 +350,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         )
 
         for i, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
