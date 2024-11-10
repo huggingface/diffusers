@@ -734,6 +734,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     progress_bar.update()
 
         if not output_type == "latent":
+            breakpoint()
             video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:

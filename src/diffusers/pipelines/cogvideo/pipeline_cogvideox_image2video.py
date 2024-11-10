@@ -567,8 +567,8 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         image: PipelineImageInput,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 480,
-        width: int = 720,
+        height: int = 768,
+        width: int = 1360,
         num_frames: int = 49,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
@@ -675,7 +675,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         num_videos_per_prompt = 1
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             image=image,
@@ -726,6 +725,22 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
+        # TODO: Only CogVideoX1.5-5B-I2V can use this method. Need to Change
+        def adjust_resolution_to_divisible(image_height, image_width, tgt_height, tgt_width, divisor=16):
+            # Step 1: Compare image dimensions with target dimensions
+            if image_height > tgt_height:
+                image_height = tgt_height
+            if image_width > tgt_width:
+                image_width = tgt_width
+
+            # Step 2: Ensure height and width are divisible by the divisor
+            image_height = (image_height // divisor) * divisor
+            image_width = (image_width // divisor) * divisor
+            return image_height, image_width
+
+        image_width, image_height = image.size[-2:]
+
+        height, width = adjust_resolution_to_divisible(image_height, image_width, height, width)
         image = self.video_processor.preprocess(image, height=height, width=width).to(
             device, dtype=prompt_embeds.dtype
         )
@@ -746,7 +761,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
         # 7. Create rotary embeds if required
         image_rotary_emb = (
             self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
