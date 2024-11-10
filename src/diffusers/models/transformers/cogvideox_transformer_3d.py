@@ -281,7 +281,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.ofs_embedding = None
 
         if ofs_embed_dim:
-            self.ofs_embedding = TimestepEmbedding(ofs_embed_dim, ofs_embed_dim, timestep_activation_fn) # same as time embeddings, for ofs
+            self.ofs_embedding = TimestepEmbedding(
+                ofs_embed_dim, ofs_embed_dim, timestep_activation_fn
+            )  # same as time embeddings, for ofs
 
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -516,7 +518,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 5. Unpatchify
         p = self.config.patch_size
         p_t = self.config.patch_size_t
-        
+
         if p_t is None:
             output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
             output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
