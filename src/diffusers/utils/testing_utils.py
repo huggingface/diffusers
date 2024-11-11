@@ -373,7 +373,7 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
-def require_non_cpu(test_case):
+def require_accelerator(test_case):
     """
     Decorator marking a test that requires a hardware accelerator backend. These tests are skipped when there are no
     hardware accelerator available.
