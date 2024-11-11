@@ -369,7 +369,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
