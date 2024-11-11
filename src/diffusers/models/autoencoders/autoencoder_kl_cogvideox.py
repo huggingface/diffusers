@@ -1478,4 +1478,4 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         dec = self.decode(z).sample
         if not return_dict:
             return (dec,)
-        return dec
+        return DecoderOutput(sample=dec)

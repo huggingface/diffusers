@@ -28,7 +28,6 @@ from diffusers.utils.testing_utils import (
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -146,47 +145,9 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "Without slicing outputs should match with the outputs when slicing is manually disabled.",
         )
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        # (TODO: sayakpaul): should be grouped in https://github.com/huggingface/diffusers/pull/9494
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Decoder", "Encoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)

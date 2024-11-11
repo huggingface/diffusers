@@ -843,11 +843,6 @@ class ModelTesterMixin:
     ):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
-        if self.model_class.__name__ in [
-            "UNetSpatioTemporalConditionModel",
-            "AutoencoderKLTemporalDecoder",
-        ]:
-            return
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -876,8 +871,6 @@ class ModelTesterMixin:
 
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
-
-        print(f"{set(modules_with_gc_enabled.keys())=}, {expected_set=}")
 
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"

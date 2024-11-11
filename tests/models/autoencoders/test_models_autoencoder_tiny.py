@@ -119,6 +119,10 @@ class AutoencoderTinyTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
     def test_forward_with_norm_groups(self):
         pass
 
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"DecoderTiny", "EncoderTiny"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
 
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
