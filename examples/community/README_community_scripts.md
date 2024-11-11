@@ -312,4 +312,6 @@ image = pipeline(
     callback_on_step_end=callback,
     callback_on_step_end_tensor_inputs=["prompt_embeds"],
 ).images[0]
+torch.cuda.empty_cache()
+image.save('image.png')
 ```
