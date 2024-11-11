@@ -106,7 +106,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         else:
             raise ValueError(f"Wrong `target_dtype` ({target_dtype}) provided.")
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",
@@ -203,6 +203,16 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             new_value = bnb.nn.Params4bit(new_value, requires_grad=False, **kwargs).to(target_device)
 
         module._parameters[tensor_name] = new_value
+
+    def check_quantized_param_shape(self, param_name, current_param_shape, loaded_param_shape):
+        n = current_param_shape.numel()
+        inferred_shape = (n,) if "bias" in param_name else ((n + 1) // 2, 1)
+        if loaded_param_shape != inferred_shape:
+            raise ValueError(
+                f"Expected the flattened shape of the current param ({param_name}) to be {loaded_param_shape} but is {inferred_shape}."
+            )
+        else:
+            return True
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
@@ -330,7 +340,6 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         if self.quantization_config.llm_int8_skip_modules is not None:
             self.modules_to_not_convert = self.quantization_config.llm_int8_skip_modules
 
-    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.validate_environment with 4-bit->8-bit
     def validate_environment(self, *args, **kwargs):
         if not torch.cuda.is_available():
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
@@ -404,7 +413,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             logger.info("target_dtype {target_dtype} is replaced by `torch.int8` for 8-bit BnB quantization")
         return torch.int8
 
-    def check_quantized_param(
+    def check_if_quantized_param(
         self,
         model: "ModelMixin",
         param_value: "torch.Tensor",

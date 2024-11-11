@@ -118,6 +118,10 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
         components.setdefault(component, [])
         components[component].append(component_filename)
 
+    # If there are no component folders check the main directory for safetensors files
+    if not components:
+        return any(".safetensors" in filename for filename in filenames)
+
     # iterate over all files of a component
     # check if safetensor files exist for that component
     # if variant is provided check if the variant of the safetensors exists
@@ -194,10 +198,31 @@ def variant_compatible_siblings(filenames, variant=None) -> Union[List[os.PathLi
             variant_filename = f"{filename.split('.')[0]}.{variant}.{filename.split('.')[1]}"
         return variant_filename
 
-    for f in non_variant_filenames:
-        variant_filename = convert_to_variant(f)
-        if variant_filename not in usable_filenames:
-            usable_filenames.add(f)
+    def find_component(filename):
+        if not len(filename.split("/")) == 2:
+            return
+        component = filename.split("/")[0]
+        return component
+
+    def has_sharded_variant(component, variant, variant_filenames):
+        # If component exists check for sharded variant index filename
+        # If component doesn't exist check main dir for sharded variant index filename
+        component = component + "/" if component else ""
+        variant_index_re = re.compile(
+            rf"{component}({'|'.join(weight_prefixes)})\.({'|'.join(weight_suffixs)})\.index\.{variant}\.json$"
+        )
+        return any(f for f in variant_filenames if variant_index_re.match(f) is not None)
+
+    for filename in non_variant_filenames:
+        if convert_to_variant(filename) in variant_filenames:
+            continue
+
+        component = find_component(filename)
+        # If a sharded variant exists skip adding to allowed patterns
+        if has_sharded_variant(component, variant, variant_filenames):
+            continue
+
+        usable_filenames.add(filename)
 
     return usable_filenames, variant_filenames
 
