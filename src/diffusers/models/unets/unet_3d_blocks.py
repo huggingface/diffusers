@@ -1078,7 +1078,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         )
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1168,7 +1168,7 @@ class DownBlockSpatioTemporal(nn.Module):
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
         output_states = ()
         for resnet in self.resnets:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1281,7 +1281,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions))
         for resnet, attn in blocks:
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1383,7 +1383,7 @@ class UpBlockSpatioTemporal(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1493,7 +1493,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:  # TODO
+            if torch.is_grad_enabled() and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
