@@ -21,7 +21,7 @@ from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
-    require_non_cpu,
+    require_accelerator,
     require_torch_gpu,
     slow,
     torch_device,

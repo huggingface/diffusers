@@ -28,7 +28,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     nightly,
-    require_non_cpu,
+    require_accelerator,
     require_torch_gpu,
     torch_device,
 )
@@ -238,7 +238,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 
-    @require_non_cpu
+    @require_accelerator
     def test_semantic_diffusion_fp16(self):
         """Test that stable diffusion works with fp16"""
         unet = self.dummy_cond_unet

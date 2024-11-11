@@ -43,7 +43,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     require_accelerate_version_greater,
-    require_non_cpu,
+    require_accelerator,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -195,7 +195,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 1e-4)
 
-    @require_non_cpu
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -227,7 +228,8 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_loaded).max()
         self.assertLess(max_diff, 2e-2, "The output of the fp16 pipeline changed after saving and loading.")
 
-    @require_non_cpu
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_float16_inference(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -247,7 +249,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(
         max_diff = np.abs(output - output_fp16).max()
         self.assertLess(max_diff, 1.3e-2, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @require_non_cpu
+    @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_cpu_offload_forward_pass(self):
         components = self.get_dummy_components()

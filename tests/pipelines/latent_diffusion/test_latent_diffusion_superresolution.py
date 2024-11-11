@@ -26,7 +26,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     nightly,
-    require_non_cpu,
+    require_accelerator,
     require_torch,
     torch_device,
 )
@@ -94,7 +94,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @require_non_cpu
+    @require_accelerator
     def test_inference_superresolution_fp16(self):
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()

@@ -23,7 +23,7 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import load_numpy, require_non_cpu, require_torch_gpu, skip_mps, slow, torch_device
+from diffusers.utils.testing_utils import load_numpy, require_accelerator, require_torch_gpu, skip_mps, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference

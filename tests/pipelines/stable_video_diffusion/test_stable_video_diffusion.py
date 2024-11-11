@@ -26,7 +26,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
-    require_non_cpu,
+    require_accelerator,
     require_torch_gpu,
     slow,
     torch_device,
@@ -252,7 +252,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @require_non_cpu
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -368,7 +369,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @require_non_cpu
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -404,7 +406,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    @require_non_cpu
+    @require_accelerator
     @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
@@ -427,7 +429,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
-    @require_non_cpu
+    @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         generator_device = "cpu"

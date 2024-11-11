@@ -18,7 +18,7 @@ from diffusers import (
     UNetMotionModel,
 )
 from diffusers.utils import is_xformers_available, logging
-from diffusers.utils.testing_utils import floats_tensor, require_non_cpu, torch_device
+from diffusers.utils.testing_utils import floats_tensor, require_accelerator, torch_device
 
 from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
 
@@ -278,7 +278,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFr
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    @require_non_cpu
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

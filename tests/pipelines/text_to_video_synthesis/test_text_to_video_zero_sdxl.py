@@ -27,7 +27,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     nightly,
     require_accelerate_version_greater,
-    require_non_cpu,
+    require_accelerator,
     require_torch_gpu,
     torch_device,
 )
@@ -219,7 +219,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @require_non_cpu
+    @require_accelerator
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -261,7 +261,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_inference_batch_single_identical(self):
         pass
 
-    @require_non_cpu
+    @require_accelerator
     @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         components = self.get_dummy_components()
@@ -282,8 +282,9 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
     def test_pipeline_call_signature(self):
         pass
-
-    @require_non_cpu
+    
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -335,7 +336,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @require_non_cpu
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
