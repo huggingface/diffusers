@@ -1165,8 +1165,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 "1.0.0",
                 "The parameters `tile_overlap_factor_height` and `tile_overlap_factor_width` are deprecated. Please use `tile_sample_stride_height` and `tile_sample_stride_width` instead.",
             )
-            tile_sample_stride_height = (1 - tile_overlap_factor_height) * self.tile_sample_min_height // 8 * 8
-            tile_sample_stride_width = (1 - tile_overlap_factor_width) * self.tile_sample_min_width // 8 * 8
+            tile_sample_stride_height = int((1 - tile_overlap_factor_height) * self.tile_sample_min_height) // 8 * 8
+            tile_sample_stride_width = int((1 - tile_overlap_factor_width) * self.tile_sample_min_width) // 8 * 8
 
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
