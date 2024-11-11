@@ -1124,10 +1124,10 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # We make the minimum height and width of sample for tiling half that of the generally supported
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
-        
+
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
-        
+
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CogVideoXEncoder3D, CogVideoXDecoder3D)):
             module.gradient_checkpointing = value
@@ -1158,12 +1158,16 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling
                 artifacts produced across the width dimension.
         """
-        
+
         if tile_overlap_factor_height is not None or tile_overlap_factor_width is not None:
-            deprecate("tile_overlap_factor", "1.0.0", "The parameters `tile_overlap_factor_height` and `tile_overlap_factor_width` are deprecated. Please use `tile_sample_stride_height` and `tile_sample_stride_width` instead.")
+            deprecate(
+                "tile_overlap_factor",
+                "1.0.0",
+                "The parameters `tile_overlap_factor_height` and `tile_overlap_factor_width` are deprecated. Please use `tile_sample_stride_height` and `tile_sample_stride_width` instead.",
+            )
             tile_sample_stride_height = (1 - tile_overlap_factor_height) * self.tile_sample_min_height // 8 * 8
             tile_sample_stride_width = (1 - tile_overlap_factor_width) * self.tile_sample_min_width // 8 * 8
-        
+
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
@@ -1213,7 +1217,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             enc, _ = self.encoder(x)
             if self.quant_conv is not None:
                 enc = self.quant_conv(enc)
-        
+
         return enc
 
     @apply_forward_hook
@@ -1262,7 +1266,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     z_intermediate = self.post_quant_conv(z_intermediate)
                 z_intermediate, conv_cache = self.decoder(z_intermediate, conv_cache=conv_cache)
                 dec.append(z_intermediate)
-            
+
             dec = torch.cat(dec, dim=2)
         else:
             if self.post_quant_conv is not None:
@@ -1373,7 +1377,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     time, _ = self.encoder(tile)
                     if self.quant_conv is not None:
                         time = self.quant_conv(time)
-                
+
                 row.append(time)
             rows.append(row)
 
@@ -1458,7 +1462,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     if self.post_quant_conv is not None:
                         tile = self.post_quant_conv(tile)
                     time, _ = self.decoder(tile)
-                
+
                 row.append(time)
             rows.append(row)
 
