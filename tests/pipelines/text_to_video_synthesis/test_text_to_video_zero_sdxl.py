@@ -219,6 +219,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
