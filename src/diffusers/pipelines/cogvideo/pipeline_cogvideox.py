@@ -334,6 +334,10 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             width // self.vae_scale_factor_spatial,
         )
 
+        # For CogVideoX1.5, the latent should add 1 for padding (Not use)
+        if self.transformer.config.patch_size_t is not None:
+            shape = shape[:1] + (shape[1] + shape[1] % self.transformer.config.patch_size_t,) + shape[2:]
+
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -734,7 +738,13 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     progress_bar.update()
 
         if not output_type == "latent":
-            video = self.decode_latents(latents[:,1:])
+            # Calculate the number of start frames based on the size of the second dimension of latents
+            num_latent_frames = latents.size(1)  # Get the size of the second dimension
+            # (81 - 1) / 4 + 1 = 21 and latents is 22, so the first frames will be 22 - 1 = 1, and we will skip frames 0
+            start_frames = num_latent_frames - ((num_frames - 1) // self.vae_scale_factor_temporal + 1)
+
+            # Slice latents starting from start_frames
+            video = self.decode_latents(latents[:, start_frames:])
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents

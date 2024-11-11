@@ -367,6 +367,10 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             width // self.vae_scale_factor_spatial,
         )
 
+        # For CogVideoX1.5, the latent should add 1 for padding (Not use)
+        if self.transformer.config.patch_size_t is not None:
+            shape = shape[:1] + (shape[1] + shape[1] % self.transformer.config.patch_size_t,) + shape[2:]
+
         image = image.unsqueeze(2)  # [B, C, F, H, W]
 
         if isinstance(generator, list):
@@ -386,8 +390,14 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
         )
+
         latent_padding = torch.zeros(padding_shape, device=device, dtype=dtype)
         image_latents = torch.cat([image_latents, latent_padding], dim=1)
+
+        # Select the first frame along the second dimension
+        if self.transformer.config.patch_size_t is not None:
+            first_frame = image_latents[:, : image_latents.size(1) % self.transformer.config.patch_size_t, ...]
+            image_latents = torch.cat([first_frame, image_latents], dim=1)
 
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -460,14 +470,14 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        if (
-            self.transformer.config.patch_size_t is not None
-            and latent_frames % self.transformer.config.patch_size_t != 0
-        ):
-            raise ValueError(
-                f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}."
-            )
+        # latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        # if (
+        #     self.transformer.config.patch_size_t is not None
+        #     and latent_frames % self.transformer.config.patch_size_t != 0
+        # ):
+        #     raise ValueError(
+        #         f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}."
+        #     )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -853,7 +863,13 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                     progress_bar.update()
 
         if not output_type == "latent":
-            video = self.decode_latents(latents)
+            # Calculate the number of start frames based on the size of the second dimension of latents
+            num_latent_frames = latents.size(1)  # Get the size of the second dimension
+            # (81 - 1) / 4 + 1 = 21 and latents is 22, so the first frames will be 22 - 1 = 1, and we will skip frames 0
+            start_frames = num_latent_frames - ((num_frames - 1) // self.vae_scale_factor_temporal + 1)
+
+            # Slice latents starting from start_frames
+            video = self.decode_latents(latents[:, start_frames:])
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
