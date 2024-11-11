@@ -93,6 +93,7 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
+    is_gguf_available,
     requires_backends,
 )
 from .loading_utils import get_module_from_name, load_image, load_video

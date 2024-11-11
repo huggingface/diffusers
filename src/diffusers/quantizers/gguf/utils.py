@@ -13,20 +13,20 @@ def split_block_dims(blocks, *args):
     return torch.split(blocks, dims, dim=1)
 
 
-def dequantize_Q2_K(blocks, block_size, type_size, dtype=None):
+def dequantize_Q2_K(blocks, dtype=None):
     n_blocks = blocks.shape[0]
 
-    scales, qs, d, dmin = split_block_dims(blocks, QK_K_BLOCKSIZE // 16, QK_K // 4, 2)
-    d = d.view(torch.float16).to(dtype)
-    dmin = dmin.view(torch.float16).to(dtype)
+    scales, quantized_values, delta, delta_min = split_block_dims(blocks, QK_K_BLOCKSIZE // 16, QK_K_BLOCKSIZE // 4, 2)
+    delta = delta.view(torch.float16).to(dtype)
+    delta_min = delta_min.view(torch.float16).to(dtype)
 
     # (n_blocks, 16, 1)
-    dl = (d * (scales & 0xF)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
-    ml = (dmin * (scales >> 4)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
+    dl = (delta * (scales & 0xF)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
+    ml = (delta_min * (scales >> 4)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
 
-    shift = torch.tensor([0, 2, 4, 6], device=d.device, dtype=torch.uint8).reshape((1, 1, 4, 1))
+    shift = torch.tensor([0, 2, 4, 6], device=delta.device, dtype=torch.uint8).reshape((1, 1, 4, 1))
 
-    qs = (qs.reshape((n_blocks, -1, 1, 32)) >> shift) & 3
+    qs = (quantized_values.reshape((n_blocks, -1, 1, 32)) >> shift) & 3
     qs = qs.reshape((n_blocks, QK_K_BLOCKSIZE // 16, 16))
     qs = dl * qs - ml
 

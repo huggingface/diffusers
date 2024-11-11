@@ -22,7 +22,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, logging
+from ..utils import deprecate, is_accelerate_available, is_gguf_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -48,6 +48,9 @@ if is_accelerate_available():
     from accelerate import init_empty_weights
 
     from ..models.modeling_utils import load_model_dict_into_meta
+
+if is_gguf_available():
+    from ..quantizers import GGUFQuantizationConfig
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
@@ -227,14 +230,11 @@ class FromOriginalModelMixin:
             checkpoint = checkpoint["state_dict"]
 
         if is_gguf:
-            quantization_config = GGUFQuantizationConfig()
-            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=False)
+            quantization_config = GGUFQuantizationConfig(quant_type=gguf_metadata["gguf_file_type"])
+            # Only support loading pre_quantized gguf checkpoints
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=True)
         else:
             hf_quantizer = None
-
-        if hf_quantizer is not None:
-            hf_quantizer.validate_environment(torch_dtype=torch_dtype)
-            torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (

@@ -15,7 +15,7 @@ from ...utils import (
     logging,
 )
 
-if accelerate_is_available():
+if is_accelerate_available():
     from accelerate import init_empty_weights
 
 if is_torch_available():
@@ -52,6 +52,13 @@ class GGUFQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         unexpected_keys: Optional[List[str]] = None,
     ):
+        module, tensor_name = get_module_from_name(model, param_name)
+        if tensor_name not in module._parameters:
+            raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
+        __import__("ipdb").set_trace()
+
+        module._parameters[tensor_name] = param_value
+
         return
 
     def _process_model_before_weight_loading(
@@ -62,13 +69,11 @@ class GGUFQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         for name, module in model.named_children():
-            if isinstance(module, nn.Linear) and name not in modules_to_not_convert:
+            if isinstance(module, nn.Linear) and name not in self.modules_to_not_convert:
                 with init_empty_weights():
-                    in_features = module.in_features
-                    out_features = module.out_features
                     model._modules[name] = GGUFLinear(
-                        in_features,
-                        out_features,
+                        module.in_features,
+                        module.out_features,
                         module.bias is not None,
                         compute_dtype=self.compute_dtype,
                         quant_type=self.quant_type,
