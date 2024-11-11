@@ -40,7 +40,7 @@ There is one model available that can be used with the image-to-video CogVideoX 
 
 For the CogVideoX 1.5 series of models, note that:
 - Text-to-video works best at `1360 x 768` resolution because it is trained with that specific resolution
-- Image-to-video works for multiple resolutions. Width can vary from `256` to `1360`, and height can vary from `256` to `768`. Note that the height/width must be divisible by `16`.
+- Image-to-video works for multiple resolutions. Width can vary from `768` to `1360`, and height must be `768`. Note that the height/width must be divisible by `16`.
 - Both T2V and I2V models support generation with `81` and `161` frames and work best at this value. It is recommended to export videos at 16 FPS.
 
 There are two models that support pose controllable generation (by the [Alibaba-PAI](https://huggingface.co/alibaba-pai) team):
