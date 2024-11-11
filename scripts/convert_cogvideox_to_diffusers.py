@@ -175,7 +175,7 @@ def convert_transformer(
 
 def convert_vae(ckpt_path: str, scaling_factor: float, version: str, dtype: torch.dtype):
     init_kwargs = {"scaling_factor": scaling_factor}
-    if args.version == "1.5":
+    if version == "1.5":
         init_kwargs.update({"invert_scale_latents": True})
 
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
