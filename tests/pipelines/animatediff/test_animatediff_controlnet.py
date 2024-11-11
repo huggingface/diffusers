@@ -281,7 +281,7 @@ class AnimateDiffControlNetPipelineFastTests(
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    @require_non_cpu
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
