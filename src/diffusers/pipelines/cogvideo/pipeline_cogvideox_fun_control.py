@@ -412,7 +412,6 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         prompt,
         height,
         width,
-        num_frames,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
         prompt_embeds=None,
@@ -422,15 +421,6 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        if (
-            self.transformer.config.patch_size_t is not None
-            and latent_frames % self.transformer.config.patch_size_t != 0
-        ):
-            raise ValueError(
-                f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}."
-            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -663,7 +653,6 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             prompt,
             height,
             width,
-            num_frames,
             negative_prompt,
             callback_on_step_end_tensor_inputs,
             prompt_embeds,
@@ -708,7 +697,17 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         self._num_timesteps = len(timesteps)
 
-        # 5. Prepare latents.
+        # 5. Prepare latents
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
+        # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+        patch_size_t = self.transformer.config.patch_size_t
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            raise ValueError(
+                f"The number of latent frames must be divisible by `{patch_size_t=}` but the given video "
+                f"contains {latent_frames=}, which is not divisible."
+            )
+        
         latent_channels = self.transformer.config.in_channels // 2
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,

@@ -438,7 +438,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         prompt,
         height,
         width,
-        num_frames,
         strength,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
@@ -449,15 +448,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        if (
-            self.transformer.config.patch_size_t is not None
-            and latent_frames % self.transformer.config.patch_size_t != 0
-        ):
-            raise ValueError(
-                f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}."
-            )
 
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -688,7 +678,6 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             prompt=prompt,
             height=height,
             width=width,
-            num_frames=num_frames,
             strength=strength,
             negative_prompt=negative_prompt,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -737,6 +726,16 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
+        # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+        patch_size_t = self.transformer.config.patch_size_t
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            raise ValueError(
+                f"The number of latent frames must be divisible by `{patch_size_t=}` but the given video "
+                f"contains {latent_frames=}, which is not divisible."
+            )
+        
         if latents is None:
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=prompt_embeds.dtype)

@@ -450,7 +450,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         prompt,
         height,
         width,
-        num_frames,
         negative_prompt,
         callback_on_step_end_tensor_inputs,
         latents=None,
@@ -469,15 +468,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        # latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        # if (
-        #     self.transformer.config.patch_size_t is not None
-        #     and latent_frames % self.transformer.config.patch_size_t != 0
-        # ):
-        #     raise ValueError(
-        #         f"Number of latent frames must be divisible by `{self.transformer.config.patch_size_t}` but got {latent_frames=}."
-        #     )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -705,7 +695,6 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             image=image,
             prompt=prompt,
             height=height,
-            num_frames=num_frames,
             width=width,
             negative_prompt=negative_prompt,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -751,22 +740,15 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
-        # TODO: Only CogVideoX1.5-5B-I2V can use this method. Need to Change
-        def adjust_resolution_to_divisible(image_height, image_width, tgt_height, tgt_width, divisor=16):
-            # Step 1: Compare image dimensions with target dimensions
-            if image_height > tgt_height:
-                image_height = tgt_height
-            if image_width > tgt_width:
-                image_width = tgt_width
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
 
-            # Step 2: Ensure height and width are divisible by the divisor
-            image_height = (image_height // divisor) * divisor
-            image_width = (image_width // divisor) * divisor
-            return image_height, image_width
-
-        image_width, image_height = image.size[-2:]
-
-        height, width = adjust_resolution_to_divisible(image_height, image_width, height, width)
+        # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+        patch_size_t = self.transformer.config.patch_size_t
+        additional_frames = 0
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            additional_frames = patch_size_t - latent_frames % patch_size_t
+            num_frames += additional_frames * self.vae_scale_factor_temporal
+        
         image = self.video_processor.preprocess(image, height=height, width=width).to(
             device, dtype=prompt_embeds.dtype
         )
@@ -863,13 +845,9 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                     progress_bar.update()
 
         if not output_type == "latent":
-            # Calculate the number of start frames based on the size of the second dimension of latents
-            num_latent_frames = latents.size(1)  # Get the size of the second dimension
-            # (81 - 1) / 4 + 1 = 21 and latents is 22, so the first frames will be 22 - 1 = 1, and we will skip frames 0
-            start_frames = num_latent_frames - ((num_frames - 1) // self.vae_scale_factor_temporal + 1)
-
-            # Slice latents starting from start_frames
-            video = self.decode_latents(latents[:, start_frames:])
+            # Discard any padding frames that were added for CogVideoX 1.5
+            latents = latents[:, additional_frames:]
+            video = self.decode_latents(latents)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents

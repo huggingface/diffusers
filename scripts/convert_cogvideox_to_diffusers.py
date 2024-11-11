@@ -213,7 +213,7 @@ def get_init_kwargs(version: str):
             "patch_bias": False,
             "sample_height": 768 // vae_scale_factor_spatial,
             "sample_width": 1360 // vae_scale_factor_spatial,
-            "sample_frames": 85,
+            "sample_frames": 81,
         }
     else:
         raise ValueError("Unsupported version of CogVideoX.")
