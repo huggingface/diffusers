@@ -381,7 +381,13 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             image_latents = [retrieve_latents(self.vae.encode(img.unsqueeze(0)), generator) for img in image]
 
         image_latents = torch.cat(image_latents, dim=0).to(dtype).permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
-        image_latents = self.vae_scaling_factor_image * image_latents
+
+        if not self.vae.config.invert_scale_latents:
+            image_latents = self.vae_scaling_factor_image * image_latents
+        else:
+            # This is awkward but required because the CogVideoX team forgot to multiply the
+            # scaling factor during training :)
+            image_latents = 1 / self.vae_scaling_factor_image * image_latents
 
         padding_shape = (
             batch_size,

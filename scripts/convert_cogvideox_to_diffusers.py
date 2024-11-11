@@ -173,9 +173,13 @@ def convert_transformer(
     return transformer
 
 
-def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
+def convert_vae(ckpt_path: str, scaling_factor: float, version: str, dtype: torch.dtype):
+    init_kwargs = {"scaling_factor": scaling_factor}
+    if args.version == "1.5":
+        init_kwargs.update({"invert_scale_latents": True})
+
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    vae = AutoencoderKLCogVideoX(scaling_factor=scaling_factor).to(dtype=dtype)
+    vae = AutoencoderKLCogVideoX(**init_kwargs).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -193,7 +197,7 @@ def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
     return vae
 
 
-def get_init_kwargs(version: str):
+def get_transformer_init_kwargs(version: str):
     if version == "1.0":
         vae_scale_factor_spatial = 8
         init_kwargs = {
@@ -281,7 +285,7 @@ if __name__ == "__main__":
     dtype = torch.float16 if args.fp16 else torch.bfloat16 if args.bf16 else torch.float32
 
     if args.transformer_ckpt_path is not None:
-        init_kwargs = get_init_kwargs(args.version)
+        init_kwargs = get_transformer_init_kwargs(args.version)
         transformer = convert_transformer(
             args.transformer_ckpt_path,
             args.num_layers,
@@ -293,7 +297,7 @@ if __name__ == "__main__":
         )
     if args.vae_ckpt_path is not None:
         # Keep VAE in float32 for better quality
-        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, torch.float32)
+        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, args.version, torch.float32)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
