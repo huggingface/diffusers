@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import unittest
 
@@ -122,6 +123,55 @@ class AutoencoderTinyTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"DecoderTiny", "EncoderTiny"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    def test_effective_gradient_checkpointing(self):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        inputs_dict_copy = copy.deepcopy(inputs_dict)
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        torch.manual_seed(0)
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict_copy).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < 1e-3)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+
+        for name, param in named_params.items():
+            if "encoder.layers" in name:
+                continue
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=3e-2))
 
 
 @slow
