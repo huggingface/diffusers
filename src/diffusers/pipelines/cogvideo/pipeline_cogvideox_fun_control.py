@@ -707,7 +707,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 f"The number of latent frames must be divisible by `{patch_size_t=}` but the given video "
                 f"contains {latent_frames=}, which is not divisible."
             )
-        
+
         latent_channels = self.transformer.config.in_channels // 2
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,

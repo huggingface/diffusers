@@ -735,7 +735,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 f"The number of latent frames must be divisible by `{patch_size_t=}` but the given video "
                 f"contains {latent_frames=}, which is not divisible."
             )
-        
+
         if latents is None:
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=prompt_embeds.dtype)
