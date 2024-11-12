@@ -23,7 +23,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
 from ...models import DCAE_HF, SanaTransformer2DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     deprecate,
@@ -203,7 +203,7 @@ class SanaPipeline(DiffusionPipeline):
         text_encoder: AutoModelForCausalLM,
         vae: DCAE_HF,
         transformer: SanaTransformer2DModel,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: FlowDPMSolverMultistepScheduler,
     ):
         super().__init__()
 
