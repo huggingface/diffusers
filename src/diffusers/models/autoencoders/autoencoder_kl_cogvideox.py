@@ -1163,10 +1163,18 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             deprecate(
                 "tile_overlap_factor",
                 "1.0.0",
-                "The parameters `tile_overlap_factor_height` and `tile_overlap_factor_width` are deprecated. Please use `tile_sample_stride_height` and `tile_sample_stride_width` instead.",
+                "The parameters `tile_overlap_factor_height` and `tile_overlap_factor_width` are deprecated and will be ignored. Please use `tile_sample_stride_height` and `tile_sample_stride_width` instead. For now, we will use these flags automatically, if passed, without breaking the existing behaviour.",
             )
-            tile_sample_stride_height = int((1 - tile_overlap_factor_height) * self.tile_sample_min_height) // 8 * 8
-            tile_sample_stride_width = int((1 - tile_overlap_factor_width) * self.tile_sample_min_width) // 8 * 8
+            tile_sample_stride_height = (
+                int((1 - tile_overlap_factor_height) * self.tile_sample_min_height)
+                // self.spatial_compression_ratio
+                * self.spatial_compression_ratio
+            )
+            tile_sample_stride_width = (
+                int((1 - tile_overlap_factor_width) * self.tile_sample_min_width)
+                // self.spatial_compression_ratio
+                * self.spatial_compression_ratio
+            )
 
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
