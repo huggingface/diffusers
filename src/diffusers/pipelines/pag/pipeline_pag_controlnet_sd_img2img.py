@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionPAGControlNetImg2ImgPipeline, ControlNetModel, UniPCMultistepScheduler
+        >>> from diffusers import StableDiffusionControlNetPAGImg2ImgPipeline, ControlNetModel, UniPCMultistepScheduler
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -108,7 +108,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-class StableDiffusionPAGControlNetImg2ImgPipeline(
+class StableDiffusionControlNetPAGImg2ImgPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
