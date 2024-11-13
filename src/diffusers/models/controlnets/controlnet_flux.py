@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import numpy as np
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -435,11 +436,25 @@ class FluxMultiControlNetModel(ModelMixin):
         controlnets (`List[FluxControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `FluxControlNetModel` as a list.
+        transformer_config (`diffusers.configuration_utils.FrozenDict`):
+            It is suggested that input the config from `FluxTransformer2DModel`, otherwise
+            the `transformer_num_layers`, `transformer_num_single_layers` would be set defalut 
+            to 19 and 38, those configs are used in merging different controlnet outputs when 
+            controlnets are not all configured the same
     """
 
-    def __init__(self, controlnets):
+    def __init__(self, controlnets, transformer_config=None):
         super().__init__()
+        if transformer_config is None:
+            logger.warning(
+                """It is suggested that input the config from `FluxTransformer2DModel`, otherwise
+                the `transformer_num_layers`, `transformer_num_single_layers` would be set defalut 
+                to 19 and 38, those configs are used in merging different controlnet outputs when 
+                controlnets are not all configured the same"""
+            )
         self.nets = nn.ModuleList(controlnets)
+        self.transformer_num_layers = 19 if transformer_config is None else transformer_config.num_layers
+        self.transformer_num_single_layers = 38 if transformer_config is None else  transformer_config.num_single_layers
 
     def forward(
         self,
@@ -497,39 +512,102 @@ class FluxMultiControlNetModel(ModelMixin):
         # Regular Multi-ControlNets
         # load all ControlNets into memories
         else:
-            for i, (image, mode, scale, controlnet) in enumerate(
-                zip(controlnet_cond, controlnet_mode, conditioning_scale, self.nets)
-            ):
-                block_samples, single_block_samples = controlnet(
-                    hidden_states=hidden_states,
-                    controlnet_cond=image,
-                    controlnet_mode=mode[:, None],
-                    conditioning_scale=scale,
-                    timestep=timestep,
-                    guidance=guidance,
-                    pooled_projections=pooled_projections,
-                    encoder_hidden_states=encoder_hidden_states,
-                    txt_ids=txt_ids,
-                    img_ids=img_ids,
-                    joint_attention_kwargs=joint_attention_kwargs,
-                    return_dict=return_dict,
-                )
+            if (all(net.config.num_layers == self.nets[0].config.num_layers for net in self.nets) and 
+                    all(net.config.num_single_layers == self.nets[0].config.num_single_layers for net in self.nets)):
+                control_block_samples, control_single_block_samples = None, None
+                for i, (image, mode, scale, controlnet) in enumerate(
+                    zip(controlnet_cond, controlnet_mode, conditioning_scale, self.nets)
+                ):
+                    block_samples, single_block_samples = controlnet(
+                        hidden_states=hidden_states,
+                        controlnet_cond=image,
+                        controlnet_mode=mode[:, None],
+                        conditioning_scale=scale,
+                        timestep=timestep,
+                        guidance=guidance,
+                        pooled_projections=pooled_projections,
+                        encoder_hidden_states=encoder_hidden_states,
+                        txt_ids=txt_ids,
+                        img_ids=img_ids,
+                        joint_attention_kwargs=joint_attention_kwargs,
+                        return_dict=return_dict,
+                    )
 
-                # merge samples
-                if i == 0:
-                    control_block_samples = block_samples
-                    control_single_block_samples = single_block_samples
-                else:
-                    if block_samples is not None and control_block_samples is not None:
+                    # merge samples
+                    if control_block_samples is None and block_samples is not None:
+                        control_block_samples = block_samples
+                    elif block_samples is not None and control_block_samples is not None:
                         control_block_samples = [
                             control_block_sample + block_sample
                             for control_block_sample, block_sample in zip(control_block_samples, block_samples)
                         ]
-                    if single_block_samples is not None and control_single_block_samples is not None:
+                    if control_single_block_samples is None and single_block_samples is not None:
+                        control_single_block_samples = single_block_samples
+                    elif single_block_samples is not None and control_single_block_samples is not None:
                         control_single_block_samples = [
                             control_single_block_sample + block_sample
                             for control_single_block_sample, block_sample in zip(
                                 control_single_block_samples, single_block_samples
+                            )
+                        ]
+            else:
+                # if not all controlnet have same num_layers or num_single_layers,
+                # make merge plan, main logic was copied from https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/models/transformers/transformer_flux.py#L509
+                merge_plan = []
+                for net in self.nets:
+                    if net.num_layers != 0:
+                        interval_control = self.transformer_num_layers / net.num_layers
+                        interval_control = int(np.ceil(interval_control))
+                        # TODO: Xlabs ControlNet. May be that wont happen that Xlabs ControlNet and other
+                        # ControlNet both applied, and be like this is enough
+                        sub_merge_plan = [i // interval_control for i in range(self.transformer_num_layers)]
+                    else:
+                        sub_merge_plan = []
+                    if net.num_single_layers != 0:
+                        interval_control = self.transformer_num_single_layers / net.num_single_layers
+                        interval_control = int(np.ceil(interval_control))
+                        sub_single_merge_plan = [i // interval_control for i in range(self.transformer_num_single_layers)]
+                    else:
+                        sub_single_merge_plan = []
+                    merge_plan.append((sub_merge_plan, sub_single_merge_plan))
+                
+                control_block_samples, control_single_block_samples = None, None
+                for i, (image, mode, scale, controlnet) in enumerate(
+                    zip(controlnet_cond, controlnet_mode, conditioning_scale, self.nets)
+                ):
+                    block_samples, single_block_samples = controlnet(
+                        hidden_states=hidden_states,
+                        controlnet_cond=image,
+                        controlnet_mode=mode[:, None],
+                        conditioning_scale=scale,
+                        timestep=timestep,
+                        guidance=guidance,
+                        pooled_projections=pooled_projections,
+                        encoder_hidden_states=encoder_hidden_states,
+                        txt_ids=txt_ids,
+                        img_ids=img_ids,
+                        joint_attention_kwargs=joint_attention_kwargs,
+                        return_dict=return_dict,
+                    )
+
+                    # merge samples
+                    plan, plan_single = merge_plan[i]
+                    if control_block_samples is None and block_samples is not None:
+                        control_block_samples = [block_samples[plan[j]] for j in range(self.transformer_num_layers)]
+                    elif block_samples is not None and control_block_samples is not None:
+                        _block_samples = [block_samples[plan[j]] for j in range(self.transformer_num_layers)]
+                        control_block_samples = [
+                            control_block_sample + block_sample
+                            for control_block_sample, block_sample in zip(control_block_samples, _block_samples)
+                        ]
+                    if control_single_block_samples is None and single_block_samples is not None:
+                        control_single_block_samples = [single_block_samples[plan_single[j]] for j in range(self.transformer_num_single_layers)]
+                    elif single_block_samples is not None and control_single_block_samples is not None:
+                        _single_block_samples = [single_block_samples[plan_single[j]] for j in range(self.transformer_num_single_layers)]
+                        control_single_block_samples = [
+                            control_single_block_sample + block_sample
+                            for control_single_block_sample, block_sample in zip(
+                                control_single_block_samples, _single_block_samples
                             )
                         ]
 
