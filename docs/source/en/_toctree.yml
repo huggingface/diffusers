@@ -25,7 +25,7 @@
     title: Working with big models
   title: Tutorials
 - sections:
-  - local: user-diffusers/create_a_server
+  - local: using-diffusers/create_a_server
     title: Create a server
   - local: using-diffusers/loading
     title: Load pipelines
