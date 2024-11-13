@@ -1,9 +1,20 @@
+import asyncio
+import logging
+import os
+import random
+import tempfile
+import traceback
+import uuid
+
+import aiohttp
+import torch
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import aiohttp, asyncio, logging, os, random, sys, tempfile, torch, traceback, uuid
+
 from diffusers.pipelines.stable_diffusion_3 import StableDiffusion3Pipeline
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +37,7 @@ class HttpClient:
     def __call__(self) -> aiohttp.ClientSession:
         assert self.session is not None
         return self.session
-    
+
 class TextToImagePipeline:
     pipeline: StableDiffusion3Pipeline = None
     device: str = None
@@ -37,7 +48,7 @@ class TextToImagePipeline:
             logger.info("Loading CUDA")
             self.device = "cuda"
             self.pipeline = StableDiffusion3Pipeline.from_pretrained(
-                model_path, 
+                model_path,
                 torch_dtype=torch.bfloat16,
             ).to(device=self.device)
         elif torch.backends.mps.is_available():
@@ -50,7 +61,7 @@ class TextToImagePipeline:
             ).to(device=self.device)
         else:
             raise Exception("No CUDA or MPS device available")
-    
+
 app = FastAPI()
 service_url = os.getenv("SERVICE_URL", "http://localhost:8000")
 image_dir = os.path.join(tempfile.gettempdir(), "images")
