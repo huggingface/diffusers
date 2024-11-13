@@ -32,6 +32,7 @@ from packaging import version
 
 from ..utils import is_torch_available, logging
 
+
 if is_torch_available():
     import torch
 
@@ -40,6 +41,7 @@ logger = logging.get_logger(__name__)
 
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
+    GGUF = "gguf"
 
 
 @dataclass
@@ -391,10 +393,12 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
 
 
 class GGUFQuantizationConfig(QuantizationConfigMixin):
-    def __init__(self, quant_type: str, compute_dtype=None, quant_storage=None):
+    def __init__(self, quant_type: str, qtypes=None, compute_dtype=None, quant_storage=None):
+        self.quant_method = QuantizationMethod.GGUF
         self.quant_type = quant_type
         self.compute_dtype = compute_dtype
         self.quant_storage = quant_storage
+        self.qtypes = qtypes
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32

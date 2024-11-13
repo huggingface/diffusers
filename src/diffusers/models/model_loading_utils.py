@@ -17,6 +17,7 @@
 import importlib
 import inspect
 import os
+from array import array
 from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional, Union
@@ -24,17 +25,9 @@ from typing import List, Optional, Union
 import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
-
-from diffusers.utils.constants import GGUF_FILE_EXTENSION
-from array import array
-
-import torch
 from tqdm import tqdm
 
-from ..utils import is_torch_available
-from ..utils.import_utils import is_gguf_available
-from ..utils.logging import get_logger
-
+from diffusers.utils.constants import GGUF_FILE_EXTENSION
 
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -45,9 +38,11 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_torch_available,
     is_torch_version,
     logging,
 )
+from ..utils.import_utils import is_gguf_available
 
 
 logger = logging.get_logger(__name__)
@@ -59,25 +54,6 @@ _CLASS_REMAPPING_DICT = {
     }
 }
 
-
-_GGUF_FILE_TYPE_MAPPING = {
-    0: "ALL_F32",
-    1: "MOSTLY_F16",
-    2: "MOSTLY_Q4_0",
-    3: "MOSTLY_Q4_1",
-    4: "MOSTLY_Q4_1_SOME_F16",
-    8: "MOSTLY_Q5_0",
-    9: "MOSTLY_Q5_1",
-    10: "MOSTLY_Q2_K",
-    11: "MOSTLY_Q3_K_S",
-    12: "MOSTLY_Q3_K_M",
-    13: "MOSTLY_Q3_K_L",
-    14: "MOSTLY_Q4_K_S",
-    15: "MOSTLY_Q4_K_M",
-    16: "MOSTLY_Q5_K_S",
-    17: "MOSTLY_Q5_K_M",
-    18: "MOSTLY_Q6_K",
-}
 
 if is_accelerate_available():
     from accelerate import infer_auto_device_map
@@ -245,12 +221,13 @@ def load_model_dict_into_meta(
         # bnb params are flattened.
         if empty_state_dict[param_name].shape != param.shape:
             if (
-                is_quant_method_bnb
+                is_quantized
                 and hf_quantizer.pre_quantized
                 and hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
             ):
                 hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name].shape, param.shape)
-            elif not is_quant_method_bnb:
+            else:
+                __import__('ipdb').set_trace()
                 model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
                 raise ValueError(
                     f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
@@ -473,7 +450,10 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     """
 
     if is_gguf_available() and is_torch_available():
+        import gguf
         from gguf import GGUFReader
+
+        from ..quantizers.gguf.utils import _GGUF_FILE_TYPE_MAPPING, GGUFParameter
     else:
         logger.error(
             "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
@@ -486,12 +466,17 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     reader_keys = list(fields.keys())
 
     parsed_parameters = {}
-    metadata = {"gguf_file_type": _GGUF_FILE_TYPE_MAPPING[read_field(reader, "general.file_type")[0]]}
+    metadata = {"gguf_file_type": _GGUF_FILE_TYPE_MAPPING[read_field(reader, "general.file_type")[0]], "qtypes": {}}
+
     for tensor in tqdm(reader.tensors):
         name = tensor.name
-        weights = torch.from_numpy(tensor.data)
+        tensor_type = tensor.tensor_type
 
-        parsed_parameters[name] = weights
+        # if the tensor is a torch supported dtype do not use GGUFParameter
+        is_gguf_quant = tensor_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
+
+        weights = torch.from_numpy(tensor.data)
+        parsed_parameters[name] = GGUFParameter(weights, tensor_type=tensor_type) if is_gguf_quant else weights.permute(*torch.arange(weights.ndim - 1, -1, -1))
 
     if len(reader_keys) > 0:
         logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")

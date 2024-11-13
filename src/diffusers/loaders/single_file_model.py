@@ -17,7 +17,6 @@ import re
 from contextlib import nullcontext
 from typing import Optional
 
-from huggingface_hub import QuestionAnsweringInput
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
@@ -50,7 +49,7 @@ if is_accelerate_available():
     from ..models.modeling_utils import load_model_dict_into_meta
 
 if is_gguf_available():
-    from ..quantizers import GGUFQuantizationConfig
+    from ..quantizers.quantization_config import GGUFQuantizationConfig
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
@@ -229,25 +228,6 @@ class FromOriginalModelMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        if is_gguf:
-            quantization_config = GGUFQuantizationConfig(quant_type=gguf_metadata["gguf_file_type"])
-            # Only support loading pre_quantized gguf checkpoints
-            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=True)
-        else:
-            hf_quantizer = None
-
-        # Check if `_keep_in_fp32_modules` is not None
-        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
-            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
-        )
-        if use_keep_in_fp32_modules:
-            keep_in_fp32_modules = cls._keep_in_fp32_modules
-            if not isinstance(keep_in_fp32_modules, list):
-                keep_in_fp32_modules = [keep_in_fp32_modules]
-
-        else:
-            keep_in_fp32_modules = []
-
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
@@ -327,8 +307,27 @@ class FromOriginalModelMixin:
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
+        if is_gguf:
+            quantization_config = GGUFQuantizationConfig(quant_type=gguf_metadata["gguf_file_type"])
+            # Only support loading pre_quantized gguf checkpoints
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=True)
+        else:
+            hf_quantizer = None
+
+        # Check if `_keep_in_fp32_modules` is not None
+        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        )
+        if use_keep_in_fp32_modules:
+            keep_in_fp32_modules = cls._keep_in_fp32_modules
+            if not isinstance(keep_in_fp32_modules, list):
+                keep_in_fp32_modules = [keep_in_fp32_modules]
+
+        else:
+            keep_in_fp32_modules = []
+
         if hf_quantizer is not None:
-            hf_quantizer.preprocess_model(model=model, keep_in_fp32_modules=keep_in_fp32_modules)
+            hf_quantizer.preprocess_model(model=model, device_map=None, keep_in_fp32_modules=keep_in_fp32_modules)
 
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(

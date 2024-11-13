@@ -66,6 +66,7 @@ from .import_utils import (
     is_bs4_available,
     is_flax_available,
     is_ftfy_available,
+    is_gguf_available,
     is_google_colab,
     is_inflect_available,
     is_invisible_watermark_available,
@@ -93,7 +94,6 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
-    is_gguf_available,
     requires_backends,
 )
 from .loading_utils import get_module_from_name, load_image, load_video
