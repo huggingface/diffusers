@@ -54,7 +54,7 @@ def is_valid_image(image) -> bool:
         `bool`:
             `True` if the input is a valid image, `False` otherwise.
     """
-    return isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim in (2, 3) or isinstance(image, PIL.Image.Image)
+    return (isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim in (2, 3)) or isinstance(image, PIL.Image.Image)
 
 
 def is_valid_image_imagelist(images):
