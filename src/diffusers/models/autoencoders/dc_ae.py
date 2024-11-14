@@ -211,7 +211,7 @@ class LiteMLA(nn.Module):
         scales: tuple[int, ...] = (5,),
         eps=1.0e-15,
     ):
-        super(LiteMLA, self).__init__()
+        super().__init__()
         self.eps = eps
         heads = int(in_channels // dim * heads_ratio) if heads is None else heads
 
@@ -253,7 +253,6 @@ class LiteMLA(nn.Module):
             act_func=act_func[1],
         )
 
-    @torch.autocast(device_type="cuda", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
@@ -292,7 +291,6 @@ class LiteMLA(nn.Module):
         out = torch.reshape(out, (B, -1, H, W))
         return out
 
-    @torch.autocast(device_type="cuda", enabled=False)
     def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
@@ -657,11 +655,12 @@ class Encoder(nn.Module):
         super().__init__()
         num_stages = len(width_list)
         self.num_stages = num_stages
-        assert len(depth_list) == num_stages
-        assert len(width_list) == num_stages
-        assert isinstance(block_type, str) or (
-            isinstance(block_type, list) and len(block_type) == num_stages
-        )
+
+        # validate config
+        if len(depth_list) != num_stages or len(width_list) != num_stages:
+            raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
+        if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
+            raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
 
         self.project_in = build_encoder_project_in_block(
             in_channels=in_channels,
@@ -725,13 +724,16 @@ class Decoder(nn.Module):
         super().__init__()
         num_stages = len(width_list)
         self.num_stages = num_stages
-        assert len(depth_list) == num_stages
-        assert len(width_list) == num_stages
-        assert isinstance(block_type, str) or (
-            isinstance(block_type, list) and len(block_type) == num_stages
-        )
-        assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
-        assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
+
+        # validate config
+        if len(depth_list) != num_stages or len(width_list) != num_stages:
+            raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
+        if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
+            raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
+        if not isinstance(norm, (str, list)) or (isinstance(norm, list) and len(norm) != num_stages):
+            raise ValueError(f"norm should be either a str or a list of str with length {num_stages}, but got {norm}")
+        if not isinstance(act, (str, list)) or (isinstance(act, list) and len(act) != num_stages):
+            raise ValueError(f"act should be either a str or a list of str with length {num_stages}, but got {act}")
 
         self.project_in = build_decoder_project_in_block(
             in_channels=latent_channels,
