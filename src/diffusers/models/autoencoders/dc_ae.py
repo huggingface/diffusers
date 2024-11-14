@@ -31,21 +31,6 @@ from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnsh
 
 from .vae import DecoderOutput
 
-def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
-    x = list(x) if isinstance(x, (list, tuple)) else [x]
-    # repeat elements if necessary
-    if len(x) > 0:
-        x.extend([x[-1] for _ in range(min_len - len(x))])
-    return tuple(x)
-
-
-def get_same_padding(kernel_size: int | tuple[int, ...]) -> int | tuple[int, ...]:
-    if isinstance(kernel_size, tuple):
-        return tuple([get_same_padding(ks) for ks in kernel_size])
-    else:
-        assert kernel_size % 2 > 0, "kernel size should be odd number"
-        return kernel_size // 2
-
 
 class RMSNorm2d(nn.LayerNorm):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -83,7 +68,7 @@ class ConvLayer(nn.Module):
     ):
         super(ConvLayer, self).__init__()
 
-        padding = get_same_padding(kernel_size)
+        padding = kernel_size // 2
         padding *= dilation
 
         self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
@@ -120,14 +105,11 @@ class GLUMBConv(nn.Module):
         stride=1,
         mid_channels=None,
         expand_ratio=6,
-        use_bias=False,
+        use_bias=(False, False, False),
         norm=(None, None, "ln2d"),
         act_func=("silu", "silu", None),
     ):
         super().__init__()
-        use_bias = val2tuple(use_bias, 3)
-        norm = val2tuple(norm, 3)
-        act_func = val2tuple(act_func, 3)
 
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
@@ -180,15 +162,11 @@ class ResBlock(nn.Module):
         stride=1,
         mid_channels=None,
         expand_ratio=1,
-        use_bias=False,
+        use_bias=(False, False),
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
     ):
         super().__init__()
-        use_bias = val2tuple(use_bias, 2)
-        norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
-
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
         self.conv1 = ConvLayer(
@@ -226,7 +204,7 @@ class LiteMLA(nn.Module):
         heads: Optional[int] = None,
         heads_ratio: float = 1.0,
         dim=8,
-        use_bias=False,
+        use_bias=(False, False),
         norm=(None, "bn2d"),
         act_func=(None, None),
         kernel_func="relu",
@@ -238,10 +216,6 @@ class LiteMLA(nn.Module):
         heads = int(in_channels // dim * heads_ratio) if heads is None else heads
 
         total_dim = heads * dim
-
-        use_bias = val2tuple(use_bias, 2)
-        norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
 
         self.dim = dim
         self.qkv = ConvLayer(
@@ -259,7 +233,7 @@ class LiteMLA(nn.Module):
                         3 * total_dim,
                         3 * total_dim,
                         scale,
-                        padding=get_same_padding(scale),
+                        padding=scale // 2,
                         groups=3 * total_dim,
                         bias=use_bias[0],
                     ),
@@ -486,10 +460,10 @@ def build_block(
             act_func=(act, None),
         )
         block = ResidualBlock(main_block, nn.Identity())
-    elif block_type == "EViT_GLU":
+    elif block_type == "EViTGLU":
         assert in_channels == out_channels
         block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
-    elif block_type == "EViTS5_GLU":
+    elif block_type == "EViTS5GLU":
         assert in_channels == out_channels
         block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
     else:
