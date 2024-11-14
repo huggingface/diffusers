@@ -67,7 +67,7 @@ class ConvLayer(nn.Module):
         norm="bn2d",
         act_func="relu",
     ):
-        super(ConvLayer, self).__init__()
+        super().__init__()
 
         padding = kernel_size // 2
         padding *= dilation
@@ -357,7 +357,7 @@ class EfficientViTBlock(nn.Module):
         context_module: str = "LiteMLA",
         local_module: str = "MBConv",
     ):
-        super(EfficientViTBlock, self).__init__()
+        super().__init__()
         if context_module == "LiteMLA":
             self.context_module = ResidualBlock(
                 LiteMLA(
@@ -406,7 +406,7 @@ class ResidualBlock(nn.Module):
         post_act=None,
         pre_norm: Optional[nn.Module] = None,
     ):
-        super(ResidualBlock, self).__init__()
+        super().__init__()
 
         self.pre_norm = pre_norm
         self.main = main
@@ -433,7 +433,7 @@ class ResidualBlock(nn.Module):
 
 class OpSequential(nn.Module):
     def __init__(self, op_list: list[Optional[nn.Module]]):
-        super(OpSequential, self).__init__()
+        super().__init__()
         valid_op_list = []
         for op in op_list:
             if op is not None:
