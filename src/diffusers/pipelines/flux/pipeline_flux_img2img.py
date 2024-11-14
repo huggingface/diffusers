@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin. FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -159,7 +159,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
+class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The Flux pipeline for image inpainting.
 
