@@ -29,10 +29,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
 
-There are three official models available that can be used with the text-to-video and video-to-video CogVideoX pipelines:
-- [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b): The recommended dtype for running this model is `torch.float16`.
-- [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b): The recommended dtype for running this model is `torch.bfloat16`.
-- [`THUDM/CogVideoX-1.5-5b`](https://huggingface.co/THUDM/CogVideoX-1.5-5b): The recommended dtype for running this mdoel is `torch.bfloat16`.
+There are three official CogVideoX checkpoints for text-to-video and video-to-video.
+| checkpoints | recommended inference dtype |
+|---|---|
+| [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b) | torch.float16 |
+| [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b) | torch.bfloat16 |
+| [`THUDM/CogVideoX-1.5-5b`](https://huggingface.co/THUDM/CogVideoX-1.5-5b) | torch.bfloat16 |
 
 There is one model available that can be used with the image-to-video CogVideoX pipeline:
 - [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V): The recommended dtype for running this model is `torch.bfloat16`.
