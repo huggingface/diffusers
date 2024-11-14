@@ -40,10 +40,10 @@ There is one model available that can be used with the image-to-video CogVideoX 
 - [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V): The recommended dtype for running this model is `torch.bfloat16`.
 - [`THUDM/CogVideoX-1.5-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-1.5-5b-I2V): The recommended dtype for running this mdoel is `torch.bfloat16`.
 
-For the CogVideoX 1.5 series of models, note that:
-- Text-to-video works best at `1360 x 768` resolution because it is trained with that specific resolution
-- Image-to-video works for multiple resolutions. Width can vary from `768` to `1360`, and height must be `768`. Note that the height/width must be divisible by `16`.
-- Both T2V and I2V models support generation with `81` and `161` frames and work best at this value. It is recommended to export videos at 16 FPS.
+For the CogVideoX 1.5 series:
+- Text-to-video (T2V) works best at a resolution of 1360x768 because it was trained with that specific resolution.
+- Image-to-video (I2V) works for multiple resolutions. The width can vary from 768 to 1360, but the height must be 768. The height/width must be divisible by 16.
+- Both T2V and I2V models support generation with 81 and 161 frames and work best at this value. Exporting videos at 16 FPS is recommended.
 
 There are two models that support pose controllable generation (by the [Alibaba-PAI](https://huggingface.co/alibaba-pai) team):
 - [`alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose`](https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose): The recommended dtype for running this model is `torch.bfloat16`.
