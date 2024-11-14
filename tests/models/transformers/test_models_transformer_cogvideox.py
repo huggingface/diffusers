@@ -97,7 +97,7 @@ class CogVideoX1_5TransformerTests(ModelTesterMixin, unittest.TestCase):
     def dummy_input(self):
         batch_size = 2
         num_channels = 4
-        num_frames = 1
+        num_frames = 2
         height = 8
         width = 8
         embedding_dim = 8
