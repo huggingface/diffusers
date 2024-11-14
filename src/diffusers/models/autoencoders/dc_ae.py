@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from typing import Any, Optional, Callable, Union
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -169,28 +170,30 @@ class ResBlock(nn.Module):
         super().__init__()
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
-        self.conv1 = ConvLayer(
-            in_channels,
-            mid_channels,
-            kernel_size,
-            stride,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
-        )
-        self.conv2 = ConvLayer(
-            mid_channels,
-            out_channels,
-            kernel_size,
-            1,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
-        )
+        self.main = nn.Sequential(OrderedDict([
+            ("conv1", ConvLayer(
+                in_channels,
+                mid_channels,
+                kernel_size,
+                stride,
+                use_bias=use_bias[0],
+                norm=norm[0],
+                act_func=act_func[0],
+            )),
+            ("conv2", ConvLayer(
+                mid_channels,
+                out_channels,
+                kernel_size,
+                1,
+                use_bias=use_bias[1],
+                norm=norm[1],
+                act_func=act_func[1],
+            )),
+        ]))
+        self.shortcut = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv1(x)
-        x = self.conv2(x)
+        x = self.main(x) + self.shortcut(x)
         return x
 
 
@@ -448,7 +451,7 @@ def build_block(
 ) -> nn.Module:
     if block_type == "ResBlock":
         assert in_channels == out_channels
-        main_block = ResBlock(
+        block = ResBlock(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
@@ -457,7 +460,6 @@ def build_block(
             norm=(None, norm),
             act_func=(act, None),
         )
-        block = ResidualBlock(main_block, nn.Identity())
     elif block_type == "EViTGLU":
         assert in_channels == out_channels
         block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
