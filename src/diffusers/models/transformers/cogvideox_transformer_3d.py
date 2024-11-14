@@ -171,7 +171,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         time_embed_dim (`int`, defaults to `512`):
             Output dimension of timestep embeddings.
         ofs_embed_dim (`int`, defaults to `512`):
-            scaling factor in the VAE process for the Image-to-Video (I2V) transformation in CogVideoX1.5-5B.
+            Output dimension of "ofs" embeddings used in CogVideoX-5b-I2B in version 1.5
         text_embed_dim (`int`, defaults to `4096`):
             Input dimension of text embeddings from the text encoder.
         num_layers (`int`, defaults to `30`):
