@@ -215,8 +215,8 @@ def get_transformer_init_kwargs(version: str):
             "patch_size": 2,
             "patch_size_t": 2,
             "patch_bias": False,
-            "sample_height": 768 // vae_scale_factor_spatial,
-            "sample_width": 1360 // vae_scale_factor_spatial,
+            "sample_height": 300,
+            "sample_width": 300,
             "sample_frames": 81,
         }
     else:
