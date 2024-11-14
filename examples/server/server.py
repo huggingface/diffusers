@@ -18,11 +18,13 @@ from diffusers.pipelines.stable_diffusion_3 import StableDiffusion3Pipeline
 
 logger = logging.getLogger(__name__)
 
+
 class TextToImageInput(BaseModel):
     model: str
     prompt: str
     size: str | None = None
     n: int | None = None
+
 
 class HttpClient:
     session: aiohttp.ClientSession = None
@@ -37,6 +39,7 @@ class HttpClient:
     def __call__(self) -> aiohttp.ClientSession:
         assert self.session is not None
         return self.session
+
 
 class TextToImagePipeline:
     pipeline: StableDiffusion3Pipeline = None
@@ -62,6 +65,7 @@ class TextToImagePipeline:
         else:
             raise Exception("No CUDA or MPS device available")
 
+
 app = FastAPI()
 service_url = os.getenv("SERVICE_URL", "http://localhost:8000")
 image_dir = os.path.join(tempfile.gettempdir(), "images")
@@ -80,24 +84,28 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+
 @app.on_event("startup")
 def startup():
     http_client.start()
     shared_pipeline.start()
 
+
 def save_image(image):
-    filename = "draw" + str(uuid.uuid4()).split('-')[0] + ".png"
+    filename = "draw" + str(uuid.uuid4()).split("-")[0] + ".png"
     image_path = os.path.join(image_dir, filename)
     # write image to disk at image_path
     logger.info(f"Saving image to {image_path}")
     image.save(image_path)
     return os.path.join(service_url, "images", filename)
 
-@app.get('/')
-@app.post('/')
-@app.options('/')
+
+@app.get("/")
+@app.post("/")
+@app.options("/")
 async def base():
     return "Welcome to Diffusers! Where you can use diffusion models to generate images"
+
 
 @app.post("/v1/images/generations")
 async def generate_image(image_input: TextToImageInput):
@@ -105,18 +113,19 @@ async def generate_image(image_input: TextToImageInput):
         loop = asyncio.get_event_loop()
         scheduler = shared_pipeline.pipeline.scheduler.from_config(shared_pipeline.pipeline.scheduler.config)
         pipeline = StableDiffusion3Pipeline.from_pipe(shared_pipeline.pipeline, scheduler=scheduler)
-        generator =torch.Generator(device=shared_pipeline.device)
+        generator = torch.Generator(device=shared_pipeline.device)
         generator.manual_seed(random.randint(0, 10000000))
-        output = await loop.run_in_executor(None, lambda: pipeline(image_input.prompt, generator = generator))
+        output = await loop.run_in_executor(None, lambda: pipeline(image_input.prompt, generator=generator))
         logger.info(f"output: {output}")
         image_url = save_image(output.images[0])
         return {"data": [{"url": image_url}]}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        elif hasattr(e, 'message'):
+        elif hasattr(e, "message"):
             raise HTTPException(status_code=500, detail=e.message + traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e) + traceback.format_exc())
+
 
 if __name__ == "__main__":
     import uvicorn
