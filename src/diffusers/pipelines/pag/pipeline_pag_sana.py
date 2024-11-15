@@ -23,6 +23,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
 from ...models import DCAE_HF, SanaTransformer2DModel
+from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -35,10 +36,12 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..pixart_alpha.pipeline_pixart_alpha import (
+    ASPECT_RATIO_256_BIN,
     ASPECT_RATIO_512_BIN,
     ASPECT_RATIO_1024_BIN,
 )
 from ..pixart_alpha.pipeline_pixart_sigma import ASPECT_RATIO_2048_BIN
+from .pag_utils import PAGMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,17 +57,18 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SanaPipeline
+        >>> from diffusers import AutoPipelineForText2Image
 
-        >>> # You can replace the checkpoint id with "Sana_1600M_1024px/Sana_1600M_1024px" too.
-        >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Sana_1600M_1024px/Sana_1600M_1024px", torch_dtype=torch.float16
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+        ...     torch_dtype=torch.float16,
+        ...     pag_applied_layers=["blocks.14"],
+        ...     enable_pag=True,
         ... )
-        >>> # Enable memory optimizations.
-        >>> # pipe.enable_model_cpu_offload()
+        >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> image = pipe(prompt).images[0]
+        >>> prompt = "A small cactus with a happy face in the Sahara desert"
+        >>> image = pipe(prompt, pag_scale=4.0, guidance_scale=1.0).images[0]
         ```
 """
 
@@ -129,9 +133,10 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaPipeline(DiffusionPipeline):
+class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
     r"""
-    Pipeline for text-to-image generation using PixArt-Sigma.
+    [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
+    using PixArt-Sigma.
     """
 
     bad_punct_regex = re.compile(
@@ -160,6 +165,7 @@ class SanaPipeline(DiffusionPipeline):
         vae: DCAE_HF,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
+        pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
     ):
         super().__init__()
 
@@ -169,6 +175,10 @@ class SanaPipeline(DiffusionPipeline):
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.encoder_width_list) - 1)
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+        self.set_pag_applied_layers(
+            pag_applied_layers, pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0())
+        )
 
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->300
     def encode_prompt(
@@ -241,6 +251,16 @@ class SanaPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_length - 1 : -1])
+                logger.warning(
+                    "The following part of your input was truncated because T5 can only handle sequences up to"
+                    f" {max_length} tokens: {removed_text}"
+                )
 
             prompt_attention_mask = text_inputs.attention_mask
             prompt_attention_mask = prompt_attention_mask.to(device)
@@ -577,7 +597,8 @@ class SanaPipeline(DiffusionPipeline):
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
         max_sequence_length: int = 300,
-        **kwargs,
+        pag_scale: float = 3.0,
+        pag_adaptive_scale: float = 0.0,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -652,7 +673,12 @@ class SanaPipeline(DiffusionPipeline):
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
             max_sequence_length (`int` defaults to 300): Maximum sequence length to use with the `prompt`.
-
+            pag_scale (`float`, *optional*, defaults to 3.0):
+                The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
+                guidance will not be used.
+            pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
+                The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
+                used.
         Examples:
 
         Returns:
@@ -686,6 +712,8 @@ class SanaPipeline(DiffusionPipeline):
             prompt_attention_mask,
             negative_prompt_attention_mask,
         )
+        self._pag_scale = pag_scale
+        self._pag_adaptive_scale = pag_adaptive_scale
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
@@ -721,7 +749,14 @@ class SanaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
         )
-        if do_classifier_free_guidance:
+        if self.do_perturbed_attention_guidance:
+            prompt_embeds = self._prepare_perturbed_attention_guidance(
+                prompt_embeds, negative_prompt_embeds, do_classifier_free_guidance
+            )
+            prompt_attention_mask = self._prepare_perturbed_attention_guidance(
+                prompt_attention_mask, negative_prompt_attention_mask, do_classifier_free_guidance
+            )
+        elif do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
@@ -742,6 +777,12 @@ class SanaPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        if self.do_perturbed_attention_guidance:
+            original_attn_proc = self.transformer.attn_processors
+            self._set_pag_attn_processor(
+                pag_applied_layers=self.pag_applied_layers,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+            )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -754,7 +795,9 @@ class SanaPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
+                latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 current_timestep = t
                 if not torch.is_tensor(current_timestep):
@@ -782,7 +825,11 @@ class SanaPipeline(DiffusionPipeline):
                 )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_perturbed_attention_guidance:
+                    noise_pred = self._apply_perturbed_attention_guidance(
+                        noise_pred, do_classifier_free_guidance, guidance_scale, current_timestep
+                    )
+                elif do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -793,6 +840,7 @@ class SanaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
+                print(height, width, latents.shape)
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
@@ -801,10 +849,9 @@ class SanaPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+            # set to None for next
 
         if not output_type == "latent":
-            # image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            # Temporary for DCAE_HF(the not ready version)
             image = self.vae.decode(latents.to(self.vae.dtype) / self.vae.config.scaling_factor)
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
@@ -816,6 +863,9 @@ class SanaPipeline(DiffusionPipeline):
 
         # Offload all models
         self.maybe_free_model_hooks()
+
+        if self.do_perturbed_attention_guidance:
+            self.transformer.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image,)

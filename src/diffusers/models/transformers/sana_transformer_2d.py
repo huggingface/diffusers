@@ -19,7 +19,6 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import _chunked_feed_forward
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
@@ -35,6 +34,21 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int, HW: tuple=None):
+    # "feed_forward_chunk_size" can be used to save memory
+    if hidden_states.shape[chunk_dim] % chunk_size != 0:
+        raise ValueError(
+            f"`hidden_states` dimension to be chunked: {hidden_states.shape[chunk_dim]} has to be divisible by chunk size: {chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
+        )
+
+    num_chunks = hidden_states.shape[chunk_dim] // chunk_size
+    ff_output = torch.cat(
+        [ff(hid_slice, HW) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
+        dim=chunk_dim,
+    )
+    return ff_output
 
 
 @maybe_allow_in_graph
@@ -211,6 +225,7 @@ class SanaLinearTransformerBlock(nn.Module):
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        HW: Optional[tuple[int]] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -265,9 +280,9 @@ class SanaLinearTransformerBlock(nn.Module):
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
-            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
+            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size, HW=HW)
         else:
-            ff_output = self.ff(norm_hidden_states)
+            ff_output = self.ff(norm_hidden_states, HW=HW)
 
         if self.norm_type == "ada_norm_single":
             ff_output = gate_mlp * ff_output
@@ -667,6 +682,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     encoder_attention_mask,
                     timestep,
                     cross_attention_kwargs,
+                    HW=(height, width),
                     **ckpt_kwargs,
                 )
             else:
@@ -678,6 +694,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     timestep=timestep,
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=None,
+                    HW=(height, width),
                 )
 
         # 3. Output

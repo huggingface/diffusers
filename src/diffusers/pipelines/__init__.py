@@ -181,6 +181,7 @@ else:
             "StableDiffusionXLControlNetPAGPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
             "PixArtSigmaPAGPipeline",
+            "SanaPAGPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
@@ -592,6 +593,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KolorsPAGPipeline,
             PixArtSigmaPAGPipeline,
             StableDiffusion3PAGImg2ImgPipeline,
+            SanaPAGPipeline,
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,

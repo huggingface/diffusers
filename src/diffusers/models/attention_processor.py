@@ -5283,6 +5283,224 @@ class SanaLinearAttnProcessor2_0:
         return hidden_states
 
 
+class PAGCFGSanaLinearAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product linear attention.
+    """
+
+    def __init__(self, pad_val=1.0, eps=1e-15):
+        self.pad_val = pad_val
+        self.eps = eps
+        self.kernel_func = nn.ReLU(inplace=False)
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        residual = hidden_states
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        # chunk
+        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
+        hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
+
+        # original path
+        batch_size, sequence_length, _ = (
+            hidden_states_org.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        dtype = query.dtype
+
+        query = query.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+        key = key.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1).transpose(-1, -2)
+        value = value.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+
+        query = self.kernel_func(query)  # B, h, h_d, N
+        key = self.kernel_func(key)
+
+        # need torch.float
+        query, key, value = query.float(), key.float(), value.float()
+
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        vk = torch.matmul(value, key)
+        hidden_states_org = torch.matmul(vk, query)
+
+        if hidden_states_org.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states_org = hidden_states_org.float()
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + self.eps)
+
+        hidden_states_org = hidden_states_org.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
+        hidden_states_org = hidden_states_org.to(dtype)
+
+        # linear proj
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        # dropout
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+
+        if input_ndim == 4:
+            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        # perturbed path (identity attention)
+        batch_size, sequence_length, _ = hidden_states_ptb.shape
+
+        value = attn.to_v(hidden_states_ptb)
+        hidden_states_ptb = value
+        hidden_states_ptb = hidden_states_ptb.to(dtype)
+
+        # linear proj
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        # dropout
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+
+        if input_ndim == 4:
+            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        # cat
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+
+        return hidden_states
+
+
+class PAGIdentitySanaLinearAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product linear attention.
+    """
+
+    def __init__(self, pad_val=1.0, eps=1e-15):
+        self.pad_val = pad_val
+        self.eps = eps
+        self.kernel_func = nn.ReLU(inplace=False)
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        residual = hidden_states
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        # chunk
+        hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
+
+        # original path
+        batch_size, sequence_length, _ = (
+            hidden_states_org.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        dtype = query.dtype
+
+        query = query.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+        key = key.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1).transpose(-1, -2)
+        value = value.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+
+        query = self.kernel_func(query)  # B, h, h_d, N
+        key = self.kernel_func(key)
+
+        # need torch.float
+        query, key, value = query.float(), key.float(), value.float()
+
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        vk = torch.matmul(value, key)
+        hidden_states_org = torch.matmul(vk, query)
+
+        if hidden_states_org.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states_org = hidden_states_org.float()
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + self.eps)
+
+        hidden_states_org = hidden_states_org.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
+        hidden_states_org = hidden_states_org.to(dtype)
+
+        # linear proj
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        # dropout
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+
+        if input_ndim == 4:
+            hidden_states_org = hidden_states_org.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        # perturbed path (identity attention)
+        batch_size, sequence_length, _ = hidden_states_ptb.shape
+
+        hidden_states_ptb = attn.to_v(hidden_states_ptb)
+        hidden_states_ptb = hidden_states_ptb.to(dtype)
+
+        # linear proj
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        # dropout
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+
+        if input_ndim == 4:
+            hidden_states_ptb = hidden_states_ptb.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        # cat
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        if hidden_states.dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+
+        return hidden_states
+
+
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,
@@ -5344,4 +5562,5 @@ AttentionProcessor = Union[
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     SanaLinearAttnProcessor2_0,
+    PAGCFGSanaLinearAttnProcessor2_0,
 ]
