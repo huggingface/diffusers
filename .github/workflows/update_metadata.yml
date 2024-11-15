@@ -25,6 +25,6 @@ jobs:
 
       - name: Update metadata
         env:
-          HUGGING_FACE_HUB_TOKEN: ${{ secrets.SAYAK_HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.SAYAK_HF_TOKEN }}
         run: |
           python utils/update_metadata.py --commit_sha ${{ github.sha }}

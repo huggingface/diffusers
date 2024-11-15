@@ -28,9 +28,9 @@ accelerate launch finetune_instruct_pix2pix.py \
 ```
 
 ## Inference
-After training the model and the lora weight of the model is stored in the ```$OUTPUT_DIR```. 
+After training the model and the lora weight of the model is stored in the ```$OUTPUT_DIR```.
 
-```bash
+```py
 # load the base model pipeline
 pipe_lora = StableDiffusionInstructPix2PixPipeline.from_pretrained("timbrooks/instruct-pix2pix")
 
@@ -42,12 +42,11 @@ input_image_path = "/path/to/input_image"
 input_image = Image.open(input_image_path)
 edited_images = pipe_lora(num_images_per_prompt=1, prompt=args.edit_prompt, image=input_image, num_inference_steps=1000).images
 edited_images[0].show()
-
 ```
 
 ## Results
 
-Here is an example of using the script to train a instructpix2pix model. 
+Here is an example of using the script to train a instructpix2pix model.
 Trained on google colab T4 GPU
 
 ```bash
@@ -69,7 +68,7 @@ Here are some rough statistics about the training model using this script
     <img src="https://github.com/Aiden-Frost/Efficiently-teaching-counting-and-cartoonization-to-InstructPix2Pix.-/blob/main/diffusers_result_assets/results.png?raw=true" alt="instructpix2pix-inputs" width=600/>
 </p>
 
-## References 
+## References
 
 * InstructPix2Pix - https://github.com/timothybrooks/instruct-pix2pix
 * Dataset and example training script - https://huggingface.co/blog/instruction-tuning-sd

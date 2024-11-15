@@ -6,7 +6,7 @@ Before you begin, make sure you install T-GATE.
 
 ```bash
 pip install tgate
-pip install -U pytorch diffusers transformers accelerate DeepCache
+pip install -U torch diffusers transformers accelerate DeepCache
 ```
 
 
@@ -46,12 +46,12 @@ pipe = TgatePixArtLoader(
 
 image = pipe.tgate(
        "An alpaca made of colorful building blocks, cyberpunk.",
-        gate_step=gate_step,
+       gate_step=gate_step,
        num_inference_steps=inference_step,
 ).images[0]
 ```
 </hfoption>
-<hfoption id="Stable Diffusion XL"> 
+<hfoption id="Stable Diffusion XL">
 
 Accelerate `StableDiffusionXLPipeline` with T-GATE:
 
@@ -78,9 +78,9 @@ pipe = TgateSDXLLoader(
 ).to("cuda")
 
 image = pipe.tgate(
-        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-        gate_step=gate_step,
-        num_inference_steps=inference_step
+       "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+       gate_step=gate_step,
+       num_inference_steps=inference_step
 ).images[0]
 ```
 </hfoption>
@@ -111,9 +111,9 @@ pipe = TgateSDXLDeepCacheLoader(
 ).to("cuda")
 
 image = pipe.tgate(
-        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-        gate_step=gate_step,
-        num_inference_steps=inference_step
+       "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+       gate_step=gate_step,
+       num_inference_steps=inference_step
 ).images[0]
 ```
 </hfoption>
@@ -151,9 +151,9 @@ pipe = TgateSDXLLoader(
 ).to("cuda")
 
 image = pipe.tgate(
-        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
-        gate_step=gate_step,
-        num_inference_steps=inference_step
+       "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
+       gate_step=gate_step,
+       num_inference_steps=inference_step
 ).images[0]
 ```
 </hfoption>

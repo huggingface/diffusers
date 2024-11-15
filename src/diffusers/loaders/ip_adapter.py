@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
@@ -28,17 +29,18 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
+from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPImageProcessor,
-        CLIPVisionModelWithProjection,
-    )
+    from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
     from ..models.attention_processor import (
+        AttnProcessor,
+        AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
+        IPAdapterXFormersAttnProcessor,
     )
 
 logger = logging.get_logger(__name__)
@@ -86,9 +88,7 @@ class IPAdapterMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
-                incompletely downloaded files are deleted.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -131,7 +131,6 @@ class IPAdapterMixin:
         # Load the main state dict first.
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -167,7 +166,6 @@ class IPAdapterMixin:
                     weights_name=weight_name,
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
@@ -208,6 +206,8 @@ class IPAdapterMixin:
                             pretrained_model_name_or_path_or_dict,
                             subfolder=image_encoder_subfolder,
                             low_cpu_mem_usage=low_cpu_mem_usage,
+                            cache_dir=cache_dir,
+                            local_files_only=local_files_only,
                         ).to(self.device, dtype=self.dtype)
                         self.register_modules(image_encoder=image_encoder)
                     else:
@@ -222,7 +222,12 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                feature_extractor = CLIPImageProcessor()
+                # FaceID IP adapters don't need the image encoder so it's not present, in this case we default to 224
+                default_clip_size = 224
+                clip_image_size = (
+                    self.image_encoder.config.image_size if self.image_encoder is not None else default_clip_size
+                )
+                feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
                 self.register_modules(feature_extractor=feature_extractor)
 
         # load ip-adapter into unet
@@ -243,25 +248,57 @@ class IPAdapterMixin:
 
     def set_ip_adapter_scale(self, scale):
         """
-        Sets the conditioning scale between text and image.
+        Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
+        granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
 
         Example:
 
         ```py
-        pipeline.set_ip_adapter_scale(0.5)
+        # To use original IP-Adapter
+        scale = 1.0
+        pipeline.set_ip_adapter_scale(scale)
+
+        # To use style block only
+        scale = {
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
+
+        # To use style+layout blocks
+        scale = {
+            "down": {"block_2": [0.0, 1.0]},
+            "up": {"block_0": [0.0, 1.0, 0.0]},
+        }
+        pipeline.set_ip_adapter_scale(scale)
+
+        # To use style and layout from 2 reference images
+        scales = [{"down": {"block_2": [0.0, 1.0]}}, {"up": {"block_0": [0.0, 1.0, 0.0]}}]
+        pipeline.set_ip_adapter_scale(scales)
         ```
         """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        for attn_processor in unet.attn_processors.values():
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
-                if not isinstance(scale, list):
-                    scale = [scale] * len(attn_processor.scale)
-                if len(attn_processor.scale) != len(scale):
+        if not isinstance(scale, list):
+            scale = [scale]
+        scale_configs = _maybe_expand_lora_scales(unet, scale, default_scale=0.0)
+
+        for attn_name, attn_processor in unet.attn_processors.items():
+            if isinstance(
+                attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
+            ):
+                if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
-                        f"`scale` should be a list of same length as the number if ip-adapters "
-                        f"Expected {len(attn_processor.scale)} but got {len(scale)}."
+                        f"Cannot assign {len(scale_configs)} scale_configs to "
+                        f"{len(attn_processor.scale)} IP-Adapter."
                     )
-                attn_processor.scale = scale
+                elif len(scale_configs) == 1:
+                    scale_configs = scale_configs * len(attn_processor.scale)
+                for i, scale_config in enumerate(scale_configs):
+                    if isinstance(scale_config, dict):
+                        for k, s in scale_config.items():
+                            if attn_name.startswith(k):
+                                attn_processor.scale[i] = s
+                    else:
+                        attn_processor.scale[i] = scale_config
 
     def unload_ip_adapter(self):
         """
@@ -289,7 +326,25 @@ class IPAdapterMixin:
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
-        self.config.encoder_hid_dim_type = None
+        self.unet.config.encoder_hid_dim_type = None
+
+        # Kolors: restore `encoder_hid_proj` with `text_encoder_hid_proj`
+        if hasattr(self.unet, "text_encoder_hid_proj") and self.unet.text_encoder_hid_proj is not None:
+            self.unet.encoder_hid_proj = self.unet.text_encoder_hid_proj
+            self.unet.text_encoder_hid_proj = None
+            self.unet.config.encoder_hid_dim_type = "text_proj"
 
         # restore original Unet attention processors layers
-        self.unet.set_default_attn_processor()
+        attn_procs = {}
+        for name, value in self.unet.attn_processors.items():
+            attn_processor_class = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
+            )
+            attn_procs[name] = (
+                attn_processor_class
+                if isinstance(
+                    value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
+                )
+                else value.__class__()
+            )
+        self.unet.set_attn_processor(attn_procs)

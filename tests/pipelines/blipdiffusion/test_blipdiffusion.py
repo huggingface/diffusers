@@ -64,9 +64,9 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             vocab_size=1000,
-            hidden_size=16,
-            intermediate_size=16,
-            projection_dim=16,
+            hidden_size=8,
+            intermediate_size=8,
+            projection_dim=8,
             num_hidden_layers=1,
             num_attention_heads=1,
             max_position_embeddings=77,
@@ -78,17 +78,17 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             out_channels=4,
             down_block_types=("DownEncoderBlock2D",),
             up_block_types=("UpDecoderBlock2D",),
-            block_out_channels=(32,),
+            block_out_channels=(8,),
+            norm_num_groups=8,
             layers_per_block=1,
             act_fn="silu",
             latent_channels=4,
-            norm_num_groups=16,
-            sample_size=16,
+            sample_size=8,
         )
 
         blip_vision_config = {
-            "hidden_size": 16,
-            "intermediate_size": 16,
+            "hidden_size": 8,
+            "intermediate_size": 8,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
             "image_size": 224,
@@ -98,32 +98,32 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         blip_qformer_config = {
             "vocab_size": 1000,
-            "hidden_size": 16,
+            "hidden_size": 8,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
-            "intermediate_size": 16,
+            "intermediate_size": 8,
             "max_position_embeddings": 512,
             "cross_attention_frequency": 1,
-            "encoder_hidden_size": 16,
+            "encoder_hidden_size": 8,
         }
         qformer_config = Blip2Config(
             vision_config=blip_vision_config,
             qformer_config=blip_qformer_config,
-            num_query_tokens=16,
+            num_query_tokens=8,
             tokenizer="hf-internal-testing/tiny-random-bert",
         )
         qformer = Blip2QFormerModel(qformer_config)
 
         unet = UNet2DConditionModel(
-            block_out_channels=(16, 32),
-            norm_num_groups=16,
+            block_out_channels=(8, 16),
+            norm_num_groups=8,
             layers_per_block=1,
             sample_size=16,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=16,
+            cross_attention_dim=8,
         )
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
@@ -189,7 +189,9 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 16, 16, 4)
 
-        expected_slice = np.array([0.7096, 0.5900, 0.6703, 0.4032, 0.7766, 0.3629, 0.5447, 0.4149, 0.8172])
+        expected_slice = np.array(
+            [0.5329548, 0.8372512, 0.33269387, 0.82096875, 0.43657133, 0.3783, 0.5953028, 0.51934963, 0.42142007]
+        )
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

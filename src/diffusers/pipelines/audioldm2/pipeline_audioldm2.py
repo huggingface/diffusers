@@ -273,7 +273,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Generates a sequence of hidden-states from the language model, conditioned on the embedding inputs.
 
         Parameters:
-            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+            inputs_embeds (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence used as a prompt for the generation.
             max_new_tokens (`int`):
                 Number of new tokens to generate.
@@ -282,10 +282,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 function of the model.
 
         Return:
-            `inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+            `inputs_embeds (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
         max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
+        model_kwargs = self.language_model._get_initial_cache_position(inputs_embeds, model_kwargs)
         for _ in range(max_new_tokens):
             # prepare model inputs
             model_inputs = prepare_inputs_for_generation(inputs_embeds, **model_kwargs)
@@ -311,10 +312,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         transcription=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        generated_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        generated_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
         max_new_tokens: Optional[int] = None,
@@ -337,18 +338,18 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the audio generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-computed text embeddings from the Flan T5 model. Can be used to easily tweak text inputs, *e.g.*
                 prompt weighting. If not provided, text embeddings will be computed from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-computed negative text embeddings from the Flan T5 model. Can be used to easily tweak text inputs,
                 *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
                 `negative_prompt` input argument.
-            generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+            generated_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
-            negative_generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_generated_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings from the GPT2 language model. Can be used to easily tweak text
                 inputs, *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
                 `negative_prompt` input argument.
@@ -361,11 +362,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             max_new_tokens (`int`, *optional*, defaults to None):
                 The number of new tokens to generate with the GPT2 language model.
         Returns:
-            prompt_embeds (`torch.FloatTensor`):
+            prompt_embeds (`torch.Tensor`):
                 Text embeddings from the Flan T5 model.
             attention_mask (`torch.LongTensor`):
                 Attention mask to be applied to the `prompt_embeds`.
-            generated_prompt_embeds (`torch.FloatTensor`):
+            generated_prompt_embeds (`torch.Tensor`):
                 Text embeddings generated from the GPT2 langauge model.
 
         Example:
@@ -821,16 +822,16 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        generated_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        generated_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
         max_new_tokens: Optional[int] = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         output_type: Optional[str] = "np",
@@ -865,21 +866,21 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for spectrogram
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+            generated_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings from the GPT2 langauge model. Can be used to easily tweak text inputs,
                  *e.g.* prompt weighting. If not provided, text embeddings will be generated from `prompt` input
                  argument.
-            negative_generated_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_generated_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings from the GPT2 language model. Can be used to easily tweak text
                 inputs, *e.g.* prompt weighting. If not provided, negative_prompt_embeds will be computed from
                 `negative_prompt` input argument.
@@ -897,7 +898,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.

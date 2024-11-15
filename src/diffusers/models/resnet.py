@@ -58,7 +58,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
         time_embedding_norm (`str`, *optional*, default to `"ada_group"` ):
             The normalization layer for time embedding `temb`. Currently only support "ada_group" or "spatial".
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
+        kernel (`torch.Tensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
         use_in_shortcut (`bool`, *optional*, default to `True`):
@@ -146,7 +146,7 @@ class ResnetBlockCondNorm2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -204,7 +204,7 @@ class ResnetBlock2D(nn.Module):
         time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
             By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" for a
             stronger conditioning with scale and shift.
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
+        kernel (`torch.Tensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
         use_in_shortcut (`bool`, *optional*, default to `True`):
@@ -232,7 +232,7 @@ class ResnetBlock2D(nn.Module):
         non_linearity: str = "swish",
         skip_time_act: bool = False,
         time_embedding_norm: str = "default",  # default, scale_shift,
-        kernel: Optional[torch.FloatTensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
         up: bool = False,
@@ -317,7 +317,7 @@ class ResnetBlock2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -605,7 +605,7 @@ class TemporalResnetBlock(nn.Module):
                 padding=0,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -685,8 +685,8 @@ class SpatioTemporalResBlock(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ):
         num_frames = image_only_indicator.shape[-1]

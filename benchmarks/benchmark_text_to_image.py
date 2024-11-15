@@ -7,7 +7,7 @@ from base_classes import TextToImageBenchmark, TurboTextToImageBenchmark  # noqa
 
 
 ALL_T2I_CKPTS = [
-    "runwayml/stable-diffusion-v1-5",
+    "Lykon/DreamShaper",
     "segmind/SSD-1B",
     "stabilityai/stable-diffusion-xl-base-1.0",
     "kandinsky-community/kandinsky-2-2-decoder",
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ckpt",
         type=str,
-        default="runwayml/stable-diffusion-v1-5",
+        default="Lykon/DreamShaper",
         choices=ALL_T2I_CKPTS,
     )
     parser.add_argument("--batch_size", type=int, default=1)

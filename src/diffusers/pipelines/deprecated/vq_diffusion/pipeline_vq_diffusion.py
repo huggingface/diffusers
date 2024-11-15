@@ -169,10 +169,10 @@ class VQDiffusionPipeline(DiffusionPipeline):
         truncation_rate: float = 1.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -196,7 +196,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor` of shape (batch), *optional*):
+            latents (`torch.Tensor` of shape (batch), *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Must be valid embedding indices.If not provided, a latents tensor will be generated of
                 completely masked latent pixels.
@@ -206,7 +206,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
@@ -301,7 +301,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
         return ImagePipelineOutput(images=image)
 
-    def truncate(self, log_p_x_0: torch.FloatTensor, truncation_rate: float) -> torch.FloatTensor:
+    def truncate(self, log_p_x_0: torch.Tensor, truncation_rate: float) -> torch.Tensor:
         """
         Truncates `log_p_x_0` such that for each column vector, the total cumulative probability is `truncation_rate`
         The lowest probabilities that would increase the cumulative probability above `truncation_rate` are set to

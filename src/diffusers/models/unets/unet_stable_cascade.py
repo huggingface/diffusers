@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders.unet import FromOriginalUNetMixin
+from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput
 from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
@@ -131,10 +131,10 @@ class UpDownBlock2d(nn.Module):
 
 @dataclass
 class StableCascadeUNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
+    sample: torch.Tensor = None
 
 
-class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
+class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -455,7 +455,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
         level_outputs = []
         block_group = zip(self.down_blocks, self.down_downscalers, self.down_repeat_mappers)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -478,9 +478,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
                                 create_custom_forward(block), x, r_embed, use_reentrant=False
                             )
                         else:
-                            x = x = torch.utils.checkpoint.checkpoint(
-                                create_custom_forward(block), use_reentrant=False
-                            )
+                            x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), use_reentrant=False)
                     if i < len(repmap):
                         x = repmap[i](x)
                 level_outputs.insert(0, x)
@@ -506,7 +504,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
         x = level_outputs[0]
         block_group = zip(self.up_blocks, self.up_upscalers, self.up_repeat_mappers)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):

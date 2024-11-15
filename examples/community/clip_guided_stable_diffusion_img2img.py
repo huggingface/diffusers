@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -25,16 +25,16 @@ from diffusers.utils.torch_utils import randn_tensor
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```
+        ```py
         from io import BytesIO
 
         import requests
         import torch
         from diffusers import DiffusionPipeline
         from PIL import Image
-        from transformers import CLIPFeatureExtractor, CLIPModel
+        from transformers import CLIPImageProcessor, CLIPModel
 
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(
+        feature_extractor = CLIPImageProcessor.from_pretrained(
             "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
         )
         clip_model = CLIPModel.from_pretrained(
@@ -139,7 +139,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler],
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
         self.register_modules(
@@ -306,7 +306,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         prompt: Union[str, List[str]],
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: Union[torch.Tensor, PIL.Image.Image] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -317,7 +317,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         num_cutouts: Optional[int] = 4,
         use_cutouts: Optional[bool] = True,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
@@ -359,9 +359,16 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
 
         # Preprocess image
         image = preprocess(image, width, height)
-        latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, self.device, generator
-        )
+        if latents is None:
+            latents = self.prepare_latents(
+                image,
+                latent_timestep,
+                batch_size,
+                num_images_per_prompt,
+                text_embeddings.dtype,
+                self.device,
+                generator,
+            )
 
         if clip_guidance_scale > 0:
             if clip_prompt is not None:

@@ -9,8 +9,8 @@ from ...models import ModelMixin
 from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
+from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.normalization import AdaLayerNorm
-from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 
 
@@ -739,8 +739,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
-                When continuous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
-                hidden_states
+                When continuous, `torch.Tensor` of shape `(batch size, channel, height, width)`): Input hidden_states
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
@@ -1038,9 +1037,9 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        latent_image_embeds: torch.FloatTensor,
-        image_embeds: torch.FloatTensor,
-        prompt_embeds: torch.FloatTensor,
+        latent_image_embeds: torch.Tensor,
+        image_embeds: torch.Tensor,
+        prompt_embeds: torch.Tensor,
         timestep_img: Union[torch.Tensor, float, int],
         timestep_text: Union[torch.Tensor, float, int],
         data_type: Optional[Union[torch.Tensor, float, int]] = 1,
@@ -1049,11 +1048,11 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
     ):
         """
         Args:
-            latent_image_embeds (`torch.FloatTensor` of shape `(batch size, latent channels, height, width)`):
+            latent_image_embeds (`torch.Tensor` of shape `(batch size, latent channels, height, width)`):
                 Latent image representation from the VAE encoder.
-            image_embeds (`torch.FloatTensor` of shape `(batch size, 1, clip_img_dim)`):
+            image_embeds (`torch.Tensor` of shape `(batch size, 1, clip_img_dim)`):
                 CLIP-embedded image representation (unsqueezed in the first dimension).
-            prompt_embeds (`torch.FloatTensor` of shape `(batch size, seq_len, text_dim)`):
+            prompt_embeds (`torch.Tensor` of shape `(batch size, seq_len, text_dim)`):
                 CLIP-embedded text representation.
             timestep_img (`torch.long` or `float` or `int`):
                 Current denoising step for the image.
