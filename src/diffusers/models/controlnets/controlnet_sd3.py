@@ -21,19 +21,9 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import (
-    USE_PEFT_BACKEND,
-    is_torch_version,
-    logging,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import JointTransformerBlock
-from ..attention_processor import (
-    Attention,
-    AttentionProcessor,
-    FusedJointAttnProcessor2_0,
-)
+from ..attention_processor import Attention, AttentionProcessor, FusedJointAttnProcessor2_0
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -48,9 +38,7 @@ class SD3ControlNetOutput(BaseOutput):
     controlnet_block_samples: Tuple[torch.Tensor]
 
 
-class SD3ControlNetModel(
-    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin
-):
+class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -68,14 +56,14 @@ class SD3ControlNetModel(
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
-        dual_attention_layers: Tuple[int, ...] = (),
+        dual_attention_layers: Tuple[
+            int, ...
+        ] = (), 
         qk_norm: Optional[str] = None,
     ):
         super().__init__()
         default_out_channels = in_channels
-        self.out_channels = (
-            out_channels if out_channels is not None else default_out_channels
-        )
+        self.out_channels = out_channels if out_channels is not None else default_out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
         self.pos_embed = PatchEmbed(
@@ -126,9 +114,7 @@ class SD3ControlNetModel(
         self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(
-        self, chunk_size: Optional[int] = None, dim: int = 0
-    ) -> None:
+    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -147,9 +133,7 @@ class SD3ControlNetModel(
         # By default chunk size is 1
         chunk_size = chunk_size or 1
 
-        def fn_recursive_feed_forward(
-            module: torch.nn.Module, chunk_size: int, dim: int
-        ):
+        def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
                 module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
 
@@ -170,11 +154,7 @@ class SD3ControlNetModel(
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(
-            name: str,
-            module: torch.nn.Module,
-            processors: Dict[str, AttentionProcessor],
-        ):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -189,9 +169,7 @@ class SD3ControlNetModel(
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -241,9 +219,7 @@ class SD3ControlNetModel(
 
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError(
-                    "`fuse_qkv_projections()` is not supported for models having added KV projections."
-                )
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
 
         self.original_attn_processors = self.attn_processors
 
@@ -273,28 +249,18 @@ class SD3ControlNetModel(
 
     @classmethod
     def from_transformer(
-        cls,
-        transformer,
-        num_layers=12,
-        num_extra_conditioning_channels=1,
-        load_weights_from_transformer=True,
+        cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
     ):
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
         config["extra_conditioning_channels"] = num_extra_conditioning_channels
-        controlnet = cls.from_config(**config)
+        controlnet = cls(**config)
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())
-            controlnet.time_text_embed.load_state_dict(
-                transformer.time_text_embed.state_dict()
-            )
-            controlnet.context_embedder.load_state_dict(
-                transformer.context_embedder.state_dict()
-            )
-            controlnet.transformer_blocks.load_state_dict(
-                transformer.transformer_blocks.state_dict(), strict=False
-            )
+            controlnet.time_text_embed.load_state_dict(transformer.time_text_embed.state_dict())
+            controlnet.context_embedder.load_state_dict(transformer.context_embedder.state_dict())
+            controlnet.transformer_blocks.load_state_dict(transformer.transformer_blocks.state_dict(), strict=False)
 
             controlnet.pos_embed_input = zero_module(controlnet.pos_embed_input)
 
@@ -349,17 +315,12 @@ class SD3ControlNetModel(
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if (
-                joint_attention_kwargs is not None
-                and joint_attention_kwargs.get("scale", None) is not None
-            ):
+            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        hidden_states = self.pos_embed(
-            hidden_states
-        )  # takes care of adding positional embeddings too.
+        hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
@@ -380,41 +341,29 @@ class SD3ControlNetModel(
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = (
-                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                )
-                encoder_hidden_states, hidden_states = (
-                    torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(block),
-                        hidden_states,
-                        encoder_hidden_states,
-                        temb,
-                        **ckpt_kwargs,
-                    )
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    **ckpt_kwargs,
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
+                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
 
             block_res_samples = block_res_samples + (hidden_states,)
 
         controlnet_block_res_samples = ()
-        for block_res_sample, controlnet_block in zip(
-            block_res_samples, self.controlnet_blocks
-        ):
+        for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):
             block_res_sample = controlnet_block(block_res_sample)
-            controlnet_block_res_samples = controlnet_block_res_samples + (
-                block_res_sample,
-            )
+            controlnet_block_res_samples = controlnet_block_res_samples + (block_res_sample,)
 
         # 6. scaling
-        controlnet_block_res_samples = [
-            sample * conditioning_scale for sample in controlnet_block_res_samples
-        ]
+        controlnet_block_res_samples = [sample * conditioning_scale for sample in controlnet_block_res_samples]
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
@@ -423,9 +372,7 @@ class SD3ControlNetModel(
         if not return_dict:
             return (controlnet_block_res_samples,)
 
-        return SD3ControlNetOutput(
-            controlnet_block_samples=controlnet_block_res_samples
-        )
+        return SD3ControlNetOutput(controlnet_block_samples=controlnet_block_res_samples)
 
 
 class SD3MultiControlNetModel(ModelMixin):
@@ -456,9 +403,7 @@ class SD3MultiControlNetModel(ModelMixin):
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[SD3ControlNetOutput, Tuple]:
-        for i, (image, scale, controlnet) in enumerate(
-            zip(controlnet_cond, conditioning_scale, self.nets)
-        ):
+        for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,
                 timestep=timestep,
@@ -476,9 +421,7 @@ class SD3MultiControlNetModel(ModelMixin):
             else:
                 control_block_samples = [
                     control_block_sample + block_sample
-                    for control_block_sample, block_sample in zip(
-                        control_block_samples[0], block_samples[0]
-                    )
+                    for control_block_sample, block_sample in zip(control_block_samples[0], block_samples[0])
                 ]
                 control_block_samples = (tuple(control_block_samples),)
 
