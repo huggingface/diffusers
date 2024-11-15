@@ -2659,7 +2659,7 @@ Output Image
 `prompt: 1 girl`
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20`
-![Output_image](https://github.com/user-attachments/assets/4fd5bc0b-8df6-4581-9191-c07faaf10ce8)
+![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
@@ -2699,8 +2699,8 @@ from .stable_diffusion_xl_controlnet_reference import StableDiffusionXLControlNe
 
 # download an image
 canny_image = load_image(
-    "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
-).resize((1024, 1024))
+    "https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a"
+)
 
 ref_image = load_image(
     "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
@@ -2727,7 +2727,7 @@ canny_image = Image.fromarray(image)
 
 # generate image
 image = pipe(
-    prompt="1girl",
+    prompt="a cat",
     num_inference_steps=20,
     controlnet_conditioning_scale=controlnet_conditioning_scale,
     image=canny_image,
@@ -2741,7 +2741,7 @@ image = pipe(
 
 Canny ControlNet Image
 
-![canny_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+![canny_image](https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a)
 
 Reference Image
 
@@ -2749,19 +2749,19 @@ Reference Image
 
 Output Image
 
-`prompt: 1 girl`
+`prompt: a cat`
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/b320f081-2421-4b96-9ef1-4685b77179ba)
+![Output_image](https://github.com/user-attachments/assets/2097baad-e19b-432c-af18-8eb74af3e5dc)
 
 `reference_attn=False, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/05ee0816-6c4e-4f4b-81fc-71bb0082be1e)
+![Output_image](https://github.com/user-attachments/assets/5db2ad5d-7b01-4a4e-ba05-67342f67c195)
 
 `reference_attn=True, reference_adain=False, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/cfb7426b-9e1b-4401-8e7e-609d67b84f8b)
+![Output_image](https://github.com/user-attachments/assets/6041bc36-a972-467d-b656-a6a9a742b8bd)
 
 ### Stable diffusion fabric pipeline
 
