@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ...utils import get_module_from_name
 from ..base import DiffusersQuantizer
-from .utils import _replace_with_gguf_linear
+from .utils import GGUFParameter, _quant_shape_from_byte_shape, _replace_with_gguf_linear
 
 
 if TYPE_CHECKING:
@@ -29,23 +29,12 @@ class GGUFQuantizer(DiffusersQuantizer):
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
 
-        self.quant_type = quantization_config.quant_type
         self.compute_dtype = quantization_config.compute_dtype
-        self.qtypes = quantization_config.qtypes
         self.pre_quantized = True
 
-    def check_quantized_param(
-        self,
-        model: "ModelMixin",
-        param_value: "torch.Tensor",
-        param_name: str,
-        state_dict: Dict[str, Any],
-        **kwargs,
-    ) -> bool:
-        return True
-
     def check_quantized_param_shape(self, param_name, current_param_shape, loaded_param_shape):
-        return True
+        if _quant_shape_from_byte_shape(loaded_param_shape) == current_param_shape:
+            return True
 
     def check_if_quantized_param(
         self,
@@ -55,7 +44,11 @@ class GGUFQuantizer(DiffusersQuantizer):
         state_dict: Dict[str, Any],
         **kwargs,
     ) -> bool:
-        return True
+        module, tensor_name = get_module_from_name(model, param_name)
+        if isinstance(module._parameters.get(tensor_name, None), GGUFParameter):
+            return True
+
+        return False
 
     def create_quantized_param(
         self,
@@ -70,12 +63,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         if tensor_name not in module._parameters:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
 
-        if param_name == "transformer_blocks.0.attn.to_q.weight":
-            __import__("ipdb").set_trace()
-
         module._parameters[tensor_name] = param_value
-
-        return
 
     def _process_model_before_weight_loading(
         self,
@@ -84,7 +72,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         keep_in_fp32_modules: List[str] = [],
         **kwargs,
     ):
-        model = _replace_with_gguf_linear(model, self.compute_dtype, self.quant_type)
+        _replace_with_gguf_linear(model, self.compute_dtype)
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model

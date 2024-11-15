@@ -21,7 +21,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, is_gguf_available, logging
+from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
@@ -47,9 +47,6 @@ if is_accelerate_available():
     from accelerate import init_empty_weights
 
     from ..models.modeling_utils import load_model_dict_into_meta
-
-if is_gguf_available():
-    from ..quantizers.quantization_config import GGUFQuantizationConfig
 
 
 SINGLE_FILE_LOADABLE_CLASSES = {
@@ -221,12 +218,11 @@ class FromOriginalModelMixin:
                 local_files_only=local_files_only,
                 revision=revision,
             )
-        is_gguf = "gguf_metadata" in checkpoint
-        gguf_metadata = checkpoint["gguf_metadata"] if is_gguf else None
+        if quantization_config is not None:
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
 
-        # For GGUF models we nest the state_dict along with gguf_metadata
-        while "state_dict" in checkpoint:
-            checkpoint = checkpoint["state_dict"]
+        else:
+            hf_quantizer = None
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
@@ -307,13 +303,6 @@ class FromOriginalModelMixin:
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
-        if is_gguf:
-            quantization_config = GGUFQuantizationConfig(quant_type=gguf_metadata["gguf_file_type"])
-            # Only support loading pre_quantized gguf checkpoints
-            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config, pre_quantized=True)
-        else:
-            hf_quantizer = None
-
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
             (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
@@ -352,7 +341,6 @@ class FromOriginalModelMixin:
 
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)
-            model.hf_quantizer = hf_quantizer
 
         if torch_dtype is not None:
             model.to(torch_dtype)

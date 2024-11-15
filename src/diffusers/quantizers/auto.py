@@ -26,7 +26,7 @@ from .quantization_config import BitsAndBytesConfig, QuantizationConfigMixin, Qu
 AUTO_QUANTIZER_MAPPING = {
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
-    "gguf": GGUFQuantizer
+    "gguf": GGUFQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {

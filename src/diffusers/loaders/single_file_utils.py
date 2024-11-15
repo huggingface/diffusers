@@ -357,12 +357,9 @@ def load_single_file_checkpoint(
 
     checkpoint = load_state_dict(pretrained_model_link_or_path)
 
-    if "gguf_metadata" in checkpoint:
-        return checkpoint
-    else:
-        # some checkpoints contain the model state dict under a "state_dict" key
-        while "state_dict" in checkpoint:
-            checkpoint = checkpoint["state_dict"]
+    # some checkpoints contain the model state dict under a "state_dict" key
+    while "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
 
     return checkpoint
 

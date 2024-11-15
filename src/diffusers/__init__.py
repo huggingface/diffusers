@@ -31,7 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers.quantization_config": ["BitsAndBytesConfig"],
+    "quantizers.quantization_config": ["BitsAndBytesConfig", "GGUFQuantizationConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",

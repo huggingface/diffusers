@@ -27,10 +27,8 @@ import torch
 from huggingface_hub.utils import EntryNotFoundError
 from tqdm import tqdm
 
-from diffusers.utils.constants import GGUF_FILE_EXTENSION
-
-from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
+    GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
     WEIGHTS_INDEX_NAME,
@@ -188,7 +186,6 @@ def load_model_dict_into_meta(
         device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
-    is_quant_method_bnb = getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
     empty_state_dict = model.state_dict()
@@ -219,6 +216,7 @@ def load_model_dict_into_meta(
                     set_module_kwargs["dtype"] = dtype
 
         # bnb params are flattened.
+        # gguf quants have a different shape based on the type of quantization applied
         if empty_state_dict[param_name].shape != param.shape:
             if (
                 is_quantized
@@ -227,7 +225,6 @@ def load_model_dict_into_meta(
             ):
                 hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name].shape, param.shape)
             else:
-                __import__('ipdb').set_trace()
                 model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
                 raise ValueError(
                     f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
@@ -438,22 +435,22 @@ def read_field(reader, field):
 
 def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     """
-    Load a GGUF file and return a dictionary of parsed parameters containing tensors, the parsed
-    tokenizer and config attributes.
+    Load a GGUF file and return a dictionary of parsed parameters containing tensors, the parsed tokenizer and config
+    attributes.
 
     Args:
         gguf_checkpoint_path (`str`):
             The path the to GGUF file to load
         return_tensors (`bool`, defaults to `True`):
-            Whether to read the tensors from the file and return them. Not doing so is faster
-            and only loads the metadata in memory.
+            Whether to read the tensors from the file and return them. Not doing so is faster and only loads the
+            metadata in memory.
     """
 
     if is_gguf_available() and is_torch_available():
         import gguf
         from gguf import GGUFReader
 
-        from ..quantizers.gguf.utils import _GGUF_FILE_TYPE_MAPPING, GGUFParameter
+        from ..quantizers.gguf.utils import GGUFParameter
     else:
         logger.error(
             "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
@@ -466,19 +463,20 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     reader_keys = list(fields.keys())
 
     parsed_parameters = {}
-    metadata = {"gguf_file_type": _GGUF_FILE_TYPE_MAPPING[read_field(reader, "general.file_type")[0]], "qtypes": {}}
-
     for tensor in tqdm(reader.tensors):
         name = tensor.name
-        tensor_type = tensor.tensor_type
+        quant_type = tensor.tensor_type
 
         # if the tensor is a torch supported dtype do not use GGUFParameter
-        is_gguf_quant = tensor_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
-
+        is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
         weights = torch.from_numpy(tensor.data)
-        parsed_parameters[name] = GGUFParameter(weights, tensor_type=tensor_type) if is_gguf_quant else weights.permute(*torch.arange(weights.ndim - 1, -1, -1))
+        parsed_parameters[name] = (
+            GGUFParameter(weights, quant_type=quant_type)
+            if is_gguf_quant
+            else weights.permute(*torch.arange(weights.ndim - 1, -1, -1))
+        )
 
     if len(reader_keys) > 0:
         logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")
 
-    return {"state_dict": parsed_parameters, "gguf_metadata": metadata}
+    return parsed_parameters

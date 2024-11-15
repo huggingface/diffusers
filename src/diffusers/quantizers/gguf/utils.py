@@ -1,7 +1,21 @@
-import torch
-from torch._prims_common import is_low_precision_dtype
-import torch.nn as nn
+# Copyright 2024 The HuggingFace Team and City96. All rights reserved.
+# #
+# # Licensed under the Apache License, Version 2.0 (the "License");
+# # you may not use this file except in compliance with the License.
+# # You may obtain a copy of the License at
+# #
+# #     http://www.apache.org/licenses/LICENSE-2.0
+# #
+# # Unless required by applicable law or agreed to in writing, software
+# # distributed under the License is distributed on an "AS IS" BASIS,
+# # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# # See the License for the specific language governing permissions and
+# # limitations under the License.
+
 import gguf
+import torch
+import torch.nn as nn
+
 
 _GGUF_FILE_TYPE_MAPPING = {
     0: "ALL_F32",
@@ -22,8 +36,38 @@ _GGUF_FILE_TYPE_MAPPING = {
     18: "MOSTLY_Q6_K",
 }
 
-QK_K_BLOCKSIZE = 256
+
+def _replace_with_gguf_linear(model, compute_dtype):
+    for name, module in model.named_children():
+        if isinstance(module, nn.Linear):
+            model._modules[name] = GGUFLinear(
+                module.in_features,
+                module.out_features,
+                module.bias is not None,
+                compute_dtype=compute_dtype,
+            )
+            model._modules[name].source_cls = type(module)
+            # Force requires grad to False to avoid unexpected errors
+            model._modules[name].requires_grad_(False)
+
+        has_children = list(module.children())
+        if has_children:
+            _replace_with_gguf_linear(module, compute_dtype)
+
+    return model
+
+
+QK_K = 256
 K_SCALE_SIZE = 12
+
+# dequantize operations based on torch ports of GGUF dequantize_functions
+# from City96
+# more info: https://github.com/city96/ComfyUI-GGUF/blob/main/dequant.py
+
+
+def to_uint32(x):
+    x = x.view(torch.uint8).to(torch.int32)
+    return (x[:, 0] | x[:, 1] << 8 | x[:, 2] << 16 | x[:, 3] << 24).unsqueeze(1)
 
 
 def split_block_dims(blocks, *args):
@@ -32,57 +76,270 @@ def split_block_dims(blocks, *args):
     return torch.split(blocks, dims, dim=1)
 
 
-def dequantize_Q2_K(blocks, dtype=None):
+def get_scale_min(scales):
+    n_blocks = scales.shape[0]
+    scales = scales.view(torch.uint8)
+    scales = scales.reshape((n_blocks, 3, 4))
+
+    d, m, m_d = torch.split(scales, scales.shape[-2] // 3, dim=-2)
+
+    sc = torch.cat([d & 0x3F, (m_d & 0x0F) | ((d >> 2) & 0x30)], dim=-1)
+    min = torch.cat([m & 0x3F, (m_d >> 4) | ((m >> 2) & 0x30)], dim=-1)
+
+    return (sc.reshape((n_blocks, 8)), min.reshape((n_blocks, 8)))
+
+
+def dequantize_blocks_Q8_0(blocks, block_size, type_size, dtype=None):
+    d, x = split_block_dims(blocks, 2)
+    d = d.view(torch.float16).to(dtype)
+    x = x.view(torch.int8)
+    return d * x
+
+
+def dequantize_blocks_Q5_1(blocks, block_size, type_size, dtype=None):
     n_blocks = blocks.shape[0]
 
-    scales, quantized_values, delta, delta_min = split_block_dims(blocks, QK_K_BLOCKSIZE // 16, QK_K_BLOCKSIZE // 4, 2)
-    delta = delta.view(torch.float16).to(dtype)
-    delta_min = delta_min.view(torch.float16).to(dtype)
+    d, m, qh, qs = split_block_dims(blocks, 2, 2, 4)
+    d = d.view(torch.float16).to(dtype)
+    m = m.view(torch.float16).to(dtype)
+    qh = to_uint32(qh)
+
+    qh = qh.reshape((n_blocks, 1)) >> torch.arange(32, device=d.device, dtype=torch.int32).reshape(1, 32)
+    ql = qs.reshape((n_blocks, -1, 1, block_size // 2)) >> torch.tensor(
+        [0, 4], device=d.device, dtype=torch.uint8
+    ).reshape(1, 1, 2, 1)
+    qh = (qh & 1).to(torch.uint8)
+    ql = (ql & 0x0F).reshape((n_blocks, -1))
+
+    qs = ql | (qh << 4)
+    return (d * qs) + m
+
+
+def dequantize_blocks_Q5_0(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    d, qh, qs = split_block_dims(blocks, 2, 4)
+    d = d.view(torch.float16).to(dtype)
+    qh = to_uint32(qh)
+
+    qh = qh.reshape(n_blocks, 1) >> torch.arange(32, device=d.device, dtype=torch.int32).reshape(1, 32)
+    ql = qs.reshape(n_blocks, -1, 1, block_size // 2) >> torch.tensor(
+        [0, 4], device=d.device, dtype=torch.uint8
+    ).reshape(1, 1, 2, 1)
+
+    qh = (qh & 1).to(torch.uint8)
+    ql = (ql & 0x0F).reshape(n_blocks, -1)
+
+    qs = (ql | (qh << 4)).to(torch.int8) - 16
+    return d * qs
+
+
+def dequantize_blocks_Q4_1(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    d, m, qs = split_block_dims(blocks, 2, 2)
+    d = d.view(torch.float16).to(dtype)
+    m = m.view(torch.float16).to(dtype)
+
+    qs = qs.reshape((n_blocks, -1, 1, block_size // 2)) >> torch.tensor(
+        [0, 4], device=d.device, dtype=torch.uint8
+    ).reshape(1, 1, 2, 1)
+    qs = (qs & 0x0F).reshape(n_blocks, -1)
+
+    return (d * qs) + m
+
+
+def dequantize_blocks_Q4_0(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    d, qs = split_block_dims(blocks, 2)
+    d = d.view(torch.float16).to(dtype)
+
+    qs = qs.reshape((n_blocks, -1, 1, block_size // 2)) >> torch.tensor(
+        [0, 4], device=d.device, dtype=torch.uint8
+    ).reshape((1, 1, 2, 1))
+    qs = (qs & 0x0F).reshape((n_blocks, -1)).to(torch.int8) - 8
+    return d * qs
+
+
+def dequantize_blocks_Q6_K(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    (
+        ql,
+        qh,
+        scales,
+        d,
+    ) = split_block_dims(blocks, QK_K // 2, QK_K // 4, QK_K // 16)
+
+    scales = scales.view(torch.int8).to(dtype)
+    d = d.view(torch.float16).to(dtype)
+    d = (d * scales).reshape((n_blocks, QK_K // 16, 1))
+
+    ql = ql.reshape((n_blocks, -1, 1, 64)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 2, 1)
+    )
+    ql = (ql & 0x0F).reshape((n_blocks, -1, 32))
+    qh = qh.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 2, 4, 6], device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 4, 1)
+    )
+    qh = (qh & 0x03).reshape((n_blocks, -1, 32))
+    q = (ql | (qh << 4)).to(torch.int8) - 32
+    q = q.reshape((n_blocks, QK_K // 16, -1))
+
+    return (d * q).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q5_K(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    d, dmin, scales, qh, qs = split_block_dims(blocks, 2, 2, K_SCALE_SIZE, QK_K // 8)
+
+    d = d.view(torch.float16).to(dtype)
+    dmin = dmin.view(torch.float16).to(dtype)
+
+    sc, m = get_scale_min(scales)
+
+    d = (d * sc).reshape((n_blocks, -1, 1))
+    dm = (dmin * m).reshape((n_blocks, -1, 1))
+
+    ql = qs.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 2, 1)
+    )
+    qh = qh.reshape((n_blocks, -1, 1, 32)) >> torch.arange(0, 8, device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 8, 1)
+    )
+    ql = (ql & 0x0F).reshape((n_blocks, -1, 32))
+    qh = (qh & 0x01).reshape((n_blocks, -1, 32))
+    q = ql | (qh << 4)
+
+    return (d * q - dm).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q4_K(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    d, dmin, scales, qs = split_block_dims(blocks, 2, 2, K_SCALE_SIZE)
+    d = d.view(torch.float16).to(dtype)
+    dmin = dmin.view(torch.float16).to(dtype)
+
+    sc, m = get_scale_min(scales)
+
+    d = (d * sc).reshape((n_blocks, -1, 1))
+    dm = (dmin * m).reshape((n_blocks, -1, 1))
+
+    qs = qs.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 2, 1)
+    )
+    qs = (qs & 0x0F).reshape((n_blocks, -1, 32))
+
+    return (d * qs - dm).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q3_K(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    hmask, qs, scales, d = split_block_dims(blocks, QK_K // 8, QK_K // 4, 12)
+    d = d.view(torch.float16).to(dtype)
+
+    lscales, hscales = scales[:, :8], scales[:, 8:]
+    lscales = lscales.reshape((n_blocks, 1, 8)) >> torch.tensor([0, 4], device=d.device, dtype=torch.uint8).reshape(
+        (1, 2, 1)
+    )
+    lscales = lscales.reshape((n_blocks, 16))
+    hscales = hscales.reshape((n_blocks, 1, 4)) >> torch.tensor(
+        [0, 2, 4, 6], device=d.device, dtype=torch.uint8
+    ).reshape((1, 4, 1))
+    hscales = hscales.reshape((n_blocks, 16))
+    scales = (lscales & 0x0F) | ((hscales & 0x03) << 4)
+    scales = scales.to(torch.int8) - 32
+
+    dl = (d * scales).reshape((n_blocks, 16, 1))
+
+    ql = qs.reshape((n_blocks, -1, 1, 32)) >> torch.tensor([0, 2, 4, 6], device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 4, 1)
+    )
+    qh = hmask.reshape(n_blocks, -1, 1, 32) >> torch.arange(0, 8, device=d.device, dtype=torch.uint8).reshape(
+        (1, 1, 8, 1)
+    )
+    ql = ql.reshape((n_blocks, 16, QK_K // 16)) & 3
+    qh = (qh.reshape((n_blocks, 16, QK_K // 16)) & 1) ^ 1
+    q = ql.to(torch.int8) - (qh << 2).to(torch.int8)
+
+    return (dl * q).reshape((n_blocks, QK_K))
+
+
+def dequantize_blocks_Q2_K(blocks, block_size, type_size, dtype=None):
+    n_blocks = blocks.shape[0]
+
+    scales, qs, d, dmin = split_block_dims(blocks, QK_K // 16, QK_K // 4, 2)
+    d = d.view(torch.float16).to(dtype)
+    dmin = dmin.view(torch.float16).to(dtype)
 
     # (n_blocks, 16, 1)
-    dl = (delta * (scales & 0xF)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
-    ml = (delta_min * (scales >> 4)).reshape((n_blocks, QK_K_BLOCKSIZE // 16, 1))
+    dl = (d * (scales & 0xF)).reshape((n_blocks, QK_K // 16, 1))
+    ml = (dmin * (scales >> 4)).reshape((n_blocks, QK_K // 16, 1))
 
-    shift = torch.tensor([0, 2, 4, 6], device=delta.device, dtype=torch.uint8).reshape((1, 1, 4, 1))
+    shift = torch.tensor([0, 2, 4, 6], device=d.device, dtype=torch.uint8).reshape((1, 1, 4, 1))
 
-    qs = (quantized_values.reshape((n_blocks, -1, 1, 32)) >> shift) & 3
-    qs = qs.reshape((n_blocks, QK_K_BLOCKSIZE // 16, 16))
+    qs = (qs.reshape((n_blocks, -1, 1, 32)) >> shift) & 3
+    qs = qs.reshape((n_blocks, QK_K // 16, 16))
     qs = dl * qs - ml
 
     return qs.reshape((n_blocks, -1))
 
 
-dequantize_fns = {
-    "MOSTLY_Q2_K": dequantize_Q2_K,
+def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
+    return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
+
+
+dequantize_functions = {
+    gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
+    gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
+    gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
+    gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
+    gguf.GGMLQuantizationType.Q4_1: dequantize_blocks_Q4_1,
+    gguf.GGMLQuantizationType.Q4_0: dequantize_blocks_Q4_0,
+    gguf.GGMLQuantizationType.Q6_K: dequantize_blocks_Q6_K,
+    gguf.GGMLQuantizationType.Q5_K: dequantize_blocks_Q5_K,
+    gguf.GGMLQuantizationType.Q4_K: dequantize_blocks_Q4_K,
+    gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
+    gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
 }
 
 
-def _replace_with_gguf_linear(model, compute_dtype, quant_type, qtypes=None):
-    for name, module in model.named_children():
-        if isinstance(module, nn.Linear):
-            model._modules[name] = GGUFLinear(
-                module.in_features,
-                module.out_features,
-                module.bias is not None,
-                compute_dtype=compute_dtype,
-                quant_type=quant_type,
-            )
-            model._modules[name].source_cls = type(module)
-            # Force requires grad to False to avoid unexpected errors
-            model._modules[name].requires_grad_(False)
-
-        has_children = list(module.children())
-        if has_children:
-            _replace_with_gguf_linear(module, compute_dtype, quant_type)
-
-    return model
+def _quant_shape_from_byte_shape(shape, type_size, block_size):
+    return (*shape[:-1], shape[-1] // type_size * block_size)
 
 
-class GGUFParameter(torch.nn.Parameter):
-    def __new__(cls, data, requires_grad=False, tensor_type=None):
+def dequantize_gguf_tensor(tensor, compute_dtype):
+    if not hasattr(tensor, "quant_type"):
+        return tensor
+
+    quant_type = tensor.quant_type
+    dequant_fn = dequantize_functions[quant_type]
+
+    block_size, type_size = gguf.GGML_QUANT_SIZES[quant_type]
+
+    tensor = torch.tensor(tensor)
+    tensor = tensor.view(torch.uint8)
+    shape = _quant_shape_from_byte_shape(tensor.shape, type_size, block_size)
+
+    n_blocks = tensor.numel() // type_size
+    blocks = tensor.reshape((n_blocks, type_size))
+
+    dequant = dequant_fn(blocks, block_size, type_size)
+    dequant = dequant.reshape(shape)
+    dequant = dequant.to(compute_dtype)
+
+    return dequant
+
+
+class GGUFParameter(torch.Tensor):
+    def __new__(cls, data, requires_grad=False, quant_type=None):
         data = data if data is not None else torch.empty(0)
         self = torch.Tensor._make_subclass(cls, data, requires_grad)
-        self.tensor_type = tensor_type
+        self.quant_type = quant_type
 
         return self
 
@@ -90,19 +347,26 @@ class GGUFParameter(torch.nn.Parameter):
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
+
         result = super().__torch_function__(func, types, args, kwargs)
 
-        tensor_type = None
+        # When converting from original format checkpoints we often use splits, cats etc on tensors
+        # this method ensures that the returned tensor type from those operations remains GGUFParameter
+        # so that we preserve quant_type information
+        quant_type = None
         for arg in args:
+            if isinstance(arg, list) and (arg[0], GGUFParameter):
+                quant_type = arg[0].quant_type
+                break
             if isinstance(arg, GGUFParameter):
-                tensor_type = arg.tensor_type
+                quant_type = arg.quant_type
                 break
         if isinstance(result, torch.Tensor):
-            return cls(result, tensor_type=tensor_type)
+            return cls(result, quant_type=quant_type)
         # Handle tuples and lists
         elif isinstance(result, (tuple, list)):
             # Preserve the original type (tuple or list)
-            wrapped = [cls(x, tensor_type=tensor_type) if isinstance(x, torch.Tensor) else x for x in result]
+            wrapped = [cls(x, quant_type=quant_type) if isinstance(x, torch.Tensor) else x for x in result]
             return type(result)(wrapped)
         else:
             return result
@@ -115,19 +379,11 @@ class GGUFLinear(nn.Linear):
         out_features,
         bias=False,
         compute_dtype=None,
-        quant_type=None,
         device=None,
     ) -> None:
         super().__init__(in_features, out_features, bias, device)
         self.compute_dtype = compute_dtype
-        self.quant_type = quant_type
-        self._dequant_fn = dequantize_fns[self.quant_type]
 
     def forward(self, inputs):
-        is_gguf_quant = hasattr(self.weight, "tensor_type")
-        if is_gguf_quant:
-            weight = self._dequant_fn(self.weight, torch.uint8).to(self.compute_dtype)
-        else:
-            weight = self.weight
-        __import__("ipdb").set_trace()
+        weight = dequantize_gguf_tensor(self.weight, self.compute_dtype)
         return torch.nn.functional.linear(inputs, weight, self.bias)
