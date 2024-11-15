@@ -116,6 +116,7 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
@@ -246,6 +247,7 @@ else:
             "MarigoldNormalsPipeline",
         ]
     )
+    _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -454,6 +456,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .allegro import AllegroPipeline
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
@@ -569,6 +572,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
+        from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
