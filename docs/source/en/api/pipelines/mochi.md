@@ -50,6 +50,8 @@ export_to_video(frames, "mochi.mp4", fps=30)
 
 ## Using a lower precision variant to save memory
 
+The following example will use the `bfloat16` variant of the model and requires 22GB VRAM to run. There is a slight drop in the quality of the generated video as a result.
+
 ```python
 import torch
 from diffusers import MochiPipeline
