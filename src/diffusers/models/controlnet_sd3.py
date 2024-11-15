@@ -34,10 +34,8 @@ class SD3ControlNetModel(SD3ControlNetModel):
         super().__init__(*args, **kwargs)
 
 
-
 class SD3MultiControlNetModel(SD3MultiControlNetModel):
     def __init__(self, *args, **kwargs):
         deprecation_message = "Importing `SD3MultiControlNetModel` from `diffusers.models.controlnet_sd3` is deprecated and this will be removed in a future version. Please use `from diffusers.models.controlnets.controlnet_sd3 import SD3MultiControlNetModel`, instead."
         deprecate("SD3MultiControlNetModel", "0.34", deprecation_message)
         super().__init__(*args, **kwargs)
-

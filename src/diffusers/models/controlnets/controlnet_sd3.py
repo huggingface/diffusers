@@ -254,7 +254,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
         config["extra_conditioning_channels"] = num_extra_conditioning_channels
-        controlnet = cls(**config)
+        controlnet = cls.from_config(**config)
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())
