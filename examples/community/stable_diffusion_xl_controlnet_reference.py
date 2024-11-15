@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # download an image for the Canny controlnet
         >>> canny_image = load_image(
-        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
+        ...     "https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a"
         ... )
 
         >>> # download an image for the Reference controlnet
@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # generate image
         >>> image = pipe(
-        ...     prompt="1girl",
+        ...     prompt="a cat",
         ...     num_inference_steps=20,
         ...     controlnet_conditioning_scale=controlnet_conditioning_scale,
         ...     image=canny_image,
