@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import numpy as np 
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -344,11 +345,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
-                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
-                hidden_states_layer_index = index_block // interval_control
-                if hidden_states_layer_index >= len(block_controlnet_hidden_states):
-                    hidden_states_layer_index = len(block_controlnet_hidden_states) - 1
-                hidden_states = hidden_states + block_controlnet_hidden_states[hidden_states_layer_index]
+                interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
+                interval_control = int(np.ceil(interval_control))
+                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
