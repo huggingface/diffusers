@@ -61,8 +61,8 @@ from .lumina import LuminaText2ImgPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
-    StableDiffusion3PAGPipeline,
     StableDiffusion3PAGImg2ImgPipeline,
+    StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGImg2ImgPipeline,

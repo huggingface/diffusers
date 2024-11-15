@@ -1,6 +1,6 @@
 import gc
-import random
 import inspect
+import random
 import unittest
 
 import numpy as np
@@ -9,13 +9,12 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
+    AutoPipelineForImage2Image,
     FlowMatchEulerDiscreteScheduler,
     SD3Transformer2DModel,
-    StableDiffusion3PAGImg2ImgPipeline,
     StableDiffusion3Img2ImgPipeline,
-    AutoPipelineForImage2Image,
+    StableDiffusion3PAGImg2ImgPipeline,
 )
-
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -31,10 +30,10 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-
 from ..test_pipelines_common import (
     PipelineTesterMixin,
 )
+
 
 enable_full_determinism()
 
