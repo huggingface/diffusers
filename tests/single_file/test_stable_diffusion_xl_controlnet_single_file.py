@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -112,8 +113,8 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = self.pipeline_class.from_single_file(
                 local_ckpt_path, controlnet=controlnet, safety_checker=None, local_files_only=True
@@ -151,8 +152,8 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
                 local_ckpt_path,
@@ -183,8 +184,8 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             pipe_single_file = self.pipeline_class.from_single_file(
@@ -195,3 +196,12 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase, 
                 local_files_only=True,
             )
         super()._compare_component_configs(pipe, pipe_single_file)
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+        )
+        single_file_pipe = self.pipeline_class.from_single_file(
+            self.ckpt_path, controlnet=controlnet, safety_checker=None, torch_dtype=torch.float16
+        )
+        super().test_single_file_setting_pipeline_dtype_to_fp16(single_file_pipe)
