@@ -25,8 +25,6 @@
     title: Working with big models
   title: Tutorials
 - sections:
-  - local: using-diffusers/create_a_server
-    title: Create a server
   - local: using-diffusers/loading
     title: Load pipelines
   - local: using-diffusers/custom_pipeline_overview
@@ -57,6 +55,8 @@
 - sections:
   - local: using-diffusers/overview_techniques
     title: Overview
+  - local: using-diffusers/create_a_server
+    title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
   - local: using-diffusers/merge_loras
