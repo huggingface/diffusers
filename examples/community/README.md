@@ -2621,12 +2621,13 @@ This pipeline uses the Reference. Refer to the [stable_diffusion_reference](http
 
 ```py
 import torch
-from PIL import Image
+# from diffusers import DiffusionPipeline
 from diffusers.utils import load_image
-from diffusers import DiffusionPipeline
 from diffusers.schedulers import UniPCMultistepScheduler
 
-input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+from .stable_diffusion_xl_reference import StableDiffusionXLReferencePipeline
+
+input_image = load_image("https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a")
 
 # pipe = DiffusionPipeline.from_pretrained(
 #     "stabilityai/stable-diffusion-xl-base-1.0",
@@ -2644,7 +2645,7 @@ pipe = StableDiffusionXLReferencePipeline.from_pretrained(
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,
-      prompt="1girl",
+      prompt="a cat",
       num_inference_steps=20,
       reference_attn=True,
       reference_adain=True).images[0]
@@ -2652,14 +2653,14 @@ result_img = pipe(ref_image=input_image,
 
 Reference Image
 
-![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+![reference_image](https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a)
 
 Output Image
 
-`prompt: 1 girl`
+`prompt: a cat`
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20`
-![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+![Output_image]()
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
