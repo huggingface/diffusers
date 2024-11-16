@@ -14,7 +14,8 @@
 
 import inspect
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, Type
+from collections import OrderedDict
 
 import torch
 from tqdm.auto import tqdm
@@ -29,6 +30,8 @@ from ..utils.hub_utils import validate_hf_hub_args
 from .auto_pipeline import _get_model
 from .pipeline_loading_utils import _fetch_class_library_tuple, _get_pipeline_class
 from .pipeline_utils import DiffusionPipeline
+
+import warnings
 
 
 if is_accelerate_available():
@@ -99,6 +102,7 @@ class PipelineBlock:
     optional_components = []
     required_components = []
     required_auxiliaries = []
+    optional_auxiliaries = []
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -122,7 +126,7 @@ class PipelineBlock:
         for key, value in kwargs.items():
             if key in self.required_components or key in self.optional_components:
                 self.components[key] = value
-            elif key in self.required_auxiliaries:
+            elif key in self.required_auxiliaries or key in self.optional_auxiliaries:
                 self.auxiliaries[key] = value
             else:
                 self.configs[key] = value
@@ -152,10 +156,11 @@ class PipelineBlock:
                 components_to_add[component_name] = component
 
         # add auxiliaries
+        expected_auxiliaries = set(cls.required_auxiliaries + cls.optional_auxiliaries)
         # - auxiliaries that are passed in kwargs
-        auxiliaries_to_add = {k: kwargs.pop(k) for k in cls.required_auxiliaries if k in kwargs}
+        auxiliaries_to_add = {k: kwargs.pop(k) for k in expected_auxiliaries if k in kwargs}
         # - auxiliaries that are in the pipeline
-        for aux_name in cls.required_auxiliaries:
+        for aux_name in expected_auxiliaries:
             if hasattr(pipe, aux_name) and aux_name not in auxiliaries_to_add:
                 auxiliaries_to_add[aux_name] = getattr(pipe, aux_name)
         block_kwargs = {**components_to_add, **auxiliaries_to_add}
@@ -167,7 +172,7 @@ class PipelineBlock:
         expected_configs = {
             k
             for k in pipe.config.keys()
-            if k in init_params and k not in expected_components and k not in cls.required_auxiliaries
+            if k in init_params and k not in expected_components and k not in expected_auxiliaries
         }
 
         for config_name in expected_configs:
@@ -208,6 +213,188 @@ class PipelineBlock:
             f"  intermediates_outputs: {intermediates_outputs}\n"
             f")"
         )
+
+
+def combine_inputs(*input_lists: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]:
+    """
+    Combines multiple lists of (name, default_value) tuples.
+    For duplicate inputs, updates only if current value is None and new value is not None.
+    Warns if multiple non-None default values exist for the same input.
+    """
+    combined_dict = {}
+    for inputs in input_lists:
+        for name, value in inputs:
+            if name in combined_dict:
+                current_value = combined_dict[name]
+                if current_value is not None and value is not None and current_value != value:
+                    warnings.warn(
+                        f"Multiple different default values found for input '{name}': "
+                        f"{current_value} and {value}. Using {current_value}."
+                    )
+                if current_value is None and value is not None:
+                    combined_dict[name] = value
+            else:
+                combined_dict[name] = value
+    return list(combined_dict.items())
+
+
+
+class AutoStep(PipelineBlock):
+    base_blocks = []     # list of block classes
+    trigger_inputs = []  # list of trigger inputs (None for default block)
+    required_components = []
+    optional_components = []
+    required_auxiliaries = []
+    optional_auxiliaries = []
+    
+    def __init__(self, **kwargs):
+        self.blocks = []
+        
+        for block_cls, trigger in zip(self.base_blocks, self.trigger_inputs):
+            # Check components
+            missing_components = [
+                component for component in block_cls.required_components 
+                if component not in kwargs
+            ]
+            
+            # Check auxiliaries
+            missing_auxiliaries = [
+                auxiliary for auxiliary in block_cls.required_auxiliaries 
+                if auxiliary not in kwargs
+            ]
+            
+            if not missing_components and not missing_auxiliaries:
+                # Only get kwargs that the block's __init__ accepts
+                block_params = inspect.signature(block_cls.__init__).parameters
+                block_kwargs = {
+                    k: v for k, v in kwargs.items() 
+                    if k in block_params
+                }
+                self.blocks.append(block_cls(**block_kwargs))
+                
+                # Print message about trigger condition
+                if trigger is None:
+                    print(f"Added default block: {block_cls.__name__}")
+                else:
+                    print(f"Added block {block_cls.__name__} - will be dispatched if '{trigger}' input is not None")
+            else:
+                if trigger is None:
+                    print(f"Cannot add default block {block_cls.__name__}:")
+                else:
+                    print(f"Cannot add block {block_cls.__name__} (triggered by '{trigger}'):")
+                if missing_components:
+                    print(f"  - Missing components: {missing_components}")
+                if missing_auxiliaries:
+                    print(f"  - Missing auxiliaries: {missing_auxiliaries}")
+    
+    @property
+    def components(self):
+        # Combine components from all blocks
+        components = {}
+        for block in self.blocks:
+            components.update(block.components)
+        return components
+    
+    @property
+    def auxiliaries(self):
+        # Combine auxiliaries from all blocks
+        auxiliaries = {}
+        for block in self.blocks:
+            auxiliaries.update(block.auxiliaries)
+        return auxiliaries
+    
+    @property
+    def configs(self):
+        # Combine configs from all blocks
+        configs = {}
+        for block in self.blocks:
+            configs.update(block.configs)
+        return configs
+    
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return combine_inputs(*(block.inputs for block in self.blocks))
+    
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return list(set().union(*(
+            block.intermediates_inputs for block in self.blocks
+        )))
+    
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return list(set().union(*(
+            block.intermediates_outputs for block in self.blocks
+        )))
+    
+    def __call__(self, pipeline, state):
+        # Check triggers in priority order
+        for idx, trigger in enumerate(self.trigger_inputs[:-1]):  # Skip last (None) trigger
+            if state.get_input(trigger) is not None:
+                return self.blocks[idx](pipeline, state)
+        # If no triggers match, use the default block (last one)
+        return self.blocks[-1](pipeline, state)
+
+
+def make_auto_step(pipeline_block_map: OrderedDict) -> Type[AutoStep]:
+    """
+    Creates a new AutoStep subclass with updated class attributes based on the pipeline block map.
+    
+    Args:
+        pipeline_block_map: OrderedDict mapping trigger inputs to pipeline block classes.
+                          Order determines priority (earlier entries take precedence).
+                          Must include None key for the default block.
+    """
+    blocks = list(pipeline_block_map.values())
+    triggers = list(pipeline_block_map.keys())
+    
+    # Get all expected components (either required or optional by any block)
+    expected_components = []
+    for block in blocks:
+        for component in (block.required_components + block.optional_components):
+            if component not in expected_components:
+                expected_components.append(component)
+    
+    # A component is required if it's in required_components of all blocks
+    required_components = [
+        component for component in expected_components
+        if all(component in block.required_components for block in blocks)
+    ]
+    
+    # All other expected components are optional
+    optional_components = [
+        component for component in expected_components
+        if component not in required_components
+    ]
+
+    # Get all expected auxiliaries (either required or optional by any block)
+    expected_auxiliaries = []
+    for block in blocks:
+        for auxiliary in (block.required_auxiliaries + getattr(block, 'optional_auxiliaries', [])):
+            if auxiliary not in expected_auxiliaries:
+                expected_auxiliaries.append(auxiliary)
+    
+    # An auxiliary is required if it's in required_auxiliaries of all blocks
+    required_auxiliaries = [
+        auxiliary for auxiliary in expected_auxiliaries
+        if all(auxiliary in block.required_auxiliaries for block in blocks)
+    ]
+    
+    # All other expected auxiliaries are optional
+    optional_auxiliaries = [
+        auxiliary for auxiliary in expected_auxiliaries
+        if auxiliary not in required_auxiliaries
+    ]
+
+    # Create new class with updated attributes
+    return type('AutoStep', (AutoStep,), {
+        'base_blocks': blocks,
+        'trigger_inputs': triggers,
+        'required_components': required_components,
+        'optional_components': optional_components,
+        'required_auxiliaries': required_auxiliaries,
+        'optional_auxiliaries': optional_auxiliaries,
+    })
 
 
 class ModularPipelineBuilder(ConfigMixin):
@@ -585,7 +772,7 @@ class ModularPipelineBuilder(ConfigMixin):
         # Create each block, passing only unused items that the block expects
         for block_class in modular_pipeline_class.default_pipeline_blocks:
             expected_components = set(block_class.required_components + block_class.optional_components)
-            expected_auxiliaries = set(block_class.required_auxiliaries)
+            expected_auxiliaries = set(block_class.required_auxiliaries + block_class.optional_auxiliaries)
 
             # Get init parameters to check for expected configs
             init_params = inspect.signature(block_class.__init__).parameters

@@ -14,6 +14,7 @@
 
 import inspect
 from typing import Any, List, Optional, Tuple, Union
+from collections import OrderedDict
 
 import PIL
 import torch
@@ -33,7 +34,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..controlnet.multicontrolnet import MultiControlNetModel
-from ..modular_pipeline_builder import ModularPipelineBuilder, PipelineBlock, PipelineState
+from ..modular_pipeline_builder import ModularPipelineBuilder, PipelineBlock, PipelineState, make_auto_step
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import (
     StableDiffusionXLPipelineOutput,
@@ -401,7 +402,7 @@ class StableDiffusionXLSetTimestepsStep(PipelineBlock):
 
 class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     optional_components = ["vae", "scheduler"]
-    required_auxiliaries = ["image_processor"]
+    optional_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -645,7 +646,7 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
 
 class StableDiffusionXLDenoiseStep(PipelineBlock):
     required_components = ["unet", "scheduler"]
-    required_auxiliaries = ["guider"]
+    optional_auxiliaries = ["guider"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -780,7 +781,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     required_components = ["unet", "controlnet", "scheduler"]
-    required_auxiliaries = ["guider", "controlnet_guider", "control_image_processor"]
+    optional_auxiliaries = ["guider", "controlnet_guider", "control_image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1069,7 +1070,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
 
 class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
     optional_components = ["vae"]
-    required_auxiliaries = ["image_processor"]
+    optional_auxiliaries = ["image_processor"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -1154,6 +1155,15 @@ class StableDiffusionXLDecodeLatentsStep(PipelineBlock):
         return pipeline, state
 
 
+AUTO_DENOISE_BLOCK_MAP = OrderedDict([
+    # Higher priority blocks first
+    ("control_image", StableDiffusionXLControlNetDenoiseStep),
+    # Default block
+    (None, StableDiffusionXLDenoiseStep),
+])
+
+StableDiffusionXLAutoDenoiseStep = make_auto_step(AUTO_DENOISE_BLOCK_MAP)
+
 class StableDiffusionXLModularPipeline(
     ModularPipelineBuilder,
     StableDiffusionMixin,
@@ -1166,7 +1176,7 @@ class StableDiffusionXLModularPipeline(
         StableDiffusionXLSetTimestepsStep,
         StableDiffusionXLPrepareLatentsStep,
         StableDiffusionXLPrepareAdditionalConditioningStep,
-        StableDiffusionXLDenoiseStep,
+        StableDiffusionXLAutoDenoiseStep,
         StableDiffusionXLDecodeLatentsStep,
     ]
 
