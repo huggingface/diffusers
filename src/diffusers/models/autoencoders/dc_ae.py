@@ -41,8 +41,6 @@ class RMSNorm2d(nn.LayerNorm):
         return x
 
 
-
-
 class ConvLayer(nn.Module):
     def __init__(
         self,
@@ -519,125 +517,6 @@ def build_upsample_block(block_type: str, in_channels: int, out_channels: int, s
     return block
 
 
-def build_encoder_project_in_block(in_channels: int, out_channels: int, factor: int, downsample_block_type: str):
-    if factor == 1:
-        block = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            padding=1,
-        )
-    elif factor == 2:
-        block = build_downsample_block(
-            block_type=downsample_block_type, in_channels=in_channels, out_channels=out_channels, shortcut=None
-        )
-    else:
-        raise ValueError(f"downsample factor {factor} is not supported for encoder project in")
-    return block
-
-
-def build_encoder_project_out_block(
-    in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str], shortcut: Optional[str]
-):
-    layers: list[nn.Module] = []
-    
-    if norm is None:
-        pass
-    elif norm == "rms2d":
-        layers.append(RMSNorm2d(normalized_shape=in_channels))
-    elif norm == "bn2d":
-        layers.append(BatchNorm2d(num_features=in_channels))
-    else:
-        raise ValueError(f"norm {norm} is not supported")
-    
-    if act is not None:
-        layers.append(get_activation(act))
-    layers.append(ConvLayer(
-        in_channels=in_channels,
-        out_channels=out_channels,
-        kernel_size=3,
-        stride=1,
-        use_bias=True,
-        norm=None,
-        act_func=None,
-    ))
-    block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*layers))]))
-
-    if shortcut is None:
-        pass
-    elif shortcut == "averaging":
-        shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
-            in_channels=in_channels, out_channels=out_channels, factor=1
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for encoder project out")
-    return block
-
-
-def build_decoder_project_in_block(in_channels: int, out_channels: int, shortcut: Optional[str]):
-    block = ConvLayer(
-        in_channels=in_channels,
-        out_channels=out_channels,
-        kernel_size=3,
-        stride=1,
-        use_bias=True,
-        norm=None,
-        act_func=None,
-    )
-    if shortcut is None:
-        pass
-    elif shortcut == "duplicating":
-        shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
-            in_channels=in_channels, out_channels=out_channels, factor=1
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for decoder project in")
-    return block
-
-
-def build_decoder_project_out_block(
-    in_channels: int, out_channels: int, factor: int, upsample_block_type: str, norm: Optional[str], act: Optional[str]
-):
-    layers: list[nn.Module] = []
-
-    if norm is None:
-        pass
-    elif norm == "rms2d":
-        layers.append(RMSNorm2d(normalized_shape=in_channels))
-    elif norm == "bn2d":
-        layers.append(BatchNorm2d(num_features=in_channels))
-    else:
-        raise ValueError(f"norm {norm} is not supported")
-
-    if act is not None:
-        layers.append(get_activation(act))
-    
-    if factor == 1:
-        layers.append(
-            ConvLayer(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=3,
-                stride=1,
-                use_bias=True,
-                norm=None,
-                act_func=None,
-            )
-        )
-    elif factor == 2:
-        layers.append(
-            build_upsample_block(
-                block_type=upsample_block_type, in_channels=in_channels, out_channels=out_channels, shortcut=None
-            )
-        )
-    else:
-        raise ValueError(f"upsample factor {factor} is not supported for decoder project out")
-    block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*layers))]))
-    return block
-
-
 class Encoder(nn.Module):
     def __init__(
         self, 
@@ -665,14 +544,23 @@ class Encoder(nn.Module):
             raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
         if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
             raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
+        
+        # project in
+        if depth_list[0] > 0:
+            self.project_in = nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=width_list[0],
+                kernel_size=3,
+                padding=1,
+            )
+        elif depth_list[1] > 0:
+            self.project_in = build_downsample_block(
+                block_type=downsample_block_type, in_channels=in_channels, out_channels=width_list[1], shortcut=None
+            )
+        else:
+            raise ValueError(f"depth list {depth_list} is not supported for encoder project in")
 
-        self.project_in = build_encoder_project_in_block(
-            in_channels=in_channels,
-            out_channels=width_list[0] if depth_list[0] > 0 else width_list[1],
-            factor=1 if depth_list[0] > 0 else 2,
-            downsample_block_type=downsample_block_type,
-        )
-
+        # stages
         self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in enumerate(zip(width_list, depth_list)):
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
@@ -690,13 +578,39 @@ class Encoder(nn.Module):
             self.stages.append(nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
         self.stages = nn.ModuleList(self.stages)
 
-        self.project_out = build_encoder_project_out_block(
+        # project out
+        project_out_layers: list[nn.Module] = []
+        if out_norm is None:
+            pass
+        elif out_norm == "rms2d":
+            project_out_layers.append(RMSNorm2d(normalized_shape=width_list[-1]))
+        elif out_norm == "bn2d":
+            project_out_layers.append(BatchNorm2d(num_features=width_list[-1]))
+        else:
+            raise ValueError(f"norm {out_norm} is not supported for encoder project out")
+        if out_act is not None:
+            project_out_layers.append(get_activation(out_act))
+        project_out_out_channels = 2 * latent_channels if double_latent else latent_channels
+        project_out_layers.append(ConvLayer(
             in_channels=width_list[-1],
-            out_channels=2 * latent_channels if double_latent else latent_channels,
-            norm=out_norm,
-            act=out_act,
-            shortcut=out_shortcut,
-        )
+            out_channels=project_out_out_channels,
+            kernel_size=3,
+            stride=1,
+            use_bias=True,
+            norm=None,
+            act_func=None,
+        ))
+        project_out_block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*project_out_layers))]))
+        if out_shortcut is None:
+            pass
+        elif out_shortcut == "averaging":
+            shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
+                in_channels=width_list[-1], out_channels=project_out_out_channels, factor=1
+            )
+            project_out_block = ResidualBlock(project_out_block, shortcut_block)
+        else:
+            raise ValueError(f"shortcut {out_shortcut} is not supported for encoder project out")
+        self.project_out = project_out_block
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.project_in(x)
@@ -739,12 +653,28 @@ class Decoder(nn.Module):
         if not isinstance(act, (str, list)) or (isinstance(act, list) and len(act) != num_stages):
             raise ValueError(f"act should be either a str or a list of str with length {num_stages}, but got {act}")
 
-        self.project_in = build_decoder_project_in_block(
+        # project in
+        project_in_block = ConvLayer(
             in_channels=latent_channels,
             out_channels=width_list[-1],
-            shortcut=in_shortcut,
+            kernel_size=3,
+            stride=1,
+            use_bias=True,
+            norm=None,
+            act_func=None,
         )
+        if in_shortcut is None:
+            pass
+        elif in_shortcut == "duplicating":
+            shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
+                in_channels=latent_channels, out_channels=width_list[-1], factor=1
+            )
+            project_in_block = ResidualBlock(project_in_block, shortcut_block)
+        else:
+            raise ValueError(f"shortcut {in_shortcut} is not supported for decoder project in")
+        self.project_in = project_in_block
 
+        # stages
         self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
             stage = []
@@ -775,14 +705,44 @@ class Decoder(nn.Module):
             self.stages.insert(0, nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
         self.stages = nn.ModuleList(self.stages)
 
-        self.project_out = build_decoder_project_out_block(
-            in_channels=width_list[0] if depth_list[0] > 0 else width_list[1],
-            out_channels=in_channels,
-            factor=1 if depth_list[0] > 0 else 2,
-            upsample_block_type=upsample_block_type,
-            norm=out_norm,
-            act=out_act,
-        )
+        # project out
+        project_out_layers: list[nn.Module] = []
+        if depth_list[0] > 0:
+            project_out_in_channels = width_list[0]
+        elif depth_list[1] > 0:
+            project_out_in_channels = width_list[1]
+        else:
+            raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
+        if out_norm is None:
+            pass
+        elif out_norm == "rms2d":
+            project_out_layers.append(RMSNorm2d(normalized_shape=project_out_in_channels))
+        elif out_norm == "bn2d":
+            project_out_layers.append(BatchNorm2d(num_features=project_out_in_channels))
+        else:
+            raise ValueError(f"norm {out_norm} is not supported for decoder project out")
+        project_out_layers.append(get_activation(out_act))
+        if depth_list[0] > 0:
+            project_out_layers.append(
+                ConvLayer(
+                    in_channels=project_out_in_channels,
+                    out_channels=in_channels,
+                    kernel_size=3,
+                    stride=1,
+                    use_bias=True,
+                    norm=None,
+                    act_func=None,
+                )
+            )
+        elif depth_list[1] > 0:
+            project_out_layers.append(
+                build_upsample_block(
+                    block_type=upsample_block_type, in_channels=project_out_in_channels, out_channels=in_channels, shortcut=None
+                )
+            )
+        else:
+            raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
+        self.project_out = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*project_out_layers))]))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.project_in(x)
