@@ -2617,7 +2617,7 @@ for obj in range(bs):
 
 ### Stable Diffusion XL Reference
 
-This pipeline uses the Reference. Refer to the [stable_diffusion_reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference).
+This pipeline uses the Reference. Refer to the [Stable Diffusion Reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference) section for more information.
 
 ```py
 import torch
@@ -2645,7 +2645,7 @@ pipe = StableDiffusionXLReferencePipeline.from_pretrained(
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,
-      prompt="a cat",
+      prompt="a dog",
       num_inference_steps=20,
       reference_attn=True,
       reference_adain=True).images[0]
@@ -2657,10 +2657,10 @@ Reference Image
 
 Output Image
 
-`prompt: a cat`
+`prompt: a dog`
 
-`reference_attn=True, reference_adain=True, num_inference_steps=20`
-![Output_image]()
+`reference_attn=False, reference_adain=True, num_inference_steps=20`
+![Output_image](https://github.com/user-attachments/assets/62fe95b0-f4a6-4dcc-9778-c79632967f7e)
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
