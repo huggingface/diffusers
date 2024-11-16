@@ -430,7 +430,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # PR: https://github.com/huggingface/accelerate/pull/3223/
         if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
             raise ValueError(
-                "You are trying to call `to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` does not support it. Please upgrade the installation."
+                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
@@ -469,7 +469,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                         logger.warning(
                             f"{module.__class__.__name__} could not be placed on {device}. Module is still on {module.device}. Please update your `transformers` installation to the latest."
                         )
-                # For `diffusers` it should not be a problem.
+                # For `diffusers` it should not be a problem as we enforce the installation of a bnb version
+                # that already supports CPU placements.
                 else:
                     module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
