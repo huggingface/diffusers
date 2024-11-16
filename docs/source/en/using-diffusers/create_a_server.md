@@ -39,7 +39,7 @@ async def generate_image(image_input: TextToImageInput):
         loop = asyncio.get_event_loop()
         scheduler = shared_pipeline.pipeline.scheduler.from_config(shared_pipeline.pipeline.scheduler.config)
         pipeline = StableDiffusion3Pipeline.from_pipe(shared_pipeline.pipeline, scheduler=scheduler)
-        generator =torch.Generator(device="cuda")
+        generator = torch.Generator(device="cuda")
         generator.manual_seed(random.randint(0, 10000000))
         output = await loop.run_in_executor(None, lambda: pipeline(image_input.prompt, generator = generator))
         logger.info(f"output: {output}")
