@@ -8,17 +8,17 @@ import PIL.Image
 import torch
 
 from diffusers import StableDiffusionXLPipeline
-from diffusers.callbacks import PipelineCallback, MultiPipelineCallbacks
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-from diffusers.utils import PIL_INTERPOLATION, logging, deprecate, is_torch_xla_available, replace_example_docstring
+from diffusers.utils import PIL_INTERPOLATION, deprecate, is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
-    import torch_xla.core.xla_model as xm # type: ignore
+    import torch_xla.core.xla_model as xm  # type: ignore
 
     XLA_AVAILABLE = True
 else:
@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         >>> result_img = pipe(ref_image=input_image,
-                        prompt="a cat",
+                        prompt="a dog",
                         num_inference_steps=20,
                         reference_attn=True,
                         reference_adain=True).images[0]
@@ -170,7 +170,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         # aligning device to prevent device errors when concating it with the latent model input
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
         return ref_image_latents
-    
+
     def prepare_ref_image(
         self,
         image,
@@ -223,22 +223,27 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             image = torch.cat([image] * 2)
 
         return image
-    
-    def check_ref_inputs(self, ref_image, reference_guidance_start, reference_guidance_end, style_fidelity, reference_attn, reference_adain):
+
+    def check_ref_inputs(
+        self,
+        ref_image,
+        reference_guidance_start,
+        reference_guidance_end,
+        style_fidelity,
+        reference_attn,
+        reference_adain,
+    ):
         ref_image_is_pil = isinstance(ref_image, PIL.Image.Image)
         ref_image_is_tensor = isinstance(ref_image, torch.Tensor)
 
-        if (
-            not ref_image_is_pil
-            and not ref_image_is_tensor
-        ):
+        if not ref_image_is_pil and not ref_image_is_tensor:
             raise TypeError(
                 f"ref image must be passed and be one of PIL image or torch tensor, but is {type(ref_image)}"
             )
-        
+
         if not reference_attn and not reference_adain:
             raise ValueError("`reference_attn` or `reference_adain` must be True.")
-        
+
         if style_fidelity < 0.0:
             raise ValueError(f"style fidelity: {style_fidelity} can't be smaller than 0.")
         if style_fidelity > 1.0:
@@ -252,7 +257,6 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             raise ValueError(f"reference guidance start: {reference_guidance_start} can't be smaller than 0.")
         if reference_guidance_end > 1.0:
             raise ValueError(f"reference guidance end: {reference_guidance_end} can't be larger than 1.0.")
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -519,7 +523,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             reference_guidance_end,
             style_fidelity,
             reference_attn,
-            reference_adain
+            reference_adain,
         )
 
         self._guidance_scale = guidance_scale
@@ -610,7 +614,9 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         # 8.1 Create tensor stating which reference controlnets to keep
         reference_keeps = []
         for i in range(len(timesteps)):
-            reference_keep = 1.0 - float(i / len(timesteps) < reference_guidance_start or (i + 1) / len(timesteps) > reference_guidance_end)
+            reference_keep = 1.0 - float(
+                i / len(timesteps) < reference_guidance_start or (i + 1) / len(timesteps) > reference_guidance_end
+            )
             reference_keeps.append(reference_keep)
 
         # 8.2 Modify self attention and group norm
