@@ -2699,7 +2699,7 @@ from .stable_diffusion_xl_controlnet_reference import StableDiffusionXLControlNe
 
 # download an image
 canny_image = load_image(
-    "https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a"
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg"
 )
 
 ref_image = load_image(
@@ -2741,7 +2741,7 @@ image = pipe(
 
 Canny ControlNet Image
 
-![canny_image](https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a)
+![canny_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg)
 
 Reference Image
 
@@ -2753,15 +2753,15 @@ Output Image
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/2097baad-e19b-432c-af18-8eb74af3e5dc)
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_attn_adain_canny_cat.png)
 
 `reference_attn=False, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/5db2ad5d-7b01-4a4e-ba05-67342f67c195)
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_adain_canny_cat.png)
 
 `reference_attn=True, reference_adain=False, num_inference_steps=20, style_fidelity=1.0`
 
-![Output_image](https://github.com/user-attachments/assets/6041bc36-a972-467d-b656-a6a9a742b8bd)
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_attn_canny_cat.png)
 
 ### Stable diffusion fabric pipeline
 

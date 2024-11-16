@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # download an image for the Canny controlnet
         >>> canny_image = load_image(
-        ...     "https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a"
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg"
         ... )
 
         >>> # download an image for the Reference controlnet
