@@ -431,21 +431,6 @@ class ResidualBlock(nn.Module):
         return res
 
 
-class OpSequential(nn.Module):
-    def __init__(self, op_list: list[Optional[nn.Module]]):
-        super().__init__()
-        valid_op_list = []
-        for op in op_list:
-            if op is not None:
-                valid_op_list.append(op)
-        self.op_list = nn.ModuleList(valid_op_list)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for op in self.op_list:
-            x = op(x)
-        return x
-
-
 def build_block(
     block_type: str, in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str]
 ) -> nn.Module:
@@ -557,21 +542,22 @@ def build_encoder_project_in_block(in_channels: int, out_channels: int, factor: 
 def build_encoder_project_out_block(
     in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str], shortcut: Optional[str]
 ):
-    block = OpSequential(
-        [
-            build_norm(norm),
-            get_activation(act) if act is not None else None,
-            ConvLayer(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=3,
-                stride=1,
-                use_bias=True,
-                norm=None,
-                act_func=None,
-            ),
-        ]
-    )
+    layers = []
+    if norm is not None:
+        layers.append(build_norm(norm))
+    if act is not None:
+        layers.append(get_activation(act))
+    layers.append(ConvLayer(
+        in_channels=in_channels,
+        out_channels=out_channels,
+        kernel_size=3,
+        stride=1,
+        use_bias=True,
+        norm=None,
+        act_func=None,
+    ))
+    block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*layers))]))
+
     if shortcut is None:
         pass
     elif shortcut == "averaging":
@@ -609,10 +595,12 @@ def build_decoder_project_in_block(in_channels: int, out_channels: int, shortcut
 def build_decoder_project_out_block(
     in_channels: int, out_channels: int, factor: int, upsample_block_type: str, norm: Optional[str], act: Optional[str]
 ):
-    layers: list[nn.Module] = [
-        build_norm(norm, in_channels),
-        get_activation(act) if act is not None else None,
-    ]
+    layers: list[nn.Module] = []
+    if norm is not None:
+        layers.append(build_norm(norm, in_channels))
+    if act is not None:
+        layers.append(get_activation(act))
+    
     if factor == 1:
         layers.append(
             ConvLayer(
@@ -633,7 +621,8 @@ def build_decoder_project_out_block(
         )
     else:
         raise ValueError(f"upsample factor {factor} is not supported for decoder project out")
-    return OpSequential(layers)
+    block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*layers))]))
+    return block
 
 
 class Encoder(nn.Module):
@@ -671,7 +660,7 @@ class Encoder(nn.Module):
             downsample_block_type=downsample_block_type,
         )
 
-        self.stages: list[OpSequential] = []
+        self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in enumerate(zip(width_list, depth_list)):
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
             stage = build_stage_main(
@@ -685,7 +674,7 @@ class Encoder(nn.Module):
                     shortcut=downsample_shortcut,
                 )
                 stage.append(downsample_block)
-            self.stages.append(OpSequential(stage))
+            self.stages.append(nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
         self.stages = nn.ModuleList(self.stages)
 
         self.project_out = build_encoder_project_out_block(
@@ -743,7 +732,7 @@ class Decoder(nn.Module):
             shortcut=in_shortcut,
         )
 
-        self.stages: list[OpSequential] = []
+        self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
             stage = []
             if stage_id < num_stages - 1 and depth > 0:
@@ -770,7 +759,7 @@ class Decoder(nn.Module):
                     ),
                 )
             )
-            self.stages.insert(0, OpSequential(stage))
+            self.stages.insert(0, nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
         self.stages = nn.ModuleList(self.stages)
 
         self.project_out = build_decoder_project_out_block(
