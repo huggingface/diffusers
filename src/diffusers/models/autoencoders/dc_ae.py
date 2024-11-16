@@ -73,7 +73,14 @@ class ConvLayer(nn.Module):
             groups=groups,
             bias=use_bias,
         )
-        self.norm = build_norm(norm, num_features=out_channels)
+        if norm is None:
+            self.norm = None
+        elif norm == "rms2d":
+            self.norm = RMSNorm2d(normalized_shape=out_channels)
+        elif norm == "bn2d":
+            self.norm = BatchNorm2d(num_features=out_channels)
+        else:
+            raise ValueError(f"norm {norm} is not supported")
         self.act = get_activation(act_func) if act_func is not None else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -532,9 +539,17 @@ def build_encoder_project_in_block(in_channels: int, out_channels: int, factor: 
 def build_encoder_project_out_block(
     in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str], shortcut: Optional[str]
 ):
-    layers = []
-    if norm is not None:
-        layers.append(build_norm(norm))
+    layers: list[nn.Module] = []
+    
+    if norm is None:
+        pass
+    elif norm == "rms2d":
+        layers.append(RMSNorm2d(normalized_shape=in_channels))
+    elif norm == "bn2d":
+        layers.append(BatchNorm2d(num_features=in_channels))
+    else:
+        raise ValueError(f"norm {norm} is not supported")
+    
     if act is not None:
         layers.append(get_activation(act))
     layers.append(ConvLayer(
@@ -586,8 +601,16 @@ def build_decoder_project_out_block(
     in_channels: int, out_channels: int, factor: int, upsample_block_type: str, norm: Optional[str], act: Optional[str]
 ):
     layers: list[nn.Module] = []
-    if norm is not None:
-        layers.append(build_norm(norm, in_channels))
+
+    if norm is None:
+        pass
+    elif norm == "rms2d":
+        layers.append(RMSNorm2d(normalized_shape=in_channels))
+    elif norm == "bn2d":
+        layers.append(BatchNorm2d(num_features=in_channels))
+    else:
+        raise ValueError(f"norm {norm} is not supported")
+
     if act is not None:
         layers.append(get_activation(act))
     
