@@ -41,16 +41,6 @@ class RMSNorm2d(nn.LayerNorm):
         return x
 
 
-def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> Optional[nn.Module]:
-    if name is None:
-        norm = None
-    elif name == "rms2d":
-        norm = RMSNorm2d(normalized_shape=num_features)
-    elif name == "bn2d":
-        norm = BatchNorm2d(num_features=num_features)
-    else:
-        raise ValueError(f"norm {name} is not supported")
-    return norm
 
 
 class ConvLayer(nn.Module):
