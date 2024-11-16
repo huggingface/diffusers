@@ -34,7 +34,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.schedulers import UniPCMultistepScheduler
         >>> from diffusers.utils import load_image
 
-        >>> input_image = load_image("https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a")
+        >>> input_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg")
 
         >>> pipe = StableDiffusionXLReferencePipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",

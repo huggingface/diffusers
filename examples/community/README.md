@@ -2627,7 +2627,7 @@ from diffusers.schedulers import UniPCMultistepScheduler
 
 from .stable_diffusion_xl_reference import StableDiffusionXLReferencePipeline
 
-input_image = load_image("https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a")
+input_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg")
 
 # pipe = DiffusionPipeline.from_pretrained(
 #     "stabilityai/stable-diffusion-xl-base-1.0",
@@ -2653,14 +2653,14 @@ result_img = pipe(ref_image=input_image,
 
 Reference Image
 
-![reference_image](https://github.com/user-attachments/assets/b87eb308-2309-43af-9b53-aae4400c1e6a)
+![reference_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg)
 
 Output Image
 
 `prompt: a dog`
 
 `reference_attn=False, reference_adain=True, num_inference_steps=20`
-![Output_image](https://github.com/user-attachments/assets/62fe95b0-f4a6-4dcc-9778-c79632967f7e)
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_adain_dog.png)
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
