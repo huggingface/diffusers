@@ -1,3 +1,4 @@
+
 # Create a server
 
 Diffusers' pipelines can be used as an inference engine for a server. It supports concurrent and multithreaded requests to generate images that may be requested by multiple users at the same time.
@@ -7,7 +8,7 @@ This guide will show you how to use the [`StableDiffusion3Pipeline`] in a server
 
 Start by navigating to the `examples/server` folder and installing all of the dependencies.
 
-``py
+```py
 pip install .
 pip install -f requirements.txt
 ```
