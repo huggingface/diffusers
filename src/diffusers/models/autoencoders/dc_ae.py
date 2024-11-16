@@ -33,7 +33,31 @@ from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnsh
 from .vae import DecoderOutput
 
 
-class RMSNorm2d(nn.LayerNorm):
+class RMSNorm2d(nn.Module):
+    def __init__(self, num_features: int, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+        if self.elementwise_affine:
+            self.weight = torch.nn.parameter.Parameter(torch.empty(self.num_features, **factory_kwargs))
+            if bias:
+                self.bias = torch.nn.parameter.Parameter(torch.empty(self.num_features, **factory_kwargs))
+            else:
+                self.register_parameter('bias', None)
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.elementwise_affine:
+            torch.nn.init.ones_(self.weight)
+            if self.bias is not None:
+                torch.nn.init.zeros_(self.bias)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = (x / torch.sqrt(torch.square(x.float()).mean(dim=1, keepdim=True) + self.eps)).to(x.dtype)
         if self.elementwise_affine:
@@ -74,7 +98,7 @@ class ConvLayer(nn.Module):
         if norm is None:
             self.norm = None
         elif norm == "rms2d":
-            self.norm = RMSNorm2d(normalized_shape=out_channels)
+            self.norm = RMSNorm2d(num_features=out_channels)
         elif norm == "bn2d":
             self.norm = BatchNorm2d(num_features=out_channels)
         else:
@@ -469,54 +493,6 @@ def build_stage_main(
     return stage
 
 
-def build_downsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
-    if block_type == "Conv":
-        block = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            stride=2,
-            padding=1,
-        )
-    elif block_type == "ConvPixelUnshuffle":
-        block = ConvPixelUnshuffleDownsample2D(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
-        )
-    else:
-        raise ValueError(f"block_type {block_type} is not supported for downsampling")
-    if shortcut is None:
-        pass
-    elif shortcut == "averaging":
-        shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
-            in_channels=in_channels, out_channels=out_channels, factor=2
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for downsample")
-    return block
-
-
-def build_upsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
-    if block_type == "ConvPixelShuffle":
-        block = ConvPixelShuffleUpsample2D(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
-        )
-    elif block_type == "InterpolateConv":
-        block = Upsample2D(channels=in_channels, use_conv=True, out_channels=out_channels)
-    else:
-        raise ValueError(f"block_type {block_type} is not supported for upsampling")
-    if shortcut is None:
-        pass
-    elif shortcut == "duplicating":
-        shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
-            in_channels=in_channels, out_channels=out_channels, factor=2
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for upsample")
-    return block
-
-
 class Encoder(nn.Module):
     def __init__(
         self, 
@@ -547,18 +523,30 @@ class Encoder(nn.Module):
         
         # project in
         if depth_list[0] > 0:
-            self.project_in = nn.Conv2d(
+            project_in_block = nn.Conv2d(
                 in_channels=in_channels,
                 out_channels=width_list[0],
                 kernel_size=3,
                 padding=1,
             )
         elif depth_list[1] > 0:
-            self.project_in = build_downsample_block(
-                block_type=downsample_block_type, in_channels=in_channels, out_channels=width_list[1], shortcut=None
-            )
+            if downsample_block_type == "Conv":
+                project_in_block = nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=width_list[1],
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                )
+            elif downsample_block_type == "ConvPixelUnshuffle":
+                project_in_block = ConvPixelUnshuffleDownsample2D(
+                    in_channels=in_channels, out_channels=width_list[1], kernel_size=3, factor=2
+                )
+            else:
+                raise ValueError(f"block_type {downsample_block_type} is not supported for downsampling")
         else:
             raise ValueError(f"depth list {depth_list} is not supported for encoder project in")
+        self.project_in = project_in_block
 
         # stages
         self.stages: list[nn.Module] = []
@@ -568,12 +556,30 @@ class Encoder(nn.Module):
                 width=width, depth=depth, block_type=stage_block_type, norm=norm, act=act, input_width=width
             )
             if stage_id < num_stages - 1 and depth > 0:
-                downsample_block = build_downsample_block(
-                    block_type=downsample_block_type,
-                    in_channels=width,
-                    out_channels=width_list[stage_id + 1] if downsample_match_channel else width,
-                    shortcut=downsample_shortcut,
-                )
+                downsample_out_channels = width_list[stage_id + 1] if downsample_match_channel else width
+                if downsample_block_type == "Conv":
+                    downsample_block = nn.Conv2d(
+                        in_channels=width,
+                        out_channels=downsample_out_channels,
+                        kernel_size=3,
+                        stride=2,
+                        padding=1,
+                    )
+                elif downsample_block_type == "ConvPixelUnshuffle":
+                    downsample_block = ConvPixelUnshuffleDownsample2D(
+                        in_channels=width, out_channels=downsample_out_channels, kernel_size=3, factor=2
+                    )
+                else:
+                    raise ValueError(f"downsample_block_type {downsample_block_type} is not supported for downsampling")
+                if downsample_shortcut is None:
+                    pass
+                elif downsample_shortcut == "averaging":
+                    shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
+                        in_channels=width, out_channels=downsample_out_channels, factor=2
+                    )
+                    downsample_block = ResidualBlock(downsample_block, shortcut_block)
+                else:
+                    raise ValueError(f"shortcut {downsample_shortcut} is not supported for downsample")
                 stage.append(downsample_block)
             self.stages.append(nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
         self.stages = nn.ModuleList(self.stages)
@@ -583,7 +589,7 @@ class Encoder(nn.Module):
         if out_norm is None:
             pass
         elif out_norm == "rms2d":
-            project_out_layers.append(RMSNorm2d(normalized_shape=width_list[-1]))
+            project_out_layers.append(RMSNorm2d(num_features=width_list[-1]))
         elif out_norm == "bn2d":
             project_out_layers.append(BatchNorm2d(num_features=width_list[-1]))
         else:
@@ -679,12 +685,24 @@ class Decoder(nn.Module):
         for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
             stage = []
             if stage_id < num_stages - 1 and depth > 0:
-                upsample_block = build_upsample_block(
-                    block_type=upsample_block_type,
-                    in_channels=width_list[stage_id + 1],
-                    out_channels=width if upsample_match_channel else width_list[stage_id + 1],
-                    shortcut=upsample_shortcut,
-                )
+                upsample_out_channels = width if upsample_match_channel else width_list[stage_id + 1]
+                if upsample_block_type == "ConvPixelShuffle":
+                    upsample_block = ConvPixelShuffleUpsample2D(
+                        in_channels=width_list[stage_id + 1], out_channels=upsample_out_channels, kernel_size=3, factor=2
+                    )
+                elif upsample_block_type == "InterpolateConv":
+                    upsample_block = Upsample2D(channels=width_list[stage_id + 1], use_conv=True, out_channels=upsample_out_channels)
+                else:
+                    raise ValueError(f"upsample_block_type {upsample_block_type} is not supported")
+                if upsample_shortcut is None:
+                    pass
+                elif upsample_shortcut == "duplicating":
+                    shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
+                        in_channels=width_list[stage_id + 1], out_channels=upsample_out_channels, factor=2
+                    )
+                    upsample_block = ResidualBlock(upsample_block, shortcut_block)
+                else:
+                    raise ValueError(f"shortcut {upsample_shortcut} is not supported for upsample")
                 stage.append(upsample_block)
 
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
@@ -716,7 +734,7 @@ class Decoder(nn.Module):
         if out_norm is None:
             pass
         elif out_norm == "rms2d":
-            project_out_layers.append(RMSNorm2d(normalized_shape=project_out_in_channels))
+            project_out_layers.append(RMSNorm2d(num_features=project_out_in_channels))
         elif out_norm == "bn2d":
             project_out_layers.append(BatchNorm2d(num_features=project_out_in_channels))
         else:
@@ -735,11 +753,16 @@ class Decoder(nn.Module):
                 )
             )
         elif depth_list[1] > 0:
-            project_out_layers.append(
-                build_upsample_block(
-                    block_type=upsample_block_type, in_channels=project_out_in_channels, out_channels=in_channels, shortcut=None
+            if upsample_block_type == "ConvPixelShuffle":
+                project_out_conv = ConvPixelShuffleUpsample2D(
+                    in_channels=project_out_in_channels, out_channels=in_channels, kernel_size=3, factor=2
                 )
-            )
+            elif upsample_block_type == "InterpolateConv":
+                project_out_conv = Upsample2D(channels=project_out_in_channels, use_conv=True, out_channels=in_channels)
+            else:
+                raise ValueError(f"upsample_block_type {upsample_block_type} is not supported for upsampling")
+
+            project_out_layers.append(project_out_conv)
         else:
             raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
         self.project_out = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*project_out_layers))]))
