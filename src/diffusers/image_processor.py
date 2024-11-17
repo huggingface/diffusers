@@ -795,13 +795,11 @@ class VaeImageProcessor(ConfigMixin):
                 The final image with the overlay applied.
         """
 
-        width, height = image.width, image.height
-
-        init_image = self.resize(init_image, width=width, height=height)
-        mask = self.resize(mask, width=width, height=height)
+        width, height = init_image.width, init_image.height
 
         init_image_masked = PIL.Image.new("RGBa", (width, height))
         init_image_masked.paste(init_image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert("L")))
+
         init_image_masked = init_image_masked.convert("RGBA")
 
         if crop_coords is not None:
