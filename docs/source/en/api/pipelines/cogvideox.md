@@ -34,7 +34,7 @@ There are three official CogVideoX checkpoints for text-to-video and video-to-vi
 |---|---|
 | [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b) | torch.float16 |
 | [`THUDM/CogVideoX-5b`](https://huggingface.co/THUDM/CogVideoX-5b) | torch.bfloat16 |
-| [`THUDM/CogVideoX-1.5-5b`](https://huggingface.co/THUDM/CogVideoX-1.5-5b) | torch.bfloat16 |
+| [`THUDM/CogVideoX1.5-5b`](https://huggingface.co/THUDM/CogVideoX1.5-5b) | torch.bfloat16 |
 
 There are two official CogVideoX checkpoints available for image-to-video.
 | checkpoints | recommended inference dtype |
