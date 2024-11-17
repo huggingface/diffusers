@@ -799,7 +799,7 @@ class VaeImageProcessor(ConfigMixin):
 
         init_image_masked = PIL.Image.new("RGBa", (width, height))
         init_image_masked.paste(init_image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert("L")))
-        
+
         init_image_masked = init_image_masked.convert("RGBA")
 
         if crop_coords is not None:
@@ -810,13 +810,12 @@ class VaeImageProcessor(ConfigMixin):
             image = self.resize(image, height=h, width=w, resize_mode="crop")
             base_image.paste(image, (x, y))
             image = base_image.convert("RGB")
-            
-        image = image.convert("RGBA") 
+
+        image = image.convert("RGBA")
         image.alpha_composite(init_image_masked)
         image = image.convert("RGB")
 
         return image
-
 
 
 class VaeImageProcessorLDM3D(VaeImageProcessor):
