@@ -2816,7 +2816,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        print("Inside Mochi-1 loader.")
         self.load_lora_into_transformer(
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
@@ -2898,7 +2897,6 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             raise ValueError("You must pass `transformer_lora_layers`.")
 
         if transformer_lora_layers:
-            print("Saving transformer lora layers.")
             state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 
         # Save the model
