@@ -33,16 +33,14 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPImageProcessor,
-        CLIPVisionModelWithProjection,
-    )
+    from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
     from ..models.attention_processor import (
         AttnProcessor,
         AttnProcessor2_0,
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
+        IPAdapterXFormersAttnProcessor,
     )
 
 logger = logging.get_logger(__name__)
@@ -76,7 +74,7 @@ class IPAdapterMixin:
                 list is passed, it should have the same length as `weight_name`.
             weight_name (`str` or `List[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
-                `weight_name`.
+                `subfolder`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
                 The subfolder location of the image encoder within a larger model repository on the Hub or locally.
                 Pass `None` to not load the image encoder. If the image encoder is located in a folder inside
@@ -208,6 +206,8 @@ class IPAdapterMixin:
                             pretrained_model_name_or_path_or_dict,
                             subfolder=image_encoder_subfolder,
                             low_cpu_mem_usage=low_cpu_mem_usage,
+                            cache_dir=cache_dir,
+                            local_files_only=local_files_only,
                         ).to(self.device, dtype=self.dtype)
                         self.register_modules(image_encoder=image_encoder)
                     else:
@@ -222,7 +222,12 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                feature_extractor = CLIPImageProcessor()
+                # FaceID IP adapters don't need the image encoder so it's not present, in this case we default to 224
+                default_clip_size = 224
+                clip_image_size = (
+                    self.image_encoder.config.image_size if self.image_encoder is not None else default_clip_size
+                )
+                feature_extractor = CLIPImageProcessor(size=clip_image_size, crop_size=clip_image_size)
                 self.register_modules(feature_extractor=feature_extractor)
 
         # load ip-adapter into unet
@@ -277,7 +282,9 @@ class IPAdapterMixin:
         scale_configs = _maybe_expand_lora_scales(unet, scale, default_scale=0.0)
 
         for attn_name, attn_processor in unet.attn_processors.items():
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+            if isinstance(
+                attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
+            ):
                 if len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
                         f"Cannot assign {len(scale_configs)} scale_configs to "
@@ -319,7 +326,13 @@ class IPAdapterMixin:
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
-        self.config.encoder_hid_dim_type = None
+        self.unet.config.encoder_hid_dim_type = None
+
+        # Kolors: restore `encoder_hid_proj` with `text_encoder_hid_proj`
+        if hasattr(self.unet, "text_encoder_hid_proj") and self.unet.text_encoder_hid_proj is not None:
+            self.unet.encoder_hid_proj = self.unet.text_encoder_hid_proj
+            self.unet.text_encoder_hid_proj = None
+            self.unet.config.encoder_hid_dim_type = "text_proj"
 
         # restore original Unet attention processors layers
         attn_procs = {}
@@ -329,7 +342,9 @@ class IPAdapterMixin:
             )
             attn_procs[name] = (
                 attn_processor_class
-                if isinstance(value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+                if isinstance(
+                    value, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
+                )
                 else value.__class__()
             )
         self.unet.set_attn_processor(attn_procs)
