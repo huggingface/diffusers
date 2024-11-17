@@ -240,6 +240,7 @@ class PeftLoraLoaderMixinTests:
                 modules_to_save["unet"] = pipe.unet
 
             if "transformer" in lora_loadable_modules and hasattr(pipe, "transformer"):
+                print("Transformer in the component.")
                 modules_to_save["transformer"] = pipe.transformer
 
         return modules_to_save
@@ -348,6 +349,7 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs()
             output_lora = pipe(**inputs)[0]
+
             self.assertTrue(output_lora.shape == self.output_shape)
 
     @require_peft_version_greater("0.13.1")

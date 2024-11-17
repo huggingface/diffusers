@@ -48,6 +48,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
+    "MochiTransformer3DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -192,10 +193,13 @@ class PeftAdapterMixin:
 
         keys = list(state_dict.keys())
         transformer_keys = [k for k in keys if k.startswith(prefix)]
+        print(f"{state_dict.keys()=}")
         if len(transformer_keys) > 0:
             state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in transformer_keys}
+            print(f"{state_dict.keys()=}")
 
         if len(state_dict.keys()) > 0:
+            print("Inside loading.")
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
