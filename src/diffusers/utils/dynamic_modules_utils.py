@@ -199,7 +199,6 @@ def get_cached_module_file(
     module_file: str,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
-    resume_download: Optional[bool] = None,
     proxies: Optional[Dict[str, str]] = None,
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
@@ -226,9 +225,7 @@ def get_cached_module_file(
             cache should not be used.
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
-            exist. resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+            exist.
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
@@ -309,7 +306,6 @@ def get_cached_module_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
             )
@@ -329,7 +325,7 @@ def get_cached_module_file(
         # We always copy local files (we could hash the file to see if there was a change, and give them the name of
         # that hash, to only copy when there is a modification but it seems overkill for now).
         # The only reason we do the copy is to avoid putting too many folders in sys.path.
-        shutil.copy(resolved_module_file, submodule_path / module_file)
+        shutil.copyfile(resolved_module_file, submodule_path / module_file)
         for module_needed in modules_needed:
             if len(module_needed.split(".")) == 2:
                 module_needed = "/".join(module_needed.split("."))
@@ -337,7 +333,7 @@ def get_cached_module_file(
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
             module_needed = f"{module_needed}.py"
-            shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+            shutil.copyfile(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
     else:
         # Get the commit hash
         # TODO: we will get this info in the etag soon, so retrieve it from there and not here.
@@ -354,7 +350,7 @@ def get_cached_module_file(
                 module_folder = module_file.split("/")[0]
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
-            shutil.copy(resolved_module_file, submodule_path / module_file)
+            shutil.copyfile(resolved_module_file, submodule_path / module_file)
 
         # Make sure we also have every file with relative
         for module_needed in modules_needed:
@@ -366,7 +362,6 @@ def get_cached_module_file(
                     f"{module_needed}.py",
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     token=token,
                     revision=revision,
@@ -382,7 +377,6 @@ def get_class_from_dynamic_module(
     class_name: Optional[str] = None,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
-    resume_download: Optional[bool] = None,
     proxies: Optional[Dict[str, str]] = None,
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
@@ -419,9 +413,6 @@ def get_class_from_dynamic_module(
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
             exist.
-        resume_download:
-            Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1 of
-            Diffusers.
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
@@ -458,7 +449,6 @@ def get_class_from_dynamic_module(
         module_file,
         cache_dir=cache_dir,
         force_download=force_download,
-        resume_download=resume_download,
         proxies=proxies,
         token=token,
         revision=revision,

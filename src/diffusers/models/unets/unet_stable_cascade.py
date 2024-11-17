@@ -455,7 +455,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         level_outputs = []
         block_group = zip(self.down_blocks, self.down_downscalers, self.down_repeat_mappers)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -478,9 +478,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                                 create_custom_forward(block), x, r_embed, use_reentrant=False
                             )
                         else:
-                            x = x = torch.utils.checkpoint.checkpoint(
-                                create_custom_forward(block), use_reentrant=False
-                            )
+                            x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), use_reentrant=False)
                     if i < len(repmap):
                         x = repmap[i](x)
                 level_outputs.insert(0, x)
@@ -506,7 +504,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         x = level_outputs[0]
         block_group = zip(self.up_blocks, self.up_upscalers, self.up_repeat_mappers)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):

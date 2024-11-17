@@ -23,7 +23,7 @@ Then load and enable the [`DeepCacheSDHelper`](https://github.com/horseee/DeepCa
 ```diff
   import torch
   from diffusers import StableDiffusionPipeline
-  pipe = StableDiffusionPipeline.from_pretrained('runwayml/stable-diffusion-v1-5', torch_dtype=torch.float16).to("cuda")
+  pipe = StableDiffusionPipeline.from_pretrained('stable-diffusion-v1-5/stable-diffusion-v1-5', torch_dtype=torch.float16).to("cuda")
 
 + from DeepCache import DeepCacheSDHelper
 + helper = DeepCacheSDHelper(pipe=pipe)

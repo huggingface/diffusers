@@ -135,7 +135,7 @@ pip install -U -r requirements_flax.txt
 그러면 다음과 같이 [Flax 학습 스크립트](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_flax.py)를 실행할 수 있습니다.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export dataset_name="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \

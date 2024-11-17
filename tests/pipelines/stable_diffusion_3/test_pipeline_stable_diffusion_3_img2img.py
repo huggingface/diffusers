@@ -3,6 +3,7 @@ import random
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -16,7 +17,7 @@ from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     floats_tensor,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_big_gpu_with_torch_cuda,
     slow,
     torch_device,
 )
@@ -108,7 +109,6 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
 
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
@@ -195,7 +195,8 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
 
 
 @slow
-@require_torch_gpu
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -239,20 +240,39 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, :10, :10]
         expected_slice = np.array(
             [
-                [0.50097656, 0.44726562, 0.40429688],
-                [0.5048828, 0.45703125, 0.38110352],
-                [0.4987793, 0.45141602, 0.38134766],
-                [0.49682617, 0.45336914, 0.38354492],
-                [0.49804688, 0.4555664, 0.39379883],
-                [0.5083008, 0.4645996, 0.40039062],
-                [0.50341797, 0.46240234, 0.39770508],
-                [0.49926758, 0.4572754, 0.39575195],
-                [0.50634766, 0.46435547, 0.39794922],
-                [0.50341797, 0.4572754, 0.39746094],
-            ],
-            dtype=np.float32,
+                0.5435,
+                0.4673,
+                0.5732,
+                0.4438,
+                0.3557,
+                0.4912,
+                0.4331,
+                0.3491,
+                0.4915,
+                0.4287,
+                0.3477,
+                0.4849,
+                0.4355,
+                0.3469,
+                0.4871,
+                0.4431,
+                0.3538,
+                0.4912,
+                0.4521,
+                0.3643,
+                0.5059,
+                0.4587,
+                0.3730,
+                0.5166,
+                0.4685,
+                0.3845,
+                0.5264,
+                0.4746,
+                0.3914,
+                0.5342,
+            ]
         )
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
-        assert max_diff < 1e-4, f"Outputs are not close enough, got {image_slice}"
+        assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"

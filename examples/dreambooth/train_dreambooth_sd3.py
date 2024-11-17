@@ -15,7 +15,6 @@
 
 import argparse
 import copy
-import gc
 import itertools
 import logging
 import math
@@ -51,7 +50,7 @@ from diffusers import (
     StableDiffusion3Pipeline,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
+from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils import (
     check_min_version,
     is_wandb_available,
@@ -64,7 +63,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.30.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -78,6 +77,15 @@ def save_model_card(
     validation_prompt=None,
     repo_folder=None,
 ):
+    if "large" in base_model:
+        model_variant = "SD3.5-Large"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3.5-large/blob/main/LICENSE.md"
+        variant_tags = ["sd3.5-large", "sd3.5", "sd3.5-diffusers"]
+    else:
+        model_variant = "SD3"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE.md"
+        variant_tags = ["sd3", "sd3-diffusers"]
+
     widget_dict = []
     if images is not None:
         for i, image in enumerate(images):
@@ -87,7 +95,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# SD3 DreamBooth - {repo_id}
+# {model_variant} DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -95,26 +103,31 @@ def save_model_card(
 
 These are {repo_id} DreamBooth weights for {base_model}.
 
-The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [SD3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sd3.md).
 
-Text encoder was fine-tuned: {train_text_encoder}.
+Was the text encoder fine-tuned? {train_text_encoder}.
 
 ## Trigger words
 
-You should use {instance_prompt} to trigger the image generation.
+You should use `{instance_prompt}` to trigger the image generation.
 
-## Download model
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
 
-[Download]({repo_id}/tree/main) them in the Files & versions tab.
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+pipeline = AutoPipelineForText2Image.from_pretrained('{repo_id}', torch_dtype=torch.float16).to('cuda')
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
 
 ## License
 
-Please adhere to the licensing terms as described `[here](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE)`.
+Please adhere to the licensing terms as described `[here]({license_url})`.
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++",
+        license="other",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -124,10 +137,9 @@ Please adhere to the licensing terms as described `[here](https://huggingface.co
         "text-to-image",
         "diffusers-training",
         "diffusers",
-        "sd3",
-        "sd3-diffusers",
         "template:sd-lora",
     ]
+    tags += variant_tags
 
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
@@ -152,6 +164,7 @@ def log_validation(
     accelerator,
     pipeline_args,
     epoch,
+    torch_dtype,
     is_final_validation=False,
 ):
     logger.info(
@@ -184,8 +197,7 @@ def log_validation(
             )
 
     del pipeline
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    free_memory()
 
     return images
 
@@ -488,6 +500,13 @@ def parse_args(input_args=None):
         type=float,
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
+    )
+    parser.add_argument(
+        "--precondition_outputs",
+        type=int,
+        default=1,
+        help="Flag indicating if we are preconditioning the model outputs or not as done in EDM. This affects how "
+        "model `target` is calculated.",
     )
     parser.add_argument(
         "--optimizer",
@@ -883,20 +902,26 @@ def _encode_prompt_with_clip(
     tokenizer,
     prompt: str,
     device=None,
+    text_input_ids=None,
     num_images_per_prompt: int = 1,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=77,
-        truncation=True,
-        return_tensors="pt",
-    )
+    if tokenizer is not None:
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=77,
+            truncation=True,
+            return_tensors="pt",
+        )
 
-    text_input_ids = text_inputs.input_ids
+        text_input_ids = text_inputs.input_ids
+    else:
+        if text_input_ids is None:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
+
     prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
     pooled_prompt_embeds = prompt_embeds[0]
@@ -918,6 +943,7 @@ def encode_prompt(
     max_sequence_length,
     device=None,
     num_images_per_prompt: int = 1,
+    text_input_ids_list=None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -926,13 +952,14 @@ def encode_prompt(
 
     clip_prompt_embeds_list = []
     clip_pooled_prompt_embeds_list = []
-    for tokenizer, text_encoder in zip(clip_tokenizers, clip_text_encoders):
+    for i, (tokenizer, text_encoder) in enumerate(zip(clip_tokenizers, clip_text_encoders)):
         prompt_embeds, pooled_prompt_embeds = _encode_prompt_with_clip(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             prompt=prompt,
             device=device if device is not None else text_encoder.device,
             num_images_per_prompt=num_images_per_prompt,
+            text_input_ids=text_input_ids_list[i] if text_input_ids_list else None,
         )
         clip_prompt_embeds_list.append(prompt_embeds)
         clip_pooled_prompt_embeds_list.append(pooled_prompt_embeds)
@@ -1052,8 +1079,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1310,7 +1336,6 @@ def main(args):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -1373,9 +1398,7 @@ def main(args):
         del tokenizers, text_encoders
         # Explicitly delete the objects as well, otherwise only the lists are deleted and the original references remain, preventing garbage collection
         del text_encoder_one, text_encoder_two, text_encoder_three
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        free_memory()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1544,7 +1567,7 @@ def main(args):
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
-                model_input = model_input * vae.config.scaling_factor
+                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
@@ -1564,8 +1587,9 @@ def main(args):
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
+                # zt = (1 - texp) * x + texp * z1
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
-                noisy_model_input = sigmas * noise + (1.0 - sigmas) * model_input
+                noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
@@ -1593,13 +1617,18 @@ def main(args):
 
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 # Preconditioning of the model outputs.
-                model_pred = model_pred * (-sigmas) + noisy_model_input
+                if args.precondition_outputs:
+                    model_pred = model_pred * (-sigmas) + noisy_model_input
+
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
                 # flow matching loss
-                target = model_input
+                if args.precondition_outputs:
+                    target = model_input
+                else:
+                    target = noise - model_input
 
                 if args.with_prior_preservation:
                     # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
@@ -1689,6 +1718,9 @@ def main(args):
                     text_encoder_one, text_encoder_two, text_encoder_three = load_text_encoders(
                         text_encoder_cls_one, text_encoder_cls_two, text_encoder_cls_three
                     )
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
+                    text_encoder_three.to(weight_dtype)
                 pipeline = StableDiffusion3Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1707,11 +1739,11 @@ def main(args):
                     accelerator=accelerator,
                     pipeline_args=pipeline_args,
                     epoch=epoch,
+                    torch_dtype=weight_dtype,
                 )
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two, text_encoder_three
-                    torch.cuda.empty_cache()
-                    gc.collect()
+                    free_memory()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -1757,6 +1789,7 @@ def main(args):
                 pipeline_args=pipeline_args,
                 epoch=epoch,
                 is_final_validation=True,
+                torch_dtype=weight_dtype,
             )
 
         if args.push_to_hub:

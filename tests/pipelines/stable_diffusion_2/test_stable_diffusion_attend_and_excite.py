@@ -142,7 +142,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = inputs = {
+        inputs = {
             "prompt": "a cat and a frog",
             "token_indices": [2, 5],
             "generator": generator,
