@@ -240,7 +240,6 @@ class PeftLoraLoaderMixinTests:
                 modules_to_save["unet"] = pipe.unet
 
             if "transformer" in lora_loadable_modules and hasattr(pipe, "transformer"):
-                print("Transformer in the component.")
                 modules_to_save["transformer"] = pipe.transformer
 
         return modules_to_save
