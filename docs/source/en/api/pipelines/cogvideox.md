@@ -41,8 +41,6 @@ There are two official CogVideoX checkpoints available for image-to-video.
 |---|---|
 | [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V) | torch.bfloat16 |
 | [`THUDM/CogVideoX-1.5-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-1.5-5b-I2V) | torch.bfloat16 |
-- [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V): The recommended dtype for running this model is `torch.bfloat16`.
-- [`THUDM/CogVideoX1.5-5b-I2V`](https://huggingface.co/THUDM/CogVideoX1.5-5b-I2V): The recommended dtype for running this mdoel is `torch.bfloat16`.
 
 For the CogVideoX 1.5 series:
 - Text-to-video (T2V) works best at a resolution of 1360x768 because it was trained with that specific resolution.
