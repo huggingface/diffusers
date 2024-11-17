@@ -264,6 +264,12 @@ def parse_args(input_args=None):
         " If not specified controlnet weights are initialized from unet.",
     )
     parser.add_argument(
+        "--num_extra_conditioning_channels",
+        type=int,
+        default=0,
+        help="Number of extra conditioning channels for controlnet.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
@@ -989,7 +995,9 @@ def main(args):
         controlnet = SD3ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
     else:
         logger.info("Initializing controlnet weights from transformer")
-        controlnet = SD3ControlNetModel.from_transformer(transformer, num_extra_conditioning_channels=0)
+        controlnet = SD3ControlNetModel.from_transformer(
+            transformer, num_extra_conditioning_channels=args.num_extra_conditioning_channels
+        )
 
     transformer.requires_grad_(False)
     vae.requires_grad_(False)
