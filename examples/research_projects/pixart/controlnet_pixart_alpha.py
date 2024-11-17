@@ -215,7 +215,7 @@ class PixArtControlNetTransformerModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block_index, block in enumerate(self.transformer.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 # rc todo: for training and gradient checkpointing
                 print("Gradient checkpointing is not supported for the controlnet transformer model, yet.")
                 exit(1)
