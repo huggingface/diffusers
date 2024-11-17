@@ -38,6 +38,7 @@ from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa:
 
 
 @require_peft_backend
+@skip_mps
 class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = MochiPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
@@ -104,7 +105,6 @@ class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @skip_mps
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
