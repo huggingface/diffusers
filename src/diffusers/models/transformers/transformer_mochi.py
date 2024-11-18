@@ -142,7 +142,7 @@ class MochiTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
-            joint_attention_mask=joint_attention_mask,
+            attention_mask=joint_attention_mask,
         )
 
         hidden_states = hidden_states + self.norm2(attn_hidden_states) * torch.tanh(gate_msa).unsqueeze(1)

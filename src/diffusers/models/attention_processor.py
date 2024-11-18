@@ -3524,7 +3524,6 @@ class MochiAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        joint_attention_mask=None,
     ) -> torch.Tensor:
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -3580,14 +3579,16 @@ class MochiAttnProcessor2_0:
         key = torch.cat([key, encoder_key], dim=2)
         value = torch.cat([value, encoder_value], dim=2)
 
-        query = query * joint_attention_mask[:, None, :, None]
-        key = key * joint_attention_mask[:, None, :, None]
-        value = value * joint_attention_mask[:, None, :, None]
+        # Zero out tokens based on the attention mask
+        query = query * attention_mask[:, None, :, None]
+        key = key * attention_mask[:, None, :, None]
+        value = value * attention_mask[:, None, :, None]
 
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states * joint_attention_mask[:, :, None]
+        # Zero out tokens based on attention mask
+        hidden_states = hidden_states * attention_mask[:, :, None]
 
         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
             (sequence_length, encoder_sequence_length), dim=1
