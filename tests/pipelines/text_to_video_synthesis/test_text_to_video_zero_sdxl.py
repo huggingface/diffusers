@@ -283,7 +283,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
     def test_pipeline_call_signature(self):
         pass
-    
+
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
