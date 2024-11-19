@@ -1784,11 +1784,7 @@ class PeftLoraLoaderMixinTests:
         missing_key = [k for k in state_dict if "lora_A" in k][0]
         del state_dict[missing_key]
 
-        logger = (
-            logging.get_logger("diffusers.loaders.unet")
-            if self.unet_kwargs is not None
-            else logging.get_logger("diffusers.loaders.peft")
-        )
+        logger = logging.get_logger("diffusers.loaders.peft")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(state_dict)
@@ -1823,11 +1819,7 @@ class PeftLoraLoaderMixinTests:
         unexpected_key = [k for k in state_dict if "lora_A" in k][0] + ".diffusers_cat"
         state_dict[unexpected_key] = torch.tensor(1.0, device=torch_device)
 
-        logger = (
-            logging.get_logger("diffusers.loaders.unet")
-            if self.unet_kwargs is not None
-            else logging.get_logger("diffusers.loaders.peft")
-        )
+        logger = logging.get_logger("diffusers.loaders.peft")
         logger.setLevel(30)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(state_dict)
