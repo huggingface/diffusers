@@ -37,12 +37,13 @@ def _replace_with_gguf_linear(model, compute_dtype):
     return model
 
 
-QK_K = 256
-K_SCALE_SIZE = 12
-
 # dequantize operations based on torch ports of GGUF dequantize_functions
 # from City96
 # more info: https://github.com/city96/ComfyUI-GGUF/blob/main/dequant.py
+
+
+QK_K = 256
+K_SCALE_SIZE = 12
 
 
 def to_uint32(x):
