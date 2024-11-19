@@ -333,25 +333,29 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         log_sigmas = np.log(sigmas)
+        if self.config.final_sigmas_type == "sigma_min":
+            sigma_last = sigmas[-1]
+        elif self.config.final_sigmas_type == "zero":
+            sigma_last = 0
+        else:
+            raise ValueError(
+                f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
+            )
         if self.config.use_karras_sigmas:
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            if self.config.final_sigmas_type == "sigma_min":
-                sigma_last = sigmas[-1]
-            elif self.config.final_sigmas_type == "zero":
-                sigma_last = 0
-            else:
-                raise ValueError(
-                    f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
-                )
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         elif self.config.use_exponential_sigmas:
+            sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         elif self.config.use_beta_sigmas:
+            sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             if self.config.final_sigmas_type == "sigma_min":
