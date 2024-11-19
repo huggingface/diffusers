@@ -298,8 +298,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
-            unet.load_attn_procs(
+            unet.load_lora_adapter(
                 state_dict,
+                prefix=cls.unet_name,
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
@@ -827,8 +828,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         if not only_text_encoder:
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
-            unet.load_attn_procs(
+            unet.load_lora_adapter(
                 state_dict,
+                prefix=cls.unet_name,
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
