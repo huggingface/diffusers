@@ -528,6 +528,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             self.transformer.unfuse_qkv_projections()
             self.fusing_transformer = False
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._prepare_rotary_positional_embeddings
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
@@ -541,11 +542,11 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         p = self.transformer.config.patch_size
         p_t = self.transformer.config.patch_size_t
 
-        if p_t is None:
-            # CogVideoX 1.0 I2V
-            base_size_width = self.transformer.config.sample_width // p
-            base_size_height = self.transformer.config.sample_height // p
+        base_size_width = self.transformer.config.sample_width // p
+        base_size_height = self.transformer.config.sample_height // p
 
+        if p_t is None:
+            # CogVideoX 1.0
             grid_crops_coords = get_resize_crop_region_for_grid(
                 (grid_height, grid_width), base_size_width, base_size_height
             )
@@ -556,9 +557,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 temporal_size=num_frames,
             )
         else:
-            # CogVideoX 1.5 I2V
-            base_size_width = self.transformer.config.sample_width // p
-            base_size_height = self.transformer.config.sample_height // p
+            # CogVideoX 1.5
             base_num_frames = (num_frames + p_t - 1) // p_t
 
             freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
