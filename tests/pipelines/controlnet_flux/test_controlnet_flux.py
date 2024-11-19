@@ -190,9 +190,17 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             expected_height = height - height % (pipe.vae_scale_factor * 2)
             expected_width = width - width % (pipe.vae_scale_factor * 2)
 
-            inputs.update({"height": height, "width": width})
+            inputs.update(
+                {
+                    "control_image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    )
+                }
+            )
             image = pipe(**inputs).images[0]
-            output_height, output_width = image.shape
+            output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 
 

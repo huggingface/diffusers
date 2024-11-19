@@ -195,7 +195,7 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
 
-        height_width_pairs = [(32, 32), (72, 56)]
+        height_width_pairs = [(32, 32), (72, 57)]
         for height, width in height_width_pairs:
             expected_height = height - height % (pipe.vae_scale_factor * 2)
             expected_width = width - width % (pipe.vae_scale_factor * 2)
