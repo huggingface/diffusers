@@ -497,19 +497,19 @@ class TextualInversionLoaderMixin:
         # load embeddings of text_encoder 1 (CLIP ViT-L/14)
         pipeline.load_textual_inversion(
             state_dict["clip_l"],
-            token=["<s0>", "<s1>"],
+            tokens=["<s0>", "<s1>"],
             text_encoder=pipeline.text_encoder,
             tokenizer=pipeline.tokenizer,
         )
         # load embeddings of text_encoder 2 (CLIP ViT-G/14)
         pipeline.load_textual_inversion(
             state_dict["clip_g"],
-            token=["<s0>", "<s1>"],
+            tokens=["<s0>", "<s1>"],
             text_encoder=pipeline.text_encoder_2,
             tokenizer=pipeline.tokenizer_2,
         )
 
-        # Unload explicitly from both text encoders abd tokenizers
+        # Unload explicitly from both text encoders and tokenizers
         pipeline.unload_textual_inversion(
             tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer
         )

@@ -1,0 +1,9 @@
+torch~=2.4.0
+transformers==4.46.1
+sentencepiece
+aiohttp
+py-consul
+prometheus_client >= 0.18.0
+prometheus-fastapi-instrumentator >= 7.0.0
+fastapi
+uvicorn
