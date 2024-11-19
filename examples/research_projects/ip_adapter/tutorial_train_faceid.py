@@ -1,31 +1,29 @@
+import argparse
+import itertools
+import json
 import os
 import random
-import argparse
-from pathlib import Path
-import json
-import itertools
 import time
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
-from torchvision import transforms
-from PIL import Image
-from transformers import CLIPImageProcessor
 from accelerate import Accelerator
-from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
-from transformers import CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
-
-from ip_adapter.ip_adapter_faceid import MLPProjModel
-from ip_adapter.utils import is_torch2_available
 from ip_adapter.attention_processor_faceid import LoRAAttnProcessor, LoRAIPAttnProcessor
+from ip_adapter.ip_adapter_faceid import MLPProjModel
+from PIL import Image
+from torchvision import transforms
+from transformers import CLIPTextModel, CLIPTokenizer
+
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 
 
 # Dataset
 class MyDataset(torch.utils.data.Dataset):
-
-    def __init__(self, json_file, tokenizer, size=512, t_drop_rate=0.05, i_drop_rate=0.05, ti_drop_rate=0.05, image_root_path=""):
+    def __init__(
+        self, json_file, tokenizer, size=512, t_drop_rate=0.05, i_drop_rate=0.05, ti_drop_rate=0.05, image_root_path=""
+    ):
         super().__init__()
 
         self.tokenizer = tokenizer
@@ -35,29 +33,31 @@ class MyDataset(torch.utils.data.Dataset):
         self.ti_drop_rate = ti_drop_rate
         self.image_root_path = image_root_path
 
-        self.data = json.load(open(json_file)) # list of dict: [{"image_file": "1.png", "id_embed_file": "faceid.bin"}]
+        self.data = json.load(
+            open(json_file)
+        )  # list of dict: [{"image_file": "1.png", "id_embed_file": "faceid.bin"}]
 
-        self.transform = transforms.Compose([
-            transforms.Resize(self.size, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(self.size),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ])
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(self.size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(self.size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
 
-        
-        
     def __getitem__(self, idx):
-        item = self.data[idx] 
+        item = self.data[idx]
         text = item["text"]
         image_file = item["image_file"]
-        
+
         # read image
         raw_image = Image.open(os.path.join(self.image_root_path, image_file))
         image = self.transform(raw_image.convert("RGB"))
 
         face_id_embed = torch.load(item["id_embed_file"], map_location="cpu")
         face_id_embed = torch.from_numpy(face_id_embed)
-        
+
         # drop
         drop_image_embed = 0
         rand_num = random.random()
@@ -76,19 +76,19 @@ class MyDataset(torch.utils.data.Dataset):
             max_length=self.tokenizer.model_max_length,
             padding="max_length",
             truncation=True,
-            return_tensors="pt"
+            return_tensors="pt",
         ).input_ids
-        
+
         return {
             "image": image,
             "text_input_ids": text_input_ids,
             "face_id_embed": face_id_embed,
-            "drop_image_embed": drop_image_embed
+            "drop_image_embed": drop_image_embed,
         }
 
     def __len__(self):
         return len(self.data)
-    
+
 
 def collate_fn(data):
     images = torch.stack([example["image"] for example in data])
@@ -100,12 +100,13 @@ def collate_fn(data):
         "images": images,
         "text_input_ids": text_input_ids,
         "face_id_embed": face_id_embed,
-        "drop_image_embeds": drop_image_embeds
+        "drop_image_embeds": drop_image_embeds,
     }
-    
+
 
 class IPAdapter(torch.nn.Module):
     """IP-Adapter"""
+
     def __init__(self, unet, image_proj_model, adapter_modules, ckpt_path=None):
         super().__init__()
         self.unet = unet
@@ -143,8 +144,7 @@ class IPAdapter(torch.nn.Module):
 
         print(f"Successfully loaded weights from checkpoint {ckpt_path}")
 
-    
-    
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
@@ -200,9 +200,7 @@ def parse_args():
         "--resolution",
         type=int,
         default=512,
-        help=(
-            "The resolution for input images"
-        ),
+        help=("The resolution for input images"),
     )
     parser.add_argument(
         "--learning_rate",
@@ -227,9 +225,7 @@ def parse_args():
         "--save_steps",
         type=int,
         default=2000,
-        help=(
-            "Save a checkpoint of the training state every X updates"
-        ),
+        help=("Save a checkpoint of the training state every X updates"),
     )
     parser.add_argument(
         "--mixed_precision",
@@ -252,14 +248,14 @@ def parse_args():
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
-    
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
     return args
-    
+
 
 def main():
     args = parse_args()
@@ -272,7 +268,7 @@ def main():
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-    
+
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
@@ -288,9 +284,9 @@ def main():
     unet.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-    #image_encoder.requires_grad_(False)
-    
-    #ip-adapter
+    # image_encoder.requires_grad_(False)
+
+    # ip-adapter
     image_proj_model = MLPProjModel(
         cross_attention_dim=unet.config.cross_attention_dim,
         id_embeddings_dim=512,
@@ -311,36 +307,42 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
         if cross_attention_dim is None:
-            attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=lora_rank)
+            attn_procs[name] = LoRAAttnProcessor(
+                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=lora_rank
+            )
         else:
             layer_name = name.split(".processor")[0]
             weights = {
                 "to_k_ip.weight": unet_sd[layer_name + ".to_k.weight"],
                 "to_v_ip.weight": unet_sd[layer_name + ".to_v.weight"],
             }
-            attn_procs[name] = LoRAIPAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=lora_rank)
+            attn_procs[name] = LoRAIPAttnProcessor(
+                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=lora_rank
+            )
             attn_procs[name].load_state_dict(weights, strict=False)
     unet.set_attn_processor(attn_procs)
     adapter_modules = torch.nn.ModuleList(unet.attn_processors.values())
-    
+
     ip_adapter = IPAdapter(unet, image_proj_model, adapter_modules, args.pretrained_ip_adapter_path)
-    
+
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
-    #unet.to(accelerator.device, dtype=weight_dtype)
+    # unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
-    #image_encoder.to(accelerator.device, dtype=weight_dtype)
-    
+    # image_encoder.to(accelerator.device, dtype=weight_dtype)
+
     # optimizer
-    params_to_opt = itertools.chain(ip_adapter.image_proj_model.parameters(),  ip_adapter.adapter_modules.parameters())
+    params_to_opt = itertools.chain(ip_adapter.image_proj_model.parameters(), ip_adapter.adapter_modules.parameters())
     optimizer = torch.optim.AdamW(params_to_opt, lr=args.learning_rate, weight_decay=args.weight_decay)
-    
+
     # dataloader
-    train_dataset = MyDataset(args.data_json_file, tokenizer=tokenizer, size=args.resolution, image_root_path=args.data_root_path)
+    train_dataset = MyDataset(
+        args.data_json_file, tokenizer=tokenizer, size=args.resolution, image_root_path=args.data_root_path
+    )
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -348,10 +350,10 @@ def main():
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-    
+
     # Prepare everything with our `accelerator`.
     ip_adapter, optimizer, train_dataloader = accelerator.prepare(ip_adapter, optimizer, train_dataloader)
-    
+
     global_step = 0
     for epoch in range(0, args.num_train_epochs):
         begin = time.perf_counter()
@@ -360,7 +362,9 @@ def main():
             with accelerator.accumulate(ip_adapter):
                 # Convert images to latent space
                 with torch.no_grad():
-                    latents = vae.encode(batch["images"].to(accelerator.device, dtype=weight_dtype)).latent_dist.sample()
+                    latents = vae.encode(
+                        batch["images"].to(accelerator.device, dtype=weight_dtype)
+                    ).latent_dist.sample()
                     latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -373,35 +377,39 @@ def main():
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-            
+
                 image_embeds = batch["face_id_embed"].to(accelerator.device, dtype=weight_dtype)
-            
+
                 with torch.no_grad():
                     encoder_hidden_states = text_encoder(batch["text_input_ids"].to(accelerator.device))[0]
-                
+
                 noise_pred = ip_adapter(noisy_latents, timesteps, encoder_hidden_states, image_embeds)
-        
+
                 loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
-            
+
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean().item()
-                
+
                 # Backpropagate
                 accelerator.backward(loss)
                 optimizer.step()
                 optimizer.zero_grad()
 
                 if accelerator.is_main_process:
-                    print("Epoch {}, step {}, data_time: {}, time: {}, step_loss: {}".format(
-                        epoch, step, load_data_time, time.perf_counter() - begin, avg_loss))
-            
+                    print(
+                        "Epoch {}, step {}, data_time: {}, time: {}, step_loss: {}".format(
+                            epoch, step, load_data_time, time.perf_counter() - begin, avg_loss
+                        )
+                    )
+
             global_step += 1
-            
+
             if global_step % args.save_steps == 0:
                 save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                 accelerator.save_state(save_path)
-            
+
             begin = time.perf_counter()
-                
+
+
 if __name__ == "__main__":
-    main()    
+    main()

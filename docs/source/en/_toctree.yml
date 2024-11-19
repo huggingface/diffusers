@@ -25,21 +25,6 @@
     title: Working with big models
   title: Tutorials
 - sections:
-<<<<<<< HEAD
-  - local: using-diffusers/loading
-    title: Load pipelines
-  - local: using-diffusers/custom_pipeline_overview
-    title: Load community pipelines and components
-  - local: using-diffusers/schedulers
-    title: Load schedulers and models
-  - local: using-diffusers/other-formats
-    title: Model files and layouts
-  - local: using-diffusers/loading_adapters
-    title: Load adapters
-  - local: using-diffusers/push_to_hub
-    title: Push files to the Hub
-  title: Load pipelines and adapters
-=======
   - sections:
     - local: using-diffusers/loading_overview
       title: Overview
@@ -169,7 +154,6 @@
       title: Other Modalities
     title: Taking Diffusers Beyond Images
   title: Using Diffusers
->>>>>>> 10ef7614c (docs: add IP Adapter training instructions)
 - sections:
   - local: using-diffusers/unconditional_image_generation
     title: Unconditional image generation
