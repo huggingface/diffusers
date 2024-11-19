@@ -134,6 +134,90 @@ save_file(image_proj_sd, "image_proj.safetensors")
 save_file(ip_sd, "ip_adapter.safetensors")
 ```
 
+### Sample Inference Script using the CLIP Model
+
+```python
+
+import torch
+from safetensors.torch import load_file
+from transformers import CLIPProcessor, CLIPModel  # Using the Hugging Face CLIP model 
+
+# Load model components from safetensors
+image_proj_ckpt = "image_proj.safetensors"
+ip_adapter_ckpt = "ip_adapter.safetensors"
+
+# Load the saved weights
+image_proj_sd = load_file(image_proj_ckpt)
+ip_adapter_sd = load_file(ip_adapter_ckpt)
+
+# Define the model Parameters
+class ImageProjectionModel(torch.nn.Module):
+    def __init__(self, input_dim=768, output_dim=512):  # CLIP's default embedding size is 768
+        super().__init__()
+        self.model = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.model(x)
+
+class IPAdapterModel(torch.nn.Module):
+    def __init__(self, input_dim=512, output_dim=10):  # Example for 10 classes
+        super().__init__()
+        self.model = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.model(x)
+
+# Initialize models
+image_proj_model = ImageProjectionModel()
+ip_adapter_model = IPAdapterModel()
+
+# Load weights into models
+image_proj_model.load_state_dict(image_proj_sd)
+ip_adapter_model.load_state_dict(ip_adapter_sd)
+
+# Set models to evaluation mode
+image_proj_model.eval()
+ip_adapter_model.eval()
+
+#Inference pipeline
+def inference(image_tensor):
+    """
+    Run inference using the loaded models.
+
+    Args:
+        image_tensor: Preprocessed image tensor from CLIPProcessor
+
+    Returns:
+        Final inference results
+    """
+    with torch.no_grad():
+        # Step 1: Project the image features
+        image_proj = image_proj_model(image_tensor)
+
+        # Step 2: Pass the projected features through the IP Adapter
+        result = ip_adapter_model(image_proj)
+
+    return result
+
+# Using CLIP for image preprocessing
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+
+#Image file path
+image_path = "path/to/image.jpg"
+
+# Preprocess the image
+inputs = processor(images=image_path, return_tensors="pt")
+image_features = clip_model.get_image_features(inputs["pixel_values"])
+
+# Normalize the image features as per CLIP's recommendations
+image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+# Run inference
+output = inference(image_features)
+print("Inference output:", output)
+```
+
 #### Parameters:
 - `ckpt`: Path to the trained model checkpoint file.
 - `map_location="cpu"`: Specifies that the model should be loaded onto the CPU.
