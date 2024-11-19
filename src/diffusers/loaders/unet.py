@@ -36,6 +36,7 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_unet_state_dict_to_peft,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
@@ -208,6 +209,10 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+
+        if is_lora:
+            deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
+            deprecate("load_attn_procs", "0.40.0", deprecation_message)
 
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
