@@ -30,6 +30,7 @@ from diffusers.utils.testing_utils import (
     load_pt,
     numpy_cosine_similarity_distance,
     require_accelerate,
+    require_accelerate_version_greater,
     require_bitsandbytes_version_greater,
     require_torch,
     require_torch_gpu,
@@ -485,6 +486,7 @@ class SlowBnb4BitTests(Base4bitTests):
 
         assert "Pipelines loaded with `dtype=torch.float16`" in cap_logger.out
 
+    @require_accelerate_version_greater("1.1.0")
     def test_pipeline_cuda_placement_works_with_nf4(self):
         transformer_nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
