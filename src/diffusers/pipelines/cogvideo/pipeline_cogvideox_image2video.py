@@ -528,6 +528,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
             self.transformer.unfuse_qkv_projections()
             self.fusing_transformer = False
 
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._prepare_rotary_positional_embeddings
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
@@ -539,10 +540,10 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
         p = self.transformer.config.patch_size
-        p_t = self.transformer.config.patch_size_t
+        p_t = self.transformer.config.patch_size_t or 1
 
         if p_t is None:
-            # CogVideoX 1.0 I2V
+            # CogVideoX 1.0
             base_size_width = self.transformer.config.sample_width // p
             base_size_height = self.transformer.config.sample_height // p
 
@@ -556,7 +557,7 @@ class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 temporal_size=num_frames,
             )
         else:
-            # CogVideoX 1.5 I2V
+            # CogVideoX 1.5
             base_size_width = self.transformer.config.sample_width // p
             base_size_height = self.transformer.config.sample_height // p
             base_num_frames = (num_frames + p_t - 1) // p_t
