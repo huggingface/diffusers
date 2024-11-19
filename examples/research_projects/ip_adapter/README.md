@@ -51,6 +51,25 @@ Certainly! Below is the documentation in pure Markdown format:
 The Accelerate launch command is used to train a model using multiple GPUs and mixed precision training. It launches the training script `tutorial_train_ip-adapter.py` with specified parameters and configurations.
 
 #### Usage Example:
+
+```
+accelerate launch --mixed_precision "fp16" \
+tutorial_train_ip-adapter.py \
+--pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5/" \
+--image_encoder_path="{image_encoder_path}" \
+--data_json_file="{data.json}" \
+--data_root_path="{image_path}" \
+--mixed_precision="fp16" \
+--resolution=512 \
+--train_batch_size=8 \
+--dataloader_num_workers=4 \
+--learning_rate=1e-04 \
+--weight_decay=0.01 \
+--output_dir="{output_dir}" \
+--save_steps=10000
+```
+
+### Multi-GPU Script:
 ```
 accelerate launch --num_processes 8 --multi_gpu --mixed_precision "fp16" \
   tutorial_train_ip-adapter.py \
@@ -92,25 +111,27 @@ The provided inference code is used to load a trained model checkpoint and extra
 
 #### Usage Example:
 ```python
-import torch
+from safetensors.torch import load_file, save_file
 
-# Load the trained model checkpoint
-ckpt = "checkpoint-50000/pytorch_model.bin"
-sd = torch.load(ckpt, map_location="cpu")
+# Load the trained model checkpoint in safetensors format
+ckpt = "checkpoint-50000/pytorch_model.safetensors"
+sd = load_file(ckpt)  # Using safetensors load function
 
 # Extract image projection and IP adapter components
 image_proj_sd = {}
 ip_sd = {}
+
 for k in sd:
     if k.startswith("unet"):
-        pass
+        pass  # Skip unet-related keys
     elif k.startswith("image_proj_model"):
         image_proj_sd[k.replace("image_proj_model.", "")] = sd[k]
     elif k.startswith("adapter_modules"):
         ip_sd[k.replace("adapter_modules.", "")] = sd[k]
 
-# Save the components into a binary file
-torch.save({"image_proj": image_proj_sd, "ip_adapter": ip_sd}, "ip_adapter.bin")
+# Save the components into separate safetensors files
+save_file(image_proj_sd, "image_proj.safetensors")
+save_file(ip_sd, "ip_adapter.safetensors")
 ```
 
 #### Parameters:
