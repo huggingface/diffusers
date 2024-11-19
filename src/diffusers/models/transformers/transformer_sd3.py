@@ -268,6 +268,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        skip_layers: Optional[List[int]] = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.
@@ -279,9 +280,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
-            timestep ( `torch.LongTensor`):
+            timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+            block_controlnet_hidden_states (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
@@ -290,6 +291,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+            skip_layers (`list` of `int`, *optional*):
+                A list of layer indices to skip during the forward pass.
 
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
@@ -317,7 +320,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         for index_block, block in enumerate(self.transformer_blocks):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
+            # Skip specified layers
+            is_skip = True if skip_layers is not None and index_block in skip_layers else False
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing and not is_skip:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -336,8 +342,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     temb,
                     **ckpt_kwargs,
                 )
-
-            else:
+            elif not is_skip:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
