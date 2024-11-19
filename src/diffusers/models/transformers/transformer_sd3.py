@@ -321,13 +321,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         for index_block, block in enumerate(self.transformer_blocks):
             # Skip specified layers
-            if skip_layers is not None and index_block in skip_layers:
-                if block_controlnet_hidden_states is not None and block.context_pre_only is False:
-                    interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
-                    hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
-                continue
+            is_skip = True if skip_layers is not None and index_block in skip_layers else False
 
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing and not is_skip:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -346,7 +342,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     temb,
                     **ckpt_kwargs,
                 )
-            else:
+            elif not is_skip:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )

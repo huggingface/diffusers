@@ -157,13 +157,12 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         # Forward pass with skipping layers 0 (since there's only one layer in this test setup)
         inputs_dict_with_skip = inputs_dict.copy()
-        inputs_dict_with_skip['skip_layers'] = [0]
+        inputs_dict_with_skip["skip_layers"] = [0]
         output_skip = model(**inputs_dict_with_skip).sample
 
         # Check that the outputs are different
         self.assertFalse(
-            torch.allclose(output_full, output_skip, atol=1e-5),
-            "Outputs should differ when layers are skipped"
+            torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
         )
 
         # Check that the outputs have the same shape

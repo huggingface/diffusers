@@ -643,6 +643,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         return self._guidance_scale
 
     @property
+    def skip_guidance_layers(self):
+        return self._skip_guidance_layers
+
+    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -782,14 +786,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
-            skip_guidance_layers (`List[int]`, *optional*): A list of integers that specify layers to skip during guidance.
-                If not provided, all layers will be used for guidance. If provided, the guidance will only be applied
-                to the layers specified in the list. Recommended value by StabiltyAI for Stable Diffusion 3.5 Medium is
-                [7, 8, 9].
+            skip_guidance_layers (`List[int]`, *optional*):
+                A list of integers that specify layers to skip during guidance. If not provided, all layers will be
+                used for guidance. If provided, the guidance will only be applied to the layers specified in the list.
+                Recommended value by StabiltyAI for Stable Diffusion 3.5 Medium is [7, 8, 9].
             skip_layer_guidance_scale (`int`, *optional*): The scale of the guidance for the layers specified in
                 `skip_guidance_layers`. The guidance will be applied to the layers specified in `skip_guidance_layers`
-                with a scale of `skip_layer_guidance_scale`. The guidance will be applied to the rest of the layers with
-                a scale of `1`.
+                with a scale of `skip_layer_guidance_scale`. The guidance will be applied to the rest of the layers
+                with a scale of `1`.
             skip_layer_guidance_stop (`int`, *optional*): The step at which the guidance for the layers specified in
                 `skip_guidance_layers` will stop. The guidance will be applied to the layers specified in
                 `skip_guidance_layers` until the fraction specified in `skip_layer_guidance_stop`. Recommended value by
@@ -903,7 +907,11 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance and skip_guidance_layers is None else latents
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance and skip_guidance_layers is None
+                    else latents
+                )
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
@@ -920,7 +928,12 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    should_skip_layers = True if i > num_inference_steps * skip_layer_guidance_start and i < num_inference_steps* skip_layer_guidance_stop else False
+                    should_skip_layers = (
+                        True
+                        if i > num_inference_steps * skip_layer_guidance_start
+                        and i < num_inference_steps * skip_layer_guidance_stop
+                        else False
+                    )
                     if skip_guidance_layers is not None and should_skip_layers:
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
@@ -931,7 +944,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                             return_dict=False,
                             skip_layers=skip_guidance_layers,
                         )[0]
-                        noise_pred = noise_pred + (noise_pred_text - noise_pred_skip_layers) * self._skip_layer_guidance_scale
+                        noise_pred = (
+                            noise_pred + (noise_pred_text - noise_pred_skip_layers) * self._skip_layer_guidance_scale
+                        )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
