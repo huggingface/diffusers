@@ -559,9 +559,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
-        height = int(height) // self.vae_scale_factor - ((int(height) // self.vae_scale_factor) % 2)
-        width = int(width) // self.vae_scale_factor - ((int(width) // self.vae_scale_factor) % 2)
-
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -606,8 +605,8 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     ):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
-        height = int(height) // self.vae_scale_factor - ((int(height) // self.vae_scale_factor) % 2)
-        width = int(width) // self.vae_scale_factor - ((int(width) // self.vae_scale_factor) % 2)
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
@@ -645,7 +644,6 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-
         masked_image_latents = self._pack_latents(
             masked_image_latents,
             batch_size,

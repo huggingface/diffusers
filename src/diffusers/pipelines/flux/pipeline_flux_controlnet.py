@@ -504,9 +504,8 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
     ):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
-        height = int(height) // self.vae_scale_factor - ((int(height) // self.vae_scale_factor) % 2)
-        width = int(width) // self.vae_scale_factor - ((int(width) // self.vae_scale_factor) % 2)
-
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
 
         if latents is not None:
