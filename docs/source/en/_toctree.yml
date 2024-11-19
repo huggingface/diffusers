@@ -569,5 +569,4 @@
     - local: api/video_processor
       title: Video Processor
     title: Internal classes
-  title: API
-    
+  title: API    
