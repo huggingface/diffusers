@@ -182,8 +182,7 @@ def load_model_dict_into_meta(
     hf_quantizer=None,
     keep_in_fp32_modules=None,
 ) -> List[str]:
-    if hf_quantizer is None:
-        device = device or torch.device("cpu")
+    device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
 
@@ -223,7 +222,7 @@ def load_model_dict_into_meta(
                 and hf_quantizer.pre_quantized
                 and hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
             ):
-                hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name].shape, param.shape)
+                hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name], param)
             else:
                 model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
                 raise ValueError(
@@ -469,12 +468,8 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
 
         # if the tensor is a torch supported dtype do not use GGUFParameter
         is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
-        weights = torch.from_numpy(tensor.data)
-        parsed_parameters[name] = (
-            GGUFParameter(weights, quant_type=quant_type)
-            if is_gguf_quant
-            else weights.permute(*torch.arange(weights.ndim - 1, -1, -1))
-        )
+        weights = torch.from_numpy(tensor.data.copy())
+        parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     if len(reader_keys) > 0:
         logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")

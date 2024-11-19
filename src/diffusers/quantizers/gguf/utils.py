@@ -17,26 +17,6 @@ import torch
 import torch.nn as nn
 
 
-_GGUF_FILE_TYPE_MAPPING = {
-    0: "ALL_F32",
-    1: "MOSTLY_F16",
-    2: "MOSTLY_Q4_0",
-    3: "MOSTLY_Q4_1",
-    4: "MOSTLY_Q4_1_SOME_F16",
-    8: "MOSTLY_Q5_0",
-    9: "MOSTLY_Q5_1",
-    10: "MOSTLY_Q2_K",
-    11: "MOSTLY_Q3_K_S",
-    12: "MOSTLY_Q3_K_M",
-    13: "MOSTLY_Q3_K_L",
-    14: "MOSTLY_Q4_K_S",
-    15: "MOSTLY_Q4_K_M",
-    16: "MOSTLY_Q5_K_S",
-    17: "MOSTLY_Q5_K_M",
-    18: "MOSTLY_Q6_K",
-}
-
-
 def _replace_with_gguf_linear(model, compute_dtype):
     for name, module in model.named_children():
         if isinstance(module, nn.Linear):
@@ -321,7 +301,6 @@ def dequantize_gguf_tensor(tensor, compute_dtype):
 
     block_size, type_size = gguf.GGML_QUANT_SIZES[quant_type]
 
-    tensor = torch.tensor(tensor)
     tensor = tensor.view(torch.uint8)
     shape = _quant_shape_from_byte_shape(tensor.shape, type_size, block_size)
 
