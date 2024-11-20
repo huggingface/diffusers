@@ -14,10 +14,10 @@ specific language governing permissions and limitations under the License.
 
 ![marigold](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
 
-Marigold was proposed in [Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation](https://huggingface.co/papers/2312.02145), a CVPR 2024 Oral paper by [Bingxin Ke](http://www.kebingxin.com/), [Anton Obukhov](https://www.obukhov.ai/), [Shengyu Huang](https://shengyuh.github.io/), [Nando Metzger](https://nandometzger.github.io/), [Rodrigo Caye Daudt](https://rcdaudt.github.io/), and [Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en). 
-The idea is to repurpose the rich generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional computer vision tasks. 
-Initially, this idea was explored to fine-tune Stable Diffusion for Monocular Depth Estimation, as shown in the teaser above. 
-Later, 
+Marigold was proposed in [Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation](https://huggingface.co/papers/2312.02145), a CVPR 2024 Oral paper by [Bingxin Ke](http://www.kebingxin.com/), [Anton Obukhov](https://www.obukhov.ai/), [Shengyu Huang](https://shengyuh.github.io/), [Nando Metzger](https://nandometzger.github.io/), [Rodrigo Caye Daudt](https://rcdaudt.github.io/), and [Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en).
+The idea is to repurpose the rich generative prior of Text-to-Image Latent Diffusion Models (LDMs) for traditional computer vision tasks.
+Initially, this idea was explored to fine-tune Stable Diffusion for Monocular Depth Estimation, as shown in the teaser above.
+Later,
 - [Tianfu Wang](https://tianfwang.github.io/) trained the first Latent Consistency Model (LCM) of Marigold, which unlocked fast single-step inference;
 - [Kevin Qu](https://www.linkedin.com/in/kevin-qu-b3417621b/?locale=en_US) extended the approach to Surface Normals Estimation;
 - [Anton Obukhov](https://www.obukhov.ai/) contributed the pipelines and documentation into diffusers (enabled and supported by [YiYi Xu](https://yiyixuxu.github.io/) and [Sayak Paul](https://sayak.dev/)).
@@ -28,7 +28,7 @@ The abstract from the paper is:
 
 ## Available Pipelines
 
-Each pipeline supports one Computer Vision task, which takes an input RGB image as input and produces a *prediction* of the modality of interest, such as a depth map of the input image. 
+Each pipeline supports one Computer Vision task, which takes an input RGB image as input and produces a *prediction* of the modality of interest, such as a depth map of the input image.
 Currently, the following tasks are implemented:
 
 | Pipeline                                                                                                                                    | Predicted Modalities                                                                                             |                                                                       Demos                                                                        |
@@ -39,7 +39,7 @@ Currently, the following tasks are implemented:
 
 ## Available Checkpoints
 
-The original checkpoints can be found under the [PRS-ETH](https://huggingface.co/prs-eth/) Hugging Face organization. 
+The original checkpoints can be found under the [PRS-ETH](https://huggingface.co/prs-eth/) Hugging Face organization.
 
 <Tip>
 
@@ -49,11 +49,11 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 <Tip warning={true}>
 
-Marigold pipelines were designed and tested only with `DDIMScheduler` and `LCMScheduler`. 
+Marigold pipelines were designed and tested only with `DDIMScheduler` and `LCMScheduler`.
 Depending on the scheduler, the number of inference steps required to get reliable predictions varies, and there is no universal value that works best across schedulers.
-Because of that, the default value of `num_inference_steps` in the `__call__` method of the pipeline is set to `None` (see the API reference). 
-Unless set explicitly, its value will be taken from the checkpoint configuration `model_index.json`. 
-This is done to ensure high-quality predictions when calling the pipeline with just the `image` argument. 
+Because of that, the default value of `num_inference_steps` in the `__call__` method of the pipeline is set to `None` (see the API reference).
+Unless set explicitly, its value will be taken from the checkpoint configuration `model_index.json`.
+This is done to ensure high-quality predictions when calling the pipeline with just the `image` argument.
 
 </Tip>
 

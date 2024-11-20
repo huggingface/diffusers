@@ -166,12 +166,12 @@ class VQModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.Tensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.vq_model.VQEncoderOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.autoencoders.vq_model.VQEncoderOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.vq_model.VQEncoderOutput`] or `tuple`:
-                If return_dict is True, a [`~models.vq_model.VQEncoderOutput`] is returned, otherwise a plain `tuple`
-                is returned.
+            [`~models.autoencoders.vq_model.VQEncoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.autoencoders.vq_model.VQEncoderOutput`] is returned, otherwise a
+                plain `tuple` is returned.
         """
 
         h = self.encode(sample).latents

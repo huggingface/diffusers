@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPModel, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -25,16 +25,16 @@ from diffusers.utils.torch_utils import randn_tensor
 
 EXAMPLE_DOC_STRING = """
     Examples:
-        ```
+        ```py
         from io import BytesIO
 
         import requests
         import torch
         from diffusers import DiffusionPipeline
         from PIL import Image
-        from transformers import CLIPFeatureExtractor, CLIPModel
+        from transformers import CLIPImageProcessor, CLIPModel
 
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(
+        feature_extractor = CLIPImageProcessor.from_pretrained(
             "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
         )
         clip_model = CLIPModel.from_pretrained(
@@ -139,7 +139,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[PNDMScheduler, LMSDiscreteScheduler, DDIMScheduler, DPMSolverMultistepScheduler],
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
         self.register_modules(

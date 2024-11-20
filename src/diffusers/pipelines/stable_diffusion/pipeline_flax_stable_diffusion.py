@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import FlaxStableDiffusionPipeline
 
         >>> pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", revision="bf16", dtype=jax.numpy.bfloat16
+        ...     "runwayml/stable-diffusion-v1-5", variant="bf16", dtype=jax.numpy.bfloat16
         ... )
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"

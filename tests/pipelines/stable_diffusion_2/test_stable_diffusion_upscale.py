@@ -472,7 +472,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
             model_id,
             torch_dtype=torch.float16,
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()

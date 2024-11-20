@@ -70,7 +70,7 @@ write_basic_config()
 
 원본 데이터셋은 ControlNet [repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip)에 올라와있지만, 우리는 [여기](https://huggingface.co/datasets/fusing/fill50k)에 새롭게 다시 올려서 🤗 Datasets 과 호환가능합니다. 그래서 학습 스크립트 상에서 데이터 불러오기를 다룰 수 있습니다.
 
-우리의 학습 예시는 원래 ControlNet의 학습에 쓰였던 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)을 사용합니다. 그렇지만 ControlNet은 대응되는 어느 Stable Diffusion 모델([`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) 혹은 [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1)의 증가를 위해 학습될 수 있습니다.
+우리의 학습 예시는 원래 ControlNet의 학습에 쓰였던 [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)을 사용합니다. 그렇지만 ControlNet은 대응되는 어느 Stable Diffusion 모델([`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) 혹은 [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1)의 증가를 위해 학습될 수 있습니다.
 
 자체 데이터셋을 사용하기 위해서는 [학습을 위한 데이터셋 생성하기](create_dataset) 가이드를 확인하세요.
 
@@ -89,7 +89,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 학습 스크립트는 당신의 리포지토리에 `diffusion_pytorch_model.bin` 파일을 생성하고 저장합니다.
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet.py \
@@ -111,7 +111,7 @@ accelerate launch train_controlnet.py \
 더 작은 batch(배치) 크기로 gradient accumulation(기울기 누적)을 하면 학습 요구사항을 ~20 GB VRAM으로 줄일 수 있습니다.
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet.py \
@@ -133,7 +133,7 @@ accelerate launch train_controlnet.py \
 의 설명을 확인하세요. 아래는 예시 명령어입니다:
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
@@ -155,20 +155,20 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
 
 #### 배치 사이즈 8로 300 스텝 이후:
 
-| |  | 
+| |  |
 |-------------------|:-------------------------:|
-| | 푸른 배경과 빨간 원  | 
+| | 푸른 배경과 빨간 원  |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![푸른 배경과 빨간 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_300_steps.png) |
-| | 갈색 꽃 배경과 청록색 원 | 
+| | 갈색 꽃 배경과 청록색 원 |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![갈색 꽃 배경과 청록색 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_300_steps.png) |
 
 #### 배치 사이즈 8로 6000 스텝 이후:
 
-| |  | 
+| |  |
 |-------------------|:-------------------------:|
-| | 푸른 배경과 빨간 원  | 
+| | 푸른 배경과 빨간 원  |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![푸른 배경과 빨간 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_6000_steps.png) |
-| | 갈색 꽃 배경과 청록색 원 | 
+| | 갈색 꽃 배경과 청록색 원 |
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![갈색 꽃 배경과 청록색 원](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
 ## 16GB GPU에서 학습하기
@@ -181,7 +181,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
 이제 학습 스크립트를 시작할 수 있습니다:
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet.py \
@@ -209,7 +209,7 @@ accelerate launch train_controlnet.py \
 - 기울기를 `None`으로 설정
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet.py \
@@ -275,7 +275,7 @@ Pytorch와 같은 버전의 CUDA toolchain이 필요합니다. 8-비트 optimize
 호환되지 않는 것 같습니다.
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet.py \

@@ -30,8 +30,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class Transformer2DModelOutput(Transformer2DModelOutput):
-    deprecation_message = "Importing `Transformer2DModelOutput` from `diffusers.models.transformer_2d` is deprecated and this will be removed in a future version. Please use `from diffusers.models.modeling_outputs import Transformer2DModelOutput`, instead."
-    deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
+    def __init__(self, *args, **kwargs):
+        deprecation_message = "Importing `Transformer2DModelOutput` from `diffusers.models.transformer_2d` is deprecated and this will be removed in a future version. Please use `from diffusers.models.modeling_outputs import Transformer2DModelOutput`, instead."
+        deprecate("Transformer2DModelOutput", "1.0.0", deprecation_message)
+        super().__init__(*args, **kwargs)
 
 
 class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
@@ -413,7 +415,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):

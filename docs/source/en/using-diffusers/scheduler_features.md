@@ -134,7 +134,7 @@ sigmas = [14.615, 6.315, 3.771, 2.181, 1.342, 0.862, 0.555, 0.380, 0.234, 0.113,
 prompt = "anthropomorphic capybara wearing a suit and working with a computer"
 generator = torch.Generator(device='cuda').manual_seed(123)
 image = pipeline(
-    prompt=prompt, 
+    prompt=prompt,
     num_inference_steps=10,
     sigmas=sigmas,
     generator=generator

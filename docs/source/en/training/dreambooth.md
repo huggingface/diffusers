@@ -315,7 +315,7 @@ That's it! You don't need to add any additional parameters to your training comm
 <hfoption id="PyTorch">
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export INSTANCE_DIR="./dog"
 export OUTPUT_DIR="path_to_saved_model"
 
@@ -374,7 +374,7 @@ unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
 text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
 ).to("cuda")
 
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
@@ -533,7 +533,7 @@ python train_dreambooth_lora.py \
     --resolution=256 \
     --train_batch_size=4 \
     --gradient_accumulation_steps=1 \
-    --learning_rate=1e-6 \ 
+    --learning_rate=1e-6 \
     --max_train_steps=2000 \
     --validation_prompt="a sks dog" \
     --validation_epochs=100 \

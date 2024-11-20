@@ -80,7 +80,7 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 34.1855) < 1e-3
         assert abs(result_mean.item() - 0.044) < 1e-3
 
-    # Override test_from_save_pretrined to use EDMEulerScheduler-specific logic
+    # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_from_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -88,9 +88,6 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
-
-            sample = self.dummy_sample
-            residual = 0.1 * sample
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
@@ -118,7 +115,7 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    # Override test_from_save_pretrined to use EDMEulerScheduler-specific logic
+    # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_step_shape(self):
         num_inference_steps = 10
 

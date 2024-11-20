@@ -21,13 +21,14 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -38,6 +39,13 @@ from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -57,9 +65,21 @@ EXAMPLE_DOC_STRING = """
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    """
-    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    r"""
+    Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
+    Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
+    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+
+    Args:
+        noise_cfg (`torch.Tensor`):
+            The predicted noise tensor for the guided diffusion process.
+        noise_pred_text (`torch.Tensor`):
+            The predicted noise tensor for the text-guided diffusion process.
+        guidance_rescale (`float`, *optional*, defaults to 0.0):
+            A rescale factor applied to the noise predictions.
+
+    Returns:
+        noise_cfg (`torch.Tensor`): The rescaled noise prediction tensor.
     """
     std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
@@ -78,7 +98,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -133,11 +153,11 @@ class StableDiffusionPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
-    LoraLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
     IPAdapterMixin,
     FromSingleFileMixin,
 ):
-    r"""
+    """
     Pipeline for text-to-image generation using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -145,8 +165,8 @@ class StableDiffusionPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
@@ -342,7 +362,7 @@ class StableDiffusionPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -475,7 +495,7 @@ class StableDiffusionPipeline(
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if self.text_encoder is not None:
-            if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+            if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
@@ -508,6 +528,9 @@ class StableDiffusionPipeline(
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
+        image_embeds = []
+        if do_classifier_free_guidance:
+            negative_image_embeds = []
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
@@ -517,7 +540,6 @@ class StableDiffusionPipeline(
                     f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
                 )
 
-            image_embeds = []
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
@@ -525,36 +547,28 @@ class StableDiffusionPipeline(
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
-                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-                single_negative_image_embeds = torch.stack(
-                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
-                )
 
+                image_embeds.append(single_image_embeds[None, :])
                 if do_classifier_free_guidance:
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                    single_image_embeds = single_image_embeds.to(device)
-
-                image_embeds.append(single_image_embeds)
+                    negative_image_embeds.append(single_negative_image_embeds[None, :])
         else:
-            repeat_dims = [1]
-            image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
-                    )
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                else:
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
+                    negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
 
-        return image_embeds
+        ip_adapter_image_embeds = []
+        for i, single_image_embeds in enumerate(image_embeds):
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
+            single_image_embeds = single_image_embeds.to(device=device)
+            ip_adapter_image_embeds.append(single_image_embeds)
+
+        return ip_adapter_image_embeds
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -1042,6 +1056,9 @@ class StableDiffusionPipeline(
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                 0
@@ -1055,7 +1072,6 @@ class StableDiffusionPipeline(
             do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
-
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload all models

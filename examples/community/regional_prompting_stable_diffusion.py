@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import torch
 import torchvision.transforms.functional as FF
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
@@ -69,7 +69,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__(
@@ -467,8 +467,6 @@ def make_emblist(self, prompts):
 
 
 def split_dims(xs, height, width):
-    xs = xs
-
     def repeat_div(x, y):
         while y > 0:
             x = math.ceil(x / 2)

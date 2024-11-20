@@ -537,7 +537,6 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "Andromeda galaxy in a bottle"
 
         pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
-        pipeline = pipeline.to(torch_device)
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()
 

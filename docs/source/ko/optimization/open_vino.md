@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 
 다음 명령어로 🤗 Optimum을 설치합니다:
 
-```
+```sh
 pip install optimum["openvino"]
 ```
 
@@ -30,7 +30,7 @@ OpenVINO 모델을 불러오고 OpenVINO 런타임으로 추론을 실행하려�
 ```python
 from optimum.intel.openvino import OVStableDiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = OVStableDiffusionPipeline.from_pretrained(model_id, export=True)
 prompt = "a photo of an astronaut riding a horse on mars"
 images = pipe(prompt).images[0]

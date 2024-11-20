@@ -37,9 +37,15 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+<Tip>
+
+You can further improve generation quality by passing the generated image from [`PixArtSigmaPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
+
+</Tip>
+
 ## Inference with under 8GB GPU VRAM
 
-Run the [`PixArtSigmaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example. 
+Run the [`PixArtSigmaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example.
 
 First, install the [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) library:
 
@@ -59,7 +65,6 @@ text_encoder = T5EncoderModel.from_pretrained(
     subfolder="text_encoder",
     load_in_8bit=True,
     device_map="auto",
-
 )
 pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
@@ -77,10 +82,10 @@ with torch.no_grad():
     prompt_embeds, prompt_attention_mask, negative_embeds, negative_prompt_attention_mask = pipe.encode_prompt(prompt)
 ```
 
-Since text embeddings have been computed, remove the `text_encoder` and `pipe` from the memory, and free up som GPU VRAM:
+Since text embeddings have been computed, remove the `text_encoder` and `pipe` from the memory, and free up some GPU VRAM:
 
 ```python
-import gc 
+import gc
 
 def flush():
     gc.collect()
@@ -101,7 +106,7 @@ pipe = PixArtSigmaPipeline.from_pretrained(
 ).to("cuda")
 
 latents = pipe(
-    negative_prompt=None, 
+    negative_prompt=None,
     prompt_embeds=prompt_embeds,
     negative_prompt_embeds=negative_embeds,
     prompt_attention_mask=prompt_attention_mask,
@@ -148,4 +153,3 @@ While loading the `text_encoder`, you set `load_in_8bit` to `True`. You could al
 [[autodoc]] PixArtSigmaPipeline
 	- all
 	- __call__
-	

@@ -52,7 +52,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import HunyuanDiTPipeline
 
-        >>> pipe = HunyuanDiTPipeline.from_pretrained("Tencent-Hunyuan/HunyuanDiT", torch_dtype=torch.float16)
+        >>> pipe = HunyuanDiTPipeline.from_pretrained(
+        ...     "Tencent-Hunyuan/HunyuanDiT-Diffusers", torch_dtype=torch.float16
+        ... )
         >>> pipe.to("cuda")
 
         >>> # You may also use English prompt as HunyuanDiT supports both English and Chinese
@@ -123,9 +125,21 @@ def get_resize_crop_region_for_grid(src, tgt_size):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    """
-    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    r"""
+    Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
+    Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
+    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+
+    Args:
+        noise_cfg (`torch.Tensor`):
+            The predicted noise tensor for the guided diffusion process.
+        noise_pred_text (`torch.Tensor`):
+            The predicted noise tensor for the text-guided diffusion process.
+        guidance_rescale (`float`, *optional*, defaults to 0.0):
+            A rescale factor applied to the noise predictions.
+
+    Returns:
+        noise_cfg (`torch.Tensor`): The rescaled noise prediction tensor.
     """
     std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
@@ -226,16 +240,22 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = (
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-        self.default_sample_size = self.transformer.config.sample_size
+        self.default_sample_size = (
+            self.transformer.config.sample_size
+            if hasattr(self, "transformer") and self.transformer is not None
+            else 128
+        )
 
     def encode_prompt(
         self,
         prompt: str,
-        device: torch.device,
-        dtype: torch.dtype,
+        device: torch.device = None,
+        dtype: torch.dtype = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[str] = None,
@@ -279,6 +299,17 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             text_encoder_index (`int`, *optional*):
                 Index of the text encoder to use. `0` for clip and `1` for T5.
         """
+        if dtype is None:
+            if self.text_encoder_2 is not None:
+                dtype = self.text_encoder_2.dtype
+            elif self.transformer is not None:
+                dtype = self.transformer.dtype
+            else:
+                dtype = None
+
+        if device is None:
+            device = self._execution_device
+
         tokenizers = [self.tokenizer, self.tokenizer_2]
         text_encoders = [self.text_encoder, self.text_encoder_2]
 
