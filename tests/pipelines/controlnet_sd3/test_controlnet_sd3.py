@@ -15,11 +15,11 @@
 
 import gc
 import unittest
+from typing import Optional
 
 import numpy as np
 import pytest
 import torch
-from typing import Optional
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -59,7 +59,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
-    
+
     def get_dummy_components(self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm"):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(

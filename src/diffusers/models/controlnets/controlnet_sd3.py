@@ -56,9 +56,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
-        dual_attention_layers: Tuple[
-            int, ...
-        ] = (), 
+        dual_attention_layers: Tuple[int, ...] = (),
         qk_norm: Optional[str] = None,
     ):
         super().__init__()
