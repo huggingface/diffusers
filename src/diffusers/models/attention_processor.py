@@ -3579,9 +3579,16 @@ class MochiAttnProcessor2_0:
         key = torch.cat([key, encoder_key], dim=2)
         value = torch.cat([value, encoder_value], dim=2)
 
+        # Zero out tokens based on the attention mask
+        query = query * attention_mask[:, None, :, None]
+        key = key * attention_mask[:, None, :, None]
+        value = value * attention_mask[:, None, :, None]
+
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.to(query.dtype)
+        # Zero out tokens based on attention mask
+        hidden_states = hidden_states * attention_mask[:, :, None]
 
         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
             (sequence_length, encoder_sequence_length), dim=1
@@ -5053,46 +5060,19 @@ CROSS_ATTENTION_PROCESSORS = (
 
 AttentionProcessor = Union[
     AttnProcessor,
-    CustomDiffusionAttnProcessor,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    JointAttnProcessor2_0,
-    PAGJointAttnProcessor2_0,
-    PAGCFGJointAttnProcessor2_0,
-    FusedJointAttnProcessor2_0,
-    AllegroAttnProcessor2_0,
-    AuraFlowAttnProcessor2_0,
-    FusedAuraFlowAttnProcessor2_0,
-    FluxAttnProcessor2_0,
-    FluxAttnProcessor2_0_NPU,
-    FusedFluxAttnProcessor2_0,
-    FusedFluxAttnProcessor2_0_NPU,
-    CogVideoXAttnProcessor2_0,
-    FusedCogVideoXAttnProcessor2_0,
-    XFormersAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-    AttnProcessorNPU,
     AttnProcessor2_0,
-    MochiVaeAttnProcessor2_0,
-    StableAudioAttnProcessor2_0,
-    HunyuanAttnProcessor2_0,
-    FusedHunyuanAttnProcessor2_0,
-    PAGHunyuanAttnProcessor2_0,
-    PAGCFGHunyuanAttnProcessor2_0,
-    LuminaAttnProcessor2_0,
-    MochiAttnProcessor2_0,
     FusedAttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
-    SlicedAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-    IPAdapterXFormersAttnProcessor,
-    PAGIdentitySelfAttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
+    PAGIdentitySelfAttnProcessor2_0,
+    PAGCFGHunyuanAttnProcessor2_0,
+    PAGHunyuanAttnProcessor2_0,
 ]
