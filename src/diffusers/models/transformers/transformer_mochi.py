@@ -377,7 +377,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                     joint_attention_mask=joint_attention_mask,
                 )
-
+                print(f"block_{i} {hidden_states.norm()}")
+                print(f"block_{i} {encoder_hidden_states.norm()}")
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 

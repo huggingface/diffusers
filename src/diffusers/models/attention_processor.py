@@ -16,6 +16,7 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+from torch._prims_common import is_low_precision_dtype
 import torch.nn.functional as F
 from torch import nn
 
@@ -3590,7 +3591,6 @@ class MochiAttnProcessor2_0:
         value = value.view(1, value.size(1), -1, key.size(-1))
 
         select_index = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
-        __import__('ipdb').set_trace()
 
         query = torch.index_select(query, 2, select_index)
         key = torch.index_select(key, 2, select_index)
@@ -3604,13 +3604,9 @@ class MochiAttnProcessor2_0:
         output.scatter_(0, select_index.unsqueeze(1).expand(-1, dim * heads), hidden_states)
         hidden_states = output.view(batch_size, total_length, dim * heads)
 
-        # Zero out tokens based on attention mask
-        # hidden_states = hidden_states * attention_mask[:, :, None]
-
         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
             (sequence_length, encoder_sequence_length), dim=1
         )
-        __import__("ipdb").set_trace()
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
