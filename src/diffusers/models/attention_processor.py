@@ -3579,16 +3579,9 @@ class MochiAttnProcessor2_0:
         key = torch.cat([key, encoder_key], dim=2)
         value = torch.cat([value, encoder_value], dim=2)
 
-        # Zero out tokens based on the attention mask
-        query = query * attention_mask[:, None, :, None]
-        key = key * attention_mask[:, None, :, None]
-        value = value * attention_mask[:, None, :, None]
-
         hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        # Zero out tokens based on attention mask
-        hidden_states = hidden_states * attention_mask[:, :, None]
 
         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
             (sequence_length, encoder_sequence_length), dim=1
