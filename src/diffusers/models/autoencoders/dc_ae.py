@@ -52,11 +52,6 @@ class RMSNorm2d(nn.Module):
 
         self.reset_parameters()
 
-    def reset_parameters(self) -> None:
-        if self.elementwise_affine:
-            torch.nn.init.ones_(self.weight)
-            if self.bias is not None:
-                torch.nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = (x / torch.sqrt(torch.square(x.float()).mean(dim=1, keepdim=True) + self.eps)).to(x.dtype)
