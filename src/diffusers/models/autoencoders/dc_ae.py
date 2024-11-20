@@ -34,7 +34,7 @@ from .vae import DecoderOutput
 
 
 class RMSNorm2d(nn.Module):
-    def __init__(self, num_features: int, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True, device=None, dtype=None) -> None:
+    def __init__(self, num_features: int, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
         self.num_features = num_features
