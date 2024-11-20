@@ -37,6 +37,7 @@ from ..test_pipelines_common import (
 
 enable_full_determinism()
 
+
 class StableDiffusion3PAGImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = StableDiffusion3PAGImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"pag_scale", "pag_adaptive_scale"}) - {"height", "width"}
@@ -176,7 +177,6 @@ class StableDiffusion3PAGImg2ImgPipelineFastTests(unittest.TestCase, PipelineTes
         inputs = self.get_dummy_inputs(device)
         image = pipe_pag(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print(f"{image_slice=}")
 
         assert image.shape == (
             1,
@@ -185,12 +185,10 @@ class StableDiffusion3PAGImg2ImgPipelineFastTests(unittest.TestCase, PipelineTes
             3,
         ), f"the shape of the output image should be (1, 32, 32, 3) but got {image.shape}"
 
-        expected_slice = np.array([
-            [0.7251651, 0.52043426, 0.5527822],
-            [0.7089102, 0.62233330, 0.5923926],
-            [0.4929751, 0.52322210, 0.5529656]
-        ])
-        max_diff = np.abs(image_slice.flatten() - expected_slice.flatten()).max()
+        expected_slice = np.array(
+            [0.7251651, 0.52043426, 0.5527822, 0.7089102, 0.62233330, 0.5923926, 0.4929751, 0.52322210, 0.5529656]
+        )
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
 
@@ -210,7 +208,9 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0, guidance_scale=7.0, pag_scale=0.7):
+    def get_inputs(
+        self, device, generator_device="cpu", dtype=torch.float32, seed=0, guidance_scale=7.0, pag_scale=0.7
+    ):
         img_url = (
             "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
         )
@@ -230,7 +230,9 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         return inputs
 
     def test_pag_cfg(self):
-        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.17"])
+        pipeline = AutoPipelineForImage2Image.from_pretrained(
+            self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.17"]
+        )
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
@@ -246,7 +248,9 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         ), f"output is different from expected, {image_slice.flatten()}"
 
     def test_pag_uncond(self):
-        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.(4|17)"])
+        pipeline = AutoPipelineForImage2Image.from_pretrained(
+            self.repo_id, enable_pag=True, torch_dtype=torch.float16, pag_applied_layers=["blocks.(4|17)"]
+        )
         pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
