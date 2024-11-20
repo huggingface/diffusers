@@ -128,7 +128,6 @@ class MochiTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        joint_attention_mask=None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
@@ -138,11 +137,11 @@ class MochiTransformerBlock(nn.Module):
             )
         else:
             norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
+        
         attn_hidden_states, context_attn_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
-            attention_mask=joint_attention_mask,
         )
 
         hidden_states = hidden_states + self.norm2(attn_hidden_states) * torch.tanh(gate_msa).unsqueeze(1)
@@ -269,6 +268,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         time_embed_dim: int = 256,
         activation_fn: str = "swiglu",
         max_sequence_length: int = 256,
+        sample_height: int = 60,
+        sample_width: int = 106,
     ) -> None:
         super().__init__()
 
@@ -325,7 +326,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        joint_attention_mask=None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -337,6 +337,9 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         temb, encoder_hidden_states = self.time_embed(
             timestep, encoder_hidden_states, encoder_attention_mask, hidden_dtype=hidden_states.dtype
         )
+
+        encoder_hidden_states = encoder_hidden_states[encoder_attention_mask].unflatten(0, (encoder_hidden_states.size(0), -1))
+        print(encoder_hidden_states.shape)
 
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
         hidden_states = self.patch_embed(hidden_states)
@@ -375,7 +378,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_mask=joint_attention_mask,
                 )
 
         hidden_states = self.norm_out(hidden_states, temb)
