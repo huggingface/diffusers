@@ -801,7 +801,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             )
             height, width = control_image.shape[-2:]
 
-            control_image = self.vae.encode(control_image).latent_dist.sample()
+            control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
             control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
             height_control_image, width_control_image = control_image.shape[2:]
@@ -832,7 +832,7 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
                 )
                 height, width = control_image_.shape[-2:]
 
-                control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
                 control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
                 height_control_image, width_control_image = control_image_.shape[2:]
