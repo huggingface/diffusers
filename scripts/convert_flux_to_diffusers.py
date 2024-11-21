@@ -37,6 +37,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
 parser.add_argument("--filename", default="flux.safetensors", type=str)
 parser.add_argument("--checkpoint_path", default=None, type=str)
+parser.add_argument("--in_channels", type=int, default=64)
+parser.add_argument("--out_channels", type=int, default=None)
 parser.add_argument("--vae", action="store_true")
 parser.add_argument("--transformer", action="store_true")
 parser.add_argument("--output_path", type=str)
@@ -282,7 +284,9 @@ def main(args):
         converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
             original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
         )
-        transformer = FluxTransformer2DModel(guidance_embeds=has_guidance)
+        transformer = FluxTransformer2DModel(
+            in_channels=args.in_channels, out_channels=args.out_channels, guidance_embeds=has_guidance
+        )
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
         print(
