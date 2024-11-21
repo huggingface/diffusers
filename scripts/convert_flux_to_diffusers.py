@@ -281,6 +281,7 @@ def main(args):
         num_single_layers = 38
         inner_dim = 3072
         mlp_ratio = 4.0
+
         converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
             original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
         )

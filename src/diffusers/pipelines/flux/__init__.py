@@ -26,6 +26,7 @@ else:
     _import_structure["pipeline_flux_controlnet"] = ["FluxControlNetPipeline"]
     _import_structure["pipeline_flux_controlnet_image_to_image"] = ["FluxControlNetImg2ImgPipeline"]
     _import_structure["pipeline_flux_controlnet_inpainting"] = ["FluxControlNetInpaintPipeline"]
+    _import_structure["pipeline_flux_fill"] = ["FluxFillPipeline"]
     _import_structure["pipeline_flux_img2img"] = ["FluxImg2ImgPipeline"]
     _import_structure["pipeline_flux_inpaint"] = ["FluxInpaintPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -39,6 +40,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_flux_controlnet import FluxControlNetPipeline
         from .pipeline_flux_controlnet_image_to_image import FluxControlNetImg2ImgPipeline
         from .pipeline_flux_controlnet_inpainting import FluxControlNetInpaintPipeline
+        from .pipeline_flux_fill import FluxFillPipeline
         from .pipeline_flux_img2img import FluxImg2ImgPipeline
         from .pipeline_flux_inpaint import FluxInpaintPipeline
 else:
