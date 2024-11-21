@@ -12,11 +12,13 @@
 # # See the License for the specific language governing permissions and
 # # limitations under the License.
 
-import torch
-import torch.nn as nn
 
-from ...utils import is_gguf_available
+from ...utils import is_gguf_available, is_torch_available
 
+
+if is_torch_available():
+    import torch
+    import torch.nn as nn
 
 if is_gguf_available():
     import gguf
