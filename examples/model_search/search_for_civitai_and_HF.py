@@ -306,7 +306,6 @@ class HFSearchPipeline:
         # Get the type and loading method for the keyword
         search_word_status = get_keyword_types(search_word)
 
-        # Handle different types of keywords
         if search_word_status["type"]["hf_repo"]:
             if download:
                 model_path = DiffusionPipeline.download(
