@@ -1,9 +1,15 @@
 import os
 import re
 import requests
-from typing import Union
+from typing import (
+    Union,
+    List
+)
 from tqdm.auto import tqdm
-from dataclasses import asdict
+from dataclasses import (
+    asdict,
+    dataclass
+)
 from huggingface_hub import (
     hf_api,
     hf_hub_download,
@@ -15,18 +21,6 @@ from diffusers.loaders.single_file_utils import (
     VALID_URL_PREFIXES,
     _extract_repo_id_and_weights_name,
 )
-
-from .pipeline_output import (
-    SearchPipelineOutput,
-    ModelStatus,
-    RepoStatus,
-)
-
-
-
-CUSTOM_SEARCH_KEY = {
-    "sd" : "stabilityai/stable-diffusion-2-1",
-    }
 
 
 CONFIG_FILE_LIST = [
@@ -80,16 +74,81 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 
-def get_keyword_types(keyword):
+@dataclass
+class RepoStatus:
+    r"""
+    Data class for storing repository status information.
+
+    Attributes:
+        repo_id (`str`):
+            The name of the repository.
+        repo_hash (`str`):
+            The hash of the repository.
+        version (`str`):
+            The version ID of the repository.
     """
-    Determine the type and loading method for a given keyword.
+    repo_id: str = ""
+    repo_hash: str = ""
+    version: str = ""
+
+
+@dataclass
+class ModelStatus:
+    r"""
+    Data class for storing model status information.
+
+    Attributes:
+        search_word (`str`):
+            The search word used to find the model.
+        download_url (`str`):
+            The URL to download the model.
+        file_name (`str`):
+            The name of the model file.
+        local (`bool`):
+            Whether the model exists locally
+    """
+    search_word: str = ""
+    download_url: str = ""
+    file_name: str = ""
+    local: bool = False
+
+
+@dataclass
+class SearchPipelineOutput:
+    r"""
+    Data class for storing model data.
+
+    Attributes:
+        model_path (`str`):
+            The path to the model.
+        loading_method (`str`):
+            The type of loading method used for the model ( None or 'from_single_file' or 'from_pretrained')
+        checkpoint_format (`str`):
+            The format of the model checkpoint (`single_file` or `diffusers`).
+        repo_status (`RepoStatus`):
+            The status of the repository.
+        model_status (`ModelStatus`):
+            The status of the model.
+    """
+    model_path: str = ""
+    loading_method: str = None  
+    checkpoint_format: str = None
+    repo_status: RepoStatus = RepoStatus()
+    model_status: ModelStatus = ModelStatus()
     
-    Args:
-        keyword (str): The input keyword to classify.
-        
+
+
+def get_keyword_types(keyword):
+    r"""
+    Determine the type and loading method for a given keyword.
+
+    Parameters:
+        keyword (`str`):
+            The input keyword to classify.
+
     Returns:
-        dict: A dictionary containing the model format, loading method,
-              and various types and extra types flags.
+        `dict`: A dictionary containing the model format, loading method,
+                and various types and extra types flags.
     """
     
     # Initialize the status dictionary with default values
@@ -163,38 +222,23 @@ class HFSearchPipeline:
     """
     Search for models from Huggingface.
     """
-    model_info = {
-        "model_path": "",
-        "load_type": "",
-        "repo_status": {
-            "repo_name": "",
-            "repo_id": "",
-            "revision": ""
-        },
-        "model_status": {
-            "search_word": "",
-            "download_url": "",
-            "filename": "",
-            "local": False,
-            "single_file": False
-        },
-    }
 
     def __init__(self):
         pass
     
-
     @staticmethod
     def create_huggingface_url(repo_id, file_name):
-        """
+        r"""
         Create a Hugging Face URL for a given repository ID and file name.
-        
-        Args:
-            repo_id (str): The repository ID.
-            file_name (str): The file name within the repository.
-        
+
+        Parameters:
+            repo_id (`str`):
+                The repository ID.
+            file_name (`str`):
+                The file name within the repository.
+
         Returns:
-            str: The complete URL to the file or repository on Hugging Face.
+            `str`: The complete URL to the file or repository on Hugging Face.
         """
         if file_name:
             return f"https://huggingface.co/{repo_id}/blob/main/{file_name}"
@@ -203,32 +247,48 @@ class HFSearchPipeline:
     
     @staticmethod
     def hf_find_safest_model(models) -> str:
-        """
+        r"""
         Sort and find the safest model.
 
-        Args:
-            models (list): A list of model names to sort and check.
+        Parameters:
+            models (`list`):
+                A list of model names to sort and check.
 
         Returns:
-            The name of the safest model or the first model in the list if no safe model is found.
+            `str`: The name of the safest model or the first model in the list if no safe model is found.
         """
         for model in sorted(models, reverse=True):
             if bool(re.search(r"(?i)[-_](safe|sfw)", model)):
                 return model
         return models[0]
-
-
+    
     @classmethod
-    def for_HF(cls, search_word, **kwargs):
-        """
-        Class method to search and download models from Hugging Face.
-        
-        Args:
-            search_word (str): The search keyword for finding models.
-            **kwargs: Additional keyword arguments.
-        
+    def for_HF(cls, search_word: str, **kwargs) -> Union[str, SearchPipelineOutput, None]:
+        r"""
+        Downloads a model from Hugging Face.
+
+        Parameters:
+            search_word (`str`):
+                The search query string.
+            revision (`str`, *optional*):
+                The specific version of the model to download.
+            checkpoint_format (`str`, *optional*, defaults to `"single_file"`):
+                The format of the model checkpoint.
+            download (`bool`, *optional*, defaults to `False`):
+                Whether to download the model.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether to force the download if the model already exists.
+            include_params (`bool`, *optional*, defaults to `False`):
+                Whether to include parameters in the returned data.
+            pipeline_tag (`str`, *optional*):
+                Tag to filter models by pipeline.
+            hf_token (`str`, *optional*):
+                API token for Hugging Face authentication.
+            skip_error (`bool`, *optional*, defaults to `False`):
+                Whether to skip errors and return None.
+
         Returns:
-            str: The path to the downloaded model or search word.
+            `Union[str, SearchPipelineOutput, None]`: The model path or SearchPipelineOutput or None.
         """
         # Extract additional parameters from kwargs
         revision = kwargs.pop("revision", None)
@@ -383,69 +443,60 @@ class HFSearchPipeline:
 
 class CivitaiSearchPipeline:
     """
-    The Civitai class is used to search and download models from Civitai.
-
-    Attributes:
-        base_civitai_dir (str): Base directory for Civitai.
-        max_number_of_choices (int): Maximum number of choices.
-        chunk_size (int): Chunk size.
-
-    Methods:
-        for_civitai(search_word, auto, model_type, download, civitai_token, skip_error, include_hugface):
-            Downloads a model from Civitai.
-        civitai_security_check(value): Performs a security check.
-        requests_civitai(query, auto, model_type, civitai_token, include_hugface): Retrieves models from Civitai.
-        repo_select_civitai(state, auto, recursive, include_hugface): Selects a repository from Civitai.
-        download_model(url, save_path, civitai_token): Downloads a model.
-        version_select_civitai(state, auto, recursive): Selects a model version from Civitai.
-        file_select_civitai(state_list, auto, recursive): Selects a file to download.
-        civitai_save_path(): Sets the save path.
+    Find checkpoints and more from Civitai.
     """
-
-    base_civitai_dir = "/root/.cache/Civitai"
-    max_number_of_choices: int = 15
-    chunk_size: int = 8192
 
     def __init__(self):
         pass
 
     @staticmethod
-    def civitai_find_safest_model(models) -> str:
-        """
+    def civitai_find_safest_model(models: List[dict]) -> dict:
+        r"""
         Sort and find the safest model.
-
-        Args:
-            models (list): A list of model names to check.
-
+        
+        Parameters:
+            models (`list`):
+                A list of model dictionaries to check. Each dictionary should contain a 'filename' key.
+        
         Returns:
-            The name of the safest model or the first model in the list if no safe model is found.
+            `dict`: The dictionary of the safest model or the first model in the list if no safe model is found.
         """
-
+        
         for model_data in models:
             if bool(re.search(r"(?i)[-_](safe|sfw)", model_data["filename"])):
                 return model_data
         return models[0]
-    
 
     @classmethod
     def for_civitai(
         cls,
-        search_word,
+        search_word: str,
         **kwargs
-    ) -> Union[str,SearchPipelineOutput,None]:
-        """
+    ) -> Union[str, SearchPipelineOutput, None]:
+        r"""
         Downloads a model from Civitai.
 
         Parameters:
-        - search_word (str): Search query string.
-        - auto (bool): Auto-select flag.
-        - model_type (str): Type of model to search for.
-        - download (bool): Whether to download the model.
-        - include_params (bool): Whether to include parameters in the returned data.
+            search_word (`str`):
+                The search query string.
+            model_type (`str`, *optional*, defaults to `Checkpoint`):
+                The type of model to search for.
+            download (`bool`, *optional*, defaults to `False`):
+                Whether to download the model.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether to force the download if the model already exists.
+            civitai_token (`str`, *optional*):
+                API token for Civitai authentication.
+            include_params (`bool`, *optional*, defaults to `False`):
+                Whether to include parameters in the returned data.
+            skip_error (`bool`, *optional*, defaults to `False`):
+                Whether to skip errors and return None.
 
         Returns:
-        - SearchPipelineOutput
+            `Union[str, SearchPipelineOutput, None]`: The model path or `SearchPipelineOutput` or None.
         """
+
+        # Extract additional parameters from kwargs
         model_type = kwargs.pop("model_type", "Checkpoint")
         download = kwargs.pop("download", False)
         force_download = kwargs.pop("force_download", False)
@@ -453,35 +504,31 @@ class CivitaiSearchPipeline:
         include_params = kwargs.pop("include_params", False)
         skip_error = kwargs.pop("skip_error", False)
 
-        model_info = {
-            "model_path" : "",
-            "load_type" : "",
-            "repo_status":{
-                "repo_name":"",
-                "repo_id":"",
-                "revision":""
-                },
-            "model_status":{
-                "search_word" : "",
-                "download_url": "",
-                "filename":"",
-                "local" : False,
-                "single_file" : False
-                },
-            }
-        
+        # Initialize additional variables with default values
+        model_path = ""
+        repo_name = ""
+        repo_id = ""
+        version_id = ""
+        models_list = []
+        selected_repo = {}
+        selected_model = {}
+        selected_version = {}
+
+        # Set up parameters and headers for the CivitAI API request
         params = {
             "query": search_word,
             "types": model_type,
             "sort": "Highest Rated",
-            "limit":20
-            }
+            "limit": 20
+        }
+
 
         headers = {}
         if civitai_token:
             headers["Authorization"] = f"Bearer {civitai_token}"
 
         try:
+            # Make the request to the CivitAI API
             response = requests.get(
                 "https://civitai.com/api/v1/models", params=params, headers=headers
             )
@@ -496,27 +543,21 @@ class CivitaiSearchPipeline:
                     return None
                 else:
                     raise ValueError("Invalid JSON response")
-        # Put the repo sorting process on this line.
+        
+        # Sort repositories by download count in descending order
         sorted_repos = sorted(data["items"], key=lambda x: x["stats"]["downloadCount"], reverse=True)
-
-        model_path = ""
-        repo_name = ""
-        repo_id = ""
-        version_id = ""
-        models_list = []
-        selected_repo = {}
-        selected_model = {}
-        selected_version = {}
 
         for selected_repo in sorted_repos:
             repo_name = selected_repo["name"]
             repo_id = selected_repo["id"]
-            
+
+            # Sort versions within the selected repo by download count
             sorted_versions = sorted(selected_repo["modelVersions"], key=lambda x: x["stats"]["downloadCount"], reverse=True)
             for selected_version in sorted_versions:
                 version_id = selected_version["id"]
                 models_list = []
                 for model_data in selected_version["files"]:
+                    # Check if the file passes security scans and has a valid extension
                     if (
                         model_data["pickleScanResult"] == "Success"
                         and model_data["virusScanResult"] == "Success"
@@ -527,23 +568,25 @@ class CivitaiSearchPipeline:
                             "download_url": model_data["downloadUrl"],
                         }
                         models_list.append(file_status)
-                
+
                 if models_list:
+                    # Sort the models list by filename and find the safest model
                     sorted_models = sorted(models_list, key=lambda x: x["filename"], reverse=True)
                     selected_model = cls.civitai_find_safest_model(sorted_models)
                     break
             else:
                 continue
             break
-            
+
         if not selected_model:
             if skip_error:
                 return None
             else:
-                raise ValueError("No models found")
+                raise ValueError("No model found. Please try changing the word you are searching for.")
 
         file_name = selected_model["filename"]
         download_url = selected_model["download_url"]
+
         # Handle file download and setting model information
         if download:
             model_path = f"/root/.cache/Civitai/{repo_id}/{version_id}/{file_name}"
@@ -551,14 +594,14 @@ class CivitaiSearchPipeline:
             if (not os.path.exists(model_path)) or force_download:
                 headers = {}
                 if civitai_token:
-                    headers["Authorization"] = f"Bearer {civitai_token}" 
-                
+                    headers["Authorization"] = f"Bearer {civitai_token}"
+
                 try:
                     response = requests.get(download_url, stream=True, headers=headers)
                     response.raise_for_status()
                 except requests.HTTPError:
                     raise requests.HTTPError(f"Invalid URL: {download_url}, {response.status_code}")
-                
+
                 with tqdm.wrapattr(
                     open(model_path, "wb"),
                     "write",
@@ -573,7 +616,6 @@ class CivitaiSearchPipeline:
 
         output_info = get_keyword_types(model_path)
 
-        # Return appropriate result based on include_params
         if not include_params:
             return model_path
         else:
@@ -595,6 +637,7 @@ class CivitaiSearchPipeline:
             )
 
 
+
 class ModelSearchPipeline(
     HFSearchPipeline,
     CivitaiSearchPipeline
@@ -609,29 +652,37 @@ class ModelSearchPipeline(
         search_word: str,
         **kwargs
     ) -> Union[None, str, SearchPipelineOutput]:
-        """
-        Search and retrieve model information from various sources (e.g., Hugging Face or CivitAI).
+        r"""
+        Search and download models from multiple hubs.
 
-        This method allows flexible searching of models across different hubs. It accepts several parameters 
-        to customize the search behavior, such as filtering by model type, format, or priority hub. Additionally, 
-        it supports authentication tokens for private or restricted access.
-
-        Args:
-            search_word (str): The search term or keyword used to locate the desired model.
-            download (bool, optional): Whether to download the model locally after finding it. Defaults to False.
-            model_type (str, optional): Type of the model to search for (e.g., "Checkpoint", "LORA"). Defaults to "Checkpoint".
-            checkpoint_format (str, optional): Specifies the format of the model (e.g., "single_file", "diffusers"). Defaults to "single_file".
-            branch (str, optional): The branch of the repository to search in. Defaults to "main".
-            include_params (bool, optional): Whether to include additional parameters about the model in the output. Defaults to False.
-            hf_token (str, optional): Hugging Face API token for authentication. Required for private or restricted models.
-            civitai_token (str, optional): CivitAI API token for authentication. Required for private or restricted models.
+        Parameters:
+            search_word (`str`):
+                The search query string.
+            model_type (`str`, *optional*, defaults to `Checkpoint`, Civitai only):
+                The type of model to search for.
+            revision (`str`, *optional*, Hugging Face only):
+                The specific version of the model to download.
+            include_params (`bool`, *optional*, defaults to `False`, both):
+                Whether to include parameters in the returned data.
+            checkpoint_format (`str`, *optional*, defaults to `"single_file"`, Hugging Face only):
+                The format of the model checkpoint.
+            download (`bool`, *optional*, defaults to `False`, both):
+                Whether to download the model.
+            pipeline_tag (`str`, *optional*, Hugging Face only):
+                Tag to filter models by pipeline.
+            force_download (`bool`, *optional*, defaults to `False`, both):
+                Whether to force the download if the model already exists.  
+            hf_token (`str`, *optional*, Hugging Face only):
+                API token for Hugging Face authentication.
+            civitai_token (`str`, *optional*, Civitai only):
+                API token for Civitai authentication.
+            skip_error (`bool`, *optional*, defaults to `False`, both):
+                Whether to skip errors and return None.
 
         Returns:
-            Union[None, str, SearchPipelineOutput]:
-                - `None`: If no model is found or accessible.
-                - `str`: A string path to the retrieved model if `include_params=False`.
-                - `SearchPipelineOutput`: Detailed model information if `include_params=True`.
+            `Union[None, str, SearchPipelineOutput]`: The model path, SearchPipelineOutput, or None if not found.
         """
+
         return (
             cls.for_HF(search_word=search_word, skip_error=True, **kwargs) 
             or cls.for_HF(search_word=search_word, skip_error=True, **kwargs)
