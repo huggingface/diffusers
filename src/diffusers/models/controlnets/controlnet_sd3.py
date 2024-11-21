@@ -60,6 +60,8 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
         qk_norm: Optional[str] = None,
         extra_conditioning_channels: int = 0,
+        dual_attention_layers: Tuple[int, ...] = (),
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -254,7 +256,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
         config["extra_conditioning_channels"] = num_extra_conditioning_channels
-        controlnet = cls(**config)
+        controlnet = cls.from_config(config)
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())

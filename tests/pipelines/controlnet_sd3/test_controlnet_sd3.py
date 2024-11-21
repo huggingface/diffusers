@@ -15,6 +15,7 @@
 
 import gc
 import unittest
+from typing import Optional
 
 import numpy as np
 import pytest
@@ -59,7 +60,12 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
 
-    def get_dummy_components(self, qk_norm=None, use_dual_attention=False):
+    def get_dummy_components(
+      self, 
+      num_controlnet_layers: int = 3, 
+      qk_norm: Optional[str] = "rms_norm", 
+      use_dual_attention=False
+    ):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(
             sample_size=32,
@@ -81,7 +87,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             sample_size=32,
             patch_size=1,
             in_channels=8,
-            num_layers=1,
+            num_layers=num_controlnet_layers,
             attention_head_dim=8,
             num_attention_heads=4,
             joint_attention_dim=32,
@@ -203,7 +209,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         self.run_pipe(components)
 
     def test_controlnet_sd35(self):
-        components = self.get_dummy_components(qk_norm="rms_norm", use_dual_attention=True)
+        components = self.get_dummy_components(num_control_layers=1, qk_norm="rms_norm", use_dual_attention=True)
         self.run_pipe(components, use_sd35=True)
 
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
