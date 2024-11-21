@@ -15,12 +15,18 @@
 Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/auto.py
 """
+
 import warnings
 from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
-from .quantization_config import BitsAndBytesConfig, QuantizationConfigMixin, QuantizationMethod
+from .quantization_config import (
+    BitsAndBytesConfig,
+    GGUFQuantizationConfig,
+    QuantizationConfigMixin,
+    QuantizationMethod,
+)
 
 
 AUTO_QUANTIZER_MAPPING = {
@@ -32,6 +38,7 @@ AUTO_QUANTIZER_MAPPING = {
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,
+    "gguf": GGUFQuantizationConfig,
 }
 
 

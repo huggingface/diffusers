@@ -1,14 +1,14 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ...utils import get_module_from_name
 from ..base import DiffusersQuantizer
-from .utils import GGUFParameter, _quant_shape_from_byte_shape, _replace_with_gguf_linear
 
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
+
 from ...utils import (
+    get_module_from_name,
     is_accelerate_available,
     is_accelerate_version,
     is_gguf_available,
@@ -17,11 +17,12 @@ from ...utils import (
 )
 
 
-if is_torch_available():
+if is_torch_available() and is_gguf_available():
+    import gguf
     import torch
 
-if is_gguf_available():
-    import gguf
+    from .utils import GGUFParameter, _quant_shape_from_byte_shape, _replace_with_gguf_linear
+
 
 logger = logging.get_logger(__name__)
 

@@ -13,15 +13,9 @@
 # # limitations under the License.
 
 
-from ...utils import is_gguf_available, is_torch_available
-
-
-if is_torch_available():
-    import torch
-    import torch.nn as nn
-
-if is_gguf_available():
-    import gguf
+import gguf
+import torch
+import torch.nn as nn
 
 
 def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix=""):
@@ -288,22 +282,20 @@ def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
     return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
 
 
-if is_gguf_available():
-    GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
-
-    dequantize_functions = {
-        gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
-        gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
-        gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
-        gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
-        gguf.GGMLQuantizationType.Q4_1: dequantize_blocks_Q4_1,
-        gguf.GGMLQuantizationType.Q4_0: dequantize_blocks_Q4_0,
-        gguf.GGMLQuantizationType.Q6_K: dequantize_blocks_Q6_K,
-        gguf.GGMLQuantizationType.Q5_K: dequantize_blocks_Q5_K,
-        gguf.GGMLQuantizationType.Q4_K: dequantize_blocks_Q4_K,
-        gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
-        gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
-    }
+GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
+dequantize_functions = {
+    gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
+    gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
+    gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
+    gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
+    gguf.GGMLQuantizationType.Q4_1: dequantize_blocks_Q4_1,
+    gguf.GGMLQuantizationType.Q4_0: dequantize_blocks_Q4_0,
+    gguf.GGMLQuantizationType.Q6_K: dequantize_blocks_Q6_K,
+    gguf.GGMLQuantizationType.Q5_K: dequantize_blocks_Q5_K,
+    gguf.GGMLQuantizationType.Q4_K: dequantize_blocks_Q4_K,
+    gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
+    gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
+}
 
 
 def _quant_shape_from_byte_shape(shape, type_size, block_size):

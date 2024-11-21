@@ -545,7 +545,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .quantizers.quantization_config import BitsAndBytesConfig
+    from .quantizers.quantization_config import BitsAndBytesConfig, GGUFQuantizationConfig
 
     try:
         if not is_onnx_available():
