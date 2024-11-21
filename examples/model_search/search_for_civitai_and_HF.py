@@ -428,7 +428,7 @@ class HFSearchPipeline:
                 checkpoint_format=output_info["checkpoint_format"],
                 repo_status=RepoStatus(
                     repo_id=repo_id,
-                    repo_hash=hf_repo_info["sha"],
+                    repo_hash=hf_repo_info.sha,
                     version=revision
                 ),
                 model_status=ModelStatus(
