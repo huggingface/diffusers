@@ -138,7 +138,7 @@ pipe = StableDIffusionPipeline.from_single_file(model_path).to("cuda")
 
 | Argument                     | Description                                                            |
 | :--------------------------: | :--------------------------------------------------------------------: |
-| all                          | In auto, `multifolder diffusers format checkpoint` takes precedence    |                                      
+| all                          | The `multifolder diffusers format checkpoint` takes precedence.        |                                      
 | single_file                  | Only `single file checkpoint` are searched.                            |
 | diffusers                    | Search only for `multifolder diffusers format checkpoint`              |
 
