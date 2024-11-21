@@ -50,7 +50,7 @@ from diffusers import StableDiffusionPipeline
 
 model_path = HFSearchPipeline.for_HF(
            "stable",
-           model_format="diffusers",
+           checkpoint_format="diffusers",
            download = False
            )
 
@@ -60,7 +60,7 @@ pipe = StableDiffusionPipeline.from_pretrained(model_path).to("cuda")
 
 model_path = HFSearchPipeline.for_HF(
            "stable",
-           model_format="single_file",
+           checkpoint_format="single_file",
            download = False
            )
 
