@@ -238,6 +238,7 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         self,
         patch_size: int = 1,
         in_channels: int = 64,
+        out_channels: int = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
         attention_head_dim: int = 128,
@@ -248,7 +249,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         axes_dims_rope: Tuple[int] = (16, 56, 56),
     ):
         super().__init__()
-        self.out_channels = in_channels
+        if out_channels is None:
+            self.out_channels = in_channels
+        else:
+            self.out_channels = out_channels
         self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)

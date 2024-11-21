@@ -279,10 +279,17 @@ def main(args):
         num_single_layers = 38
         inner_dim = 3072
         mlp_ratio = 4.0
+
+        # dev has 64, dev-fill has 384
+        in_channels = original_ckpt["img_in.weight"].shape[1]
+        out_channels = 64
+
         converted_transformer_state_dict = convert_flux_transformer_checkpoint_to_diffusers(
             original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
         )
-        transformer = FluxTransformer2DModel(guidance_embeds=has_guidance)
+        transformer = FluxTransformer2DModel(
+            guidance_embeds=has_guidance, in_channels=in_channels, out_channels=out_channels
+        )
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
         print(

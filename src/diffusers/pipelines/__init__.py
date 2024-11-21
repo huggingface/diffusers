@@ -133,6 +133,7 @@ else:
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
+        "FluxFillPipeline",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -524,6 +525,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
+            FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
