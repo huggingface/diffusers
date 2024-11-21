@@ -942,7 +942,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
             controlnet_blocks_repeat = False if self.controlnet.input_hint_block is None else True
             if self.controlnet.input_hint_block is None:
                 # vae encode
-                control_image = self.vae.encode(control_image).latent_dist.sample()
+                control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
                 control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
                 # pack
@@ -979,7 +979,7 @@ class FluxControlNetInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
                 if self.controlnet.nets[0].input_hint_block is None:
                     # vae encode
-                    control_image_ = self.vae.encode(control_image_).latent_dist.sample()
+                    control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
                     control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
                     # pack
