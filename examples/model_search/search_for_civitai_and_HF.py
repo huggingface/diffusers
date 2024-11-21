@@ -44,11 +44,13 @@ CONFIG_FILE_LIST = [
     "diffusion_pytorch_model.non_ema.bin",
     "diffusion_pytorch_model.non_ema.safetensors",
     "safety_checker/pytorch_model.bin",
+    "safety_checker/pytorch_model.fp16.bin",
     "safety_checker/model.safetensors",
     "safety_checker/model.ckpt",
     "safety_checker/model.fp16.safetensors",
     "safety_checker/model.fp16.ckpt",
     "unet/diffusion_pytorch_model.bin",
+    "unet/diffusion_pytorch_model.fp16.bin",
     "unet/diffusion_pytorch_model.safetensors",
     "unet/diffusion_pytorch_model.fp16.safetensors",
     "unet/diffusion_pytorch_model.ckpt",
@@ -56,6 +58,7 @@ CONFIG_FILE_LIST = [
     "vae/diffusion_pytorch_model.bin",
     "vae/diffusion_pytorch_model.safetensors",
     "vae/diffusion_pytorch_model.fp16.safetensors",
+    "vae/diffusion_pytorch_model.fp16.bin",
     "vae/diffusion_pytorch_model.ckpt",
     "vae/diffusion_pytorch_model.fp16.ckpt",
     "text_encoder/pytorch_model.bin",
@@ -376,8 +379,8 @@ class HFSearchPipeline:
                         
                         elif (
                             any(file_path.endswith(ext) for ext in EXTENSION)
-                            and (file_path not in CONFIG_FILE_LIST)
-                            and (file_path not in exclusion)
+                            and not any(config in file_path for config in CONFIG_FILE_LIST)
+                            and not any(exc in file_path for exc in exclusion)
                         ):
                             file_list.append(file_path)
                 
