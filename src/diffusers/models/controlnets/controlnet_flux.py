@@ -22,8 +22,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...models.attention_processor import AttentionProcessor
 from ...models.modeling_utils import ModelMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ..controlnet import BaseOutput, ControlNetConditioningEmbedding, zero_module
+from ...utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ..controlnets.controlnet import ControlNetConditioningEmbedding, zero_module
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
@@ -192,13 +192,13 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         num_attention_heads: int = 24,
         load_weights_from_transformer=True,
     ):
-        config = transformer.config
+        config = dict(transformer.config)
         config["num_layers"] = num_layers
         config["num_single_layers"] = num_single_layers
         config["attention_head_dim"] = attention_head_dim
         config["num_attention_heads"] = num_attention_heads
 
-        controlnet = cls(**config)
+        controlnet = cls.from_config(config)
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())
