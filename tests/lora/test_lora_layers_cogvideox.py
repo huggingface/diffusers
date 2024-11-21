@@ -30,6 +30,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
+    is_torch_version,
     require_peft_backend,
     skip_mps,
     torch_device,
@@ -128,7 +129,7 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @skip_mps
     @pytest.mark.xfail(
-        condtion=torch.device(torch_device).type == "cpu",
+        condtion=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
         strict=True,
     )
