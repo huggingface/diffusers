@@ -693,6 +693,6 @@ class ModelSearchPipeline(
         """
 
         return (
-            cls.for_HF(search_word=search_word, skip_error=True, **kwargs) 
-            or cls.for_HF(search_word=search_word, skip_error=True, **kwargs)
+            cls.for_HF(search_word, skip_error=True, **kwargs) 
+            or cls.for_civitai(search_word, skip_error=True, **kwargs)
         )
