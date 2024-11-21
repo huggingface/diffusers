@@ -513,7 +513,7 @@ class FluxPipeline(
         shape = (batch_size, num_channels_latents, height, width)
 
         if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
+            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
             return latents.to(device=device, dtype=dtype), latent_image_ids
 
         if isinstance(generator, list) and len(generator) != batch_size:
