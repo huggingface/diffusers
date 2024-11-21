@@ -42,7 +42,7 @@ class RMSNorm2d(nn.Module):
         if self.elementwise_affine:
             self.weight = torch.nn.parameter.Parameter(torch.empty(self.num_features))
             if bias:
-                self.bias = torch.nn.parameter.Parameter(torch.empty(self.num_features, **factory_kwargs))
+                self.bias = torch.nn.parameter.Parameter(torch.empty(self.num_features))
             else:
                 self.register_parameter('bias', None)
         else:
