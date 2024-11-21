@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
 from ...utils import (
+    is_accelerate_available,
+    is_accelerate_version,
     is_gguf_available,
     is_torch_available,
     logging,
@@ -30,6 +32,16 @@ class GGUFQuantizer(DiffusersQuantizer):
 
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = True
+
+    def validate_environment(self, *args, **kwargs):
+        if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
+            raise ImportError(
+                "Loading GGUF Parameters requires `accelerate` installed in your enviroment: `pip install 'accelerate>=0.26.0'`"
+            )
+        if not is_gguf_available():
+            raise ImportError(
+                "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf`"
+            )
 
     def check_quantized_param_shape(self, param_name, current_param, loaded_param):
         loaded_param_shape = loaded_param.shape
@@ -81,7 +93,8 @@ class GGUFQuantizer(DiffusersQuantizer):
         keep_in_fp32_modules: List[str] = [],
         **kwargs,
     ):
-        _replace_with_gguf_linear(model, self.compute_dtype)
+        state_dict = kwargs.get("state_dict", None)
+        _replace_with_gguf_linear(model, self.compute_dtype, state_dict)
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model
@@ -92,5 +105,4 @@ class GGUFQuantizer(DiffusersQuantizer):
 
     @property
     def is_trainable(self) -> bool:
-        # Because we're mandating `bitsandbytes` 0.43.3.
         return False

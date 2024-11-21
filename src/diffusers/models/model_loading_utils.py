@@ -462,7 +462,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     reader_keys = list(fields.keys())
 
     parsed_parameters = {}
-    for tensor in tqdm(reader.tensors):
+    for tensor in tqdm(reader.tensors, desc="Loading GGUF Parameters: "):
         name = tensor.name
         quant_type = tensor.tensor_type
 

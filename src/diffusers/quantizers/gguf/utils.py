@@ -12,14 +12,30 @@
 # # See the License for the specific language governing permissions and
 # # limitations under the License.
 
-import gguf
 import torch
 import torch.nn as nn
 
+from ...utils import is_gguf_available
 
-def _replace_with_gguf_linear(model, compute_dtype):
+
+if is_gguf_available():
+    import gguf
+
+
+def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix=""):
+    def _should_convert_to_gguf(module, state_dict, prefix):
+        weight_key = prefix + "weight"
+        return weight_key in state_dict and isinstance(state_dict[weight_key], GGUFParameter)
+
+    has_children = list(model.children())
+    if not has_children:
+        return
+
     for name, module in model.named_children():
-        if isinstance(module, nn.Linear):
+        module_prefix = prefix + name + "."
+        _replace_with_gguf_linear(module, compute_dtype, state_dict, module_prefix)
+
+        if isinstance(module, nn.Linear) and _should_convert_to_gguf(module, state_dict, module_prefix):
             model._modules[name] = GGUFLinear(
                 module.in_features,
                 module.out_features,
@@ -29,10 +45,6 @@ def _replace_with_gguf_linear(model, compute_dtype):
             model._modules[name].source_cls = type(module)
             # Force requires grad to False to avoid unexpected errors
             model._modules[name].requires_grad_(False)
-
-        has_children = list(module.children())
-        if has_children:
-            _replace_with_gguf_linear(module, compute_dtype)
 
     return model
 
@@ -274,33 +286,36 @@ def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
     return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
 
 
-dequantize_functions = {
-    gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
-    gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
-    gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
-    gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
-    gguf.GGMLQuantizationType.Q4_1: dequantize_blocks_Q4_1,
-    gguf.GGMLQuantizationType.Q4_0: dequantize_blocks_Q4_0,
-    gguf.GGMLQuantizationType.Q6_K: dequantize_blocks_Q6_K,
-    gguf.GGMLQuantizationType.Q5_K: dequantize_blocks_Q5_K,
-    gguf.GGMLQuantizationType.Q4_K: dequantize_blocks_Q4_K,
-    gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
-    gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
-}
+if is_gguf_available():
+    GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
+
+    dequantize_functions = {
+        gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
+        gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
+        gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
+        gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
+        gguf.GGMLQuantizationType.Q4_1: dequantize_blocks_Q4_1,
+        gguf.GGMLQuantizationType.Q4_0: dequantize_blocks_Q4_0,
+        gguf.GGMLQuantizationType.Q6_K: dequantize_blocks_Q6_K,
+        gguf.GGMLQuantizationType.Q5_K: dequantize_blocks_Q5_K,
+        gguf.GGMLQuantizationType.Q4_K: dequantize_blocks_Q4_K,
+        gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
+        gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
+    }
 
 
 def _quant_shape_from_byte_shape(shape, type_size, block_size):
     return (*shape[:-1], shape[-1] // type_size * block_size)
 
 
-def dequantize_gguf_tensor(tensor, compute_dtype):
+def dequantize_gguf_tensor(tensor):
     if not hasattr(tensor, "quant_type"):
         return tensor
 
     quant_type = tensor.quant_type
     dequant_fn = dequantize_functions[quant_type]
 
-    block_size, type_size = gguf.GGML_QUANT_SIZES[quant_type]
+    block_size, type_size = GGML_QUANT_SIZES[quant_type]
 
     tensor = tensor.view(torch.uint8)
     shape = _quant_shape_from_byte_shape(tensor.shape, type_size, block_size)
@@ -310,9 +325,8 @@ def dequantize_gguf_tensor(tensor, compute_dtype):
 
     dequant = dequant_fn(blocks, block_size, type_size)
     dequant = dequant.reshape(shape)
-    dequant = dequant.to(compute_dtype)
 
-    return dequant
+    return dequant.as_tensor()
 
 
 class GGUFParameter(torch.Tensor):
@@ -322,6 +336,9 @@ class GGUFParameter(torch.Tensor):
         self.quant_type = quant_type
 
         return self
+
+    def as_tensor(self):
+        return torch.Tensor._make_subclass(torch.Tensor, self, self.requires_grad)
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
@@ -365,5 +382,9 @@ class GGUFLinear(nn.Linear):
         self.compute_dtype = compute_dtype
 
     def forward(self, inputs):
-        weight = dequantize_gguf_tensor(self.weight, self.compute_dtype)
-        return torch.nn.functional.linear(inputs, weight, self.bias)
+        weight = dequantize_gguf_tensor(self.weight)
+        weight = weight.to(self.compute_dtype)
+        bias = self.bias.to(self.compute_dtype)
+
+        output = torch.nn.functional.linear(inputs, weight, bias)
+        return output

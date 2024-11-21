@@ -220,6 +220,7 @@ class FromOriginalModelMixin:
             )
         if quantization_config is not None:
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
+            hf_quantizer.validate_environment()
 
         else:
             hf_quantizer = None
@@ -316,7 +317,12 @@ class FromOriginalModelMixin:
             keep_in_fp32_modules = []
 
         if hf_quantizer is not None:
-            hf_quantizer.preprocess_model(model=model, device_map=None, keep_in_fp32_modules=keep_in_fp32_modules)
+            hf_quantizer.preprocess_model(
+                model=model,
+                device_map=None,
+                state_dict=diffusers_format_checkpoint,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
 
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(
