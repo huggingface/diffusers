@@ -1787,14 +1787,41 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
         )
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
-        if not is_correct_format:
+        has_lora_keys = any("lora" in key for key in state_dict.keys())
+
+        # Flux Control LoRAs also have norm keys
+        supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
+        has_norm_keys = any(norm_key in key for key in state_dict.keys() for norm_key in supported_norm_keys)
+
+        if not (has_lora_keys or has_norm_keys):
             raise ValueError("Invalid LoRA checkpoint.")
 
-        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
-        if len(transformer_state_dict) > 0:
+        def prune_state_dict_(state_dict):
+            pruned_keys = []
+            for key in list(state_dict.keys()):
+                is_lora_key_present = "lora" in key
+                is_norm_key_present = any(norm_key in key for norm_key in supported_norm_keys)
+                if not is_lora_key_present and not is_norm_key_present:
+                    state_dict.pop(key)
+                    pruned_keys.append(key)
+            return pruned_keys
+
+        pruned_keys = prune_state_dict_(state_dict)
+        if len(pruned_keys) > 0:
+            logger.warning(
+                f"The provided LoRA state dict contains additional weights that are not compatible with Flux. The following are the incompatible weights:\n{pruned_keys}"
+            )
+
+        transformer_lora_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k and "lora" in k}
+        transformer_norm_state_dict = {
+            k: v
+            for k, v in state_dict.items()
+            if "transformer." in k and any(norm_key in k for norm_key in supported_norm_keys)
+        }
+
+        if len(transformer_lora_state_dict) > 0:
             self.load_lora_into_transformer(
-                state_dict,
+                transformer_lora_state_dict,
                 network_alphas=network_alphas,
                 transformer=getattr(self, self.transformer_name)
                 if not hasattr(self, "transformer")
@@ -1802,6 +1829,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
+            )
+
+        if len(transformer_norm_state_dict) > 0:
+            self.load_norm_into_transformer(
+                transformer_norm_state_dict,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
             )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
@@ -1859,6 +1894,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 _pipeline=_pipeline,
                 low_cpu_mem_usage=low_cpu_mem_usage,
             )
+
+    @classmethod
+    def load_norm_into_transformer(
+        cls,
+        state_dict,
+        transformer: torch.nn.Module,
+    ):
+        print(state_dict.keys())
+        transformer.load_state_dict(state_dict, strict=True)
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
