@@ -351,7 +351,8 @@ class HFSearchPipeline:
             hf_repo_info = {}
             file_list = []
             repo_id, file_name = "", ""
-            
+            diffusers_model_exists = False
+
             # Loop through models to find a suitable candidate
             for repo_info in model_dicts:
                 repo_id = repo_info["id"]
@@ -365,7 +366,6 @@ class HFSearchPipeline:
                 exclusion = [issue['path'] for issue in hf_security_info['filesWithIssues']]
 
                 # Checks for multi-folder diffusers model or valid files (models with security issues are excluded).
-                diffusers_model_exists = False
                 if hf_security_info["scansDone"]:
                     for info in repo_info["siblings"]:
                         file_path = info["rfilename"]
@@ -404,6 +404,7 @@ class HFSearchPipeline:
                     )
                 else:
                     model_path = repo_id
+                    
             elif file_list:
                 file_name = cls.hf_find_safest_model(file_list)
                 if download:
