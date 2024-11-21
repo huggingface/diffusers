@@ -481,6 +481,8 @@ class CivitaiSearchPipeline:
                 The search query string.
             model_type (`str`, *optional*, defaults to `Checkpoint`):
                 The type of model to search for.
+            base_model (`str`, *optional*):
+                The base model to filter by.
             download (`bool`, *optional*, defaults to `False`):
                 Whether to download the model.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -499,6 +501,7 @@ class CivitaiSearchPipeline:
         # Extract additional parameters from kwargs
         model_type = kwargs.pop("model_type", "Checkpoint")
         download = kwargs.pop("download", False)
+        base_model = kwargs.pop("base_model", None)
         force_download = kwargs.pop("force_download", False)
         civitai_token = kwargs.pop("civitai_token", None)
         include_params = kwargs.pop("include_params", False)
@@ -521,7 +524,8 @@ class CivitaiSearchPipeline:
             "sort": "Highest Rated",
             "limit": 20
         }
-
+        if base_model is not None:
+            params["baseModel"] = base_model
 
         headers = {}
         if civitai_token:
@@ -670,6 +674,8 @@ class ModelSearchPipeline(
                 Whether to download the model.
             pipeline_tag (`str`, *optional*, Hugging Face only):
                 Tag to filter models by pipeline.
+            base_model (`str`, *optional*, Civitai only):
+                The base model to filter by.
             force_download (`bool`, *optional*, defaults to `False`, both):
                 Whether to force the download if the model already exists.  
             hf_token (`str`, *optional*, Hugging Face only):
