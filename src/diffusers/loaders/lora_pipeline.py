@@ -2133,7 +2133,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
-    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
         components: List[str] = ["transformer", "text_encoder"],
