@@ -51,22 +51,38 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-
-        >>> from diffusers import FluxImg2ImgPipeline
+        >>> from controlnet_aux import CannyDetector
+        >>> from diffusers import FluxControlImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
-        >>> device = "cuda"
-        >>> pipe = FluxImg2ImgPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
-        >>> pipe = pipe.to(device)
+        >>> pipe = FluxControlImg2ImgPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-Canny-dev", torch_dtype=torch.bfloat16
+        ... ).to("cuda")
 
-        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        >>> init_image = load_image(url).resize((1024, 1024))
+        >>> prompt = "A robot made of exotic candies and chocolates of different kinds. Abstract background"
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/watercolor-painting.jpg"
+        ... )
+        >>> control_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png"
+        ... )
 
-        >>> prompt = "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k"
+        >>> processor = CannyDetector()
+        >>> control_image = processor(
+        ...     control_image, low_threshold=50, high_threshold=200, detect_resolution=1024, image_resolution=1024
+        ... )
 
-        >>> images = pipe(
-        ...     prompt=prompt, image=init_image, num_inference_steps=4, strength=0.95, guidance_scale=0.0
+        >>> image = pipe(
+        ...     prompt=prompt,
+        ...     image=image,
+        ...     control_image=control_image,
+        ...     strength=0.8,
+        ...     height=1024,
+        ...     width=1024,
+        ...     num_inference_steps=50,
+        ...     guidance_scale=30.0,
         ... ).images[0]
+        >>> image.save("output.png")
         ```
 """
 

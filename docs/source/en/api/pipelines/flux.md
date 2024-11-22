@@ -22,12 +22,19 @@ Flux can be quite expensive to run on consumer hardware devices. However, you ca
 
 </Tip>
 
-Flux comes in two variants:
+Flux comes in the following variants:
 
-* Timestep-distilled (`black-forest-labs/FLUX.1-schnell`)
-* Guidance-distilled (`black-forest-labs/FLUX.1-dev`)
+| model type | model id |
+|:----------:|:--------:|
+| Timestep-distilled | [`black-forest-labs/FLUX.1-schnell`](https://huggingface.co/black-forest-labs/FLUX.1-schnell) |
+| Guidance-distilled | [`black-forest-labs/FLUX.1-dev`](https://huggingface.co/black-forest-labs/FLUX.1-dev) |
+| Fill Inpainting (Guidance-distilled) | [`black-forest-labs/FLUX.1-Fill-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) |
+| Canny Control (Guidance-distilled) | [`black-forest-labs/FLUX.1-Canny-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev) |
+| Depth Control (Guidance-distilled) | [`black-forest-labs/FLUX.1-Depth-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev) |
+| Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
+| Depth Control (LoRA) | [`black-forest-labs/FLUX.1-Depth-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev-lora) |
 
-Both checkpoints have slightly difference usage which we detail below.
+All checkpoints have slightly difference usage which we detail below.
 
 ### Timestep-distilled
 
@@ -77,7 +84,67 @@ out = pipe(
 out.save("image.png")
 ```
 
+### Canny Control
+
+**Note:** `black-forest-labs/Flux.1-Canny-dev` is not a ControlNet model. ControlNet models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Canny Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
+
+```python
+import torch
+from controlnet_aux import CannyDetector
+from diffusers import FluxControlPipeline
+from diffusers.utils import load_image
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = CannyDetector()
+control_image = processor(control_image, low_threshold=50, high_threshold=200, detect_resolution=1024, image_resolution=1024)
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=50,
+    guidance_scale=30.0,
+).images[0]
+image.save("output.png")
+```
+
+### Depth Control
+
+**Note:** `black-forest-labs/Flux.1-Depth-dev` is not a ControlNet model. ControlNet models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Depth Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
+
+```python
+import torch
+from diffusers import FluxControlPipeline, FluxTransformer2DModel
+from diffusers.utils import load_image
+from image_gen_aux import DepthPreprocessor
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=30,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
 ## Running FP16 inference
+
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
 
 FP16 inference code:
@@ -186,5 +253,17 @@ image.save("flux-fp8-dev.png")
 ## FluxControlNetImg2ImgPipeline
 
 [[autodoc]] FluxControlNetImg2ImgPipeline
+	- all
+	- __call__
+
+## FluxControlPipeline
+
+[[autodoc]] FluxControlPipeline
+	- all
+	- __call__
+
+## FluxControlImg2ImgPipeline
+
+[[autodoc]] FluxControlImg2ImgPipeline
 	- all
 	- __call__
