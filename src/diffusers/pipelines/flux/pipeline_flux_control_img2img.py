@@ -651,7 +651,6 @@ class FluxControlImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSin
         guidance_scale: float = 7.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        control_latents: Optional[torch.FloatTensor] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -835,23 +834,23 @@ class FluxControlImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSin
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 8
 
-        if control_latents is None:
-            control_image = self.prepare_image(
-                image=control_image,
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=self.vae.dtype,
-            )
+        control_image = self.prepare_image(
+            image=control_image,
+            width=width,
+            height=height,
+            batch_size=batch_size * num_images_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            device=device,
+            dtype=self.vae.dtype,
+        )
 
-            control_latents = self.vae.encode(control_image).latent_dist.sample(generator=generator)
-            control_latents = (control_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        if control_image.ndim == 4:
+            control_image = self.vae.encode(control_image).latent_dist.sample(generator=generator)
+            control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
-            height_control_image, width_control_image = control_latents.shape[2:]
-            control_latents = self._pack_latents(
-                control_latents,
+            height_control_image, width_control_image = control_image.shape[2:]
+            control_image = self._pack_latents(
+                control_image,
                 batch_size * num_images_per_prompt,
                 num_channels_latents,
                 height_control_image,
@@ -887,7 +886,7 @@ class FluxControlImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSin
                 if self.interrupt:
                     continue
 
-                latent_model_input = torch.cat([latents, control_latents], dim=2)
+                latent_model_input = torch.cat([latents, control_image], dim=2)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
