@@ -636,10 +636,15 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
             block_num = re.search(r"single_blocks\.(\d+)", old_key).group(1)
             new_key = f"transformer.single_transformer_blocks.{block_num}"
 
-            if "proj_lora1" in old_key or "proj_lora2" in old_key:
+            if "proj_lora" in old_key:
                 new_key += ".proj_out"
-            elif "qkv_lora1" in old_key or "qkv_lora2" in old_key:
-                new_key += ".norm.linear"
+            elif "qkv_lora" in old_key and "up" not in old_key:
+                handle_qkv(
+                    old_state_dict,
+                    new_state_dict,
+                    old_key,
+                    [f"transformer.single_transformer_blocks.{block_num}.norm.linear"],
+                )
 
             if "down" in old_key:
                 new_key += ".lora_A.weight"
