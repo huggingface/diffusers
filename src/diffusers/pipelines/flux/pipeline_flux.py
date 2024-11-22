@@ -604,6 +604,7 @@ class FluxPipeline(
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        image_embeds: Optional[torch.Tensor] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -799,6 +800,13 @@ class FluxPipeline(
             guidance = guidance.expand(latents.shape[0])
         else:
             guidance = None
+
+        # prepare redux
+        if image_embeds is not None:
+            image_embeds = image_embeds.to(device=device, dtype=prompt_embeds.dtype)
+            img_text_ids = torch.zeros(image_embeds.shape[1], 3).to(device=device, dtype=text_ids.dtype)
+            prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
+            text_ids = torch.cat([text_ids, img_text_ids], dim=0)
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
