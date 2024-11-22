@@ -1787,59 +1787,21 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             pretrained_model_name_or_path_or_dict, return_alphas=True, **kwargs
         )
 
-        has_lora_keys = any("lora" in key for key in state_dict.keys())
-
-        # Flux Control LoRAs also have norm keys
-        supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
-        has_norm_keys = any(norm_key in key for key in state_dict.keys() for norm_key in supported_norm_keys)
-
-        if not (has_lora_keys or has_norm_keys):
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        def prune_state_dict_(state_dict):
-            pruned_keys = []
-            for key in list(state_dict.keys()):
-                is_lora_key_present = "lora" in key
-                is_norm_key_present = any(norm_key in key for norm_key in supported_norm_keys)
-                if not is_lora_key_present and not is_norm_key_present:
-                    state_dict.pop(key)
-                    pruned_keys.append(key)
-            return pruned_keys
-
-        pruned_keys = prune_state_dict_(state_dict)
-        if len(pruned_keys) > 0:
-            logger.warning(
-                f"The provided LoRA state dict contains additional weights that are not compatible with Flux. The following are the incompatible weights:\n{pruned_keys}"
-            )
-
-        transformer_lora_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k and "lora" in k}
-        transformer_norm_state_dict = {
-            k: v
-            for k, v in state_dict.items()
-            if "transformer." in k and any(norm_key in k for norm_key in supported_norm_keys)
-        }
-
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        self._maybe_expand_transformer_param_shape_(
-            transformer, transformer_lora_state_dict, transformer_norm_state_dict
-        )
-        print(transformer)
-
-        if len(transformer_lora_state_dict) > 0:
+        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
+        if len(transformer_state_dict) > 0:
             self.load_lora_into_transformer(
-                transformer_lora_state_dict,
+                state_dict,
                 network_alphas=network_alphas,
-                transformer=transformer,
+                transformer=getattr(self, self.transformer_name)
+                if not hasattr(self, "transformer")
+                else self.transformer,
                 adapter_name=adapter_name,
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
-            )
-
-        if len(transformer_norm_state_dict) > 0:
-            self._transformer_norm_layers = self.load_norm_into_transformer(
-                transformer_norm_state_dict,
-                transformer=transformer,
-                discard_original_layers=False,
             )
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
@@ -1897,46 +1859,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 _pipeline=_pipeline,
                 low_cpu_mem_usage=low_cpu_mem_usage,
             )
-
-    @classmethod
-    def load_norm_into_transformer(
-        cls,
-        state_dict,
-        transformer,
-        prefix=None,
-        discard_original_layers=False,
-    ) -> Dict[str, torch.Tensor]:
-        # Remove prefix if present
-        prefix = prefix or cls.transformer_name
-        for key in list(state_dict.keys()):
-            if key.split(".")[0] == prefix:
-                state_dict[key.replace(f"{prefix}.", "")] = state_dict.pop(key)
-
-        # Find invalid keys
-        transformer_state_dict = transformer.state_dict()
-        transformer_keys = set(transformer_state_dict.keys())
-        state_dict_keys = set(state_dict.keys())
-        extra_keys = list(state_dict_keys - transformer_keys)
-        logger.warning(
-            f"Unsupported keys found in state dict when trying to load normalization layers into the transformer. The following keys will be ignored:\n{extra_keys}."
-        )
-
-        for key in extra_keys:
-            state_dict.pop(key)
-
-        # Save the layers that are going to be overwritten so that unload_lora_weights can work as expected
-        overwritten_layers = {}
-        if not discard_original_layers:
-            for key in state_dict.keys():
-                overwritten_layers[key] = transformer_state_dict[key]
-
-        # We can't load with strict=True because the current state_dict does not contain all the transformer keys
-        logger.info(
-            "Normalization layers in LoRA state dict can only be loaded if fused directly in the transformer. Calls to `.fuse_lora()` will only affect the LoRA layers and not the normalization layers."
-        )
-        transformer.load_state_dict(state_dict, strict=False)
-
-        return overwritten_layers
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2133,6 +2055,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
         components: List[str] = ["transformer", "text_encoder"],
@@ -2172,11 +2095,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
-        if len(self._transformer_norm_layers.keys()) > 0:
-            logger.info(
-                "Normalization layers cannot be loaded without fusing. Calls to `.fuse_lora()` will only affect the actual LoRA layers."
-            )
-
         super().fuse_lora(
             components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names
         )
@@ -2195,82 +2113,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
         """
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        transformer.load_state_dict(self._transformer_norm_layers)
-
         super().unfuse_lora(components=components)
-
-    @classmethod
-    def _maybe_expand_transformer_param_shape_(
-        cls,
-        transformer: torch.nn.Module,
-        lora_state_dict=None,
-        norm_state_dict=None,
-        prefix=None,
-    ):
-        state_dict = {}
-        if lora_state_dict is not None:
-            state_dict.update(lora_state_dict)
-        if norm_state_dict is not None:
-            state_dict.update(norm_state_dict)
-
-        # Remove prefix if present
-        prefix = prefix or cls.transformer_name
-        for key in list(state_dict.keys()):
-            if key.split(".")[0] == prefix:
-                state_dict[key.replace(f"{prefix}.", "")] = state_dict.pop(key)
-
-        def get_submodule(module, name):
-            for part in name.split("."):
-                if len(name) == 0:
-                    break
-                if not hasattr(module, part):
-                    raise AttributeError(f"Submodule '{part}' not found in '{module}'.")
-                module = getattr(module, part)
-            return module
-
-        # Expand transformer parameter shapes if they don't match lora
-        for name, module in transformer.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                module_weight = module.weight.data
-                module_bias = module.bias.data if hasattr(module, "bias") else None
-                bias = module_bias is not None
-                name_split = name.split(".")
-
-                lora_A_name = f"{name}.lora_A"
-                lora_B_name = f"{name}.lora_B"
-                lora_A_weight_name = f"{lora_A_name}.weight"
-                lora_B_weight_name = f"{lora_B_name}.weight"
-
-                if lora_A_weight_name not in state_dict.keys():
-                    continue
-
-                in_features = state_dict[lora_A_weight_name].shape[1]
-                out_features = state_dict[lora_B_weight_name].shape[0]
-
-                if tuple(module_weight.shape) == (out_features, in_features):
-                    continue
-
-                parent_module_name = ".".join(name_split[:-1])
-                current_module_name = name_split[-1]
-                parent_module = get_submodule(transformer, parent_module_name)
-
-                expanded_module = torch.nn.Linear(
-                    in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
-                )
-
-                new_weight = module_weight.new_zeros(expanded_module.weight.data.shape)
-                slices = tuple(slice(0, dim) for dim in module_weight.shape)
-                new_weight[slices] = module_weight
-                expanded_module.weight.data.copy_(new_weight)
-
-                if bias:
-                    new_bias = module_bias.new_zeros(expanded_module.bias.data.shape)
-                    slices = tuple(slice(0, dim) for dim in module_bias.shape)
-                    new_bias[slices] = module_bias
-                    expanded_module.bias.data.copy_(new_bias)
-
-                setattr(parent_module, current_module_name, expanded_module)
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
