@@ -52,11 +52,13 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
 
-        >>> from diffusers import FluxImg2ImgPipeline
+        >>> from diffusers import FluxControlImg2ImgPipeline
         >>> from diffusers.utils import load_image
 
         >>> device = "cuda"
-        >>> pipe = FluxImg2ImgPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = FluxControlImg2ImgPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe = pipe.to(device)
 
         >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
@@ -159,7 +161,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
+class FluxControlImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The Flux pipeline for image inpainting.
 
@@ -424,6 +426,7 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
 
         return timesteps, num_inference_steps - t_start
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -519,6 +522,7 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
 
         return latents
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
@@ -566,6 +570,41 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, latent_image_ids
 
+    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -589,6 +628,7 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 0.6,
@@ -597,6 +637,7 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
         guidance_scale: float = 7.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        control_latents: Optional[torch.FloatTensor] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -623,6 +664,14 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
+            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
+                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
+                specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
+                as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
+                width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
+                images must be passed as a list such that each element of the list can be correctly batched for input
+                to a single ControlNet.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -723,6 +772,7 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
 
         device = self._execution_device
 
+        # 3. Prepare text embeddings
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
@@ -769,7 +819,30 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self.transformer.config.in_channels // 8
+
+        if control_latents is None:
+            control_image = self.prepare_image(
+                image=control_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=self.vae.dtype,
+            )
+
+            control_latents = self.vae.encode(control_image).latent_dist.sample(generator=generator)
+            control_latents = (control_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+            height_control_image, width_control_image = control_latents.shape[2:]
+            control_latents = self._pack_latents(
+                control_latents,
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height_control_image,
+                width_control_image,
+            )
 
         latents, latent_image_ids = self.prepare_latents(
             init_image,
@@ -800,10 +873,13 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
                 if self.interrupt:
                     continue
 
+                latent_model_input = torch.cat([latents, control_latents], dim=2)
+
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
                 noise_pred = self.transformer(
-                    hidden_states=latents,
+                    hidden_states=latent_model_input,
                     timestep=timestep / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

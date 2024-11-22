@@ -23,6 +23,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_flux"] = ["FluxPipeline"]
+    _import_structure["pipeline_flux_control"] = ["FluxControlPipeline"]
+    _import_structure["pipeline_flux_control_img2img"] = ["FluxControlImg2ImgPipeline"]
     _import_structure["pipeline_flux_controlnet"] = ["FluxControlNetPipeline"]
     _import_structure["pipeline_flux_controlnet_image_to_image"] = ["FluxControlNetImg2ImgPipeline"]
     _import_structure["pipeline_flux_controlnet_inpainting"] = ["FluxControlNetInpaintPipeline"]
@@ -37,6 +39,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_flux import FluxPipeline
+        from .pipeline_flux_control import FluxControlPipeline
+        from .pipeline_flux_control_img2img import FluxControlImg2ImgPipeline
         from .pipeline_flux_controlnet import FluxControlNetPipeline
         from .pipeline_flux_controlnet_image_to_image import FluxControlNetImg2ImgPipeline
         from .pipeline_flux_controlnet_inpainting import FluxControlNetInpaintPipeline
