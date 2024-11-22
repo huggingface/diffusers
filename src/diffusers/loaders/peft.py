@@ -216,7 +216,9 @@ class PeftAdapterMixin:
 
             rank = {}
             for key, val in state_dict.items():
-                if "lora_B" in key:
+                # Cannot figure out rank from lora layers that don't have atleast 2 dimensions.
+                # Bias layers in LoRA only have a single dimension
+                if "lora_B" in key and val.ndim > 1:
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
@@ -224,6 +226,7 @@ class PeftAdapterMixin:
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            print(lora_config_kwargs)
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
                     if is_peft_version("<", "0.9.0"):
