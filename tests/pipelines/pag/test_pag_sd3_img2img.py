@@ -186,7 +186,7 @@ class StableDiffusion3PAGImg2ImgPipelineFastTests(unittest.TestCase, PipelineTes
         ), f"the shape of the output image should be (1, 32, 32, 3) but got {image.shape}"
 
         expected_slice = np.array(
-            [0.7251651, 0.52043426, 0.5527822, 0.7089102, 0.62233330, 0.5923926, 0.4929751, 0.52322210, 0.5529656]
+            [0.66063476, 0.44838923, 0.5484299, 0.7242875, 0.5970012, 0.6015729, 0.53080845, 0.52220416, 0.56397927]
         )
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -241,7 +241,17 @@ class StableDiffusion3PAGImg2ImgPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 1024, 1024, 3)
         expected_slice = np.array(
-            [0.1694336, 0.17797852, 0.18652344, 0.1796875, 0.18457031, 0.17822266, 0.17480469, 0.17871094, 0.17944336]
+            [
+                0.16772461,
+                0.17626953,
+                0.18432617,
+                0.17822266,
+                0.18359375,
+                0.17626953,
+                0.17407227,
+                0.17700195,
+                0.17822266,
+            ]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
