@@ -33,4 +33,5 @@ class FluxPriorReduxPipelineOutput(BaseOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    image_embeds: torch.Tensor
+    prompt_embeds: torch.Tensor
+    pooled_prompt_embeds: torch.Tensor
