@@ -38,7 +38,7 @@ deps = {
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",
-    "torch": "torch>=1.4,<2.5.0",
+    "torch": "torch>=1.4",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",

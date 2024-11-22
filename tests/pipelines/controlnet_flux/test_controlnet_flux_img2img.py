@@ -14,6 +14,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import (
     PipelineTesterMixin,
@@ -218,3 +219,31 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
         assert np.allclose(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
+
+    def test_flux_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        height_width_pairs = [(32, 32), (72, 56)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+            inputs.update(
+                {
+                    "control_image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "height": height,
+                    "width": width,
+                }
+            )
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
