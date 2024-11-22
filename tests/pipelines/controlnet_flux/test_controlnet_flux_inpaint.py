@@ -23,7 +23,9 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -192,3 +194,33 @@ class FluxControlNetInpaintPipelineTests(unittest.TestCase, PipelineTesterMixin)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_flux_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        height_width_pairs = [(32, 32), (72, 56)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+
+            inputs.update(
+                {
+                    "control_image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "mask_image": torch.ones((1, 1, height, width)).to(torch_device),
+                    "height": height,
+                    "width": width,
+                }
+            )
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
