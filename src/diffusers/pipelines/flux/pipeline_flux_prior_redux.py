@@ -118,7 +118,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
         image = self.feature_extractor.preprocess(
-            images=[image], do_resize=True, return_tensors="pt", do_convert_rgb=True
+            images=image, do_resize=True, return_tensors="pt", do_convert_rgb=True
         )
         image = image.to(device=device, dtype=dtype)
         image_enc_hidden_states = self.image_encoder(**image).last_hidden_state
