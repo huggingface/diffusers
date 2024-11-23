@@ -1822,9 +1822,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         }
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        self._maybe_expand_transformer_param_shape_(
+        has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
             transformer, transformer_lora_state_dict, transformer_norm_state_dict
         )
+
+        if has_param_with_expanded_shape:
+            logger.info(
+                "The LoRA weights contain parameters that have different shapes that expected by the transformer. "
+                "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
+                "To get a comprehensive list of parameter names that were modified, enable debug logging."
+            )
 
         if len(transformer_lora_state_dict) > 0:
             self.load_lora_into_transformer(
@@ -1931,10 +1938,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             for key in state_dict.keys():
                 overwritten_layers_state_dict[key] = transformer_state_dict[key]
 
-        # We can't load with strict=True because the current state_dict does not contain all the transformer keys
         logger.info(
-            "Normalization layers in LoRA state dict can only be loaded if fused directly in the transformer. Calls to `.fuse_lora()` will only affect the LoRA layers and not the normalization layers."
+            "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will directly update the state_dict of the transformer "
+            'as opposed to the LoRA layers that will co-exist separately until the "fuse_lora()" method is called. That is to say, the normalization layers will always be directly '
+            "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed."
         )
+
+        # We can't load with strict=True because the current state_dict does not contain all the transformer keys
         transformer.load_state_dict(state_dict, strict=False)
 
         return overwritten_layers_state_dict
@@ -2175,7 +2185,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         """
         if len(self._transformer_norm_layers.keys()) > 0:
             logger.info(
-                "Normalization layers cannot be loaded without fusing. Calls to `.fuse_lora()` will only affect the actual LoRA layers."
+                "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will directly update the state_dict of the transformer "
+                'as opposed to the LoRA layers that will co-exist separately until the "fuse_lora()" method is called. That is to say, the normalization layers will always be directly '
+                "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed."
             )
 
         super().fuse_lora(
@@ -2202,13 +2214,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         super().unfuse_lora(components=components)
 
     @classmethod
-    def _maybe_expand_transformer_param_shape_(
+    def _maybe_expand_transformer_param_shape_or_error_(
         cls,
         transformer: torch.nn.Module,
         lora_state_dict=None,
         norm_state_dict=None,
         prefix=None,
-    ):
+    ) -> bool:
         state_dict = {}
         if lora_state_dict is not None:
             state_dict.update(lora_state_dict)
@@ -2231,6 +2243,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             return module
 
         # Expand transformer parameter shapes if they don't match lora
+        has_param_with_shape_update = False
+
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
                 module_weight = module.weight.data
@@ -2252,6 +2266,23 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 if tuple(module_weight.shape) == (out_features, in_features):
                     continue
 
+                module_out_features, module_in_features = module_weight.shape
+                if out_features < module_out_features or in_features < module_in_features:
+                    raise NotImplementedError(
+                        f"Only LoRAs with input/output features higher than the current modules' input/output features "
+                        f"are currently supported. The provided LoRA contains {in_features=} and {out_features=}, which "
+                        f"are lower than {module_in_features=} and {module_out_features=}. If you require support for "
+                        f"this please open an issue at https://github.com/huggingface/diffusers/issues."
+                    )
+
+                logger.debug(
+                    f'Expanding the nn.Linear input/output features for module="{name}" because the provided LoRA '
+                    f"checkpoint contains higher number of features than expected. The number of input_features will be "
+                    f"expanded from {module_in_features} to {in_features}, and the number of output features will be "
+                    f"expanded from {module_out_features} to {out_features}."
+                )
+
+                has_param_with_shape_update = True
                 parent_module_name = ".".join(name_split[:-1])
                 current_module_name = name_split[-1]
                 parent_module = get_submodule(transformer, parent_module_name)
@@ -2276,6 +2307,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     expanded_module.bias.data.copy_(new_bias)
 
                 setattr(parent_module, current_module_name, expanded_module)
+
+        return has_param_with_shape_update
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
