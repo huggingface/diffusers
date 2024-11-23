@@ -207,8 +207,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
-        self.default_height = 480
-        self.default_width = 848
 
     # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -577,8 +575,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        height = height or self.default_height
-        width = width or self.default_width
+        height = height or self.transformer.config.sample_height * self.vae_spatial_scale_factor
+        width = width or self.transformer.config.sample_width * self.vae_spatial_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
