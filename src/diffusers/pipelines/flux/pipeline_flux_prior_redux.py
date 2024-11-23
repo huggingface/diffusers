@@ -53,32 +53,59 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import FluxPipeline
+        >>> from diffusers import FluxPriorReduxPipeline, FluxPipeline
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
-        >>> image.save("flux.png")
+        >>> device = "cuda"
+        >>> dtype = torch.bfloat16
+
+        >>> repo_redux = "black-forest-labs/FLUX.1-Redux-dev"
+        >>> repo_base = "black-forest-labs/FLUX.1-dev"
+        >>> pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, torch_dtype=dtype).to(device)
+        >>> pipe = FluxPipeline.from_pretrained(
+        ...     repo_base, text_encoder=None, text_encoder_2=None, torch_dtype=torch.bfloat16
+        ... ).to(device)
+
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy/img5.png"
+        ... )
+        >>> pipe_prior_output = pipe_prior_redux(image)
+        >>> images = pipe(
+        ...     guidance_scale=2.5,
+        ...     num_inference_steps=50,
+        ...     generator=torch.Generator("cpu").manual_seed(0),
+        ...     **pipe_prior_output,
+        ... ).images
+        >>> images[0].save("flux-redux.png")
         ```
 """
 
 
 class FluxPriorReduxPipeline(DiffusionPipeline):
     r"""
-    The Flux pipeline for text-to-image generation.
+    The Flux Redux pipeline for image-to-image generation.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
+    Reference: https://blackforestlabs.ai/flux-1-tools/
 
     Args:
-        transformer ([`FluxTransformer2DModel`]):
-            Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        image_encoder ([`SiglipVisionModel`]):
+            SIGLIP vision model to encode the input image.
+        feature_extractor ([`SiglipImageProcessor`]):
+            Image processor for preprocessing images for the SIGLIP model.
+        image_embedder ([`ReduxImageEncoder`]):
+            Redux image encoder to process the SIGLIP embeddings.
+        text_encoder ([`CLIPTextModel`], *optional*):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([`T5EncoderModel`], *optional*):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
+        tokenizer (`CLIPTokenizer`, *optional*):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`T5TokenizerFast`, *optional*):
+            Second Tokenizer of class
+            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
     model_cpu_offload_seq = "image_encoder->image_embedder"
@@ -121,6 +148,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             images=image, do_resize=True, return_tensors="pt", do_convert_rgb=True
         )
         image = image.to(device=device, dtype=dtype)
+
         image_enc_hidden_states = self.image_encoder(**image).last_hidden_state
         image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
 
@@ -312,16 +340,20 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
+                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
+                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.flux.FluxPriorReduxPipelineOutput`] instead of a plain tuple.
 
         Examples:
 
         Returns:
-            [`~pipelines.flux.FluxPipelineOutput`] or `tuple`: [`~pipelines.flux.FluxPipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+            [`~pipelines.flux.FluxPriorReduxPipelineOutput`] or `tuple`:
+            [`~pipelines.flux.FluxPriorReduxPipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is a list with the generated images.
         """
 
         # 2. Define call parameters
@@ -335,6 +367,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # 3. Prepare image embeddings
         image_latents = self.encode_image(image, device, 1)
+
         image_embeds = self.image_embedder(image_latents).image_embeds
         image_embeds = image_embeds.to(device=device)
 
@@ -355,7 +388,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 lora_scale=None,
             )
         else:
+            # max_sequence_length is 512, t5 encoder hidden size is 4096
             prompt_embeds = torch.zeros((batch_size, 512, 4096), device=device, dtype=image_embeds.dtype)
+            # pooled_prompt_embeds is 768, clip text encoder hidden size
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
         # Concatenate image and text embeddings

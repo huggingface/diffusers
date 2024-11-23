@@ -172,6 +172,41 @@ image = pipe(
 image.save("output.png")
 ```
 
+### Redux
+
+* Flux Redux pipeline is an adapter for FLUX.1 base models. It can be used with both flux-dev and flux-schnell, for image-to-image generation.
+* You can first use the `FluxPriorReduxPipeline` to get the `prompt_embeds` and `pooled_prompt_embeds`, and then feed them into the `FluxPipeline` for image-to-image generation.
+* When use `FluxPriorReduxPipeline` with a base pipeline, you can set `text_encoder=None` and `text_encoder_2=None` in the base pipeline, in order to save VRAM.
+
+```python
+import torch
+from diffusers import FluxPriorReduxPipeline, FluxPipeline
+from diffusers.utils import load_image
+device = "cuda"
+dtype = torch.bfloat16
+
+
+repo_redux = "black-forest-labs/FLUX.1-Redux-dev"
+repo_base = "black-forest-labs/FLUX.1-dev" 
+pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(repo_redux, torch_dtype=dtype).to(device)
+pipe = FluxPipeline.from_pretrained(
+    repo_base, 
+    text_encoder=None,
+    text_encoder_2=None,
+    torch_dtype=torch.bfloat16
+).to(device)
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy/img5.png")
+pipe_prior_output = pipe_prior_redux(image)
+images = pipe(
+    guidance_scale=2.5,
+    num_inference_steps=50,
+    generator=torch.Generator("cpu").manual_seed(0),
+    **pipe_prior_output,
+).images
+images[0].save("flux-redux.png")
+```
+
 ## Running FP16 inference
 
 Flux can generate high-quality images with FP16 (i.e. to accelerate inference on Turing/Volta GPUs) but produces different outputs compared to FP32/BF16. The issue is that some activations in the text encoders have to be clipped when running in FP16, which affects the overall image. Forcing text encoders to run with FP32 inference thus removes this output difference. See [here](https://github.com/huggingface/diffusers/pull/9097#issuecomment-2272292516) for details.
