@@ -28,7 +28,7 @@ Flux comes in the following variants:
 |:----------:|:--------:|
 | Timestep-distilled | [`black-forest-labs/FLUX.1-schnell`](https://huggingface.co/black-forest-labs/FLUX.1-schnell) |
 | Guidance-distilled | [`black-forest-labs/FLUX.1-dev`](https://huggingface.co/black-forest-labs/FLUX.1-dev) |
-| Fill Inpainting (Guidance-distilled) | [`black-forest-labs/FLUX.1-Fill-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) |
+| Fill Inpainting/Outpainting (Guidance-distilled) | [`black-forest-labs/FLUX.1-Fill-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) |
 | Canny Control (Guidance-distilled) | [`black-forest-labs/FLUX.1-Canny-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev) |
 | Depth Control (Guidance-distilled) | [`black-forest-labs/FLUX.1-Depth-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev) |
 | Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
@@ -83,6 +83,34 @@ out = pipe(
     num_inference_steps=50,
 ).images[0]
 out.save("image.png")
+```
+
+### Fill Inpainting/Outpainting
+
+* Flux Fill pipeline does not require `strength` as an input like regular inpainting pipelines.
+* It supports both inpainting and outpainting.
+
+```python
+import torch
+from diffusers import FluxFillPipeline
+from diffusers.utils import load_image
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup.png")
+mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
+
+repo_id = "black-forest-labs/FLUX.1-Fill-dev"
+pipe = FluxFillPipeline.from_pretrained(repo_id, torch_dtype=torch.bfloat16).to("cuda")
+
+image = pipe(
+    prompt="a white paper cup",
+    image=image,
+    mask_image=mask,
+    height=1632,
+    width=1232,
+    max_sequence_length=512,
+    generator=torch.Generator("cpu").manual_seed(0)
+).images[0]
+image.save(f"output.png")
 ```
 
 ### Canny Control
