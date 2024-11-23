@@ -80,6 +80,8 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "post_attn1_layernorm": "norm2.norm",
     "time_embed.0": "time_embedding.linear_1",
     "time_embed.2": "time_embedding.linear_2",
+    "ofs_embed.0": "ofs_embedding.linear_1",
+    "ofs_embed.2": "ofs_embedding.linear_2",
     "mixins.patch_embed": "patch_embed",
     "mixins.final_layer.norm_final": "norm_out.norm",
     "mixins.final_layer.linear": "proj_out",
@@ -140,6 +142,7 @@ def convert_transformer(
     use_rotary_positional_embeddings: bool,
     i2v: bool,
     dtype: torch.dtype,
+    init_kwargs: Dict[str, Any],
 ):
     PREFIX_KEY = "model.diffusion_model."
 
@@ -149,7 +152,9 @@ def convert_transformer(
         num_layers=num_layers,
         num_attention_heads=num_attention_heads,
         use_rotary_positional_embeddings=use_rotary_positional_embeddings,
-        use_learned_positional_embeddings=i2v,
+        ofs_embed_dim=512 if (i2v and init_kwargs["patch_size_t"] is not None) else None,  # CogVideoX1.5-5B-I2V
+        use_learned_positional_embeddings=i2v and init_kwargs["patch_size_t"] is None,  # CogVideoX-5B-I2V
+        **init_kwargs,
     ).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
@@ -163,13 +168,18 @@ def convert_transformer(
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
+
     transformer.load_state_dict(original_state_dict, strict=True)
     return transformer
 
 
-def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
+def convert_vae(ckpt_path: str, scaling_factor: float, version: str, dtype: torch.dtype):
+    init_kwargs = {"scaling_factor": scaling_factor}
+    if version == "1.5":
+        init_kwargs.update({"invert_scale_latents": True})
+
     original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", mmap=True))
-    vae = AutoencoderKLCogVideoX(scaling_factor=scaling_factor).to(dtype=dtype)
+    vae = AutoencoderKLCogVideoX(**init_kwargs).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -187,6 +197,34 @@ def convert_vae(ckpt_path: str, scaling_factor: float, dtype: torch.dtype):
     return vae
 
 
+def get_transformer_init_kwargs(version: str):
+    if version == "1.0":
+        vae_scale_factor_spatial = 8
+        init_kwargs = {
+            "patch_size": 2,
+            "patch_size_t": None,
+            "patch_bias": True,
+            "sample_height": 480 // vae_scale_factor_spatial,
+            "sample_width": 720 // vae_scale_factor_spatial,
+            "sample_frames": 49,
+        }
+
+    elif version == "1.5":
+        vae_scale_factor_spatial = 8
+        init_kwargs = {
+            "patch_size": 2,
+            "patch_size_t": 2,
+            "patch_bias": False,
+            "sample_height": 300,
+            "sample_width": 300,
+            "sample_frames": 81,
+        }
+    else:
+        raise ValueError("Unsupported version of CogVideoX.")
+
+    return init_kwargs
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -202,6 +240,12 @@ def get_args():
     parser.add_argument(
         "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
     )
+    parser.add_argument(
+        "--typecast_text_encoder",
+        action="store_true",
+        default=False,
+        help="Whether or not to apply fp16/bf16 precision to text_encoder",
+    )
     # For CogVideoX-2B, num_layers is 30. For 5B, it is 42
     parser.add_argument("--num_layers", type=int, default=30, help="Number of transformer blocks")
     # For CogVideoX-2B, num_attention_heads is 30. For 5B, it is 48
@@ -214,7 +258,18 @@ def get_args():
     parser.add_argument("--scaling_factor", type=float, default=1.15258426, help="Scaling factor in the VAE")
     # For CogVideoX-2B, snr_shift_scale is 3.0. For 5B, it is 1.0
     parser.add_argument("--snr_shift_scale", type=float, default=3.0, help="Scaling factor in the VAE")
-    parser.add_argument("--i2v", action="store_true", default=False, help="Whether to save the model weights in fp16")
+    parser.add_argument(
+        "--i2v",
+        action="store_true",
+        default=False,
+        help="Whether the model to be converted is the Image-to-Video version of CogVideoX.",
+    )
+    parser.add_argument(
+        "--version",
+        choices=["1.0", "1.5"],
+        default="1.0",
+        help="Which version of CogVideoX to use for initializing default modeling parameters.",
+    )
     return parser.parse_args()
 
 
@@ -230,6 +285,7 @@ if __name__ == "__main__":
     dtype = torch.float16 if args.fp16 else torch.bfloat16 if args.bf16 else torch.float32
 
     if args.transformer_ckpt_path is not None:
+        init_kwargs = get_transformer_init_kwargs(args.version)
         transformer = convert_transformer(
             args.transformer_ckpt_path,
             args.num_layers,
@@ -237,13 +293,18 @@ if __name__ == "__main__":
             args.use_rotary_positional_embeddings,
             args.i2v,
             dtype,
+            init_kwargs,
         )
     if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, dtype)
+        # Keep VAE in float32 for better quality
+        vae = convert_vae(args.vae_ckpt_path, args.scaling_factor, args.version, torch.float32)
 
     text_encoder_id = "google/t5-v1_1-xxl"
     tokenizer = T5Tokenizer.from_pretrained(text_encoder_id, model_max_length=TOKENIZER_MAX_LENGTH)
     text_encoder = T5EncoderModel.from_pretrained(text_encoder_id, cache_dir=args.text_encoder_cache_dir)
+
+    if args.typecast_text_encoder:
+        text_encoder = text_encoder.to(dtype=dtype)
 
     # Apparently, the conversion does not work anymore without this :shrug:
     for param in text_encoder.parameters():
@@ -275,11 +336,6 @@ if __name__ == "__main__":
         transformer=transformer,
         scheduler=scheduler,
     )
-
-    if args.fp16:
-        pipe = pipe.to(dtype=torch.float16)
-    if args.bf16:
-        pipe = pipe.to(dtype=torch.bfloat16)
 
     # We don't use variant here because the model must be run in fp16 (2B) or bf16 (5B). It would be weird
     # for users to specify variant when the default is not fp32 and they want to run with the correct default (which
