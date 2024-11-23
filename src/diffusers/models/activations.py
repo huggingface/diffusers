@@ -50,6 +50,18 @@ def get_activation(act_fn: str) -> nn.Module:
         raise ValueError(f"Unsupported activation function: {act_fn}")
 
 
+class FP32SiLU(nn.Module):
+    r"""
+    SiLU activation function with input upcasted to torch.float32.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return F.silu(inputs.float(), inplace=False).to(inputs.dtype)
+
+
 class GELU(nn.Module):
     r"""
     GELU activation function with tanh approximation support with `approximate="tanh"`.
@@ -109,6 +121,29 @@ class GEGLU(nn.Module):
         else:
             hidden_states, gate = hidden_states.chunk(2, dim=-1)
             return hidden_states * self.gelu(gate)
+
+
+class SwiGLU(nn.Module):
+    r"""
+    A [variant](https://arxiv.org/abs/2002.05202) of the gated linear unit activation function. It's similar to `GEGLU`
+    but uses SiLU / Swish instead of GeLU.
+
+    Parameters:
+        dim_in (`int`): The number of channels in the input.
+        dim_out (`int`): The number of channels in the output.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
+    """
+
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
+        super().__init__()
+
+        self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
+        self.activation = nn.SiLU()
+
+    def forward(self, hidden_states):
+        hidden_states = self.proj(hidden_states)
+        hidden_states, gate = hidden_states.chunk(2, dim=-1)
+        return hidden_states * self.activation(gate)
 
 
 class ApproximateGELU(nn.Module):

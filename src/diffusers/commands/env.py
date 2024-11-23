@@ -24,14 +24,12 @@ from ..utils import (
     is_bitsandbytes_available,
     is_flax_available,
     is_google_colab,
-    is_notebook,
     is_peft_available,
     is_safetensors_available,
     is_torch_available,
     is_transformers_available,
     is_xformers_available,
 )
-from ..utils.testing_utils import get_python_version
 from . import BaseDiffusersCLICommand
 
 
@@ -106,12 +104,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
             xformers_version = xformers.__version__
 
-        if get_python_version() >= (3, 10):
-            platform_info = f"{platform.freedesktop_os_release().get('PRETTY_NAME', None)} - {platform.platform()}"
-        else:
-            platform_info = platform.platform()
-
-        is_notebook_str = "Yes" if is_notebook() else "No"
+        platform_info = platform.platform()
 
         is_google_colab_str = "Yes" if is_google_colab() else "No"
 
@@ -127,7 +120,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
                 out_str = out_str.decode("utf-8")
 
                 if len(out_str) > 0:
-                    accelerator = out_str.strip() + " VRAM"
+                    accelerator = out_str.strip()
             except FileNotFoundError:
                 pass
         elif platform.system() == "Darwin":  # Mac OS
@@ -159,7 +152,6 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         info = {
             "🤗 Diffusers version": version,
             "Platform": platform_info,
-            "Running on a notebook?": is_notebook_str,
             "Running on Google Colab?": is_google_colab_str,
             "Python version": platform.python_version(),
             "PyTorch version (GPU?)": f"{pt_version} ({pt_cuda_available})",

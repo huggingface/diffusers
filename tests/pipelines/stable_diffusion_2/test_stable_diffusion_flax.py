@@ -39,7 +39,7 @@ class FlaxStableDiffusion2PipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_flax(self):
         sd_pipe, params = FlaxStableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2",
-            revision="bf16",
+            variant="bf16",
             dtype=jnp.bfloat16,
         )
 
@@ -80,7 +80,7 @@ class FlaxStableDiffusion2PipelineNightlyTests(unittest.TestCase):
         sd_pipe, params = FlaxStableDiffusionPipeline.from_pretrained(
             model_id,
             scheduler=scheduler,
-            revision="bf16",
+            variant="bf16",
             dtype=jnp.bfloat16,
         )
         params["scheduler"] = scheduler_params

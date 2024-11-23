@@ -46,8 +46,6 @@ from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor2_0,
     FusedAttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
@@ -1154,8 +1152,6 @@ class StyleAlignedSDXLPipeline(
             (
                 AttnProcessor2_0,
                 XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
                 FusedAttnProcessor2_0,
             ),
         )

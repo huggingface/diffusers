@@ -95,7 +95,7 @@ class TemporalDecoder(nn.Module):
         sample = self.conv_in(sample)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -253,7 +253,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -323,11 +323,13 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         Args:
             x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+                Whether to return a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] instead of a plain
+                tuple.
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
-                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+                [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         h = self.encoder(x)
         moments = self.quant_conv(h)

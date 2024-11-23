@@ -16,14 +16,14 @@ specific language governing permissions and limitations under the License.
 
 Diffusion pipelines are a collection of interchangeable schedulers and models that can be mixed and matched to tailor a pipeline to a specific use case. The scheduler encapsulates the entire denoising process such as the number of denoising steps and the algorithm for finding the denoised sample. A scheduler is not parameterized or trained so they don't take very much memory. The model is usually only concerned with the forward pass of going from a noisy input to a less noisy sample.
 
-This guide will show you how to load schedulers and models to customize a pipeline. You'll use the [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) checkpoint throughout this guide, so let's load it first.
+This guide will show you how to load schedulers and models to customize a pipeline. You'll use the [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint throughout this guide, so let's load it first.
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -56,14 +56,14 @@ For example, to load the [`DDIMScheduler`]:
 ```py
 from diffusers import DDIMScheduler, DiffusionPipeline
 
-ddim = DDIMScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+ddim = DDIMScheduler.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="scheduler")
 ```
 
 Then you can pass the newly loaded scheduler to the pipeline.
 
 ```python
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 ```
 
@@ -78,7 +78,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 
 prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
@@ -180,13 +180,13 @@ from flax.training.common_utils import shard
 from diffusers import FlaxStableDiffusionPipeline, FlaxDPMSolverMultistepScheduler
 
 scheduler, scheduler_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     subfolder="scheduler"
 )
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     scheduler=scheduler,
-    revision="bf16",
+    variant="bf16",
     dtype=jax.numpy.bfloat16,
 )
 params["scheduler"] = scheduler_state
@@ -212,72 +212,16 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
-## Custom Timestep Schedules
-
-With all our schedulers, you can choose one of the popular timestep schedules using configurations such as `timestep_spacing`, `interpolation_type`, and `use_karras_sigmas`. Some schedulers also provide the flexibility to use a custom timestep schedule. You can use any list of arbitrary timesteps, we will use the AYS timestep schedule here as example. It is a set of 10-step optimized timestep schedules released by researchers from Nvidia that can achieve significantly better quality compared to the preset timestep schedules. You can read more about their research [here](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/). 
-
-```python
-from diffusers.schedulers import AysSchedules
-sampling_schedule = AysSchedules["StableDiffusionXLTimesteps"]
-print(sampling_schedule)
-```
-```
-[999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
-```
-
-You can then create a pipeline and pass this custom timestep schedule to it as `timesteps`.
-
-```python
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0",
-    torch_dtype=torch.float16,
-    variant="fp16",
-).to("cuda")
-
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, algorithm_type="sde-dpmsolver++")
-
-prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
-
-generator = torch.Generator(device="cpu").manual_seed(2487854446)
-
-image = pipe(
-    prompt=prompt,
-    negative_prompt="",
-    generator=generator,
-    timesteps=sampling_schedule,
-).images[0]
-```
-The generated image has better quality than the default linear timestep schedule for the same number of steps, and it is similar to the default timestep scheduler when running for 25 steps.
-
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ays.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">AYS timestep schedule 10 steps</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 10 steps</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/25.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 25 steps</figcaption>
-  </div>
-</div>
-
-> [!TIP]
-> 🤗 Diffusers currently only supports `timesteps` and `sigmas` for a selected list of schedulers and pipelines, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you want to extend feature to a scheduler and pipeline that does not currently support it!
-
-
 ## Models
 
 Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
 
-Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for [runwayml/stable-diffusion-v1-5](https://hf.co/runwayml/stable-diffusion-v1-5) are stored in the [unet](https://hf.co/runwayml/stable-diffusion-v1-5/tree/main/unet) subfolder.
+Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5) are stored in the [unet](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main/unet) subfolder.
 
 ```python
 from diffusers import UNet2DConditionModel
 
-unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", use_safetensors=True)
+unet = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", use_safetensors=True)
 ```
 
 They can also be directly loaded from a [repository](https://huggingface.co/google/ddpm-cifar10-32/tree/main).
@@ -294,7 +238,7 @@ To load and save model variants, specify the `variant` argument in [`ModelMixin.
 from diffusers import UNet2DConditionModel
 
 unet = UNet2DConditionModel.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
 )
 unet.save_pretrained("./local-unet", variant="non_ema")
 ```

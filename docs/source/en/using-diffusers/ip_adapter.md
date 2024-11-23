@@ -380,7 +380,7 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -421,7 +421,7 @@ from diffusers.utils import load_image
 from insightface.app import FaceAnalysis
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -445,8 +445,8 @@ generator = torch.Generator(device="cpu").manual_seed(42)
 
 images = pipeline(
     prompt="A photo of a girl",
-    ip_adapter_image_embeds=[id_embeds], 
-    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    ip_adapter_image_embeds=[id_embeds],
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
     num_inference_steps=20, num_images_per_prompt=1,
     generator=generator
 ).images
@@ -617,7 +617,7 @@ controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
 controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
 
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
 pipeline.to("cuda")
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 ```
@@ -661,7 +661,7 @@ image
 
 ### Style & layout control
 
-[InstantStyle](https://arxiv.org/abs/2404.02733) is a plug-and-play method on top of IP-Adapter, which disentangles style and layout from image prompt to control image generation. This way, you can generate images following only the style or layout from image prompt, with significantly improved diversity. This is achieved by only activating IP-Adapters to specific parts of the model. 
+[InstantStyle](https://arxiv.org/abs/2404.02733) is a plug-and-play method on top of IP-Adapter, which disentangles style and layout from image prompt to control image generation. This way, you can generate images following only the style or layout from image prompt, with significantly improved diversity. This is achieved by only activating IP-Adapters to specific parts of the model.
 
 By default IP-Adapters are inserted to all layers of the model. Use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method with a dictionary to assign scales to IP-Adapter at different layers.
 

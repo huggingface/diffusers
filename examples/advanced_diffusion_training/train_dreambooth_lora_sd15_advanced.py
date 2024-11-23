@@ -39,7 +39,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
-from peft import LoraConfig
+from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -57,21 +57,23 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr
+from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
     check_min_version,
     convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_kohya,
+    convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.28.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -79,30 +81,27 @@ logger = get_logger(__name__)
 def save_model_card(
     repo_id: str,
     use_dora: bool,
-    images=None,
-    base_model=str,
+    images: list = None,
+    base_model: str = None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
     token_abstraction_dict=None,
-    instance_prompt=str,
-    validation_prompt=str,
+    instance_prompt=None,
+    validation_prompt=None,
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n"
     lora = "lora" if not use_dora else "dora"
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
-    if not images:
-        img_str += f"""
-        - text: '{instance_prompt}'
-        """
+
+    widget_dict = []
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            widget_dict.append(
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
+            )
+    else:
+        widget_dict.append({"text": instance_prompt})
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
     ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
@@ -137,24 +136,7 @@ pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_en
                 trigger_str += f"""
 to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
-
-    yaml = f"""---
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- diffusers-training
-- text-to-image
-- diffusers
-- {lora}
-- template:sd-lora
-{img_str}
-base_model: {base_model}
-instance_prompt: {instance_prompt}
-license: openrail++
----
-"""
-
-    model_card = f"""
+    model_description = f"""
 # SD1.5 LoRA DreamBooth - {repo_id}
 
 <Gallery />
@@ -202,8 +184,28 @@ Pivotal tuning was enabled: {train_text_encoder_ti}.
 Special VAE used for training: {vae_path}.
 
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="openrail++",
+        base_model=base_model,
+        prompt=instance_prompt,
+        model_description=model_description,
+        inference=True,
+        widget=widget_dict,
+    )
+
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        lora,
+        "template:sd-lora" "stable-diffusion",
+        "stable-diffusion-diffusers",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(
@@ -326,7 +328,7 @@ def parse_args(input_args=None):
         type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
+        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma separated string - e.g. "
         "'TOK,TOK2,TOK3' etc.",
     )
 
@@ -559,7 +561,7 @@ def parse_args(input_args=None):
         "--prodigy_beta3",
         type=float,
         default=None,
-        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        help="coefficients for computing the Prodigy stepsize using running averages. If set to None, "
         "uses the value of square root of beta2. Ignored if optimizer is adamW",
     )
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
@@ -736,7 +738,7 @@ class TokenEmbeddingsHandler:
             # random initialization of new tokens
             std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
 
-            print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
+            print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
             text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
                 torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
@@ -758,7 +760,7 @@ class TokenEmbeddingsHandler:
 
             idx += 1
 
-    # copied from train_dreambooth_lora_sdxl_advanced.py
+    # Copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
@@ -948,7 +950,7 @@ class DreamBoothDataset(Dataset):
             else:
                 example["instance_prompt"] = self.instance_prompt
 
-        else:  # costum prompts were provided, but length does not match size of image dataset
+        else:  # custom prompts were provided, but length does not match size of image dataset
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
@@ -1290,6 +1292,7 @@ def main(args):
                         text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                             get_peft_model_state_dict(model)
                         )
+                else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
@@ -1301,7 +1304,7 @@ def main(args):
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
+            embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -1317,11 +1320,42 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas = StableDiffusionPipeline.lora_state_dict(input_dir)
+
+        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
+        incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
+        if incompatible_keys is not None:
+            # check only for unexpected keys
+            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+            if unexpected_keys:
+                logger.warning(
+                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                    f" {unexpected_keys}. "
+                )
+
+        if args.train_text_encoder:
+            # Do we need to call `scale_lora_layers()` here?
+            _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
+
+            _set_state_dict_into_text_encoder(
+                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_one_
+            )
+
+        # Make sure the trainable params are in float32. This is again needed since the base models
+        # are in `weight_dtype`. More details:
+        # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
+        if args.mixed_precision == "fp16":
+            models = [unet_]
+            if args.train_text_encoder:
+                models.extend([text_encoder_one_])
+                # only upcast trainable parameters (LoRA) into fp32
+                cast_training_params(models)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
+        StableDiffusionLoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
         text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
-        LoraLoaderMixin.load_lora_into_text_encoder(
+        StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder(
             text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
 
@@ -1357,10 +1391,7 @@ def main(args):
             else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        params_to_optimize = [
-            unet_lora_parameters_with_lr,
-            text_lora_parameters_one_with_lr,
-        ]
+        params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr]
     else:
         params_to_optimize = [unet_lora_parameters_with_lr]
 
@@ -1422,7 +1453,6 @@ def main(args):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -1524,17 +1554,22 @@ def main(args):
                 torch.cuda.empty_cache()
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * num_update_steps_per_epoch * accelerator.num_processes
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1551,8 +1586,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+    if num_training_steps_for_scheduler != args.max_train_steps * accelerator.num_processes:
+        logger.warning(
+            f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+            f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+            f"This inconsistency may result in the learning rate scheduler not functioning properly."
+        )
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
@@ -1845,10 +1886,10 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-            if torch.backends.mps.is_available():
-                autocast_ctx = nullcontext()
-            else:
-                autocast_ctx = torch.autocast(accelerator.device.type)
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
                 with autocast_ctx:
                     images = [
@@ -1869,7 +1910,6 @@ def main(args):
                                 ]
                             }
                         )
-
                 del pipeline
                 torch.cuda.empty_cache()
 
@@ -1967,11 +2007,11 @@ def main(args):
                         }
                     )
 
-        # Conver to WebUI format
+        # Convert to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
-        save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
+        save_file(kohya_state_dict, f"{args.output_dir}/{Path(args.output_dir).name}.safetensors")
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
