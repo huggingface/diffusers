@@ -1812,10 +1812,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 f"The provided LoRA state dict contains additional weights that are not compatible with Flux. The following are the incompatible weights:\n{pruned_keys}"
             )
 
-        transformer_lora_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k and "lora" in k}
+        transformer_lora_state_dict = {
+            k: state_dict.pop(k) for k in list(state_dict.keys()) if "transformer." in k and "lora" in k
+        }
         transformer_norm_state_dict = {
-            k: v
-            for k, v in state_dict.items()
+            k: state_dict.pop(k)
+            for k in list(state_dict.keys())
             if "transformer." in k and any(norm_key in k for norm_key in supported_norm_keys)
         }
 
@@ -1823,7 +1825,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         self._maybe_expand_transformer_param_shape_(
             transformer, transformer_lora_state_dict, transformer_norm_state_dict
         )
-        print(transformer)
 
         if len(transformer_lora_state_dict) > 0:
             self.load_lora_into_transformer(
@@ -1836,7 +1837,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         if len(transformer_norm_state_dict) > 0:
-            self._transformer_norm_layers = self.load_norm_into_transformer(
+            self._transformer_norm_layers = self._load_norm_into_transformer(
                 transformer_norm_state_dict,
                 transformer=transformer,
                 discard_original_layers=False,
@@ -1899,7 +1900,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
     @classmethod
-    def load_norm_into_transformer(
+    def _load_norm_into_transformer(
         cls,
         state_dict,
         transformer,
@@ -1925,10 +1926,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict.pop(key)
 
         # Save the layers that are going to be overwritten so that unload_lora_weights can work as expected
-        overwritten_layers = {}
+        overwritten_layers_state_dict = {}
         if not discard_original_layers:
             for key in state_dict.keys():
-                overwritten_layers[key] = transformer_state_dict[key]
+                overwritten_layers_state_dict[key] = transformer_state_dict[key]
 
         # We can't load with strict=True because the current state_dict does not contain all the transformer keys
         logger.info(
@@ -1936,7 +1937,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         )
         transformer.load_state_dict(state_dict, strict=False)
 
-        return overwritten_layers
+        return overwritten_layers_state_dict
 
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
@@ -2196,7 +2197,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
         """
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        transformer.load_state_dict(self._transformer_norm_layers)
+        transformer.load_state_dict(self._transformer_norm_layers, strict=False)
 
         super().unfuse_lora(components=components)
 
@@ -2259,13 +2260,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
                 )
 
-                new_weight = module_weight.new_zeros(expanded_module.weight.data.shape)
+                new_weight = torch.zeros_like(
+                    expanded_module.weight.data.shape, device=module_weight.device, dtype=module_weight.dtype
+                )
                 slices = tuple(slice(0, dim) for dim in module_weight.shape)
                 new_weight[slices] = module_weight
                 expanded_module.weight.data.copy_(new_weight)
 
                 if bias:
-                    new_bias = module_bias.new_zeros(expanded_module.bias.data.shape)
+                    new_bias = torch.zeros_like(
+                        expanded_module.bias.data.shape, device=module_bias.device, dtype=module_bias.dtype
+                    )
                     slices = tuple(slice(0, dim) for dim in module_bias.shape)
                     new_bias[slices] = module_bias
                     expanded_module.bias.data.copy_(new_bias)
