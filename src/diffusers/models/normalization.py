@@ -256,7 +256,9 @@ class MochiRMSNormZero(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
-        hidden_states = self.norm(hidden_states) * (1 + scale_msa[:, None])
+        scale_msa = scale_msa.float()
+        _hidden_states = self.norm(hidden_states).float() * (1 + scale_msa[:, None])
+        hidden_states = _hidden_states.to(hidden_states.dtype)
 
         return hidden_states, gate_msa, scale_mlp, gate_mlp
 
@@ -538,7 +540,7 @@ class RMSNorm(nn.Module):
                 hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = hidden_states * self.weight
         else:
-            hidden_states = hidden_states.to(input_dtype)
+            hidden_states = hidden_states  # .to(input_dtype)
 
         return hidden_states
 

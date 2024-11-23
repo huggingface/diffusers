@@ -335,7 +335,12 @@ class MochiPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+        return (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        )
 
     def check_inputs(
         self,
@@ -596,7 +601,6 @@ class MochiPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
         # 3. Prepare text embeddings
         (
             prompt_embeds,
@@ -615,7 +619,6 @@ class MochiPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-
         # if self.do_classifier_free_guidance:
         #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
         #     prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
@@ -712,34 +715,26 @@ class MochiPipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
-
         if output_type == "latent":
             video = latents
         else:
-            with torch.autocast("cuda", torch.float32):
-                # unscale/denormalize the latents
-                # denormalize with the mean and std if available and not None
-                has_latents_mean = (
-                    hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            # unscale/denormalize the latents
+            # denormalize with the mean and std if available and not None
+            has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+            if has_latents_mean and has_latents_std:
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
                 )
-                has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
-                if has_latents_mean and has_latents_std:
-                    latents_mean = (
-                        torch.tensor(self.vae.config.latents_mean)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents_std = (
-                        torch.tensor(self.vae.config.latents_std)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
-                else:
-                    latents = latents / self.vae.config.scaling_factor
+                latents_std = (
+                    torch.tensor(self.vae.config.latents_std).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
+            else:
+                latents = latents / self.vae.config.scaling_factor
 
-                video = self.vae.decode(latents, return_dict=False)[0]
-                video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = self.vae.decode(latents, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
