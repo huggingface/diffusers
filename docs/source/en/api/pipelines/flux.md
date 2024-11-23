@@ -118,6 +118,7 @@ image.save(f"output.png")
 **Note:** `black-forest-labs/Flux.1-Canny-dev` is _not_ a [`ControlNetModel`] model. ControlNet models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Canny Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible. 
 
 ```python
+# !pip install -U controlnet-aux
 import torch
 from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
