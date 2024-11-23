@@ -20,13 +20,7 @@ import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKLCogVideoX,
-    CogVideoXDDIMScheduler,
-    CogVideoXDPMScheduler,
-    CogVideoXPipeline,
-    CogVideoXTransformer3DModel,
-)
+from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
@@ -46,50 +40,36 @@ from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa:
 
 
 @require_peft_backend
-class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
-    pipeline_class = CogVideoXPipeline
-    scheduler_cls = CogVideoXDPMScheduler
-    scheduler_kwargs = {"timestep_spacing": "trailing"}
-    scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
+@skip_mps
+class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+    pipeline_class = MochiPipeline
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_kwargs = {}
 
     transformer_kwargs = {
-        "num_attention_heads": 4,
-        "attention_head_dim": 8,
-        "in_channels": 4,
-        "out_channels": 4,
-        "time_embed_dim": 2,
-        "text_embed_dim": 32,
-        "num_layers": 1,
-        "sample_width": 16,
-        "sample_height": 16,
-        "sample_frames": 9,
         "patch_size": 2,
-        "temporal_compression_ratio": 4,
-        "max_text_seq_length": 16,
+        "num_attention_heads": 2,
+        "attention_head_dim": 8,
+        "num_layers": 2,
+        "pooled_projection_dim": 16,
+        "in_channels": 12,
+        "out_channels": None,
+        "qk_norm": "rms_norm",
+        "text_embed_dim": 32,
+        "time_embed_dim": 4,
+        "activation_fn": "swiglu",
+        "max_sequence_length": 16,
     }
-    transformer_cls = CogVideoXTransformer3DModel
+    transformer_cls = MochiTransformer3DModel
     vae_kwargs = {
-        "in_channels": 3,
+        "latent_channels": 12,
         "out_channels": 3,
-        "down_block_types": (
-            "CogVideoXDownBlock3D",
-            "CogVideoXDownBlock3D",
-            "CogVideoXDownBlock3D",
-            "CogVideoXDownBlock3D",
-        ),
-        "up_block_types": (
-            "CogVideoXUpBlock3D",
-            "CogVideoXUpBlock3D",
-            "CogVideoXUpBlock3D",
-            "CogVideoXUpBlock3D",
-        ),
-        "block_out_channels": (8, 8, 8, 8),
-        "latent_channels": 4,
-        "layers_per_block": 1,
-        "norm_num_groups": 2,
-        "temporal_compression_ratio": 4,
+        "encoder_block_out_channels": (32, 32, 32, 32),
+        "decoder_block_out_channels": (32, 32, 32, 32),
+        "layers_per_block": (1, 1, 1, 1, 1),
     }
-    vae_cls = AutoencoderKLCogVideoX
+    vae_cls = AutoencoderKLMochi
     tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
     text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
 
@@ -97,14 +77,14 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @property
     def output_shape(self):
-        return (1, 9, 16, 16, 3)
+        return (1, 7, 16, 16, 3)
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
         sequence_length = 16
         num_channels = 4
-        num_frames = 9
-        num_latent_frames = 3  # (num_frames - 1) // temporal_compression_ratio + 1
+        num_frames = 7
+        num_latent_frames = 3
         sizes = (2, 2)
 
         generator = torch.manual_seed(0)
@@ -127,7 +107,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @skip_mps
     @pytest.mark.xfail(
         condtion=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
@@ -168,34 +147,34 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    @unittest.skip("Not supported in CogVideoX.")
+    @unittest.skip("Not supported in Mochi.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in CogVideoX.")
+    @unittest.skip("Not supported in Mochi.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in CogVideoX.")
+    @unittest.skip("Not supported in Mochi.")
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
+    @unittest.skip("Text encoder LoRA is not supported in Mochi.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
+    @unittest.skip("Text encoder LoRA is not supported in Mochi.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
+    @unittest.skip("Text encoder LoRA is not supported in Mochi.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
+    @unittest.skip("Text encoder LoRA is not supported in Mochi.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
+    @unittest.skip("Text encoder LoRA is not supported in Mochi.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
