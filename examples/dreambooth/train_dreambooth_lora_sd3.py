@@ -1295,7 +1295,7 @@ def main(args):
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):  # or text_encoder_two
-                    # check hidden size to distinguish between text_encoder_one and two
+                    # both text encoders are of the same class, so we check hidden size to distinguish between the two
                     hidden_size = unwrap_model(model).config.hidden_size
                     if hidden_size == 768:
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
