@@ -19,11 +19,13 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 
 import importlib
 import types
-from packaging import version
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
-from ..base import DiffusersQuantizer
+from packaging import version
+
 from ...utils import get_module_from_name, is_torch_available, is_torchao_available, logging
+from ..base import DiffusersQuantizer
+
 
 if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
@@ -69,10 +71,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
-            raise ImportError("Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`")
+            raise ImportError(
+                "Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`"
+            )
 
         self.offload = False
-        
+
         device_map = kwargs.get("device_map", None)
         if isinstance(device_map, dict):
             if "cpu" in device_map.values() or "disk" in device_map.values():
@@ -83,7 +87,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                     )
                 else:
                     self.offload = True
-        
+
         if self.pre_quantized:
             weights_only = kwargs.get("weights_only", None)
             if weights_only:
@@ -96,29 +100,41 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     def update_torch_dtype(self, torch_dtype):
         quant_type = self.quantization_config.quant_type
-        
+
         if quant_type.startswith("int") or quant_type.startswith("uint"):
             if torch_dtype is not None and torch_dtype != torch.bfloat16:
                 logger.warning(
                     f"Setting torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
                 )
-        
+
         if torch_dtype is None:
             # we need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
             logger.info(
-                f"Overriding `torch_dtype` with `torch_dtype=torch.bfloat16` due to requirements of `torchao` "
-                f"to enable model loading in different precisions. Pass your own `torch_dtype` to specify the "
-                f"dtype of the remaining non-linear layers, or pass torch_dtype=torch.bfloat16, to remove this warning."
+                "Overriding `torch_dtype` with `torch_dtype=torch.bfloat16` due to requirements of `torchao` "
+                "to enable model loading in different precisions. Pass your own `torch_dtype` to specify the "
+                "dtype of the remaining non-linear layers, or pass torch_dtype=torch.bfloat16, to remove this warning."
             )
             torch_dtype = torch.bfloat16
-        
+
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        supported_dtypes = (torch.int8, torch.float8_e4m3fn, torch.float8_e5m2, torch.uint1, torch.uint2, torch.uint3, torch.uint4, torch.uint5, torch.uint6, torch.uint7, torch.uint8)
+        supported_dtypes = (
+            torch.int8,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+            torch.uint1,
+            torch.uint2,
+            torch.uint3,
+            torch.uint4,
+            torch.uint5,
+            torch.uint6,
+            torch.uint7,
+            torch.uint8,
+        )
         if isinstance(target_dtype, supported_dtypes):
             return target_dtype
-    
+
         raise ValueError(
             f"You are using `device_map='auto'` on a TorchAO quantized model but a suitable target dtype "
             f"could not be inferred. The supported target_dtypes are: {supported_dtypes}. If you think the "
@@ -161,8 +177,8 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         unexpected_keys: List[str],
     ):
         r"""
-        Each nn.Linear layer that needs to be quantized is processsed here.
-        First, we set the value the weight tensor, then we move it to the target device. Finally, we quantize the module.
+        Each nn.Linear layer that needs to be quantized is processsed here. First, we set the value the weight tensor,
+        then we move it to the target device. Finally, we quantize the module.
         """
         from torchao.quantization import quantize_
 
@@ -187,14 +203,14 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
-        
+
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 
         # Extend `self.modules_to_not_convert` to keys that are supposed to be offloaded to `cpu` or `disk`
         if isinstance(device_map, dict) and len(device_map.keys()) > 1:
             keys_on_cpu = [key for key, value in device_map.items() if value in ["disk", "cpu"]]
             self.modules_to_not_convert.extend(keys_on_cpu)
-        
+
         # Purge `None`.
         # Unlike `transformers`, we don't know if we should always keep certain modules in FP32
         # in case of diffusion transformer models. For language models and others alike, `lm_head`
@@ -202,7 +218,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
         model.config.quantization_config = self.quantization_config
-    
+
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
         return model
 
@@ -213,21 +229,21 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                 "torchao quantized model does not support safe serialization, please set `safe_serialization` to False."
             )
             return False
-        
+
         _is_torchao_serializable = version.parse(importlib.metadata.version("huggingface_hub")) >= version.parse(
             "0.25.0"
         )
-        
+
         if not _is_torchao_serializable:
             logger.warning("torchao quantized model is only serializable after huggingface_hub >= 0.25.0 ")
-        
+
         if self.offload and self.quantization_config.modules_to_not_convert is None:
             logger.warning(
                 "The model contains offloaded modules and these modules are not quantized. We don't recommend saving the model as we won't be able to reload them."
                 "If you want to specify modules to not quantize, please specify modules_to_not_convert in the quantization_config."
             )
             return False
-        
+
         return _is_torchao_serializable
 
     @property

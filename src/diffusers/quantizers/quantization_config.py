@@ -400,13 +400,15 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     Args:
         quant_type (`str`):
-            The type of quantization we want to use, currently supporting: `int4_weight_only`, `int8_weight_only` and `int8_dynamic_activation_int8_weight`.
+            The type of quantization we want to use, currently supporting: `int4_weight_only`, `int8_weight_only` and
+            `int8_dynamic_activation_int8_weight`.
         modules_to_not_convert (`list`, *optional*, default to `None`):
-            The list of modules to not quantize, useful for quantizing models that explicitly require to have
-            some modules left in their original precision.
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision.
         kwargs (`Dict[str, Any]`, *optional*):
-            The keyword arguments for the chosen type of quantization, for example, int4_weight_only quantization supports two keyword arguments
-            `group_size` and `inner_k_tiles` currently. More API examples and documentation of arguments can be found in
+            The keyword arguments for the chosen type of quantization, for example, int4_weight_only quantization
+            supports two keyword arguments `group_size` and `inner_k_tiles` currently. More API examples and
+            documentation of arguments can be found in
             https://github.com/pytorch/ao/tree/main/torchao/quantization#other-available-quantization-techniques
 
     Example:
@@ -415,7 +417,9 @@ class TorchAoConfig(QuantizationConfigMixin):
     TODO(aryan): update
     quantization_config = TorchAoConfig("int4_weight_only", group_size=32)
     # int4_weight_only quant is only working with *torch.bfloat16* dtype right now
-    model = AutoModelForCausalLM.from_pretrained(model_id, device_map="cuda", torch_dtype=torch.bfloat16, quantization_config=quantization_config)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, device_map="cuda", torch_dtype=torch.bfloat16, quantization_config=quantization_config
+    )
     ```
     """
 
@@ -423,7 +427,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
-        
+
         # When we load from serialized config, "quant_type_kwargs" will be the key
         if "quant_type_kwargs" in kwargs:
             self.quant_type_kwargs = kwargs["quant_type_kwargs"]
@@ -448,7 +452,7 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         if len(unsupported_kwargs) > 0:
             raise ValueError(
-                f"The quantization method \"{method}\" does not supported the following keyword arguments: "
+                f'The quantization method "{method}" does not supported the following keyword arguments: '
                 f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
             )
 
@@ -460,16 +464,17 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         if is_torchao_available():
             from torchao.quantization import (
-                int4_weight_only,
-                int8_dynamic_activation_int8_weight,
-                int8_dynamic_activation_int4_weight,
-                int8_weight_only,
                 float8_dynamic_activation_float8_weight,
                 float8_static_activation_float8_weight,
                 float8_weight_only,
                 fpx_weight_only,
+                int4_weight_only,
+                int8_dynamic_activation_int4_weight,
+                int8_dynamic_activation_int8_weight,
+                int8_weight_only,
                 uintx_weight_only,
             )
+
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
 
@@ -502,8 +507,10 @@ class TorchAoConfig(QuantizationConfigMixin):
             def generate_float8dq_types(dtype: torch.dtype):
                 name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
                 types = {}
-                
-                types[f"float8dq_{name}_a8w8"] = partial(float8_dynamic_activation_float8_weight, activation_dtype=dtype, weight_dtype=dtype)
+
+                types[f"float8dq_{name}_a8w8"] = partial(
+                    float8_dynamic_activation_float8_weight, activation_dtype=dtype, weight_dtype=dtype
+                )
                 for activation_granularity_cls in [PerTensor, PerRow]:
                     for weight_granularity_cls in [PerTensor, PerRow]:
                         activation_name = "t" if activation_granularity_cls is PerTensor else "r"
@@ -526,22 +533,22 @@ class TorchAoConfig(QuantizationConfigMixin):
                             weight_dtype=dtype,
                             granularity=(activation_granularity_cls(), weight_granularity_cls()),
                         )
-                
+
                 return types
 
             def generate_fpx_quantization_types(bits: int):
                 types = {}
-                
+
                 for ebits in range(1, bits):
                     mbits = bits - ebits - 1
                     types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
                     types[f"fp{bits}_e{ebits}m{mbits}_a16w{bits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
-                
+
                 non_sign_bits = bits - 1
                 default_ebits = (non_sign_bits + 1) // 2
                 default_mbits = non_sign_bits - default_ebits
                 types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
-                
+
                 return types
 
             # TODO(aryan): handle cuda capability and torch 2.2/2.3
@@ -561,11 +568,19 @@ class TorchAoConfig(QuantizationConfigMixin):
                 # float8_e5m2 weight + float8 activation (dynamic)
                 "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
                 "float8dq": float8_dynamic_activation_float8_weight,
-                "float8dq_e5m2": partial(float8_dynamic_activation_float8_weight, activation_dtype=torch.float8_e5m2, weight_dtype=torch.float8_e5m2),
+                "float8dq_e5m2": partial(
+                    float8_dynamic_activation_float8_weight,
+                    activation_dtype=torch.float8_e5m2,
+                    weight_dtype=torch.float8_e5m2,
+                ),
                 "float8_a8w8": float8_dynamic_activation_float8_weight,
                 **generate_float8dq_types(torch.float8_e5m2),
                 # float8_e4m3 weight + float8 activation (dynamic)
-                "float8dq_e4m3": partial(float8_dynamic_activation_float8_weight, activation_dtype=torch.float8_e4m3fn, weight_dtype=torch.float8_e4m3fn),
+                "float8dq_e4m3": partial(
+                    float8_dynamic_activation_float8_weight,
+                    activation_dtype=torch.float8_e4m3fn,
+                    weight_dtype=torch.float8_e4m3fn,
+                ),
                 **generate_float8dq_types(torch.float8_e4m3fn),
                 # float8 weight + float8 activation (static)
                 "float8_static_activation_float8_weight": float8_static_activation_float8_weight,

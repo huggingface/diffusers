@@ -19,7 +19,7 @@ import warnings
 from typing import Dict, Optional, Union
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
-from .quantization_config import BitsAndBytesConfig, TorchAoConfig, QuantizationConfigMixin, QuantizationMethod
+from .quantization_config import BitsAndBytesConfig, QuantizationConfigMixin, QuantizationMethod, TorchAoConfig
 
 
 AUTO_QUANTIZER_MAPPING = {
