@@ -30,6 +30,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/THUDM). The original weights can be found under [hf.co/THUDM](https://huggingface.co/THUDM).
 
 There are three official CogVideoX checkpoints for text-to-video and video-to-video.
+
 | checkpoints | recommended inference dtype |
 |:---:|:---:|
 | [`THUDM/CogVideoX-2b`](https://huggingface.co/THUDM/CogVideoX-2b) | torch.float16 |
@@ -37,6 +38,7 @@ There are three official CogVideoX checkpoints for text-to-video and video-to-vi
 | [`THUDM/CogVideoX1.5-5b`](https://huggingface.co/THUDM/CogVideoX1.5-5b) | torch.bfloat16 |
 
 There are two official CogVideoX checkpoints available for image-to-video.
+
 | checkpoints | recommended inference dtype |
 |:---:|:---:|
 | [`THUDM/CogVideoX-5b-I2V`](https://huggingface.co/THUDM/CogVideoX-5b-I2V) | torch.bfloat16 |
@@ -48,6 +50,7 @@ For the CogVideoX 1.5 series:
 - Both T2V and I2V models support generation with 81 and 161 frames and work best at this value. Exporting videos at 16 FPS is recommended.
 
 There are two official CogVideoX checkpoints that support pose controllable generation (by the [Alibaba-PAI](https://huggingface.co/alibaba-pai) team).
+
 | checkpoints | recommended inference dtype |
 |:---:|:---:|
 | [`alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose`](https://huggingface.co/alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose) | torch.bfloat16 |
