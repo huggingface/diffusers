@@ -32,4 +32,4 @@ If you are new to the quantization field, we recommend you to check out these be
 
 ## When to use what?
 
-This section will be expanded once Diffusers has multiple quantization backends. Currently, we only support `bitsandbytes`. [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques. 
+This section will be expanded once Diffusers has multiple quantization backends. Currently, we only support `bitsandbytes` and `torchao`. [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques. 

@@ -25,7 +25,6 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
-from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,

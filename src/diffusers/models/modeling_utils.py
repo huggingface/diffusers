@@ -829,9 +829,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if device_map is None and not is_sharded:
                     # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
                     # It would error out during the `validate_environment()` call above in the absence of cuda.
-                    is_quant_method_bnb = (
-                        getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-                    )
                     if hf_quantizer is None:
                         param_device = "cpu"
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor

@@ -484,11 +484,9 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "int4": int4_weight_only,
                 "int4wo": int4_weight_only,
                 "int4_weight_only": int4_weight_only,
-                "int4_a16w4": int4_weight_only,
                 # int4 weight + int8 activation
                 "int4dq": int8_dynamic_activation_int4_weight,
                 "int8_dynamic_activation_int4_weight": int8_dynamic_activation_int4_weight,
-                "int4_a8w4": int8_dynamic_activation_int4_weight,
             }
 
             INT8_QUANTIZATION_TYPES = {
@@ -496,20 +494,15 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "int8": int8_weight_only,
                 "int8wo": int8_weight_only,
                 "int8_weight_only": int8_weight_only,
-                "int8_a16w8": int8_weight_only,
                 # int8 weight + int8 activation
                 "int8dq": int8_dynamic_activation_int8_weight,
                 "int8_dynamic_activation_int8_weight": int8_dynamic_activation_int8_weight,
-                "int8_a8w8": int8_dynamic_activation_int8_weight,
             }
 
             def generate_float8dq_types(dtype: torch.dtype):
                 name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
                 types = {}
 
-                types[f"float8dq_{name}_a8w8"] = partial(
-                    float8_dynamic_activation_float8_weight, activation_dtype=dtype, weight_dtype=dtype
-                )
                 for activation_granularity_cls in [PerTensor, PerRow]:
                     for weight_granularity_cls in [PerTensor, PerRow]:
                         activation_name = "t" if activation_granularity_cls is PerTensor else "r"
@@ -526,22 +519,15 @@ class TorchAoConfig(QuantizationConfigMixin):
                             weight_dtype=dtype,
                             granularity=(activation_granularity_cls(), weight_granularity_cls()),
                         )
-                        types[f"float8dq_{name}_a{activation_name}w{weight_name}_a8w8"] = partial(
-                            float8_dynamic_activation_float8_weight,
-                            activation_dtype=dtype,
-                            weight_dtype=dtype,
-                            granularity=(activation_granularity_cls(), weight_granularity_cls()),
-                        )
 
                 return types
 
             def generate_fpx_quantization_types(bits: int):
                 types = {}
 
-                for ebits in range(1, bits):
+                for ebits in range(0, bits):
                     mbits = bits - ebits - 1
                     types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
-                    types[f"fp{bits}_e{ebits}m{mbits}_a16w{bits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
 
                 non_sign_bits = bits - 1
                 default_ebits = (non_sign_bits + 1) // 2
@@ -550,20 +536,17 @@ class TorchAoConfig(QuantizationConfigMixin):
 
                 return types
 
-            # TODO(aryan): handle cuda capability and torch 2.2/2.3
+            # TODO(aryan): handle torch 2.2/2.3
             FLOATX_QUANTIZATION_TYPES = {
                 # float8_e5m2 weight + bfloat16/float16 activation
                 "float8": float8_weight_only,
                 "float8_weight_only": float8_weight_only,
                 "float8wo": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float8_a16w8": float8_weight_only,
                 "float8_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
                 "float8wo_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float8_e5m2_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
                 # float8_e4m3 weight + bfloat16/float16 activation
                 "float8_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
                 "float8wo_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
-                "float8wo_e4m3_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
                 # float8_e5m2 weight + float8 activation (dynamic)
                 "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
                 "float8dq": float8_dynamic_activation_float8_weight,
@@ -572,7 +555,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                     activation_dtype=torch.float8_e5m2,
                     weight_dtype=torch.float8_e5m2,
                 ),
-                "float8_a8w8": float8_dynamic_activation_float8_weight,
                 **generate_float8dq_types(torch.float8_e5m2),
                 # float8_e4m3 weight + float8 activation (dynamic)
                 "float8dq_e4m3": partial(
@@ -609,7 +591,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                 types = {}
                 types[f"uint{bits}"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
                 types[f"uint{bits}wo"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
-                types[f"uint{bits}_a16w{bits}"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
                 return types
 
             UINTX_QUANTIZATION_DTYPES = {
@@ -625,13 +606,41 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_uintx_quantization_types(8),
             }
 
+            SHORTHAND_QUANTIZATION_TYPES = {
+                "int_a16w4": int4_weight_only,
+                "int_a8w4": int8_dynamic_activation_int4_weight,
+                "int_a16w8": int8_weight_only,
+                "int_a8w8": int8_dynamic_activation_int8_weight,
+                "uint_a16w1": partial(uintx_weight_only, dtype=torch.uint1),
+                "uint_a16w2": partial(uintx_weight_only, dtype=torch.uint2),
+                "uint_a16w3": partial(uintx_weight_only, dtype=torch.uint3),
+                "uint_a16w4": partial(uintx_weight_only, dtype=torch.uint4),
+                "uint_a16w5": partial(uintx_weight_only, dtype=torch.uint5),
+                "uint_a16w6": partial(uintx_weight_only, dtype=torch.uint6),
+                "uint_a16w7": partial(uintx_weight_only, dtype=torch.uint7),
+                "uint_a16w8": partial(uintx_weight_only, dtype=torch.uint8),
+            }
+            SHORTHAND_FLOAT_QUANTIZATION_TYPES = {
+                "float_e5m2_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
+                "float_e4m3_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
+                "float_a8w8": float8_dynamic_activation_float8_weight,
+                "float_a16w3": partial(fpx_weight_only, ebits=2, mbits=0),
+                "float_a16w4": partial(fpx_weight_only, ebits=2, mbits=1),
+                "float_a16w5": partial(fpx_weight_only, ebits=3, mbits=1),
+                "float_a16w6": partial(fpx_weight_only, ebits=3, mbits=2),
+                "float_a16w7": partial(fpx_weight_only, ebits=4, mbits=2),
+                "float_a16w8": partial(fpx_weight_only, ebits=5, mbits=2),
+            }
+
             QUANTIZATION_TYPES = {}
             QUANTIZATION_TYPES.update(INT4_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(INT8_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(UINTX_QUANTIZATION_DTYPES)
+            QUANTIZATION_TYPES.update(SHORTHAND_QUANTIZATION_TYPES)
 
             if cls._is_cuda_capability_atleast_8_9():
                 QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
+                QUANTIZATION_TYPES.update(SHORTHAND_FLOAT_QUANTIZATION_TYPES)
 
             return QUANTIZATION_TYPES
         else:
