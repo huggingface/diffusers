@@ -525,7 +525,7 @@ class TorchAoConfig(QuantizationConfigMixin):
             def generate_fpx_quantization_types(bits: int):
                 types = {}
 
-                for ebits in range(0, bits):
+                for ebits in range(1, bits):
                     mbits = bits - ebits - 1
                     types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
 
