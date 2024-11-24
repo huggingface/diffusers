@@ -263,3 +263,9 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
                 assert (
                     torch.sum(torch.abs(sample - sample_custom_timesteps)) < 1e-5
                 ), f"Scheduler outputs are not identical for prediction_type: {prediction_type} and final_sigmas_type: {final_sigmas_type}"
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)
