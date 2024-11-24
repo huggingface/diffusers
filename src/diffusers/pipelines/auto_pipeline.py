@@ -780,6 +780,7 @@ def search_civitai(search_word: str, **kwargs):
     params = {
         "query": search_word,
         "types": model_type,
+        "sort": "Most Downloaded",
         "limit": 20,
     }
     if base_model is not None:
