@@ -463,6 +463,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         """
 
         if is_torchao_available():
+            # TODO(aryan): Support autoquant and sparsify
             from torchao.quantization import (
                 float8_dynamic_activation_float8_weight,
                 float8_static_activation_float8_weight,
@@ -477,8 +478,6 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
-
-            # TODO(aryan): Support autoquant and sparsify
 
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
@@ -629,14 +628,23 @@ class TorchAoConfig(QuantizationConfigMixin):
             QUANTIZATION_TYPES = {}
             QUANTIZATION_TYPES.update(INT4_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(INT8_QUANTIZATION_TYPES)
-            QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(UINTX_QUANTIZATION_DTYPES)
+
+            if cls._is_cuda_capability_atleast_8_9():
+                QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
 
             return QUANTIZATION_TYPES
         else:
             raise ValueError(
                 "TorchAoConfig requires torchao to be installed, please install with `pip install torchao`"
             )
+
+    @staticmethod
+    def _is_cuda_capability_atleast_8_9() -> bool:
+        major, minor = torch.cuda.get_device_capability()
+        if major == 8:
+            return minor >= 9
+        return major >= 9
 
     def get_apply_tensor_subclass(self):
         _STR_TO_METHOD = self._get_torchao_quant_type_to_method()
