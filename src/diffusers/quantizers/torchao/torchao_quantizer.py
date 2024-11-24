@@ -101,15 +101,16 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def update_torch_dtype(self, torch_dtype):
         quant_type = self.quantization_config.quant_type
 
-        if quant_type.startswith("int") or quant_type.startswith("uint"):
+        if quant_type.startswith("int"):
             if torch_dtype is not None and torch_dtype != torch.bfloat16:
                 logger.warning(
-                    f"Setting torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
+                    f"You are trying to set torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but "
+                    f"only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
                 )
 
         if torch_dtype is None:
             # we need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
-            logger.info(
+            logger.warning(
                 "Overriding `torch_dtype` with `torch_dtype=torch.bfloat16` due to requirements of `torchao` "
                 "to enable model loading in different precisions. Pass your own `torch_dtype` to specify the "
                 "dtype of the remaining non-linear layers, or pass torch_dtype=torch.bfloat16, to remove this warning."
