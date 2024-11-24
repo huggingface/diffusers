@@ -82,6 +82,7 @@ from .import_utils import (
     is_sentencepiece_available,
     is_tensorboard_available,
     is_timm_available,
+    is_torchao_available,
     is_torch_available,
     is_torch_npu_available,
     is_torch_version,
