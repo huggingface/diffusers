@@ -566,6 +566,8 @@ def search_huggingface(search_word: str, **kwargs):
             Tag to filter models by pipeline.
         token (`str`, *optional*):
             API token for Hugging Face authentication.
+        gated (`bool`, *optional*, defaults to `False` ):
+            A boolean to filter models on the Hub that are gated or not.
         skip_error (`bool`, *optional*, defaults to `False`):
             Whether to skip errors and return None.
 
@@ -580,6 +582,7 @@ def search_huggingface(search_word: str, **kwargs):
     include_params = kwargs.pop("include_params", False)
     pipeline_tag = kwargs.pop("pipeline_tag", None)
     token = kwargs.pop("token", None)
+    gated = kwargs.pop("gated", False)
     skip_error = kwargs.pop("skip_error", False)
 
     # Get the type and loading method for the keyword
@@ -622,6 +625,7 @@ def search_huggingface(search_word: str, **kwargs):
             fetch_config=True,
             pipeline_tag=pipeline_tag,
             full=True,
+            gated=gated,
             token=token
         )
         model_dicts = [asdict(value) for value in list(hf_models)]
@@ -1273,6 +1277,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            gated (`bool`, *optional*, defaults to `False` ):
+                A boolean to filter models on the Hub that are gated or not.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -1793,6 +1799,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            gated (`bool`, *optional*, defaults to `False` ):
+                A boolean to filter models on the Hub that are gated or not.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -2307,6 +2315,8 @@ class AutoPipelineForInpainting(ConfigMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            gated (`bool`, *optional*, defaults to `False` ):
+                A boolean to filter models on the Hub that are gated or not.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
