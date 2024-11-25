@@ -19,11 +19,10 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import Attention, MochiAttnProcessor2_0
+from ..attention_processor import Attention
 from ..embeddings import PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -44,7 +43,7 @@ class LTXTransformerBlock(nn.Module):
 
     def __init__(
         self,
-        dim: int, 
+        dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
         cross_attention_dim: int,
@@ -58,7 +57,7 @@ class LTXTransformerBlock(nn.Module):
         super().__init__()
 
         self.norm1 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
-        
+
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -83,10 +82,8 @@ class LTXTransformerBlock(nn.Module):
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
 
-        self.scale_shift_table = nn.Parameter(
-            torch.randn(6, dim) / dim**0.5
-        )
-    
+        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -97,15 +94,11 @@ class LTXTransformerBlock(nn.Module):
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
         norm_hidden_states = self.norm1(hidden_states)
-        
-        num_ada_params = self.scale_shift_table.shape[0]
-        ada_values = self.scale_shift_table[None, None] + temb.reshape(
-            batch_size, temb.size(1), num_ada_params, -1
-        )
 
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-            ada_values.unbind(dim=2)
-        )
+        num_ada_params = self.scale_shift_table.shape[0]
+        ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
+
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 
         attn_hidden_states = self.attn1(
@@ -114,7 +107,7 @@ class LTXTransformerBlock(nn.Module):
             image_rotary_emb=image_rotary_emb,
         )
         hidden_states = hidden_states + attn_hidden_states * gate_msa
-        
+
         attn_hidden_states = self.attn2(
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
@@ -165,40 +158,38 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.patchify_proj = nn.Linear(in_channels, inner_dim)
 
-        self.transformer_blocks = nn.Modulelist([
-            LTXTransformerBlock(
-                dim=inner_dim,
-                num_attention_heads=num_attention_heads,
-                attention_head_dim=attention_head_dim,
-                cross_attention_dim=cross_attention_dim,
-                qk_norm=qk_norm,
-                activation_fn=activation_fn,
-                attention_bias=attention_bias,
-                attention_out_bias=attention_out_bias,
-                eps=norm_eps,
-                elementwise_affine=norm_elementwise_affine,
-            )
-            for _ in range(num_layers)
-        ])
+        self.transformer_blocks = nn.Modulelist(
+            [
+                LTXTransformerBlock(
+                    dim=inner_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    cross_attention_dim=cross_attention_dim,
+                    qk_norm=qk_norm,
+                    activation_fn=activation_fn,
+                    attention_bias=attention_bias,
+                    attention_out_bias=attention_out_bias,
+                    eps=norm_eps,
+                    elementwise_affine=norm_elementwise_affine,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, self.out_channels)
 
-        self.scale_shift_table = nn.Parameter(
-            torch.randn(2, inner_dim) / inner_dim**0.5
-        )
+        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
-        self.caption_projection = PixArtAlphaTextProjection(
-            in_features=caption_channels, hidden_size=inner_dim
-        )
+        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         self.gradient_checkpointing = False
-    
+
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -210,9 +201,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
     ) -> torch.Tensor:
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
-            encoder_attention_mask = (
-                1 - encoder_attention_mask.to(hidden_states.dtype)
-            ) * -10000.0
+            encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -223,7 +212,9 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         post_patch_width = width // p
         post_patch_num_frames = num_frames // p_t
 
-        hidden_states = hidden_states.reshape(batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
+        )
         hidden_states = hidden_states.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
         hidden_states = self.patchify_proj(hidden_states)
 
@@ -270,17 +261,17 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
                     image_rotary_emb=image_rotary_emb,
                     encoder_attention_mask=encoder_attention_mask,
                 )
-        
-        scale_shift_values = (
-            self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
-        )
+
+        scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
         shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p
+        )
         output = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         if not return_dict:
