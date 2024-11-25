@@ -762,7 +762,15 @@ class FluxControlPipeline(
         )
 
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 8
+        if self.transformer.x_embedder.weight.data.shape[1] != self.transformer.config.in_channels:
+            logger.info(
+                f"Different number of in_channels found in the transformer. "
+                f"`transformer.config.in_channels` is {self.transformer.config.in_channels}, whereas the "
+                f"x_embedder.weight.data.shape[1] is {self.transformer.x_embedder.weight.data.shape[1]}."
+            )
+            num_channels_latents = self.transformer.x_embedder.weight.data.shape[1] // 8
+        else:
+            num_channels_latents = self.transformer.config.in_channels // 8
 
         control_image = self.prepare_image(
             image=control_image,
