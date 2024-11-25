@@ -452,7 +452,7 @@ class TorchAoConfig(QuantizationConfigMixin):
 
         if len(unsupported_kwargs) > 0:
             raise ValueError(
-                f'The quantization method "{method}" does not supported the following keyword arguments: '
+                f'The quantization method "{quant_type}" does not support the following keyword arguments: '
                 f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
             )
 
@@ -581,7 +581,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 5: torch.uint5,
                 6: torch.uint6,
                 7: torch.uint7,
-                # 8: torch.uint8,  # uint8 quantization is not supported
+                # 8: torch.uint8,
             }
 
             def generate_uintx_quantization_types(bits: int):
@@ -600,7 +600,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_uintx_quantization_types(5),
                 **generate_uintx_quantization_types(6),
                 **generate_uintx_quantization_types(7),
-                **generate_uintx_quantization_types(8),
+                # **generate_uintx_quantization_types(8),  # uint8 quantization is not supported
             }
 
             SHORTHAND_QUANTIZATION_TYPES = {
@@ -615,7 +615,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "uint_a16w5": partial(uintx_weight_only, dtype=torch.uint5),
                 "uint_a16w6": partial(uintx_weight_only, dtype=torch.uint6),
                 "uint_a16w7": partial(uintx_weight_only, dtype=torch.uint7),
-                "uint_a16w8": partial(uintx_weight_only, dtype=torch.uint8),
+                # "uint_a16w8": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
             }
             SHORTHAND_FLOAT_QUANTIZATION_TYPES = {
                 "float_e5m2_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),

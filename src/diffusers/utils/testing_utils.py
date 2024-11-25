@@ -39,6 +39,7 @@ from .import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_version,
+    is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
@@ -471,6 +472,18 @@ def require_bitsandbytes_version_greater(bnb_version):
         ) > version.parse(bnb_version)
         return unittest.skipUnless(
             correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_torchao_version_greater(torchao_version):
+    def decorator(test_case):
+        correct_torchao_version = is_torchao_available() and version.parse(
+            version.parse(importlib.metadata.version("torchao")).base_version
+        ) > version.parse(torchao_version)
+        return unittest.skipUnless(
+            correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
         )(test_case)
 
     return decorator
