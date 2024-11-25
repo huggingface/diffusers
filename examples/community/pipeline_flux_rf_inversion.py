@@ -546,9 +546,9 @@ class RFInversionFluxPipeline(
         return latents, latent_image_ids
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, timestep_offset):
+    def get_timesteps(self, num_inference_steps, strength=1.):
         # get the original timestep using init_timestep
-        init_timestep = min(num_inference_steps * timestep_offset, num_inference_steps)
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
         t_start = int(max(num_inference_steps - init_timestep, 0))
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
@@ -583,8 +583,8 @@ class RFInversionFluxPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 1.0,
-        timestep_offset: float = 0.6,
-        start_timestep: float = 0.0,
+        strength: float = 1.,
+        start_timestep: float = 0,
         stop_timestep: float = 0.25,
         num_inference_steps: int = 28,
         timesteps: List[int] = None,
@@ -749,8 +749,7 @@ class RFInversionFluxPipeline(
         )
         start_timestep = int(start_timestep * num_inference_steps)
         stop_timestep = min(int(stop_timestep * num_inference_steps), num_inference_steps)
-
-        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, timestep_offset)
+        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -844,7 +843,7 @@ class RFInversionFluxPipeline(
         source_prompt: str = "",
         source_guidance_scale=0.0,
         num_inversion_steps: int = 28,
-        timestep_offset: float = 0.6,
+        strength: float = 1.,
         gamma: float = 0.5,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -915,7 +914,7 @@ class RFInversionFluxPipeline(
             mu=mu,
         )
         timesteps, sigmas, num_inversion_steps = self.get_timesteps(
-            num_inversion_steps, timestep_offset=timestep_offset
+            num_inversion_steps, strength
         )
 
         # 3. prepare text embeddings
