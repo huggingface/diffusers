@@ -130,8 +130,8 @@ class MochiAttention(nn.Module):
         out_bias: bool = True,
         context_pre_only: bool = False,
         eps: float = 1e-5,
-        elementwise_affine: bool = True,
     ):
+        super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.out_dim = out_dim if out_dim is not None else query_dim
         self.out_context_dim = out_context_dim if out_context_dim else query_dim
