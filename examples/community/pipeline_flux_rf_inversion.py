@@ -534,26 +534,12 @@ class RFInversionFluxPipeline(
         width,
         dtype,
         device,
-        generator,
-        latents=None,
+        image_latents,
     ):
         height = int(height) // self.vae_scale_factor
         width = int(width) // self.vae_scale_factor
 
-        shape = (batch_size, num_channels_latents, height, width)
-
-        if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
+        latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -745,7 +731,7 @@ class RFInversionFluxPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = latents.shape[1]
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -905,18 +891,14 @@ class RFInversionFluxPipeline(
 
         # 1. prepare image
         image_latents, _ = self.encode_image(image, height=height, width=width, dtype=dtype)
-        _, latent_image_ids = self.prepare_latents(
-            batch_size, num_channels_latents, height, width, dtype, device, generator
+        image_latents, latent_image_ids = self.prepare_latents(
+            batch_size, num_channels_latents, height, width, dtype, device, image_latents
         )
-
-        height = int(height) // self.vae_scale_factor
-        width = int(width) // self.vae_scale_factor
-        image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
         self.image_latents = image_latents.clone()
 
         # 2. prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inversion_steps, num_inversion_steps)
-        image_seq_len = (int(height) // self.vae_scale_factor) * (int(width) // self.vae_scale_factor)
+        image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.base_image_seq_len,
@@ -958,7 +940,7 @@ class RFInversionFluxPipeline(
         N = len(sigmas)
 
         # forward ODE loop
-        with self.progress_bar(total=N) as progress_bar:
+        with self.progress_bar(total=N-1) as progress_bar:
             for i in range(N - 1):
                 t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
                 timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
