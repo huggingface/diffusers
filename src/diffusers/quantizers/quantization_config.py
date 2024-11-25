@@ -503,22 +503,15 @@ class TorchAoConfig(QuantizationConfigMixin):
                 name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
                 types = {}
 
-                for activation_granularity_cls in [PerTensor, PerRow]:
-                    for weight_granularity_cls in [PerTensor, PerRow]:
-                        activation_name = "t" if activation_granularity_cls is PerTensor else "r"
-                        weight_name = "t" if weight_granularity_cls is PerTensor else "r"
-                        # The a{activation_name}w{weight_name} is a made up name for convenience of testing things.
-                        # It suffixes with for different granularities (activation granularity, weight granularity):
-                        #   - atwt: PerTensor(), PerTensor()
-                        #   - atwr: PerTensor(), PerRow()
-                        #   - arwt: PerRow(), PerTensor()
-                        #   - arwr: PerRow(), PerRow()
-                        types[f"float8dq_{name}_a{activation_name}w{weight_name}"] = partial(
-                            float8_dynamic_activation_float8_weight,
-                            activation_dtype=dtype,
-                            weight_dtype=dtype,
-                            granularity=(activation_granularity_cls(), weight_granularity_cls()),
-                        )
+                for granularity_cls in [PerTensor, PerRow]:
+                    # Note: Activation and Weights cannot have different granularities
+                    granularity_name = "tensor" if granularity_cls is PerTensor else "row"
+                    types[f"float8dq_{name}_{granularity_name}"] = partial(
+                        float8_dynamic_activation_float8_weight,
+                        activation_dtype=dtype,
+                        weight_dtype=dtype,
+                        granularity=(granularity_cls(), granularity_cls()),
+                    )
 
                 return types
 
@@ -550,12 +543,15 @@ class TorchAoConfig(QuantizationConfigMixin):
                 # float8_e5m2 weight + float8 activation (dynamic)
                 "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
                 "float8dq": float8_dynamic_activation_float8_weight,
-                "float8dq_e5m2": partial(
-                    float8_dynamic_activation_float8_weight,
-                    activation_dtype=torch.float8_e5m2,
-                    weight_dtype=torch.float8_e5m2,
-                ),
-                **generate_float8dq_types(torch.float8_e5m2),
+                # ===== Matrix multiplication is not supported in float8_e5m2 so the following error out.
+                # However, changing activation_dtype=torch.float8_e4m3 might work here =====
+                # "float8dq_e5m2": partial(
+                #     float8_dynamic_activation_float8_weight,
+                #     activation_dtype=torch.float8_e5m2,
+                #     weight_dtype=torch.float8_e5m2,
+                # ),
+                # **generate_float8dq_types(torch.float8_e5m2),
+                # ===== =====
                 # float8_e4m3 weight + float8 activation (dynamic)
                 "float8dq_e4m3": partial(
                     float8_dynamic_activation_float8_weight,
@@ -573,7 +569,8 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_fpx_quantization_types(5),
                 **generate_fpx_quantization_types(6),
                 **generate_fpx_quantization_types(7),
-                **generate_fpx_quantization_types(8),
+                # ===== Errors out with "torch.cat(): expected a non-empty list of Tensors" =====
+                # **generate_fpx_quantization_types(8),
             }
 
             UINTX_TO_DTYPE = {
@@ -584,7 +581,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 5: torch.uint5,
                 6: torch.uint6,
                 7: torch.uint7,
-                8: torch.uint8,
+                # 8: torch.uint8,  # uint8 quantization is not supported
             }
 
             def generate_uintx_quantization_types(bits: int):
