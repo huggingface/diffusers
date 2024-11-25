@@ -636,10 +636,10 @@ def _resize_with_antialiasing(input: torch.Tensor, size: Tuple[int, int]) -> tor
 
     # Make sure it is odd
     if kernel_size[0] % 2 == 0:
-        kernel_size[0] += 1
+        kernel_size = kernel_size[0] + 1, kernel_size[1]
 
     if kernel_size[1] % 2 == 0:
-        kernel_size[1] += 1
+        kernel_size = kernel_size[0], kernel_size[1] + 1
 
     input = _gaussian_blur2d(input, kernel_size, sigmas)
 
