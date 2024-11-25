@@ -34,7 +34,6 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -546,7 +545,7 @@ class RFInversionFluxPipeline(
         return latents, latent_image_ids
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength=1.):
+    def get_timesteps(self, num_inference_steps, strength=1.0):
         # get the original timestep using init_timestep
         init_timestep = min(num_inference_steps * strength, num_inference_steps)
 
@@ -583,7 +582,7 @@ class RFInversionFluxPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 1.0,
-        strength: float = 1.,
+        strength: float = 1.0,
         start_timestep: float = 0,
         stop_timestep: float = 0.25,
         num_inference_steps: int = 28,
@@ -843,7 +842,7 @@ class RFInversionFluxPipeline(
         source_prompt: str = "",
         source_guidance_scale=0.0,
         num_inversion_steps: int = 28,
-        strength: float = 1.,
+        strength: float = 1.0,
         gamma: float = 0.5,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -913,9 +912,7 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        timesteps, sigmas, num_inversion_steps = self.get_timesteps(
-            num_inversion_steps, strength
-        )
+        timesteps, sigmas, num_inversion_steps = self.get_timesteps(num_inversion_steps, strength)
 
         # 3. prepare text embeddings
         (
@@ -939,7 +936,7 @@ class RFInversionFluxPipeline(
         N = len(sigmas)
 
         # forward ODE loop
-        with self.progress_bar(total=N-1) as progress_bar:
+        with self.progress_bar(total=N - 1) as progress_bar:
             for i in range(N - 1):
                 t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
                 timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
