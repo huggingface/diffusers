@@ -27,6 +27,7 @@ from ..attention_processor import Attention, AttentionProcessor, FusedJointAttnP
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..transformers.transformer_sd3 import SD3SingleTransformerBlock
 from .controlnet import BaseOutput, zero_module
 
 
@@ -58,6 +59,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         extra_conditioning_channels: int = 0,
         dual_attention_layers: Tuple[int, ...] = (),
         qk_norm: Optional[str] = None,
+        pos_embed_type: Optional[str] = "sincos",
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -71,27 +73,40 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             in_channels=in_channels,
             embed_dim=self.inner_dim,
             pos_embed_max_size=pos_embed_max_size,
+            pos_embed_type=pos_embed_type,
         )
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
             embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
-        self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
+        if joint_attention_dim is not None:
+            self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
-        # `attention_head_dim` is doubled to account for the mixing.
-        # It needs to crafted when we get the actual checkpoints.
-        self.transformer_blocks = nn.ModuleList(
-            [
-                JointTransformerBlock(
-                    dim=self.inner_dim,
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
-                    context_pre_only=False,
-                    qk_norm=qk_norm,
-                    use_dual_attention=True if i in dual_attention_layers else False,
-                )
-                for i in range(num_layers)
-            ]
-        )
+            # `attention_head_dim` is doubled to account for the mixing.
+            # It needs to crafted when we get the actual checkpoints.
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    JointTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                        context_pre_only=False,
+                        qk_norm=qk_norm,
+                        use_dual_attention=True if i in dual_attention_layers else False,
+                    )
+                    for i in range(num_layers)
+                ]
+            )
+        else:
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    SD3SingleTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
 
         # controlnet_blocks
         self.controlnet_blocks = nn.ModuleList([])
@@ -318,9 +333,11 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+        if hidden_states.ndim == 4:
+            hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections)
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # add
         hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
@@ -349,9 +366,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 )
 
             else:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
-                )
+                if encoder_hidden_states is not None:
+                    hidden_states = block(
+                        hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    )
+                else:
+                    hidden_states = block(hidden_states, temb)
 
             block_res_samples = block_res_samples + (hidden_states,)
 
