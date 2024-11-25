@@ -16,6 +16,7 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+from torch._higher_order_ops.flex_attention import sdpa_dense
 import torch.nn.functional as F
 from torch import nn
 
@@ -3554,11 +3555,11 @@ class MochiAttnProcessor2_0:
         if image_rotary_emb is not None:
 
             def apply_rotary_emb(x, freqs_cos, freqs_sin):
-                x_even = x[..., 0::2].float()
-                x_odd = x[..., 1::2].float()
+                x_even = x[..., 0::2]
+                x_odd = x[..., 1::2]
 
-                cos = (x_even * freqs_cos - x_odd * freqs_sin).to(x.dtype)
-                sin = (x_even * freqs_sin + x_odd * freqs_cos).to(x.dtype)
+                cos = (x_even * freqs_cos.float() - x_odd * freqs_sin.float()).to(x.dtype)
+                sin = (x_even * freqs_sin.float() + x_odd * freqs_cos.float()).to(x.dtype)
 
                 return torch.stack([cos, sin], dim=-1).flatten(-2)
 
@@ -3595,7 +3596,10 @@ class MochiAttnProcessor2_0:
         key = torch.index_select(key, 2, select_index)
         value = torch.index_select(value, 2, select_index)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+        with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION]):
+            hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3).squeeze(0)
         output = torch.zeros(
             batch_size * total_length, dim * heads, device=hidden_states.device, dtype=hidden_states.dtype

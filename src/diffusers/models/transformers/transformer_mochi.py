@@ -13,11 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numbers
+from operator import ipow
 from typing import Any, Dict, Optional, Tuple
 
 import torch
+from torch._prims_common import is_low_precision_dtype
 import torch.nn as nn
+from transformers.tokenization_utils_base import import_protobuf_decode_error
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
@@ -30,45 +32,107 @@ from ..modeling_utils import ModelMixin
 from ..normalization import (
     AdaLayerNormContinuous,
     LuminaLayerNormContinuous,
-    MochiRMSNormZero,
 )
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-n
 
 
-class MochiRMSNorm(nn.Module):
+class FP32ModulatedRMSNorm(nn.Module):
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
         super().__init__()
 
         self.eps = eps
 
-        if isinstance(dim, numbers.Integral):
-            dim = (dim,)
-
-        self.dim = torch.Size(dim)
-
-        if elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(dim))
-        else:
-            self.weight = None
-
     def forward(self, hidden_states, scale=None):
-        input_dtype = hidden_states.dtype
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        hidden_states = hidden_states.float() * torch.rsqrt(variance + self.eps)
+
         if scale is not None:
             hidden_states = hidden_states * scale
 
-        if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = hidden_states * self.weight
-        else:
-            hidden_states = hidden_states.to(input_dtype)
-
         return hidden_states
+
+
+class MochiLayerNormContinuous(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        conditioning_embedding_dim: int,
+        # NOTE: It is a bit weird that the norm layer can be configured to have scale and shift parameters
+        # because the output is immediately scaled and shifted by the projected conditioning embeddings.
+        # Note that AdaLayerNorm does not let the norm layer have scale and shift parameters.
+        # However, this is how it was implemented in the original code, and it's rather likely you should
+        # set `elementwise_affine` to False.
+        elementwise_affine=True,
+        eps=1e-5,
+        bias=True,
+        norm_type="layer_norm",
+        out_dim: Optional[int] = None,
+    ):
+        super().__init__()
+
+        # AdaLN
+        self.silu = nn.SiLU()
+        self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
+
+        if norm_type == "layer_norm":
+            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+        elif norm_type == "rms_norm":
+            self.norm = FP32ModulatedRMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
+        else:
+            raise ValueError(f"unknown norm_type {norm_type}")
+
+        self.linear_2 = None
+        if out_dim is not None:
+            self.linear_2 = nn.Linear(embedding_dim, out_dim, bias=bias)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        conditioning_embedding: torch.Tensor,
+    ) -> torch.Tensor:
+        output_dtype = x.dtype
+        # convert back to the original dtype in case `conditioning_embedding`` is upcasted to float32 (needed for hunyuanDiT)
+        emb = self.linear_1(self.silu(conditioning_embedding).to(x.dtype))
+        scale = emb
+        x = self.norm(x, (1 + scale.unsqueeze(1).float()))
+
+        if self.linear_2 is not None:
+            x = self.linear_2(x)
+
+        return x.to(output_dtype)
+
+
+class MochiRMSNormZero(nn.Module):
+    r"""
+    Adaptive RMS Norm used in Mochi.
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+    """
+
+    def __init__(
+        self, embedding_dim: int, hidden_dim: int, eps: float = 1e-5, elementwise_affine: bool = False
+    ) -> None:
+        super().__init__()
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, hidden_dim)
+        self.norm = FP32ModulatedRMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
+
+    def forward(
+        self, hidden_states: torch.Tensor, emb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        hidden_states_dtype = hidden_states.dtype
+
+        emb = self.linear(self.silu(emb))
+        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
+
+        hidden_states = self.norm(hidden_states, (1 + scale_msa[:, None].float()))
+        hidden_states = hidden_states.to(hidden_states_dtype)
+
+        return hidden_states, gate_msa, scale_mlp, gate_mlp
 
 
 @maybe_allow_in_graph
@@ -115,7 +179,7 @@ class MochiTransformerBlock(nn.Module):
         if not context_pre_only:
             self.norm1_context = MochiRMSNormZero(dim, 4 * pooled_projection_dim, eps=eps, elementwise_affine=False)
         else:
-            self.norm1_context = LuminaLayerNormContinuous(
+            self.norm1_context = MochiLayerNormContinuous(
                 embedding_dim=pooled_projection_dim,
                 conditioning_embedding_dim=dim,
                 eps=eps,
@@ -137,16 +201,16 @@ class MochiTransformerBlock(nn.Module):
             out_context_dim=pooled_projection_dim,
             context_pre_only=context_pre_only,
             processor=MochiAttnProcessor2_0(),
-            eps=eps,
+            eps=1e-5,
             elementwise_affine=True,
         )
 
         # TODO(aryan): norm_context layers are not needed when `context_pre_only` is True
-        self.norm2 = MochiRMSNorm(dim, eps=eps, elementwise_affine=False)
-        self.norm2_context = MochiRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
+        self.norm2 = FP32ModulatedRMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm2_context = FP32ModulatedRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
-        self.norm3 = MochiRMSNorm(dim, eps=eps, elementwise_affine=False)
-        self.norm3_context = MochiRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
+        self.norm3 = FP32ModulatedRMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm3_context = FP32ModulatedRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
         self.ff = FeedForward(dim, inner_dim=self.ff_inner_dim, activation_fn=activation_fn, bias=False)
         self.ff_context = None
@@ -158,8 +222,8 @@ class MochiTransformerBlock(nn.Module):
                 bias=False,
             )
 
-        self.norm4 = MochiRMSNorm(dim, eps=eps, elementwise_affine=False)
-        self.norm4_context = MochiRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
+        self.norm4 = FP32ModulatedRMSNorm(dim, eps=eps, elementwise_affine=False)
+        self.norm4_context = FP32ModulatedRMSNorm(pooled_projection_dim, eps=eps, elementwise_affine=False)
 
     def forward(
         self,
@@ -176,9 +240,8 @@ class MochiTransformerBlock(nn.Module):
                 encoder_hidden_states, temb
             )
         else:
-            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb).to(
-                encoder_hidden_states.dtype
-            )
+            norm_encoder_hidden_states = self.norm1_context(encoder_hidden_states, temb)
+
         attn_hidden_states, context_attn_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
@@ -186,35 +249,26 @@ class MochiTransformerBlock(nn.Module):
             attention_mask=joint_attention_mask,
         )
 
-        # hidden_states = hidden_states + self.norm2(attn_hidden_states) * torch.tanh(gate_msa).unsqueeze(1)
-        # norm_hidden_states = self.norm3(hidden_states) * (1 + scale_mlp.unsqueeze(1))
-        # ff_output = self.ff(norm_hidden_states)
-        # hidden_states = hidden_states + self.norm4(ff_output) * torch.tanh(gate_mlp).unsqueeze(1)
-
-        hidden_states = hidden_states + self.norm2(attn_hidden_states, torch.tanh(gate_msa).unsqueeze(1))
-        norm_hidden_states = self.norm3(hidden_states, (1 + scale_mlp.unsqueeze(1).float()))
+        hidden_states = hidden_states + self.norm2(attn_hidden_states, torch.tanh(gate_msa).unsqueeze(1)).to(
+            hidden_states.dtype
+        )
+        norm_hidden_states = self.norm3(hidden_states, (1 + scale_mlp.unsqueeze(1).float())).to(hidden_states.dtype)
         ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + self.norm4(ff_output, torch.tanh(gate_mlp).unsqueeze(1))
+        hidden_states = hidden_states + self.norm4(ff_output, torch.tanh(gate_mlp).unsqueeze(1)).to(
+            hidden_states.dtype
+        )
 
         if not self.context_pre_only:
-            # encoder_hidden_states = encoder_hidden_states + self.norm2_context(
-            #    context_attn_hidden_states
-            # ) * torch.tanh(enc_gate_msa).unsqueeze(1)
-            # norm_encoder_hidden_states = self.norm3_context(encoder_hidden_states) * (1 + enc_scale_mlp.unsqueeze(1))
-            # context_ff_output = self.ff_context(norm_encoder_hidden_states)
-            # encoder_hidden_states = encoder_hidden_states + self.norm4_context(context_ff_output) * torch.tanh(
-            #    enc_gate_mlp
-            # ).unsqueeze(1)
             encoder_hidden_states = encoder_hidden_states + self.norm2_context(
                 context_attn_hidden_states, torch.tanh(enc_gate_msa).unsqueeze(1)
-            )
+            ).to(encoder_hidden_states.dtype)
             norm_encoder_hidden_states = self.norm3_context(
                 encoder_hidden_states, (1 + enc_scale_mlp.unsqueeze(1).float())
-            )
+            ).to(encoder_hidden_states.dtype)
             context_ff_output = self.ff_context(norm_encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states + self.norm4_context(
                 context_ff_output, torch.tanh(enc_gate_mlp).unsqueeze(1)
-            )
+            ).to(encoder_hidden_states.dtype)
 
         return hidden_states, encoder_hidden_states
 
@@ -259,7 +313,8 @@ class MochiRoPE(nn.Module):
         return positions
 
     def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
-        freqs = torch.einsum("nd,dhf->nhf", pos, freqs.float())
+        with torch.autocast("cuda", enabled=False):
+            freqs = torch.einsum("nd,dhf->nhf", pos.to(freqs), freqs)
         freqs_cos = torch.cos(freqs)
         freqs_sin = torch.sin(freqs)
         return freqs_cos, freqs_sin
