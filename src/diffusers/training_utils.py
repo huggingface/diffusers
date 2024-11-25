@@ -1,5 +1,7 @@
 import contextlib
 import copy
+import gc
+import math
 import random
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -22,6 +24,9 @@ from .utils import (
 if is_transformers_available():
     import transformers
 
+    if transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
+        import deepspeed
+
 if is_peft_available():
     from peft import set_peft_model_state_dict
 
@@ -34,9 +39,13 @@ if is_torch_npu_available():
 
 def set_seed(seed: int):
     """
-    Args:
     Helper function for reproducible behavior to set the seed in `random`, `numpy`, `torch`.
+
+    Args:
         seed (`int`): The seed to set.
+
+    Returns:
+        `None`
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -52,6 +61,17 @@ def compute_snr(noise_scheduler, timesteps):
     """
     Computes SNR as per
     https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+    for the given timesteps using the provided noise scheduler.
+
+    Args:
+        noise_scheduler (`NoiseScheduler`):
+            An object containing the noise schedule parameters, specifically `alphas_cumprod`, which is used to compute
+            the SNR values.
+        timesteps (`torch.Tensor`):
+            A tensor of timesteps for which the SNR is computed.
+
+    Returns:
+        `torch.Tensor`: A tensor containing the computed SNR values for each timestep.
     """
     alphas_cumprod = noise_scheduler.alphas_cumprod
     sqrt_alphas_cumprod = alphas_cumprod**0.5
@@ -157,19 +177,19 @@ def compute_dream_and_update_latents(
     with torch.no_grad():
         pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-    noisy_latents, target = (None, None)
+    _noisy_latents, _target = (None, None)
     if noise_scheduler.config.prediction_type == "epsilon":
         predicted_noise = pred
         delta_noise = (noise - predicted_noise).detach()
         delta_noise.mul_(dream_lambda)
-        noisy_latents = noisy_latents.add(sqrt_one_minus_alphas_cumprod * delta_noise)
-        target = target.add(delta_noise)
+        _noisy_latents = noisy_latents.add(sqrt_one_minus_alphas_cumprod * delta_noise)
+        _target = target.add(delta_noise)
     elif noise_scheduler.config.prediction_type == "v_prediction":
         raise NotImplementedError("DREAM has not been implemented for v-prediction")
     else:
         raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-    return noisy_latents, target
+    return _noisy_latents, _target
 
 
 def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
@@ -192,6 +212,13 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
 
 
 def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+    """
+    Casts the training parameters of the model to the specified data type.
+
+    Args:
+        model: The PyTorch model whose parameters will be cast.
+        dtype: The data type to which the model parameters will be cast.
+    """
     if not isinstance(model, list):
         model = [model]
     for m in model:
@@ -220,6 +247,60 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
+def compute_density_for_timestep_sampling(
+    weighting_scheme: str, batch_size: int, logit_mean: float = None, logit_std: float = None, mode_scale: float = None
+):
+    """
+    Compute the density for sampling the timesteps when doing SD3 training.
+
+    Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
+
+    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    """
+    if weighting_scheme == "logit_normal":
+        # See 3.1 in the SD3 paper ($rf/lognorm(0.00,1.00)$).
+        u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device="cpu")
+        u = torch.nn.functional.sigmoid(u)
+    elif weighting_scheme == "mode":
+        u = torch.rand(size=(batch_size,), device="cpu")
+        u = 1 - u - mode_scale * (torch.cos(math.pi * u / 2) ** 2 - 1 + u)
+    else:
+        u = torch.rand(size=(batch_size,), device="cpu")
+    return u
+
+
+def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
+    """
+    Computes loss weighting scheme for SD3 training.
+
+    Courtesy: This was contributed by Rafie Walker in https://github.com/huggingface/diffusers/pull/8528.
+
+    SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
+    """
+    if weighting_scheme == "sigma_sqrt":
+        weighting = (sigmas**-2.0).float()
+    elif weighting_scheme == "cosmap":
+        bot = 1 - 2 * sigmas + 2 * sigmas**2
+        weighting = 2 / (math.pi * bot)
+    else:
+        weighting = torch.ones_like(sigmas)
+    return weighting
+
+
+def free_memory():
+    """
+    Runs garbage collection. Then clears the cache of the available accelerator.
+    """
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    elif is_torch_npu_available():
+        torch_npu.npu.empty_cache()
+
+
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
 class EMAModel:
     """
@@ -235,6 +316,7 @@ class EMAModel:
         use_ema_warmup: bool = False,
         inv_gamma: Union[float, int] = 1.0,
         power: Union[float, int] = 2 / 3,
+        foreach: bool = False,
         model_cls: Optional[Any] = None,
         model_config: Dict[str, Any] = None,
         **kwargs,
@@ -249,6 +331,7 @@ class EMAModel:
             inv_gamma (float):
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
+            foreach (bool): Use torch._foreach functions for updating shadow parameters. Should be faster.
             device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
                         weights will be stored on CPU.
 
@@ -303,16 +386,17 @@ class EMAModel:
         self.power = power
         self.optimization_step = 0
         self.cur_decay_value = None  # set in `step()`
+        self.foreach = foreach
 
         self.model_cls = model_cls
         self.model_config = model_config
 
     @classmethod
-    def from_pretrained(cls, path, model_cls) -> "EMAModel":
-        _, ema_kwargs = model_cls.load_config(path, return_unused_kwargs=True)
+    def from_pretrained(cls, path, model_cls, foreach=False) -> "EMAModel":
+        _, ema_kwargs = model_cls.from_config(path, return_unused_kwargs=True)
         model = model_cls.from_pretrained(path)
 
-        ema_model = cls(model.parameters(), model_cls=model_cls, model_config=model.config)
+        ema_model = cls(model.parameters(), model_cls=model_cls, model_config=model.config, foreach=foreach)
 
         ema_model.load_state_dict(ema_kwargs)
         return ema_model
@@ -375,19 +459,39 @@ class EMAModel:
         self.cur_decay_value = decay
         one_minus_decay = 1 - decay
 
-        context_manager = contextlib.nullcontext
-        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
-            import deepspeed
+        context_manager = contextlib.nullcontext()
 
-        for s_param, param in zip(self.shadow_params, parameters):
-            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
-                context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+        if self.foreach:
+            if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
+                context_manager = deepspeed.zero.GatheredParameters(parameters, modifier_rank=None)
 
-            with context_manager():
-                if param.requires_grad:
-                    s_param.sub_(one_minus_decay * (s_param - param))
-                else:
-                    s_param.copy_(param)
+            with context_manager:
+                params_grad = [param for param in parameters if param.requires_grad]
+                s_params_grad = [
+                    s_param for s_param, param in zip(self.shadow_params, parameters) if param.requires_grad
+                ]
+
+                if len(params_grad) < len(parameters):
+                    torch._foreach_copy_(
+                        [s_param for s_param, param in zip(self.shadow_params, parameters) if not param.requires_grad],
+                        [param for param in parameters if not param.requires_grad],
+                        non_blocking=True,
+                    )
+
+                torch._foreach_sub_(
+                    s_params_grad, torch._foreach_sub(s_params_grad, params_grad), alpha=one_minus_decay
+                )
+
+        else:
+            for s_param, param in zip(self.shadow_params, parameters):
+                if is_transformers_available() and transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
+                    context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
+
+                with context_manager:
+                    if param.requires_grad:
+                        s_param.sub_(one_minus_decay * (s_param - param))
+                    else:
+                        s_param.copy_(param)
 
     def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         """
@@ -399,18 +503,35 @@ class EMAModel:
                 `ExponentialMovingAverage` was initialized will be used.
         """
         parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.to(param.device).data)
+        if self.foreach:
+            torch._foreach_copy_(
+                [param.data for param in parameters],
+                [s_param.to(param.device).data for s_param, param in zip(self.shadow_params, parameters)],
+            )
+        else:
+            for s_param, param in zip(self.shadow_params, parameters):
+                param.data.copy_(s_param.to(param.device).data)
 
-    def to(self, device=None, dtype=None) -> None:
-        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
+    def pin_memory(self) -> None:
+        r"""
+        Move internal buffers of the ExponentialMovingAverage to pinned memory. Useful for non-blocking transfers for
+        offloading EMA params to the host.
+        """
+
+        self.shadow_params = [p.pin_memory() for p in self.shadow_params]
+
+    def to(self, device=None, dtype=None, non_blocking=False) -> None:
+        r"""
+        Move internal buffers of the ExponentialMovingAverage to `device`.
 
         Args:
             device: like `device` argument to `torch.Tensor.to`
         """
         # .to() on the tensors handles None correctly
         self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
+            p.to(device=device, dtype=dtype, non_blocking=non_blocking)
+            if p.is_floating_point()
+            else p.to(device=device, non_blocking=non_blocking)
             for p in self.shadow_params
         ]
 
@@ -435,36 +556,44 @@ class EMAModel:
 
     def store(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
+        Saves the current parameters for restoring later.
+
         Args:
-        Save the current parameters for restoring later.
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                temporarily stored.
+            parameters: Iterable of `torch.nn.Parameter`. The parameters to be temporarily stored.
         """
         self.temp_stored_params = [param.detach().cpu().clone() for param in parameters]
 
     def restore(self, parameters: Iterable[torch.nn.Parameter]) -> None:
         r"""
-        Args:
-        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters without:
-        affecting the original optimization process. Store the parameters before the `copy_to()` method. After
+        Restore the parameters stored with the `store` method. Useful to validate the model with EMA parameters
+        without: affecting the original optimization process. Store the parameters before the `copy_to()` method. After
         validation (or model saving), use this to restore the former parameters.
+
+        Args:
             parameters: Iterable of `torch.nn.Parameter`; the parameters to be
                 updated with the stored parameters. If `None`, the parameters with which this
                 `ExponentialMovingAverage` was initialized will be used.
         """
+
         if self.temp_stored_params is None:
             raise RuntimeError("This ExponentialMovingAverage has no `store()`ed weights " "to `restore()`")
-        for c_param, param in zip(self.temp_stored_params, parameters):
-            param.data.copy_(c_param.data)
+        if self.foreach:
+            torch._foreach_copy_(
+                [param.data for param in parameters], [c_param.data for c_param in self.temp_stored_params]
+            )
+        else:
+            for c_param, param in zip(self.temp_stored_params, parameters):
+                param.data.copy_(c_param.data)
 
         # Better memory-wise.
         self.temp_stored_params = None
 
     def load_state_dict(self, state_dict: dict) -> None:
         r"""
-        Args:
         Loads the ExponentialMovingAverage state. This method is used by accelerate during checkpointing to save the
         ema state dict.
+
+        Args:
             state_dict (dict): EMA state. Should be an object returned
                 from a call to :meth:`state_dict`.
         """

@@ -25,7 +25,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     PixArtSigmaPipeline,
-    Transformer2DModel,
+    PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -36,7 +36,12 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+    to_np,
+)
 
 
 enable_full_determinism()
@@ -53,7 +58,7 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = PixArtTransformer2DModel(
             sample_size=8,
             num_layers=2,
             patch_size=2,
@@ -308,6 +313,46 @@ class PixArtSigmaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
+        # to the pipeline level.
+        pipe.transformer.fuse_qkv_projections()
+        assert check_qkv_fusion_processors_exist(
+            pipe.transformer
+        ), "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        assert check_qkv_fusion_matches_attn_procs_length(
+            pipe.transformer, pipe.transformer.original_attn_processors
+        ), "Something wrong with the attention processors concerning the fused QKV projections."
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_fused = image[0, -3:, -3:, -1]
+
+        pipe.transformer.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_disabled = image[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
 
 @slow
 @require_torch_gpu
@@ -336,7 +381,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
+        expected_slice = np.array([0.4517, 0.4446, 0.4375, 0.449, 0.4399, 0.4365, 0.4583, 0.4629, 0.4473])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
@@ -344,7 +389,12 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
+        transformer = PixArtTransformer2DModel.from_pretrained(
+            self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
+        )
+        pipe = PixArtSigmaPipeline.from_pretrained(
+            self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
+        )
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt
@@ -352,7 +402,7 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.3477, 0.3882, 0.4541, 0.3413, 0.3821, 0.4463, 0.4001, 0.4409, 0.4958])
+        expected_slice = np.array([0.0479, 0.0378, 0.0217, 0.0942, 0.064, 0.0791, 0.2073, 0.1975, 0.2017])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
@@ -394,7 +444,12 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtSigmaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
+        transformer = PixArtTransformer2DModel.from_pretrained(
+            self.ckpt_id_512, subfolder="transformer", torch_dtype=torch.float16
+        )
+        pipe = PixArtSigmaPipeline.from_pretrained(
+            self.ckpt_id_1024, transformer=transformer, torch_dtype=torch.float16
+        )
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt

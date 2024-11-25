@@ -47,6 +47,7 @@ Sample output with I2VGenXL:
 * Unlike SVD, it additionally accepts text prompts as inputs.
 * It can generate higher resolution videos.
 * When using the [`DDIMScheduler`] (which is default for this pipeline), less than 50 steps for inference leads to bad results.
+* This implementation is 1-stage variant of I2VGenXL. The main figure in the [I2VGen-XL](https://arxiv.org/abs/2311.04145) paper shows a 2-stage variant, however, 1-stage variant works well. See [this discussion](https://github.com/huggingface/diffusers/discussions/7952) for more details.
 
 ## I2VGenXLPipeline
 [[autodoc]] I2VGenXLPipeline

@@ -6,7 +6,7 @@ Updating them to the most recent version of the library will require some work.
 
 To use any of them, just run the command
 
-```
+```sh
 pip install -r requirements.txt
 ```
 inside the folder of your choice.

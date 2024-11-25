@@ -61,7 +61,7 @@ feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id)
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
@@ -78,7 +78,7 @@ Community pipelines can also be loaded from a local file if you pass a file path
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="./path/to/pipeline_directory/",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
@@ -97,7 +97,7 @@ For example, to load from the main branch:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     custom_revision="main",
     clip_model=clip_model,
@@ -113,7 +113,7 @@ For example, to load from a previous version of Diffusers like v0.25.0:
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     custom_revision="v0.25.0",
     clip_model=clip_model,
@@ -147,11 +147,11 @@ prompt = "cat, hiding in the leaves, ((rain)), zazie rainyday, beautiful eyes, m
 neg_prompt = "(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, mutated hands and fingers:1.4), (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, disconnected limbs, mutation, mutated, ugly, disgusting, amputation"
 generator = torch.Generator(device="cpu").manual_seed(20)
 out_lpw = pipe_lpw(
-    prompt, 
-    negative_prompt=neg_prompt, 
+    prompt,
+    negative_prompt=neg_prompt,
     width=512,
     height=512,
-    max_embeddings_multiples=3, 
+    max_embeddings_multiples=3,
     num_inference_steps=50,
     generator=generator,
     ).images[0]
@@ -235,7 +235,7 @@ from diffusers import DiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "Lykon/dreamshaper-8-inpainting",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5-inpainting",
     custom_pipeline="hd_painter"
 )
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
@@ -289,9 +289,9 @@ scheduler = DPMSolverMultistepScheduler.from_pretrained(pipe_id, subfolder="sche
 3. Load an image processor:
 
 ```python
-from transformers import CLIPFeatureExtractor
+from transformers import CLIPImageProcessor
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(pipe_id, subfolder="feature_extractor")
+feature_extractor = CLIPImageProcessor.from_pretrained(pipe_id, subfolder="feature_extractor")
 ```
 
 <Tip warning={true}>

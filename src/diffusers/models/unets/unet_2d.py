@@ -257,11 +257,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unets.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
+            [`~models.unets.unet_2d.UNet2DOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_2d.UNet2DOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is the sample tensor.
         """
         # 0. center input if necessary

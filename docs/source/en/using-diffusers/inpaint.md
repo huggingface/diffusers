@@ -95,7 +95,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
 
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
 blurred_mask = pipeline.mask_processor.blur(mask, blur_factor=33)
@@ -216,12 +216,13 @@ make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ## Non-inpaint specific checkpoints
 
-So far, this guide has used inpaint specific checkpoints such as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). But you can also use regular checkpoints like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
+
+So far, this guide has used inpaint specific checkpoints such as [stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting). But you can also use regular checkpoints like [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
 
 The image on the left is generated from a regular checkpoint, and the image on the right is from an inpaint checkpoint. You'll immediately notice the image on the left is not as clean, and you can still see the outline of the area the model is supposed to inpaint. The image on the right is much cleaner and the inpainted area appears more natural.
 
 <hfoptions id="regular-specific">
-<hfoption id="runwayml/stable-diffusion-v1-5">
+<hfoption id="stable-diffusion-v1-5/stable-diffusion-v1-5">
 
 ```py
 import torch
@@ -229,8 +230,8 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -255,7 +256,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -276,7 +277,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-inpaint-specific.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">stable-diffusion-v1-5/stable-diffusion-v1-5</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-specific.png"/>
@@ -287,7 +288,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 However, for more basic tasks like erasing an object from an image (like the rocks in the road for example), a regular checkpoint yields pretty good results. There isn't as noticeable of difference between the regular and inpaint checkpoint.
 
 <hfoptions id="inpaint">
-<hfoption id="runwayml/stable-diffusion-v1-5">
+<hfoption id="stable-diffusion-v1-5/stable-diffusion-v1-5">
 
 ```py
 import torch
@@ -295,8 +296,8 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -319,7 +320,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -338,7 +339,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/regular-inpaint-basic.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">stable-diffusion-v1-5/stable-diffusion-v1-5</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/specific-inpaint-basic.png"/>
@@ -518,7 +519,7 @@ from diffusers.utils import load_image
 from PIL import Image
 
 generator = torch.Generator(device='cuda').manual_seed(0)
-pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
 
 base = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
@@ -554,7 +555,7 @@ from diffusers import AutoPipelineForText2Image, AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
