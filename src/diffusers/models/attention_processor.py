@@ -16,7 +16,6 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch._higher_order_ops.flex_attention import sdpa_dense
 import torch.nn.functional as F
 from torch import nn
 
@@ -3597,6 +3596,7 @@ class MochiAttnProcessor2_0:
         value = torch.index_select(value, 2, select_index)
 
         from torch.nn.attention import SDPBackend, sdpa_kernel
+
         with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION]):
             hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
 
