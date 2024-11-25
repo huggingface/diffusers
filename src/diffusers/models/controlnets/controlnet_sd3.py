@@ -60,21 +60,25 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         dual_attention_layers: Tuple[int, ...] = (),
         qk_norm: Optional[str] = None,
         pos_embed_type: Optional[str] = "sincos",
+        use_pos_embed: bool = True,
     ):
         super().__init__()
         default_out_channels = in_channels
         self.out_channels = out_channels if out_channels is not None else default_out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.pos_embed = PatchEmbed(
-            height=sample_size,
-            width=sample_size,
-            patch_size=patch_size,
-            in_channels=in_channels,
-            embed_dim=self.inner_dim,
-            pos_embed_max_size=pos_embed_max_size,
-            pos_embed_type=pos_embed_type,
-        )
+        if use_pos_embed:
+            self.pos_embed = PatchEmbed(
+                height=sample_size,
+                width=sample_size,
+                patch_size=patch_size,
+                in_channels=in_channels,
+                embed_dim=self.inner_dim,
+                pos_embed_max_size=pos_embed_max_size,
+                pos_embed_type=pos_embed_type,
+            )
+        else:
+            self.pos_embed = None
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
             embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
@@ -97,6 +101,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 ]
             )
         else:
+            self.context_embedder = None
             self.transformer_blocks = nn.ModuleList(
                 [
                     SD3SingleTransformerBlock(
@@ -333,9 +338,21 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        if hidden_states.ndim == 4:
+        if self.pos_embed is not None and hidden_states.ndim != 4:
+            raise ValueError("hidden_states must be 4D when pos_embed is used")
+        elif self.pos_embed is None and hidden_states.ndim != 3:
+            raise ValueError("hidden_states must be 3D when pos_embed is not used")
+
+        if self.context_embedder is not None and encoder_hidden_states is None:
+            raise ValueError("encoder_hidden_states must be provided when context_embedder is used")
+        elif self.context_embedder is None and encoder_hidden_states is not None:
+            raise ValueError("encoder_hidden_states should not be provided when context_embedder is not used")
+
+        if self.pos_embed is not None:
             hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+
         temb = self.time_text_embed(timestep, pooled_projections)
+
         if encoder_hidden_states is not None:
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 

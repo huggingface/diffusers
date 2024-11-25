@@ -974,10 +974,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         else:
             assert False
 
-        if controlnet_pooled_projections is None:
-            controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
-        else:
-            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
+        controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -1025,11 +1022,16 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
+                if self.controlnet.pos_embed is None:
+                    controlnet_model_input = self.transformer.pos_embed(latent_model_input)
+                else:
+                    controlnet_model_input = latent_model_input
+
                 # controlnet(s) inference
                 control_block_samples = self.controlnet(
-                    hidden_states=latent_model_input,
+                    hidden_states=controlnet_model_input,
                     timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=prompt_embeds if self.controlnet.context_embedder is not None else None,
                     pooled_projections=controlnet_pooled_projections,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     controlnet_cond=control_image,
