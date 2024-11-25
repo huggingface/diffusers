@@ -687,13 +687,16 @@ class MochiPipeline(DiffusionPipeline):
                         joint_attention_mask=negative_joint_attention_mask,
                         return_dict=False,
                     )[0]
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond.float() + self.guidance_scale * (
+                        noise_pred_text.float() - noise_pred_uncond.float()
+                    )
                 else:
                     noise_pred = noise_pred_text
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
+                latents = latents.to(latents_dtype)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
