@@ -1,15 +1,9 @@
 import argparse
-from contextlib import nullcontext
 
 import safetensors.torch
 import torch
-from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
-from diffusers.utils.import_utils import is_accelerate_available
-
-
-CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
@@ -22,27 +16,13 @@ args = parser.parse_args()
 dtype = torch.bfloat16 if args.dtype == "bf16" else torch.float32
 
 
-# Adapted from from the original BFL codebase.
-def optionally_expand_state_dict(name: str, param: torch.Tensor, state_dict: dict) -> dict:
-    if name in state_dict:
-        print(f"Expanding '{name}' with shape {state_dict[name].shape} to model parameter with shape {param.shape}.")
-        # expand with zeros:
-        expanded_state_dict_weight = torch.zeros_like(param, device=state_dict[name].device)
-        # popular with pre-trained param for the first half. Remaining half stays with zeros.
-        slices = tuple(slice(0, dim) for dim in state_dict[name].shape)
-        expanded_state_dict_weight[slices] = state_dict[name]
-        state_dict[name] = expanded_state_dict_weight
-
-    return state_dict
-
-
 def load_original_checkpoint(args):
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=args.filename)
     elif args.checkpoint_path is not None:
         ckpt_path = args.checkpoint_path
     else:
-        raise ValueError(" please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
+        raise ValueError("Please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
 
     original_state_dict = safetensors.torch.load_file(ckpt_path)
     return original_state_dict
@@ -60,7 +40,7 @@ def convert_flux_control_lora_checkpoint_to_diffusers(
     original_state_dict, num_layers, num_single_layers, inner_dim, mlp_ratio=4.0
 ):
     converted_state_dict = {}
-    original_state_dict_keys = original_state_dict.keys()
+    original_state_dict_keys = list(original_state_dict.keys())
 
     for lora_key in ["lora_A", "lora_B"]:
         ## time_text_embed.timestep_embedder <-  time_in
@@ -346,7 +326,8 @@ def convert_flux_control_lora_checkpoint_to_diffusers(
                 original_state_dict.pop(f"final_layer.adaLN_modulation.1.{lora_key}.bias")
             )
 
-    print("Remaining:", original_state_dict.keys())
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
 
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)

@@ -56,6 +56,37 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
 }
 
 
+def _maybe_adjust_config(config):
+    rank_pattern = config["rank_pattern"].copy()
+    target_modules = config["target_modules"]
+    original_r = config["r"]
+
+    for key in list(rank_pattern.keys()):
+        key_rank = rank_pattern[key]
+
+        # try to detect ambiguity
+        exact_matches = [mod for mod in target_modules if mod == key]
+        substring_matches = [mod for mod in target_modules if key in mod and mod != key]
+        ambiguous_key = key
+
+        if exact_matches and substring_matches:
+            # if ambiguous we update the rank associated with the ambiguous key (`proj_out`, for example)
+            config["r"] = key_rank
+            # remove the ambiguous key from `rank_pattern` and update its rank to `r`, instead
+            del config["rank_pattern"][key]
+            for mod in substring_matches:
+                # avoid overwriting if the module already has a specific rank
+                if mod not in config["rank_pattern"]:
+                    config["rank_pattern"][mod] = original_r
+
+            # update the rest of the keys with the `original_r`
+            for mod in target_modules:
+                if mod != ambiguous_key and mod not in config["rank_pattern"]:
+                    config["rank_pattern"][mod] = original_r
+
+    return config
+
+
 class PeftAdapterMixin:
     """
     A class containing all functions for loading and using adapters weights that are supported in PEFT library. For
@@ -226,7 +257,8 @@ class PeftAdapterMixin:
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
-            print(lora_config_kwargs)
+            lora_config_kwargs = _maybe_adjust_config(lora_config_kwargs)
+
             if "use_dora" in lora_config_kwargs:
                 if lora_config_kwargs["use_dora"]:
                     if is_peft_version("<", "0.9.0"):

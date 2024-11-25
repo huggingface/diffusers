@@ -1925,9 +1925,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer_keys = set(transformer_state_dict.keys())
         state_dict_keys = set(state_dict.keys())
         extra_keys = list(state_dict_keys - transformer_keys)
-        logger.warning(
-            f"Unsupported keys found in state dict when trying to load normalization layers into the transformer. The following keys will be ignored:\n{extra_keys}."
-        )
+
+        if extra_keys:
+            logger.warning(
+                f"Unsupported keys found in state dict when trying to load normalization layers into the transformer. The following keys will be ignored:\n{extra_keys}."
+            )
 
         for key in extra_keys:
             state_dict.pop(key)
@@ -2292,7 +2294,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 )
 
                 new_weight = torch.zeros_like(
-                    expanded_module.weight.data.shape, device=module_weight.device, dtype=module_weight.dtype
+                    expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
                 )
                 slices = tuple(slice(0, dim) for dim in module_weight.shape)
                 new_weight[slices] = module_weight
@@ -2300,7 +2302,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
                 if bias:
                     new_bias = torch.zeros_like(
-                        expanded_module.bias.data.shape, device=module_bias.device, dtype=module_bias.dtype
+                        expanded_module.bias.data, device=module_bias.device, dtype=module_bias.dtype
                     )
                     slices = tuple(slice(0, dim) for dim in module_bias.shape)
                     new_bias[slices] = module_bias
