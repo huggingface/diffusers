@@ -958,7 +958,7 @@ class RFInversionFluxPipeline(
         N = len(sigmas)
 
         # forward ODE loop
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        with self.progress_bar(total=N) as progress_bar:
             for i in range(N - 1):
                 t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
                 timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
@@ -983,6 +983,7 @@ class RFInversionFluxPipeline(
                 # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
                 u_hat_t_i = u_t_i + gamma * (u_t_i_cond - u_t_i)
                 Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i + 1])
+                progress_bar.update()
 
         self.inverted_latents = Y_t
         self.latent_image_ids = latent_image_ids
