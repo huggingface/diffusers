@@ -955,31 +955,34 @@ class RFInversionFluxPipeline(
         # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
         Y_t = image_latents
         y_1 = torch.randn_like(Y_t)
+        N = len(sigmas)
 
-        for i in range(num_inversion_steps - 1):
-            t_i = torch.tensor(i / (num_inversion_steps), dtype=Y_t.dtype, device=device)
-            timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
+        # forward ODE loop
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i in range(N - 1):
+                t_i = torch.tensor(i / (N), dtype=Y_t.dtype, device=device)
+                timestep = torch.tensor(t_i, dtype=Y_t.dtype, device=device).repeat(batch_size)
 
-            # get the unconditional vector field
-            u_t_i = self.transformer(
-                hidden_states=Y_t,
-                timestep=timestep,
-                guidance=guidance,
-                pooled_projections=pooled_prompt_embeds,
-                encoder_hidden_states=prompt_embeds,
-                txt_ids=text_ids,
-                img_ids=latent_image_ids,
-                joint_attention_kwargs=self.joint_attention_kwargs,
-                return_dict=False,
-            )[0]
+                # get the unconditional vector field
+                u_t_i = self.transformer(
+                    hidden_states=Y_t,
+                    timestep=timestep,
+                    guidance=guidance,
+                    pooled_projections=pooled_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    return_dict=False,
+                )[0]
 
-            # get the conditional vector field
-            u_t_i_cond = (y_1 - Y_t) / (1 - t_i)
+                # get the conditional vector field
+                u_t_i_cond = (y_1 - Y_t) / (1 - t_i)
 
-            # controlled vector field
-            # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
-            u_hat_t_i = u_t_i + gamma * (u_t_i_cond - u_t_i)
-            Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i + 1])
+                # controlled vector field
+                # Eq 8 dY_t = [u_t(Y_t) + γ(u_t(Y_t|y_1) - u_t(Y_t))]dt
+                u_hat_t_i = u_t_i + gamma * (u_t_i_cond - u_t_i)
+                Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i + 1])
 
         self.inverted_latents = Y_t
         self.latent_image_ids = latent_image_ids
