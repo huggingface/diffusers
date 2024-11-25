@@ -25,7 +25,7 @@ import numpy as np
 import torch
 import torchvision.transforms as TT
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -52,7 +52,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -922,7 +922,7 @@ def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
         )
         args.optimizer = "adamw"
 
-    if args.use_8bit_adam and not (args.optimizer.lower() not in ["adam", "adamw"]):
+    if args.use_8bit_adam and args.optimizer.lower() not in ["adam", "adamw"]:
         logger.warning(
             f"use_8bit_adam is ignored when optimizer is not set to 'Adam' or 'AdamW'. Optimizer was "
             f"set to {args.optimizer.lower()}"
@@ -969,7 +969,6 @@ def get_optimizer(args, params_to_optimize, use_deepspeed: bool = False):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -1211,7 +1210,7 @@ def main(args):
     )
     use_deepspeed_scheduler = (
         accelerator.state.deepspeed_plugin is not None
-        and "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
+        and "scheduler" in accelerator.state.deepspeed_plugin.deepspeed_config
     )
 
     optimizer = get_optimizer(args, params_to_optimize, use_deepspeed=use_deepspeed_optimizer)
@@ -1255,6 +1254,7 @@ def main(args):
         prompts = [example["instance_prompt"] for example in examples]
 
         videos = torch.cat(videos)
+        videos = videos.permute(0, 2, 1, 3, 4)
         videos = videos.to(memory_format=torch.contiguous_format).float()
 
         return {
@@ -1376,7 +1376,7 @@ def main(args):
             models_to_accumulate = [transformer]
 
             with accelerator.accumulate(models_to_accumulate):
-                model_input = batch["videos"].permute(0, 2, 1, 3, 4).to(dtype=weight_dtype)  # [B, F, C, H, W]
+                model_input = batch["videos"].to(dtype=weight_dtype)  # [B, F, C, H, W]
                 prompts = batch["prompts"]
 
                 # encode prompts
@@ -1455,7 +1455,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1495,7 +1495,6 @@ def main(args):
                     args.pretrained_model_name_or_path,
                     transformer=unwrap_model(transformer),
                     text_encoder=unwrap_model(text_encoder),
-                    vae=unwrap_model(vae),
                     scheduler=scheduler,
                     revision=args.revision,
                     variant=args.variant,
@@ -1538,6 +1537,10 @@ def main(args):
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
         )
+
+        # Cleanup trained models to save memory
+        del transformer
+        free_memory()
 
         # Final test inference
         pipe = CogVideoXPipeline.from_pretrained(

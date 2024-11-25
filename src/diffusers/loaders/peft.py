@@ -13,20 +13,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from functools import partial
+from pathlib import Path
 from typing import Dict, List, Optional, Union
+
+import safetensors
+import torch
+import torch.nn as nn
 
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_unet_state_dict_to_peft,
     delete_adapter_layers,
+    get_adapter_name,
+    get_peft_kwargs,
+    is_accelerate_available,
     is_peft_available,
+    is_peft_version,
+    logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from .lora_base import _fetch_state_dict
 from .unet_loader_utils import _maybe_expand_lora_scales
 
+
+if is_accelerate_available():
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+
+logger = logging.get_logger(__name__)
 
 _SET_ADAPTER_SCALE_FN_MAPPING = {
     "UNet2DConditionModel": _maybe_expand_lora_scales,
@@ -34,6 +52,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
+    "MochiTransformer3DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -52,6 +71,283 @@ class PeftAdapterMixin:
     """
 
     _hf_peft_config_loaded = False
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
+    def _optionally_disable_offloading(cls, _pipeline):
+        """
+        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+        Args:
+            _pipeline (`DiffusionPipeline`):
+                The pipeline to disable offloading for.
+
+        Returns:
+            tuple:
+                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+        """
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+
+        if _pipeline is not None and _pipeline.hf_device_map is None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                    if not is_model_cpu_offload:
+                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                    if not is_sequential_cpu_offload:
+                        is_sequential_cpu_offload = (
+                            isinstance(component._hf_hook, AlignDevicesHook)
+                            or hasattr(component._hf_hook, "hooks")
+                            and isinstance(component._hf_hook.hooks[0], AlignDevicesHook)
+                        )
+
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+    def load_lora_adapter(self, pretrained_model_name_or_path_or_dict, prefix="transformer", **kwargs):
+        r"""
+        Loads a LoRA adapter into the underlying model.
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
+            prefix (`str`, *optional*): Prefix to filter the state dict.
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
+        """
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        adapter_name = kwargs.pop("adapter_name", None)
+        network_alphas = kwargs.pop("network_alphas", None)
+        _pipeline = kwargs.pop("_pipeline", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        state_dict = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+        if network_alphas is not None and prefix is None:
+            raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
+
+        if prefix is not None:
+            keys = list(state_dict.keys())
+            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
+            if len(model_keys) > 0:
+                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
+
+        if len(state_dict) > 0:
+            if adapter_name in getattr(self, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
+                )
+
+            # check with first key if is not in peft format
+            first_key = next(iter(state_dict.keys()))
+            if "lora_A" not in first_key:
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
+
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+
+            if network_alphas is not None and len(network_alphas) >= 1:
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
+                network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                else:
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(self)
+
+            # <Unsafe code
+            # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+            # Now we remove any existing hooks to `_pipeline`.
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+
+            warn_msg = ""
+            if incompatible_keys is not None:
+                # Check only for unexpected keys.
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+                    if lora_unexpected_keys:
+                        warn_msg = (
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}. "
+                        )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+                    if lora_missing_keys:
+                        warn_msg += (
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
+
+            if warn_msg:
+                logger.warning(warn_msg)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
+
+    def save_lora_adapter(
+        self,
+        save_directory,
+        adapter_name: str = "default",
+        upcast_before_saving: bool = False,
+        safe_serialization: bool = True,
+        weight_name: Optional[str] = None,
+    ):
+        """
+        Save the LoRA parameters corresponding to the underlying model.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to save LoRA parameters to. Will be created if it doesn't exist.
+            adapter_name: (`str`, defaults to "default"): The name of the adapter to serialize. Useful when the
+                underlying model has multiple adapters loaded.
+            upcast_before_saving (`bool`, defaults to `False`):
+                Whether to cast the underlying model to `torch.float32` before serialization.
+            save_function (`Callable`):
+                The function to use to save the state dictionary. Useful during distributed training when you need to
+                replace `torch.save` with another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
+        """
+        from peft.utils import get_peft_model_state_dict
+
+        from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+
+        if adapter_name is None:
+            adapter_name = get_adapter_name(self)
+
+        if adapter_name not in getattr(self, "peft_config", {}):
+            raise ValueError(f"Adapter name {adapter_name} not found in the model.")
+
+        lora_layers_to_save = get_peft_model_state_dict(
+            self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
+        )
+        if os.path.isfile(save_directory):
+            raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
+
+        if safe_serialization:
+
+            def save_function(weights, filename):
+                return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+        else:
+            save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
+        if weight_name is None:
+            if safe_serialization:
+                weight_name = LORA_WEIGHT_NAME_SAFE
+            else:
+                weight_name = LORA_WEIGHT_NAME
+
+        # TODO: we could consider saving the `peft_config` as well.
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(lora_layers_to_save, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def set_adapters(
         self,

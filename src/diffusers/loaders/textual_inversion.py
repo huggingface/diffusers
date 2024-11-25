@@ -497,19 +497,19 @@ class TextualInversionLoaderMixin:
         # load embeddings of text_encoder 1 (CLIP ViT-L/14)
         pipeline.load_textual_inversion(
             state_dict["clip_l"],
-            token=["<s0>", "<s1>"],
+            tokens=["<s0>", "<s1>"],
             text_encoder=pipeline.text_encoder,
             tokenizer=pipeline.tokenizer,
         )
         # load embeddings of text_encoder 2 (CLIP ViT-G/14)
         pipeline.load_textual_inversion(
             state_dict["clip_g"],
-            token=["<s0>", "<s1>"],
+            tokens=["<s0>", "<s1>"],
             text_encoder=pipeline.text_encoder_2,
             tokenizer=pipeline.tokenizer_2,
         )
 
-        # Unload explicitly from both text encoders abd tokenizers
+        # Unload explicitly from both text encoders and tokenizers
         pipeline.unload_textual_inversion(
             tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer
         )
@@ -561,6 +561,8 @@ class TextualInversionLoaderMixin:
                 tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
                 key_id += 1
         tokenizer._update_trie()
+        # set correct total vocab size after removing tokens
+        tokenizer._update_total_vocab_size()
 
         # Delete from text encoder
         text_embedding_dim = text_encoder.get_input_embeddings().embedding_dim

@@ -13,8 +13,9 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -69,6 +70,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
+        dual_attention_layers: Tuple[
+            int, ...
+        ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
+        qk_norm: Optional[str] = None,
     ):
         super().__init__()
         default_out_channels = in_channels
@@ -97,6 +102,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,
                     context_pre_only=i == num_layers - 1,
+                    qk_norm=qk_norm,
+                    use_dual_attention=True if i in dual_attention_layers else False,
                 )
                 for i in range(self.config.num_layers)
             ]
@@ -262,6 +269,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        skip_layers: Optional[List[int]] = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.
@@ -273,9 +281,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
             pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
-            timestep ( `torch.LongTensor`):
+            timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+            block_controlnet_hidden_states (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
@@ -284,6 +292,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+            skip_layers (`list` of `int`, *optional*):
+                A list of layer indices to skip during the forward pass.
 
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
@@ -311,7 +321,10 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         for index_block, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            # Skip specified layers
+            is_skip = True if skip_layers is not None and index_block in skip_layers else False
+
+            if torch.is_grad_enabled() and self.gradient_checkpointing and not is_skip:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -330,15 +343,15 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                     temb,
                     **ckpt_kwargs,
                 )
-
-            else:
+            elif not is_skip:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                 )
 
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
-                interval_control = len(self.transformer_blocks) // len(block_controlnet_hidden_states)
+                interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
+                interval_control = int(np.ceil(interval_control))
                 hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
 
         hidden_states = self.norm_out(hidden_states, temb)
