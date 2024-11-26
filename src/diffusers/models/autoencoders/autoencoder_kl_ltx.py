@@ -470,7 +470,7 @@ class LTXDecoder3D(nn.Module):
         self.mid_block = CogVideoXMidBlock3D(
             in_channels=output_channel,
             temb_channels=None,
-            num_layers=layers_per_block[-1],
+            num_layers=layers_per_block[0],
             norm_type=resnet_norm_type,
             resnet_eps=resnet_norm_eps,
             resnet_groups=resnet_groups,
@@ -481,13 +481,13 @@ class LTXDecoder3D(nn.Module):
         self.up_blocks = nn.ModuleList([])
         for i in range(num_block_out_channels):
             input_channel = output_channel
-            output_channel = block_out_channels[i + 1] if i + 1 < num_block_out_channels else block_out_channels[i]
+            output_channel = block_out_channels[i]
 
             up_block = LTXUpBlock3D(
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=None,
-                num_layers=layers_per_block[i],
+                num_layers=layers_per_block[i + 1],
                 resnet_norm_type=resnet_norm_type,
                 resnet_eps=resnet_norm_eps,
                 resnet_groups=resnet_groups,
@@ -501,7 +501,7 @@ class LTXDecoder3D(nn.Module):
         self.conv_act = nn.SiLU()
         self.conv_out = CogVideoXCausalConv3d(
             in_channels=output_channel,
-            out_channels=out_channels,
+            out_channels=self.out_channels,
             kernel_size=3,
             stride=1,
         )
