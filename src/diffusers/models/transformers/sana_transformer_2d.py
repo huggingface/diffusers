@@ -315,7 +315,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             The dimensionality for cross-attention layers, typically matching the encoder's hidden dimension.
         attention_bias (bool, optional, defaults to True):
             Configure if the Transformer blocks' attention should contain a bias parameter.
-        sample_size (int, defaults to 128):
+        sample_size (int, defaults to 32):
             The width of the latent images. This parameter is fixed during training.
         patch_size (int, defaults to 1):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
