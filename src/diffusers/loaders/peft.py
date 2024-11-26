@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
 from functools import partial
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+import safetensors
+import torch
 import torch.nn as nn
 
 from ..utils import (
@@ -48,6 +52,7 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "SD3Transformer2DModel": lambda model_cls, weights: weights,
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
+    "MochiTransformer3DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -189,22 +194,25 @@ class PeftAdapterMixin:
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        if network_alphas is not None and prefix is None:
+            raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
 
-        keys = list(state_dict.keys())
-        transformer_keys = [k for k in keys if k.startswith(prefix)]
-        if len(transformer_keys) > 0:
-            state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in transformer_keys}
+        if prefix is not None:
+            keys = list(state_dict.keys())
+            model_keys = [k for k in keys if k.startswith(f"{prefix}.")]
+            if len(model_keys) > 0:
+                state_dict = {k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in model_keys}
 
-        if len(state_dict.keys()) > 0:
+        if len(state_dict) > 0:
+            if adapter_name in getattr(self, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."
+                )
+
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
-
-            if adapter_name in getattr(self, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
 
             rank = {}
             for key, val in state_dict.items():
@@ -212,17 +220,19 @@ class PeftAdapterMixin:
                     rank[key] = val.shape[1]
 
             if network_alphas is not None and len(network_alphas) >= 1:
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix]
+                alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
                 network_alphas = {k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys}
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=network_alphas, peft_state_dict=state_dict)
             if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
                 else:
-                    lora_config_kwargs.pop("use_dora")
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -275,6 +285,69 @@ class PeftAdapterMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
+
+    def save_lora_adapter(
+        self,
+        save_directory,
+        adapter_name: str = "default",
+        upcast_before_saving: bool = False,
+        safe_serialization: bool = True,
+        weight_name: Optional[str] = None,
+    ):
+        """
+        Save the LoRA parameters corresponding to the underlying model.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to save LoRA parameters to. Will be created if it doesn't exist.
+            adapter_name: (`str`, defaults to "default"): The name of the adapter to serialize. Useful when the
+                underlying model has multiple adapters loaded.
+            upcast_before_saving (`bool`, defaults to `False`):
+                Whether to cast the underlying model to `torch.float32` before serialization.
+            save_function (`Callable`):
+                The function to use to save the state dictionary. Useful during distributed training when you need to
+                replace `torch.save` with another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            weight_name: (`str`, *optional*, defaults to `None`): Name of the file to serialize the state dict with.
+        """
+        from peft.utils import get_peft_model_state_dict
+
+        from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE
+
+        if adapter_name is None:
+            adapter_name = get_adapter_name(self)
+
+        if adapter_name not in getattr(self, "peft_config", {}):
+            raise ValueError(f"Adapter name {adapter_name} not found in the model.")
+
+        lora_layers_to_save = get_peft_model_state_dict(
+            self.to(dtype=torch.float32 if upcast_before_saving else None), adapter_name=adapter_name
+        )
+        if os.path.isfile(save_directory):
+            raise ValueError(f"Provided path ({save_directory}) should be a directory, not a file")
+
+        if safe_serialization:
+
+            def save_function(weights, filename):
+                return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+
+        else:
+            save_function = torch.save
+
+        os.makedirs(save_directory, exist_ok=True)
+
+        if weight_name is None:
+            if safe_serialization:
+                weight_name = LORA_WEIGHT_NAME_SAFE
+            else:
+                weight_name = LORA_WEIGHT_NAME
+
+        # TODO: we could consider saving the `peft_config` as well.
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(lora_layers_to_save, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def set_adapters(
         self,

@@ -82,7 +82,7 @@ class MultiControlNetModel(ModelMixin):
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~pipelines.controlnet.MultiControlNetModel.from_pretrained`]` class method.
+        `[`~models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained`]` class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -128,7 +128,7 @@ class MultiControlNetModel(ModelMixin):
         Parameters:
             pretrained_model_path (`os.PathLike`):
                 A path to a *directory* containing model weights saved using
-                [`~diffusers.pipelines.controlnet.MultiControlNetModel.save_pretrained`], e.g.,
+                [`~models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained`], e.g.,
                 `./my_model_directory/controlnet`.
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
