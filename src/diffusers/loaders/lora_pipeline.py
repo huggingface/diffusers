@@ -2217,7 +2217,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
         """
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        transformer.load_state_dict(self._transformer_norm_layers, strict=False)
+        if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
+            transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
 
         super().unfuse_lora(components=components)
 
