@@ -210,7 +210,6 @@ class MochiPipeline(DiffusionPipeline):
         self.default_height = 480
         self.default_width = 848
 
-    # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -233,6 +232,7 @@ class MochiPipeline(DiffusionPipeline):
             add_special_tokens=True,
             return_tensors="pt",
         )
+
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
         prompt_attention_mask = prompt_attention_mask.bool().to(device)
