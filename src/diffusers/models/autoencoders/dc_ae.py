@@ -49,9 +49,6 @@ class RMSNorm2d(nn.Module):
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
 
-        self.reset_parameters()
-
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = (x / torch.sqrt(torch.square(x.float()).mean(dim=1, keepdim=True) + self.eps)).to(x.dtype)
         if self.elementwise_affine:
@@ -183,30 +180,28 @@ class ResBlock(nn.Module):
         super().__init__()
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
-        self.main = nn.Sequential(OrderedDict([
-            ("conv1", ConvLayer(
-                in_channels,
-                mid_channels,
-                kernel_size,
-                stride,
-                use_bias=use_bias[0],
-                norm=norm[0],
-                act_func=act_func[0],
-            )),
-            ("conv2", ConvLayer(
-                mid_channels,
-                out_channels,
-                kernel_size,
-                1,
-                use_bias=use_bias[1],
-                norm=norm[1],
-                act_func=act_func[1],
-            )),
-        ]))
+        self.conv1 = ConvLayer(
+            in_channels,
+            mid_channels,
+            kernel_size,
+            stride,
+            use_bias=use_bias[0],
+            norm=norm[0],
+            act_func=act_func[0],
+        )
+        self.conv2 = ConvLayer(
+            mid_channels,
+            out_channels,
+            kernel_size,
+            1,
+            use_bias=use_bias[1],
+            norm=norm[1],
+            act_func=act_func[1],
+        )
         self.shortcut = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.main(x) + self.shortcut(x)
+        x = self.conv2(self.conv1(x)) + x
         return x
 
 
@@ -444,31 +439,6 @@ class ResidualBlock(nn.Module):
         return res
 
 
-def build_block(
-    block_type: str, in_channels: int, out_channels: int, norm: Optional[str], act: Optional[str]
-) -> nn.Module:
-    if block_type == "ResBlock":
-        assert in_channels == out_channels
-        block = ResBlock(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            stride=1,
-            use_bias=(True, False),
-            norm=(None, norm),
-            act_func=(act, None),
-        )
-    elif block_type == "EViTGLU":
-        assert in_channels == out_channels
-        block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
-    elif block_type == "EViTS5GLU":
-        assert in_channels == out_channels
-        block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
-    else:
-        raise ValueError(f"block_type {block_type} is not supported")
-    return block
-
-
 def build_stage_main(
     width: int, depth: int, block_type: str | list[str], norm: str, act: str, input_width: int
 ) -> list[nn.Module]:
@@ -476,13 +446,30 @@ def build_stage_main(
     stage = []
     for d in range(depth):
         current_block_type = block_type[d] if isinstance(block_type, list) else block_type
-        block = build_block(
-            block_type=current_block_type,
-            in_channels=width if d > 0 else input_width,
-            out_channels=width,
-            norm=norm,
-            act=act,
-        )
+
+        in_channels = width if d > 0 else input_width
+        out_channels = width
+
+        if current_block_type == "ResBlock":
+            assert in_channels == out_channels
+            block = ResBlock(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=3,
+                stride=1,
+                use_bias=(True, False),
+                norm=(None, norm),
+                act_func=(act, None),
+            )
+        elif current_block_type == "EViTGLU":
+            assert in_channels == out_channels
+            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
+        elif current_block_type == "EViTS5GLU":
+            assert in_channels == out_channels
+            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
+        else:
+            raise ValueError(f"block_type {current_block_type} is not supported")
+
         stage.append(block)
     return stage
 
@@ -575,7 +562,7 @@ class Encoder(nn.Module):
                 else:
                     raise ValueError(f"shortcut {downsample_shortcut} is not supported for downsample")
                 stage.append(downsample_block)
-            self.stages.append(nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
+            self.stages.append(nn.Sequential(*stage))
         self.stages = nn.ModuleList(self.stages)
 
         # project out
@@ -600,7 +587,7 @@ class Encoder(nn.Module):
             norm=None,
             act_func=None,
         ))
-        project_out_block = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*project_out_layers))]))
+        project_out_block = nn.Sequential(*project_out_layers)
         if out_shortcut is None:
             pass
         elif out_shortcut == "averaging":
@@ -615,7 +602,7 @@ class Encoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.project_in(x)
         for stage in self.stages:
-            if len(stage.op_list) == 0:
+            if len(stage) == 0:
                 continue
             x = stage(x)
         x = self.project_out(x)
@@ -714,7 +701,7 @@ class Decoder(nn.Module):
                     ),
                 )
             )
-            self.stages.insert(0, nn.Sequential(OrderedDict([("op_list", nn.Sequential(*stage))])))
+            self.stages.insert(0, nn.Sequential(*stage))
         self.stages = nn.ModuleList(self.stages)
 
         # project out
@@ -759,12 +746,12 @@ class Decoder(nn.Module):
             project_out_layers.append(project_out_conv)
         else:
             raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
-        self.project_out = nn.Sequential(OrderedDict([("op_list", nn.Sequential(*project_out_layers))]))
+        self.project_out = nn.Sequential(*project_out_layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.project_in(x)
         for stage in reversed(self.stages):
-            if len(stage.op_list) == 0:
+            if len(stage) == 0:
                 continue
             x = stage(x)
         x = self.project_out(x)
