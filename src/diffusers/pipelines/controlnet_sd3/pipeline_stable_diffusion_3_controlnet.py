@@ -947,7 +947,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             height, width = control_image.shape[-2:]
 
             control_image = self.vae.encode(control_image).latent_dist.sample()
-            control_image = control_image * self.vae.config.scaling_factor
+            control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         elif isinstance(self.controlnet, SD3MultiControlNetModel):
             control_images = []
@@ -966,7 +966,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 )
 
                 control_image_ = self.vae.encode(control_image_).latent_dist.sample()
-                control_image_ = control_image_ * self.vae.config.scaling_factor
+                control_image_ = (control_image_ - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
                 control_images.append(control_image_)
 
