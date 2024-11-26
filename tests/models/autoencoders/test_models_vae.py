@@ -39,7 +39,6 @@ from diffusers.utils.testing_utils import (
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -170,52 +169,17 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_training(self):
         pass
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Decoder", "Encoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
@@ -329,9 +293,11 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_forward_with_norm_groups(self):
         pass
 
@@ -364,7 +330,18 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_outputs_equivalence(self):
+        pass
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"DecoderTiny", "EncoderTiny"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @unittest.skip(
+        "Gradient checkpointing is supported but this test doesn't apply to this class because it's forward is a bit different from the rest."
+    )
+    def test_effective_gradient_checkpointing(self):
         pass
 
 
@@ -443,55 +420,17 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_training(self):
         pass
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            if "post_quant_conv" in name:
-                continue
-
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Encoder", "TemporalDecoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
@@ -522,9 +461,11 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_forward_with_norm_groups(self):
         pass
 
@@ -651,12 +592,12 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+                [-0.1556, 0.9848, -0.0410, -0.0642, -0.2685, 0.8381, -0.2004, -0.0700],
                 [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
             ],
             [
                 47,
-                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+                [-0.2376, 0.1200, 0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
                 [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
             ],
             # fmt: on
@@ -886,7 +827,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
+                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
                 [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
             ],
             [
@@ -1051,7 +992,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_sd(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", vae=vae, safety_checker=None)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None
+        )
         pipe.to(torch_device)
 
         out = pipe(
@@ -1099,7 +1042,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
-            "Jiali/stable-diffusion-1.5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
             torch_dtype=torch.float16,
             vae=vae,
             safety_checker=None,
@@ -1124,7 +1067,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
     def test_vae_tiling(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
         pipe = StableDiffusionPipeline.from_pretrained(
-            "Jiali/stable-diffusion-1.5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

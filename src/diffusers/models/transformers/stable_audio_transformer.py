@@ -414,7 +414,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
             attention_mask = torch.cat([prepend_mask, attention_mask], dim=-1)
 
         for block in self.transformer_blocks:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):

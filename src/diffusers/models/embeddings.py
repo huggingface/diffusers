@@ -442,6 +442,60 @@ class CogVideoXPatchEmbed(nn.Module):
         return embeds
 
 
+class CogView3PlusPatchEmbed(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 16,
+        hidden_size: int = 2560,
+        patch_size: int = 2,
+        text_hidden_size: int = 4096,
+        pos_embed_max_size: int = 128,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.patch_size = patch_size
+        self.text_hidden_size = text_hidden_size
+        self.pos_embed_max_size = pos_embed_max_size
+        # Linear projection for image patches
+        self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
+
+        # Linear projection for text embeddings
+        self.text_proj = nn.Linear(text_hidden_size, hidden_size)
+
+        pos_embed = get_2d_sincos_pos_embed(hidden_size, pos_embed_max_size, base_size=pos_embed_max_size)
+        pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
+        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float(), persistent=False)
+
+    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, channel, height, width = hidden_states.shape
+
+        if height % self.patch_size != 0 or width % self.patch_size != 0:
+            raise ValueError("Height and width must be divisible by patch size")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        hidden_states = hidden_states.view(batch_size, channel, height, self.patch_size, width, self.patch_size)
+        hidden_states = hidden_states.permute(0, 2, 4, 1, 3, 5).contiguous()
+        hidden_states = hidden_states.view(batch_size, height * width, channel * self.patch_size * self.patch_size)
+
+        # Project the patches
+        hidden_states = self.proj(hidden_states)
+        encoder_hidden_states = self.text_proj(encoder_hidden_states)
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        # Calculate text_length
+        text_length = encoder_hidden_states.shape[1]
+
+        image_pos_embed = self.pos_embed[:height, :width].reshape(height * width, -1)
+        text_pos_embed = torch.zeros(
+            (text_length, self.hidden_size), dtype=image_pos_embed.dtype, device=image_pos_embed.device
+        )
+        pos_embed = torch.cat([text_pos_embed, image_pos_embed], dim=0)[None, ...]
+
+        return (hidden_states + pos_embed).to(hidden_states.dtype)
+
+
 def get_3d_rotary_pos_embed(
     embed_dim, crops_coords, grid_size, temporal_size, theta: int = 10000, use_real: bool = True
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -508,6 +562,42 @@ def get_3d_rotary_pos_embed(
     cos = combine_time_height_width(t_cos, h_cos, w_cos)
     sin = combine_time_height_width(t_sin, h_sin, w_sin)
     return cos, sin
+
+
+def get_3d_rotary_pos_embed_allegro(
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    theta: int = 10000,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    # TODO(aryan): docs
+    start, stop = crops_coords
+    grid_size_h, grid_size_w = grid_size
+    interpolation_scale_t, interpolation_scale_h, interpolation_scale_w = interpolation_scale
+    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+    grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+
+    # Compute dimensions for each axis
+    dim_t = embed_dim // 3
+    dim_h = embed_dim // 3
+    dim_w = embed_dim // 3
+
+    # Temporal frequencies
+    freqs_t = get_1d_rotary_pos_embed(
+        dim_t, grid_t / interpolation_scale_t, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+    # Spatial frequencies for height and width
+    freqs_h = get_1d_rotary_pos_embed(
+        dim_h, grid_h / interpolation_scale_h, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+    freqs_w = get_1d_rotary_pos_embed(
+        dim_w, grid_w / interpolation_scale_w, theta=theta, use_real=True, repeat_interleave_real=False
+    )
+
+    return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
 
 
 def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
@@ -630,7 +720,7 @@ def get_1d_rotary_pos_embed(
         freqs_sin = freqs.sin().repeat_interleave(2, dim=1).float()  # [S, D]
         return freqs_cos, freqs_sin
     elif use_real:
-        # stable audio
+        # stable audio, allegro
         freqs_cos = torch.cat([freqs.cos(), freqs.cos()], dim=-1).float()  # [S, D]
         freqs_sin = torch.cat([freqs.sin(), freqs.sin()], dim=-1).float()  # [S, D]
         return freqs_cos, freqs_sin
@@ -687,6 +777,24 @@ def apply_rotary_emb(
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
+
+
+def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
+    # TODO(aryan): rewrite
+    def apply_1d_rope(tokens, pos, cos, sin):
+        cos = F.embedding(pos, cos)[:, None, :, :]
+        sin = F.embedding(pos, sin)[:, None, :, :]
+        x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2 :]
+        tokens_rotated = torch.cat((-x2, x1), dim=-1)
+        return (tokens.float() * cos + tokens_rotated.float() * sin).to(tokens.dtype)
+
+    (t_cos, t_sin), (h_cos, h_sin), (w_cos, w_sin) = freqs_cis
+    t, h, w = x.chunk(3, dim=-1)
+    t = apply_1d_rope(t, positions[0], t_cos, t_sin)
+    h = apply_1d_rope(h, positions[1], h_cos, h_sin)
+    w = apply_1d_rope(w, positions[2], w_cos, w_sin)
+    x = torch.cat([t, h, w], dim=-1)
+    return x
 
 
 class FluxPosEmbed(nn.Module):
@@ -1080,6 +1188,39 @@ class CombinedTimestepGuidanceTextProjEmbeddings(nn.Module):
         return conditioning
 
 
+class CogView3CombinedTimestepSizeEmbeddings(nn.Module):
+    def __init__(self, embedding_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim: int = 256):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=timesteps_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.condition_proj = Timesteps(num_channels=condition_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=embedding_dim)
+        self.condition_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        original_size: torch.Tensor,
+        target_size: torch.Tensor,
+        crop_coords: torch.Tensor,
+        hidden_dtype: torch.dtype,
+    ) -> torch.Tensor:
+        timesteps_proj = self.time_proj(timestep)
+
+        original_size_proj = self.condition_proj(original_size.flatten()).view(original_size.size(0), -1)
+        crop_coords_proj = self.condition_proj(crop_coords.flatten()).view(crop_coords.size(0), -1)
+        target_size_proj = self.condition_proj(target_size.flatten()).view(target_size.size(0), -1)
+
+        # (B, 3 * condition_dim)
+        condition_proj = torch.cat([original_size_proj, crop_coords_proj, target_size_proj], dim=1)
+
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
+        condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
+
+        conditioning = timesteps_emb + condition_emb
+        return conditioning
+
+
 class HunyuanDiTAttentionPool(nn.Module):
     # Copied from https://github.com/Tencent/HunyuanDiT/blob/cb709308d92e6c7e8d59d0dff41b74d35088db6a/hydit/modules/poolers.py#L6
 
@@ -1215,6 +1356,41 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         return conditioning
 
 
+class MochiCombinedTimestepCaptionEmbedding(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        pooled_projection_dim: int,
+        text_embed_dim: int,
+        time_embed_dim: int = 256,
+        num_attention_heads: int = 8,
+    ) -> None:
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=time_embed_dim, time_embed_dim=embedding_dim)
+        self.pooler = MochiAttentionPool(
+            num_attention_heads=num_attention_heads, embed_dim=text_embed_dim, output_dim=embedding_dim
+        )
+        self.caption_proj = nn.Linear(text_embed_dim, pooled_projection_dim)
+
+    def forward(
+        self,
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
+        hidden_dtype: Optional[torch.dtype] = None,
+    ):
+        time_proj = self.time_proj(timestep)
+        time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
+
+        pooled_projections = self.pooler(encoder_hidden_states, encoder_attention_mask)
+        caption_proj = self.caption_proj(encoder_hidden_states)
+
+        conditioning = time_emb + pooled_projections
+        return conditioning, caption_proj
+
+
 class TextTimeEmbedding(nn.Module):
     def __init__(self, encoder_dim: int, time_embed_dim: int, num_heads: int = 64):
         super().__init__()
@@ -1341,6 +1517,88 @@ class AttentionPooling(nn.Module):
         a = a.reshape(bs, -1, 1).transpose(1, 2)
 
         return a[:, 0, :]  # cls_token
+
+
+class MochiAttentionPool(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        embed_dim: int,
+        output_dim: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+
+        self.output_dim = output_dim or embed_dim
+        self.num_attention_heads = num_attention_heads
+
+        self.to_kv = nn.Linear(embed_dim, 2 * embed_dim)
+        self.to_q = nn.Linear(embed_dim, embed_dim)
+        self.to_out = nn.Linear(embed_dim, self.output_dim)
+
+    @staticmethod
+    def pool_tokens(x: torch.Tensor, mask: torch.Tensor, *, keepdim=False) -> torch.Tensor:
+        """
+        Pool tokens in x using mask.
+
+        NOTE: We assume x does not require gradients.
+
+        Args:
+            x: (B, L, D) tensor of tokens.
+            mask: (B, L) boolean tensor indicating which tokens are not padding.
+
+        Returns:
+            pooled: (B, D) tensor of pooled tokens.
+        """
+        assert x.size(1) == mask.size(1)  # Expected mask to have same length as tokens.
+        assert x.size(0) == mask.size(0)  # Expected mask to have same batch size as tokens.
+        mask = mask[:, :, None].to(dtype=x.dtype)
+        mask = mask / mask.sum(dim=1, keepdim=True).clamp(min=1)
+        pooled = (x * mask).sum(dim=1, keepdim=keepdim)
+        return pooled
+
+    def forward(self, x: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
+        r"""
+        Args:
+            x (`torch.Tensor`):
+                Tensor of shape `(B, S, D)` of input tokens.
+            mask (`torch.Tensor`):
+                Boolean ensor of shape `(B, S)` indicating which tokens are not padding.
+
+        Returns:
+            `torch.Tensor`:
+                `(B, D)` tensor of pooled tokens.
+        """
+        D = x.size(2)
+
+        # Construct attention mask, shape: (B, 1, num_queries=1, num_keys=1+L).
+        attn_mask = mask[:, None, None, :].bool()  # (B, 1, 1, L).
+        attn_mask = F.pad(attn_mask, (1, 0), value=True)  # (B, 1, 1, 1+L).
+
+        # Average non-padding token features. These will be used as the query.
+        x_pool = self.pool_tokens(x, mask, keepdim=True)  # (B, 1, D)
+
+        # Concat pooled features to input sequence.
+        x = torch.cat([x_pool, x], dim=1)  # (B, L+1, D)
+
+        # Compute queries, keys, values. Only the mean token is used to create a query.
+        kv = self.to_kv(x)  # (B, L+1, 2 * D)
+        q = self.to_q(x[:, 0])  # (B, D)
+
+        # Extract heads.
+        head_dim = D // self.num_attention_heads
+        kv = kv.unflatten(2, (2, self.num_attention_heads, head_dim))  # (B, 1+L, 2, H, head_dim)
+        kv = kv.transpose(1, 3)  # (B, H, 2, 1+L, head_dim)
+        k, v = kv.unbind(2)  # (B, H, 1+L, head_dim)
+        q = q.unflatten(1, (self.num_attention_heads, head_dim))  # (B, H, head_dim)
+        q = q.unsqueeze(2)  # (B, H, 1, head_dim)
+
+        # Compute attention.
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)  # (B, H, 1, head_dim)
+
+        # Concatenate heads and run output.
+        x = x.squeeze(2).flatten(1, 2)  # (B, D = H * head_dim)
+        x = self.to_out(x)
+        return x
 
 
 def get_fourier_embeds_from_boundingbox(embed_dim, box):

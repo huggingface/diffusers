@@ -29,7 +29,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     python3.10 -m uv pip install --no-cache-dir \
-    torch \
+    "torch<2.5.0" \
     torchvision \
     torchaudio \
     invisible_watermark && \
@@ -45,6 +45,7 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     scipy \
     tensorboard \
     transformers \
-    pytorch-lightning
+    pytorch-lightning  \
+    hf_transfer
 
 CMD ["/bin/bash"]

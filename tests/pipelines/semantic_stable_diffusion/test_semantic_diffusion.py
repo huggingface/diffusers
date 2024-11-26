@@ -288,7 +288,7 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_positive_guidance(self):
         torch_device = "cuda"
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5")
+        pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -371,7 +371,7 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_negative_guidance(self):
         torch_device = "cuda"
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5")
+        pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -454,7 +454,7 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_multi_cond_guidance(self):
         torch_device = "cuda"
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5")
+        pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -537,7 +537,9 @@ class SemanticDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_guidance_fp16(self):
         torch_device = "cuda"
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

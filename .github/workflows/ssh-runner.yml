@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       runner_type:
-        description: 'Type of runner to test (aws-g6-4xlarge-plus: a10 or aws-g4dn-2xlarge: t4)'
+        description: 'Type of runner to test (aws-g6-4xlarge-plus: a10, aws-g4dn-2xlarge: t4, aws-g6e-xlarge-plus: L40)'
         type: choice
         required: true
         options:
           - aws-g6-4xlarge-plus
           - aws-g4dn-2xlarge
+          - aws-g6e-xlarge-plus
       docker_image:
         description: 'Name of the Docker image'
         required: true

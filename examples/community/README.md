@@ -10,6 +10,8 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+|Adaptive Mask Inpainting|Adaptive Mask Inpainting algorithm from [Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models](https://github.com/snuvclab/coma) (ECCV '24, Oral) provides a way to insert human inside the scene image without altering the background, by inpainting with adapting mask.|[Adaptive Mask Inpainting](#adaptive-mask-inpainting)|-|[Hyeonwoo Kim](https://sshowbiz.xyz),[Sookwan Han](https://jellyheadandrew.github.io)|
+|Flux with CFG|[Flux with CFG](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md) provides an implementation of using CFG in [Flux](https://blackforestlabs.ai/announcing-black-forest-labs/).|[Flux with CFG](#flux-with-cfg)|NA|[Linoy Tsaban](https://github.com/linoytsaban), [Apolinário](https://github.com/apolinario), and [Sayak Paul](https://github.com/sayakpaul)|
 |Differential Diffusion|[Differential Diffusion](https://github.com/exx8/differential-diffusion) modifies an image according to a text prompt, and according to a map that specifies the amount of change in each region.|[Differential Diffusion](#differential-diffusion)|[![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/exx8/differential-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/exx8/differential-diffusion/blob/main/examples/SD2.ipynb)|[Eran Levin](https://github.com/exx8) and [Ohad Fried](https://www.ohadf.com/)|
 | HD-Painter                                                                                                                            | [HD-Painter](https://github.com/Picsart-AI-Research/HD-Painter) enables prompt-faithfull and high resolution (up to 2k) image inpainting upon any diffusion-based image inpainting method.                                                                                                                                                                                                                                                                                                               | [HD-Painter](#hd-painter)                                                                 | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/PAIR/HD-Painter)                                                                              | [Manukyan Hayk](https://github.com/haikmanukyan) and [Sargsyan Andranik](https://github.com/AndranikSargsyan) |
 | Marigold Monocular Depth Estimation                                                                                                   | A universal monocular depth estimator, utilizing Stable Diffusion, delivering sharp predictions in the wild. (See the [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) for more details.)                                                                                                                                                                                                                                                        | [Marigold Depth Estimation](#marigold-depth-estimation)                                   | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/toshas/marigold) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) | [Bingxin Ke](https://github.com/markkua) and [Anton Obukhov](https://github.com/toshas) |
@@ -50,6 +52,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LsqilswLR40XLLcp6XFOl5nKb_wOe26W?usp=sharing) | [Andrew Zhu](https://xhinker.medium.com/) |
 | FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) |
 | sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
+| sketch inpaint xl - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion XL Pipeline](#stable-diffusion-xl-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 | prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) |
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
@@ -71,7 +74,9 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 | Stable Diffusion BoxDiff Pipeline | Training-free controlled generation with bounding boxes using [BoxDiff](https://github.com/showlab/BoxDiff) | [Stable Diffusion BoxDiff Pipeline](#stable-diffusion-boxdiff) | - | [Jingyang Zhang](https://github.com/zjysteven/) |
 |   FRESCO V2V Pipeline                                                                                                    | Implementation of [[CVPR 2024] FRESCO: Spatial-Temporal Correspondence for Zero-Shot Video Translation](https://arxiv.org/abs/2403.12962)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [FRESCO V2V Pipeline](#fresco)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | AnimateDiff IPEX Pipeline | Accelerate AnimateDiff inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [AnimateDiff on IPEX](#animatediff-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
-| HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffsuion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
+PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixart alpha and its diffusers pipeline | [PIXART-α Controlnet pipeline](#pixart-α-controlnet-pipeline) | - | [Raul Ciotescu](https://github.com/raulc0399/) |
+| HunyuanDiT Differential Diffusion Pipeline | Applies [Differential Diffusion](https://github.com/exx8/differential-diffusion) to [HunyuanDiT](https://github.com/huggingface/diffusers/pull/8240). | [HunyuanDiT with Differential Diffusion](#hunyuandit-with-differential-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing) | [Monjoy Choudhury](https://github.com/MnCSSJ4x) |
+| [🪆Matryoshka Diffusion Models](https://huggingface.co/papers/2310.15111) | A diffusion process that denoises inputs at multiple resolutions jointly and uses a NestedUNet architecture where features and parameters for small scale inputs are nested within those of the large scales. See [original codebase](https://github.com/apple/ml-mdm). | [🪆Matryoshka Diffusion Models](#matryoshka-diffusion-models) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/pcuenq/mdm) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/tolgacangoz/1f54875fc7aeaabcf284ebde64820966/matryoshka_hf.ipynb) | [M. Tolga Cangöz](https://github.com/tolgacangoz) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -80,6 +85,191 @@ pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion
 ```
 
 ## Example usages
+
+### Adaptive Mask Inpainting
+
+**Hyeonwoo Kim\*, Sookwan Han\*, Patrick Kwon, Hanbyul Joo**
+
+**Seoul National University, Naver Webtoon**
+
+Adaptive Mask Inpainting, presented in the ECCV'24 oral paper [*Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models*](https://snuvclab.github.io/coma), is an algorithm designed to insert humans into scene images without altering the background. Traditional inpainting methods often fail to preserve object geometry and details within the masked region, leading to false affordances. Adaptive Mask Inpainting addresses this issue by progressively specifying the inpainting region over diffusion timesteps, ensuring that the inserted human integrates seamlessly with the existing scene.
+
+Here is the demonstration of Adaptive Mask Inpainting:
+
+<video controls>
+  <source src="https://snuvclab.github.io/coma/static/videos/adaptive_mask_inpainting_vis.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+![teaser-img](https://snuvclab.github.io/coma/static/images/example_result_adaptive_mask_inpainting.png)
+
+
+You can find additional information about Adaptive Mask Inpainting in the [paper](https://arxiv.org/pdf/2401.12978) or in the [project website](https://snuvclab.github.io/coma).
+
+#### Usage example
+First, clone the diffusers github repository, and run the following command to set environment.
+```Shell
+git clone https://github.com/huggingface/diffusers.git
+cd diffusers
+
+conda create --name ami python=3.9 -y
+conda activate ami
+
+conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch -c conda-forge -y
+python -m pip install detectron2==0.6 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu113/torch1.10/index.html
+pip install easydict
+pip install diffusers==0.20.2 accelerate safetensors transformers
+pip install setuptools==59.5.0
+pip install opencv-python
+pip install numpy==1.24.1
+```
+Then, run the below code under 'diffusers' directory.
+```python
+import numpy as np
+import torch
+from PIL import Image
+
+from diffusers import DDIMScheduler
+from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
+
+from examples.community.adaptive_mask_inpainting import download_file, AdaptiveMaskInpaintPipeline, AMI_INSTALL_MESSAGE
+
+print(AMI_INSTALL_MESSAGE)
+
+from easydict import EasyDict
+
+
+
+if __name__ == "__main__":    
+    """
+    Download Necessary Files
+    """
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/model_final_edd263.pkl?download=true",
+        output_file = "model_final_edd263.pkl",
+        exist_ok=True,
+    )
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/pointrend_rcnn_R_50_FPN_3x_coco.yaml?download=true",
+        output_file = "pointrend_rcnn_R_50_FPN_3x_coco.yaml",
+        exist_ok=True,
+    )
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/input_img.png?download=true",
+        output_file = "input_img.png",
+        exist_ok=True,
+    )
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/input_mask.png?download=true",
+        output_file = "input_mask.png",
+        exist_ok=True,
+    )
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/Base-PointRend-RCNN-FPN.yaml?download=true",
+        output_file = "Base-PointRend-RCNN-FPN.yaml",
+        exist_ok=True,
+    )
+    download_file(
+        url = "https://huggingface.co/datasets/jellyheadnadrew/adaptive-mask-inpainting-test-images/resolve/main/Base-RCNN-FPN.yaml?download=true",
+        output_file = "Base-RCNN-FPN.yaml",
+        exist_ok=True,
+    )
+    
+    """ 
+    Prepare Adaptive Mask Inpainting Pipeline
+    """
+    # device
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    num_steps = 50
+    
+    # Scheduler
+    scheduler = DDIMScheduler(
+        beta_start=0.00085, 
+        beta_end=0.012, 
+        beta_schedule="scaled_linear", 
+        clip_sample=False, 
+        set_alpha_to_one=False
+    )
+    scheduler.set_timesteps(num_inference_steps=num_steps)
+
+    ## load models as pipelines
+    pipeline = AdaptiveMaskInpaintPipeline.from_pretrained(
+        "Uminosachi/realisticVisionV51_v51VAE-inpainting", 
+        scheduler=scheduler, 
+        torch_dtype=torch.float16, 
+        requires_safety_checker=False
+    ).to(device)
+
+    ## disable safety checker
+    enable_safety_checker = False
+    if not enable_safety_checker:
+        pipeline.safety_checker = None
+    
+    """ 
+    Run Adaptive Mask Inpainting 
+    """
+    default_mask_image = Image.open("./input_mask.png").convert("L")
+    init_image = Image.open("./input_img.png").convert("RGB")
+    
+    
+    seed = 59
+    generator = torch.Generator(device=device)
+    generator.manual_seed(seed)
+    
+    image = pipeline(
+        prompt="a man sitting on a couch",
+        negative_prompt="worst quality, normal quality, low quality, bad anatomy, artifacts, blurry, cropped, watermark, greyscale, nsfw",
+        image=init_image,
+        default_mask_image=default_mask_image,
+        guidance_scale=11.0,
+        strength=0.98,
+        use_adaptive_mask=True,
+        generator=generator,
+        enforce_full_mask_ratio=0.0,
+        visualization_save_dir="./ECCV2024_adaptive_mask_inpainting_demo", # DON'T CHANGE THIS!!!
+        human_detection_thres=0.015,
+    ).images[0]
+
+    
+    image.save(f'final_img.png')
+```
+#### [Troubleshooting]
+
+If you run into an error `cannot import name 'cached_download' from 'huggingface_hub'` (issue [1851](https://github.com/easydiffusion/easydiffusion/issues/1851)), remove `cached_download` from the import line in the file `diffusers/utils/dynamic_modules_utils.py`. 
+
+For example, change the import line from `.../env/lib/python3.8/site-packages/diffusers/utils/dynamic_modules_utils.py`.
+
+
+### Flux with CFG
+
+Know more about Flux [here](https://blackforestlabs.ai/announcing-black-forest-labs/). Since Flux doesn't use CFG, this implementation provides one, inspired by the [PuLID Flux adaptation](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md).
+
+Example usage:
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+    custom_pipeline="pipeline_flux_with_cfg"
+)
+pipeline.enable_model_cpu_offload()
+prompt = "a watercolor painting of a unicorn"
+negative_prompt = "pink"
+
+img = pipeline(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    true_cfg=1.5,
+    guidance_scale=3.5,
+    num_images_per_prompt=1,
+    generator=torch.manual_seed(0)
+).images[0]
+img.save("cfg_flux.png")
+```
 
 ### Differential Diffusion
 
@@ -2581,15 +2771,52 @@ result.images[0].save("result.png")
 
 original image mech.png
 
-<img src=<https://github.com/noskill/diffusers/assets/733626/10ad972d-d655-43cb-8de1-039e3d79e849> width="25%" >
+<img src=https://github.com/noskill/diffusers/assets/733626/10ad972d-d655-43cb-8de1-039e3d79e849 width="25%" >
 
 image with mask mech_painted.png
 
-<img src=<https://github.com/noskill/diffusers/assets/733626/c334466a-67fe-4377-9ff7-f46021b9c224> width="25%" >
+<img src=https://github.com/noskill/diffusers/assets/733626/c334466a-67fe-4377-9ff7-f46021b9c224 width="25%" >
 
 result:
 
-<img src=<https://github.com/noskill/diffusers/assets/733626/23a0a71d-51db-471e-926a-107ac62512a8> width="25%" >
+<img src=https://github.com/noskill/diffusers/assets/733626/23a0a71d-51db-471e-926a-107ac62512a8 width="25%" >
+
+### Masked Im2Im Stable Diffusion Pipeline XL
+
+This pipeline implements sketch inpaint feature from A1111 for non-inpaint models. The following code reads two images, original and one with mask painted over it. It computes mask as a difference of two images and does the inpainting in the area defined by the mask. Latent code is initialized from the image with the mask by default so the color of the mask affects the result.
+
+```
+img = PIL.Image.open("./mech.png")
+# read image with mask painted over
+img_paint = PIL.Image.open("./mech_painted.png")
+
+pipeline = MaskedStableDiffusionXLImg2ImgPipeline.from_pretrained("frankjoshua/juggernautXL_v8Rundiffusion", dtype=torch.float16)
+
+pipeline.to('cuda')
+pipeline.enable_xformers_memory_efficient_attention()
+
+prompt = "a mech warrior wearing a mask"
+seed = 8348273636437
+for i in range(10):
+    generator = torch.Generator(device="cuda").manual_seed(seed + i)
+    print(seed + i)
+    result = pipeline(prompt=prompt, blur=48, image=img_paint, original_image=img, strength=0.9,
+                          generator=generator, num_inference_steps=60, num_images_per_prompt=1)
+    im = result.images[0]
+    im.save(f"result{i}.png")
+```
+
+original image mech.png
+
+<img src=https://github.com/noskill/diffusers/assets/733626/10ad972d-d655-43cb-8de1-039e3d79e849 width="25%" >
+
+image with mask mech_painted.png
+
+<img src=https://github.com/noskill/diffusers/assets/733626/c334466a-67fe-4377-9ff7-f46021b9c224 width="25%" >
+
+result:
+
+<img src=https://github.com/noskill/diffusers/assets/733626/5043fb57-a785-4606-a5ba-a36704f7cb42 width="25%" >
 
 ### Prompt2Prompt Pipeline
 
@@ -4255,6 +4482,50 @@ image = pipe(
 
 A colab notebook demonstrating all results can be found [here](https://colab.research.google.com/drive/1v44a5fpzyr4Ffr4v2XBQ7BajzG874N4P?usp=sharing). Depth Maps have also been added in the same colab.
 
+### 🪆Matryoshka Diffusion Models
+
+![🪆Matryoshka Diffusion Models](https://github.com/user-attachments/assets/bf90b53b-48c3-4769-a805-d9dfe4a7c572)
+
+The Abstract of the paper:
+>Diffusion models are the _de-facto_ approach for generating high-quality images and videos but learning high-dimensional models remains a formidable task due to computational and optimization challenges. Existing methods often resort to training cascaded models in pixel space, or using a downsampled latent space of a separately trained auto-encoder. In this paper, we introduce Matryoshka Diffusion (MDM), **a novel framework for high-resolution image and video synthesis**. We propose a diffusion process that denoises inputs at multiple resolutions jointly and uses a **NestedUNet** architecture where features and parameters for small scale inputs are nested within those of the large scales. In addition, MDM enables a progressive training schedule from lower to higher resolutions which leads to significant improvements in optimization for high-resolution generation. We demonstrate the effectiveness of our approach on various benchmarks, including class-conditioned image generation, high-resolution text-to-image, and text-to-video applications. Remarkably, we can train a **_single pixel-space model_ at resolutions of up to 1024 × 1024 pixels**, demonstrating strong zero shot generalization using the **CC12M dataset, which contains only 12 million images**. Code and pre-trained checkpoints are released at https://github.com/apple/ml-mdm.
+
+- `64×64, nesting_level=0`: 1.719 GiB. With `50` DDIM inference steps:
+
+**64x64**
+:-------------------------:
+| <img src="https://github.com/user-attachments/assets/032738eb-c6cd-4fd9-b4d7-a7317b4b6528" width="222" height="222" alt="bird_64_64"> |
+
+- `256×256, nesting_level=1`: 1.776 GiB. With `150` DDIM inference steps:
+
+**64x64**             |  **256x256**
+:-------------------------:|:-------------------------:
+| <img src="https://github.com/user-attachments/assets/21b9ad8b-eea6-4603-80a2-31180f391589" width="222" height="222" alt="bird_256_64"> | <img src="https://github.com/user-attachments/assets/fc411682-8a36-422c-9488-395b77d4406e" width="222" height="222" alt="bird_256_256"> |
+
+- `1024×1024, nesting_level=2`: 1.792 GiB. As one can realize the cost of adding another layer is really negligible in this context! With `250` DDIM inference steps:
+
+**64x64**             |  **256x256**  |  **1024x1024**
+:-------------------------:|:-------------------------:|:-------------------------:
+| <img src="https://github.com/user-attachments/assets/febf4b98-3dee-4a8e-9946-fd42e1f232e6" width="222" height="222" alt="bird_1024_64"> | <img src="https://github.com/user-attachments/assets/c5f85b40-5d6d-4267-a92a-c89dff015b9b" width="222" height="222" alt="bird_1024_256"> | <img src="https://github.com/user-attachments/assets/ad66b913-4367-4cb9-889e-bc06f4d96148" width="222" height="222" alt="bird_1024_1024"> |
+
+```py
+from diffusers import DiffusionPipeline
+from diffusers.utils import make_image_grid
+
+# nesting_level=0 -> 64x64; nesting_level=1 -> 256x256 - 64x64; nesting_level=2 -> 1024x1024 - 256x256 - 64x64
+pipe = DiffusionPipeline.from_pretrained("tolgacangoz/matryoshka-diffusion-models",
+                                         nesting_level=0,
+                                         trust_remote_code=False,  # One needs to give permission for this code to run
+                                         ).to("cuda")
+
+prompt0 = "a blue jay stops on the top of a helmet of Japanese samurai, background with sakura tree"
+prompt = f"breathtaking {prompt0}. award-winning, professional, highly detailed"
+image = pipe(prompt, num_inference_steps=50).images
+make_image_grid(image, rows=1, cols=len(image))
+
+# pipe.change_nesting_level(<int>)  # 0, 1, or 2
+# 50+, 100+, and 250+ num_inference_steps are recommended for nesting levels 0, 1, and 2 respectively.
+```
+
 # Perturbed-Attention Guidance
 
 [Project](https://ku-cvlab.github.io/Perturbed-Attention-Guidance/) / [arXiv](https://arxiv.org/abs/2403.17377) / [GitHub](https://github.com/KU-CVLAB/Perturbed-Attention-Guidance)
@@ -4331,3 +4602,94 @@ grid_image.save(grid_dir + "sample.png")
 `pag_scale` : guidance scale of PAG (ex: 5.0)
 
 `pag_applied_layers_index` : index of the layer to apply perturbation (ex: ['m0'])
+
+# PIXART-α Controlnet pipeline
+
+[Project](https://pixart-alpha.github.io/) / [GitHub](https://github.com/PixArt-alpha/PixArt-alpha/blob/master/asset/docs/pixart_controlnet.md)
+
+This the implementation of the controlnet model and the pipelne for the Pixart-alpha model, adapted to use the HuggingFace Diffusers.
+
+## Example Usage
+
+This example uses the Pixart HED Controlnet model, converted from the control net model as trained by the authors of the paper.
+
+```py
+import sys
+import os
+import torch
+import torchvision.transforms as T
+import torchvision.transforms.functional as TF
+
+from pipeline_pixart_alpha_controlnet import PixArtAlphaControlnetPipeline
+from diffusers.utils import load_image
+
+from diffusers.image_processor import PixArtImageProcessor
+
+from controlnet_aux import HEDdetector
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pixart.controlnet_pixart_alpha import PixArtControlNetAdapterModel
+
+controlnet_repo_id = "raulc0399/pixart-alpha-hed-controlnet"
+
+weight_dtype = torch.float16
+image_size = 1024
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+torch.manual_seed(0)
+
+# load controlnet
+controlnet = PixArtControlNetAdapterModel.from_pretrained(
+    controlnet_repo_id,
+    torch_dtype=weight_dtype,
+    use_safetensors=True,
+).to(device)
+
+pipe = PixArtAlphaControlnetPipeline.from_pretrained(
+    "PixArt-alpha/PixArt-XL-2-1024-MS",
+    controlnet=controlnet,
+    torch_dtype=weight_dtype,
+    use_safetensors=True,
+).to(device)
+
+images_path = "images"
+control_image_file = "0_7.jpg"
+
+prompt = "battleship in space, galaxy in background"
+
+control_image_name = control_image_file.split('.')[0]
+
+control_image = load_image(f"{images_path}/{control_image_file}")
+print(control_image.size)
+height, width = control_image.size
+
+hed = HEDdetector.from_pretrained("lllyasviel/Annotators")
+
+condition_transform = T.Compose([
+    T.Lambda(lambda img: img.convert('RGB')),
+    T.CenterCrop([image_size, image_size]),
+])
+
+control_image = condition_transform(control_image)
+hed_edge = hed(control_image, detect_resolution=image_size, image_resolution=image_size)
+
+hed_edge.save(f"{images_path}/{control_image_name}_hed.jpg")
+
+# run pipeline
+with torch.no_grad():
+    out = pipe(
+        prompt=prompt,
+        image=hed_edge,
+        num_inference_steps=14,
+        guidance_scale=4.5,
+        height=image_size,
+        width=image_size,
+    )
+
+    out.images[0].save(f"{images_path}//{control_image_name}_output.jpg")
+    
+```
+
+In the folder examples/pixart there is also a script that can be used to train new models.
+Please check the script `train_controlnet_hf_diffusers.sh` on how to start the training.

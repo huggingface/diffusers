@@ -34,6 +34,7 @@ from diffusers import (
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     load_image,
+    nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
@@ -102,7 +103,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     @slow
     @require_torch_gpu
     def test_integration_move_lora_cpu(self):
-        path = "Jiali/stable-diffusion-1.5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
@@ -161,7 +162,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def test_integration_move_lora_dora_cpu(self):
         from peft import LoraConfig
 
-        path = "Jiali/stable-diffusion-1.5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         unet_lora_config = LoraConfig(
             init_lora_weights="gaussian",
             target_modules=["to_k", "to_q", "to_v", "to_out.0"],
@@ -207,6 +208,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 
 @slow
+@nightly
 @require_torch_gpu
 @require_peft_backend
 class LoraIntegrationTests(unittest.TestCase):
@@ -221,7 +223,7 @@ class LoraIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_integration_logits_with_scale(self):
-        path = "Jiali/stable-diffusion-1.5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
@@ -253,7 +255,7 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_integration_logits_no_scale(self):
-        path = "Jiali/stable-diffusion-1.5"
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
@@ -284,7 +286,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         lora_model_id = "hf-internal-testing/lora_dreambooth_dog_example"
 
-        base_model_id = "Jiali/stable-diffusion-1.5"
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -308,7 +310,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         lora_model_id = "hf-internal-testing/lora-trained"
 
-        base_model_id = "Jiali/stable-diffusion-1.5"
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -419,9 +421,9 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_kohya_sd_v15_with_higher_dimensions(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         lora_model_id = "hf-internal-testing/urushisato-lora"
         lora_filename = "urushisato_v15.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -444,7 +446,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         lora_model_id = "hf-internal-testing/sd-model-finetuned-lora-t4"
 
-        base_model_id = "Jiali/stable-diffusion-1.5"
+        base_model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
         pipe = StableDiffusionPipeline.from_pretrained(base_model_id, safety_checker=None)
         pipe = pipe.to(torch_device)
@@ -467,9 +469,9 @@ class LoraIntegrationTests(unittest.TestCase):
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         initial_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -505,9 +507,9 @@ class LoraIntegrationTests(unittest.TestCase):
         prompt = "masterpiece, best quality, mountain"
         num_inference_steps = 2
 
-        pipe = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None
+        ).to(torch_device)
         initial_images = pipe(
             prompt, output_type="np", generator=generator, num_inference_steps=num_inference_steps
         ).images
@@ -547,9 +549,9 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_not_empty_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
-        pipe = AutoPipelineForText2Image.from_pretrained("Jiali/stable-diffusion-1.5", torch_dtype=torch.float16).to(
-            torch_device
-        )
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
@@ -561,9 +563,9 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_load_unload_load_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
-        pipe = AutoPipelineForText2Image.from_pretrained("Jiali/stable-diffusion-1.5", torch_dtype=torch.float16).to(
-            torch_device
-        )
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
@@ -580,7 +582,9 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora(self):
-        pipe = DiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5", torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -608,7 +612,9 @@ class LoraIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained("Jiali/stable-diffusion-1.5", torch_dtype=torch.float16)
+        pipe = AutoPipelineForImage2Image.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
@@ -649,7 +655,7 @@ class LoraIntegrationTests(unittest.TestCase):
         This test simply checks that loading a LoRA with an empty network alpha works fine
         See: https://github.com/huggingface/diffusers/issues/5606
         """
-        pipeline = StableDiffusionPipeline.from_pretrained("Jiali/stable-diffusion-1.5")
+        pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         pipeline.enable_sequential_cpu_offload()
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
