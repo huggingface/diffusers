@@ -2222,6 +2222,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         super().unfuse_lora(components=components)
 
+    # We override this here account for `_transformer_norm_layers`.
+    def unload_lora_weights(self):
+        super().unload_lora_weights()
+
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
+            transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
+
     @classmethod
     def _maybe_expand_transformer_param_shape_or_error_(
         cls,
