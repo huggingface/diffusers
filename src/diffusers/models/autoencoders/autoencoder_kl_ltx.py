@@ -13,20 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
-from ..activations import get_activation
-from ..attention_processor import Attention, MochiVaeAttnProcessor2_0
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .autoencoder_kl_cogvideox import _get_norm, CogVideoXCausalConv3d, CogVideoXResnetBlock3D, LayerNormNd, CogVideoXMidBlock3D
+from .autoencoder_kl_cogvideox import CogVideoXCausalConv3d, CogVideoXMidBlock3D, CogVideoXResnetBlock3D, _get_norm
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -55,22 +51,24 @@ class LTXUpsampler3D(nn.Module):
         self.stride = stride if isinstance(stride, tuple) else (stride, stride, stride)
 
         out_channels = in_channels * stride[0] * stride[1] * stride[2]
-        
+
         self.conv = CogVideoXCausalConv3d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=3,
             stride=1,
         )
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        
+
         hidden_states, _ = self.conv(hidden_states)
-        hidden_states = hidden_states.reshape(batch_size, -1, self.stride[0], self.stride[1], self.stride[2], num_frames, height, width)
+        hidden_states = hidden_states.reshape(
+            batch_size, -1, self.stride[0], self.stride[1], self.stride[2], num_frames, height, width
+        )
         hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4).flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
-        hidden_states = hidden_states[:, :, self.stride[0] - 1:]
+        hidden_states = hidden_states[:, :, self.stride[0] - 1 :]
         return hidden_states
 
 
@@ -139,15 +137,13 @@ class LTXDownBlock3D(nn.Module):
                 )
             )
         self.resnets = nn.ModuleList(resnets)
-        
+
         self.downsamplers = None
         if spatio_temporal_scale:
             self.downsamplers = nn.ModuleList(
-                [
-                    LTXDownsampler3D(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=(2, 2, 2))
-                ]
+                [LTXDownsampler3D(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=(2, 2, 2))]
             )
-        
+
         self.conv_out = None
         if in_channels != out_channels:
             self.conv_out = CogVideoXResnetBlock3D(
@@ -186,7 +182,7 @@ class LTXDownBlock3D(nn.Module):
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states, _ = downsampler(hidden_states)
-        
+
         if self.conv_out is not None:
             hidden_states, _ = self.conv_out(hidden_states)
 
@@ -258,12 +254,8 @@ class LTXUpBlock3D(nn.Module):
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList(
-                [
-                    LTXUpsampler3D(out_channels, stride=(2, 2, 2))
-                ]
-            )
-        
+            self.upsamplers = nn.ModuleList([LTXUpsampler3D(out_channels, stride=(2, 2, 2))])
+
         resnets = []
         for _ in range(num_layers):
             resnets.append(
@@ -291,7 +283,7 @@ class LTXUpBlock3D(nn.Module):
 
         if self.conv_in is not None:
             hidden_states, _ = self.conv_in(hidden_states)
-        
+
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states)
@@ -339,7 +331,7 @@ class LTXEncoder3D(nn.Module):
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
         self.in_channels = in_channels * patch_size**2
-        
+
         output_channel = block_out_channels[0]
 
         self.conv_in = CogVideoXCausalConv3d(
@@ -355,7 +347,7 @@ class LTXEncoder3D(nn.Module):
         for i in range(num_block_out_channels):
             input_channel = output_channel
             output_channel = block_out_channels[i + 1] if i + 1 < num_block_out_channels else block_out_channels[i]
-            
+
             down_block = LTXDownBlock3D(
                 in_channels=input_channel,
                 out_channels=output_channel,
@@ -366,9 +358,9 @@ class LTXEncoder3D(nn.Module):
                 resnet_groups=resnet_groups,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
             )
-            
+
             self.down_blocks.append(down_block)
-        
+
         # mid block
         self.mid_block = CogVideoXMidBlock3D(
             in_channels=output_channel,
@@ -402,7 +394,9 @@ class LTXEncoder3D(nn.Module):
         post_patch_height = height // p
         post_patch_width = width // p
 
-        hidden_states = hidden_states.reshape(batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
+        )
         hidden_states, _ = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -435,8 +429,7 @@ class LTXEncoder3D(nn.Module):
 
 class LTXDecoder3D(nn.Module):
     r"""
-    The `LTXDecoder3D` layer of a variational autoencoder that decodes its latent representation into an output
-    sample.
+    The `LTXDecoder3D` layer of a variational autoencoder that decodes its latent representation into an output sample.
 
     Args:
         TODO(aryan)
@@ -489,7 +482,7 @@ class LTXDecoder3D(nn.Module):
         for i in range(num_block_out_channels):
             input_channel = output_channel
             output_channel = block_out_channels[i + 1] if i + 1 < num_block_out_channels else block_out_channels[i]
-            
+
             up_block = LTXUpBlock3D(
                 in_channels=input_channel,
                 out_channels=output_channel,
@@ -515,14 +508,11 @@ class LTXDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor
-    ) -> torch.Tensor:
-
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states, _ = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
+
             def create_custom_forward(module):
                 def create_forward(*inputs):
                     return module(*inputs)
@@ -544,7 +534,7 @@ class LTXDecoder3D(nn.Module):
 
         p = self.patch_size
         p_t = self.patch_size_t
-        
+
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, -1, p_t, p, p, num_frames, height, width)
         hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4).flatten(6, 7).flatten(4, 5).flatten(2, 2)
@@ -639,11 +629,11 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
-    
+
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (LTXEncoder3D, LTXDecoder3D)):
             module.gradient_checkpointing = value
-    
+
     def enable_tiling(
         self,
         tile_sample_min_height: Optional[int] = None,
@@ -673,7 +663,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
-    
+
     def disable_tiling(self) -> None:
         r"""
         Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
@@ -837,7 +827,13 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
                 if self.use_framewise_encoding:
                     time = []
                     for k in range(0, num_frames, self.num_sample_frames_batch_size):
-                        tile = x[:, :, k : k + self.num_sample_frames_batch_size, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
+                        tile = x[
+                            :,
+                            :,
+                            k : k + self.num_sample_frames_batch_size,
+                            i : i + self.tile_sample_min_height,
+                            j : j + self.tile_sample_min_width,
+                        ]
                         tile = self.encoder(tile)
                         time.append(tile)
                 else:

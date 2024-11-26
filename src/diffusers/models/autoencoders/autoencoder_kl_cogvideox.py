@@ -57,7 +57,7 @@ class LayerNormNd(nn.LayerNorm):
         )
 
         self.channel_dim = channel_dim
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.channel_dim != -1:
             hidden_states = hidden_states.movedim(self.channel_dim, -1)
@@ -65,7 +65,7 @@ class LayerNormNd(nn.LayerNorm):
             hidden_states = hidden_states.movedim(-1, self.channel_dim)
         else:
             hidden_states = super().forward(hidden_states)
-        
+
         return hidden_states
 
     def extra_repr(self) -> str:
@@ -87,7 +87,7 @@ class RMSNormNd(RMSNorm):
         )
 
         self.channel_dim = channel_dim
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.channel_dim != -1:
             hidden_states = hidden_states.movedim(self.channel_dim, -1)
@@ -95,7 +95,7 @@ class RMSNormNd(RMSNorm):
             hidden_states = hidden_states.movedim(-1, self.channel_dim)
         else:
             hidden_states = super().forward(hidden_states)
-        
+
         return hidden_states
 
     def extra_repr(self):
@@ -115,7 +115,9 @@ def _get_norm(
     if norm_type == "group_norm":
         norm = nn.GroupNorm(num_channels=num_channels, num_groups=groups, eps=eps)
     elif norm_type == "layer_norm":
-        norm = LayerNormNd(num_channels, eps=eps, elementwise_affine=elementwise_affine, bias=bias, channel_dim=channel_dim)
+        norm = LayerNormNd(
+            num_channels, eps=eps, elementwise_affine=elementwise_affine, bias=bias, channel_dim=channel_dim
+        )
     elif norm_type == "rms_norm":
         norm = RMSNormNd(dim=num_channels, eps=eps, elementwise_affine=elementwise_affine, channel_dim=channel_dim)
     elif norm_type == "spatial_norm":
@@ -221,7 +223,9 @@ class CogVideoXCausalConv3d(nn.Module):
         else:
             kernel_size = self.time_kernel_size
             if kernel_size > 1:
-                pad_left = conv_cache if conv_cache is not None else inputs[:, :, :1].repeat(1, 1, kernel_size - 1, 1, 1)
+                pad_left = (
+                    conv_cache if conv_cache is not None else inputs[:, :, :1].repeat(1, 1, kernel_size - 1, 1, 1)
+                )
                 inputs = torch.cat([pad_left, inputs], dim=2)
         return inputs
 
@@ -347,7 +351,9 @@ class CogVideoXResnetBlock3D(nn.Module):
         self.spatial_norm_dim = spatial_norm_dim
 
         if spatial_norm_dim is not None and norm_type != "spatial_norm":
-            logger.info("`spatial_norm_dim` is specified but the `norm_type` is not \"spatial_norm\". The norm type will be overwritten.")
+            logger.info(
+                '`spatial_norm_dim` is specified but the `norm_type` is not "spatial_norm". The norm type will be overwritten.'
+            )
             norm_type = "spatial_norm"
 
         if norm_type == "group_norm":
@@ -358,8 +364,12 @@ class CogVideoXResnetBlock3D(nn.Module):
             self.norm2 = _get_norm(norm_type, out_channels, elementwise_affine=elementwise_affine, channel_dim=1)
         elif norm_type == "layer_norm":
             # num_channels, eps=eps, elementwise_affine=elementwise_affine, bias=bias, channel_dim=channel_dim
-            self.norm1 = _get_norm(norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1)
-            self.norm2 = _get_norm(norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1)
+            self.norm1 = _get_norm(
+                norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1
+            )
+            self.norm2 = _get_norm(
+                norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1
+            )
         elif norm_type == "spatial_norm":
             assert spatial_norm_dim is not None
             self.norm1 = _get_norm(norm_type, in_channels, groups, spatial_norm_dim=spatial_norm_dim)
@@ -390,10 +400,12 @@ class CogVideoXResnetBlock3D(nn.Module):
                 )
         else:
             self.conv_shortcut = None
-        
+
         self.norm3 = None
         if final_norm_type is not None:
-            self.norm3 = _get_norm(final_norm_type, in_channels, eps=1e-6, elementwise_affine=True, bias=True, channel_dim=1)
+            self.norm3 = _get_norm(
+                final_norm_type, in_channels, eps=1e-6, elementwise_affine=True, bias=True, channel_dim=1
+            )
 
     def forward(
         self,

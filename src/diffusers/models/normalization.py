@@ -542,7 +542,7 @@ class RMSNorm(nn.Module):
             hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
-    
+
     def extra_repr(self) -> str:
         return f"features={self.dim}, eps={self.eps}, elementwise_affine={self.elementwise_affine}"
 
