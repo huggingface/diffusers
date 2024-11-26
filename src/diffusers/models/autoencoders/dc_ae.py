@@ -439,41 +439,6 @@ class ResidualBlock(nn.Module):
         return res
 
 
-def build_stage_main(
-    width: int, depth: int, block_type: str | list[str], norm: str, act: str, input_width: int
-) -> list[nn.Module]:
-    assert isinstance(block_type, str) or (isinstance(block_type, list) and depth == len(block_type))
-    stage = []
-    for d in range(depth):
-        current_block_type = block_type[d] if isinstance(block_type, list) else block_type
-
-        in_channels = width if d > 0 else input_width
-        out_channels = width
-
-        if current_block_type == "ResBlock":
-            assert in_channels == out_channels
-            block = ResBlock(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=3,
-                stride=1,
-                use_bias=(True, False),
-                norm=(None, norm),
-                act_func=(act, None),
-            )
-        elif current_block_type == "EViTGLU":
-            assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
-        elif current_block_type == "EViTS5GLU":
-            assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
-        else:
-            raise ValueError(f"block_type {current_block_type} is not supported")
-
-        stage.append(block)
-    return stage
-
-
 class Encoder(nn.Module):
     def __init__(
         self, 
@@ -485,7 +450,6 @@ class Encoder(nn.Module):
         norm: str = "rms2d",
         act: str = "silu",
         downsample_block_type: str = "ConvPixelUnshuffle",
-        downsample_match_channel: bool = True,
         downsample_shortcut: Optional[str] = "averaging",
         out_norm: Optional[str] = None,
         out_act: Optional[str] = None,
@@ -533,11 +497,32 @@ class Encoder(nn.Module):
         self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in enumerate(zip(width_list, depth_list)):
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
-            stage = build_stage_main(
-                width=width, depth=depth, block_type=stage_block_type, norm=norm, act=act, input_width=width
-            )
+            if not (isinstance(stage_block_type, str) or (isinstance(stage_block_type, list) and depth == len(stage_block_type))):
+                raise ValueError(f"block type {stage_block_type} is not supported for encoder stage {stage_id} with depth {depth}")
+            stage = []
+            # stage main
+            for d in range(depth):
+                current_block_type = stage_block_type[d] if isinstance(stage_block_type, list) else stage_block_type
+                if current_block_type == "ResBlock":
+                    block = ResBlock(
+                        in_channels=width,
+                        out_channels=width,
+                        kernel_size=3,
+                        stride=1,
+                        use_bias=(True, False),
+                        norm=(None, norm),
+                        act_func=(act, None),
+                    )
+                elif current_block_type == "EViTGLU":
+                    block = EfficientViTBlock(width, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
+                elif current_block_type == "EViTS5GLU":
+                    block = EfficientViTBlock(width, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
+                else:
+                    raise ValueError(f"block type {current_block_type} is not supported")
+                stage.append(block)
+            # downsample
             if stage_id < num_stages - 1 and depth > 0:
-                downsample_out_channels = width_list[stage_id + 1] if downsample_match_channel else width
+                downsample_out_channels = width_list[stage_id + 1]
                 if downsample_block_type == "Conv":
                     downsample_block = nn.Conv2d(
                         in_channels=width,
@@ -621,7 +606,6 @@ class Decoder(nn.Module):
         norm: str | list[str] = "rms2d",
         act: str | list[str] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
-        upsample_match_channel: bool = True,
         upsample_shortcut: str = "duplicating",
         out_norm: str = "rms2d",
         out_act: str = "relu",
@@ -665,8 +649,9 @@ class Decoder(nn.Module):
         self.stages: list[nn.Module] = []
         for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
             stage = []
+            # upsample
             if stage_id < num_stages - 1 and depth > 0:
-                upsample_out_channels = width if upsample_match_channel else width_list[stage_id + 1]
+                upsample_out_channels = width
                 if upsample_block_type == "ConvPixelShuffle":
                     upsample_block = ConvPixelShuffleUpsample2D(
                         in_channels=width_list[stage_id + 1], out_channels=upsample_out_channels, kernel_size=3, factor=2
@@ -685,22 +670,30 @@ class Decoder(nn.Module):
                 else:
                     raise ValueError(f"shortcut {upsample_shortcut} is not supported for upsample")
                 stage.append(upsample_block)
-
+            # stage main
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
             stage_norm = norm[stage_id] if isinstance(norm, list) else norm
             stage_act = act[stage_id] if isinstance(act, list) else act
-            stage.extend(
-                build_stage_main(
-                    width=width,
-                    depth=depth,
-                    block_type=stage_block_type,
-                    norm=stage_norm,
-                    act=stage_act,
-                    input_width=(
-                        width if upsample_match_channel else width_list[min(stage_id + 1, num_stages - 1)]
-                    ),
-                )
-            )
+            for d in range(depth):
+                current_block_type = stage_block_type[d] if isinstance(stage_block_type, list) else stage_block_type
+                if current_block_type == "ResBlock":
+                    block = ResBlock(
+                        in_channels=width,
+                        out_channels=width,
+                        kernel_size=3,
+                        stride=1,
+                        use_bias=(True, False),
+                        norm=(None, stage_norm),
+                        act_func=(stage_act, None),
+                    )
+                elif current_block_type == "EViTGLU":
+                    block = EfficientViTBlock(width, norm=stage_norm, act_func=stage_act, local_module="GLUMBConv", scales=())
+                elif current_block_type == "EViTS5GLU":
+                    block = EfficientViTBlock(width, norm=stage_norm, act_func=stage_act, local_module="GLUMBConv", scales=(5,))
+                else:
+                    raise ValueError(f"block type {current_block_type} is not supported")
+                stage.append(block)
+
             self.stages.insert(0, nn.Sequential(*stage))
         self.stages = nn.ModuleList(self.stages)
 
