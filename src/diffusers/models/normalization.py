@@ -532,7 +532,7 @@ class RMSNorm(nn.Module):
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states.float() * torch.rsqrt(variance + self.eps)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
 
         if self.weight is not None:
             # convert into half-precision if necessary
