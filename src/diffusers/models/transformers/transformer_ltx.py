@@ -42,7 +42,7 @@ class LTXAttentionProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "AttnAddedKVProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+                "LTXAttentionProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -51,7 +51,6 @@ class LTXAttentionProcessor2_0:
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = (
@@ -258,7 +257,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]],
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         # convert encoder_attention_mask to a bias the same way we do for attention_mask

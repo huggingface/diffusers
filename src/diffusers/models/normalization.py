@@ -516,6 +516,7 @@ class RMSNorm(nn.Module):
         super().__init__()
 
         self.eps = eps
+        self.elementwise_affine = elementwise_affine
 
         if isinstance(dim, numbers.Integral):
             dim = (dim,)
@@ -541,6 +542,9 @@ class RMSNorm(nn.Module):
             hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
+    
+    def extra_repr(self) -> str:
+        return f"features={self.dim}, eps={self.eps}, elementwise_affine={self.elementwise_affine}"
 
 
 class GlobalResponseNorm(nn.Module):
