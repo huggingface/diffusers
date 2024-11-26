@@ -303,7 +303,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
     Parameters:
         num_attention_heads (int, optional, defaults to 32): The number of heads to use for multi-head attention.
         attention_head_dim (int, optional, defaults to 36): The number of channels in each head.
-        in_channels (int, defaults to 4): The number of channels in the input.
+        in_channels (int, defaults to 32): The number of channels in the input.
         out_channels (int, optional):
             The number of channels in the output. Specify this parameter if the output channel number differs from the
             input.
