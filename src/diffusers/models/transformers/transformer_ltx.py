@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
@@ -30,6 +31,63 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class LTXAttentionProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
+    used in the LTX model. It applies a normalization layer and rotary embedding on the query and key vector.
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "AttnAddedKVProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        return hidden_states
 
 
 @maybe_allow_in_graph
@@ -57,27 +115,29 @@ class LTXTransformerBlock(nn.Module):
         super().__init__()
 
         self.norm1 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
-
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
+            kv_heads=num_attention_heads,
             dim_head=attention_head_dim,
             bias=attention_bias,
             cross_attention_dim=None,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            processor=LTXAttentionProcessor2_0(),
         )
 
         self.norm2 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
-
         self.attn2 = Attention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
             heads=num_attention_heads,
+            kv_heads=num_attention_heads,
             dim_head=attention_head_dim,
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            processor=LTXAttentionProcessor2_0(),
         )
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
@@ -137,8 +197,8 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        in_channels: int = None,
-        out_channels: Optional[int] = None,
+        in_channels: int = 128,
+        out_channels: int = 128,
         patch_size: int = 1,
         patch_size_t: int = 1,
         num_attention_heads: int = 32,
@@ -146,19 +206,21 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 2048,
         num_layers: int = 28,
         activation_fn: str = "gelu-approximate",
-        qk_norm: str = "rms_norm",
-        norm_elementwise_affine: bool = True,
+        qk_norm: str = "rms_norm_across_heads",
+        norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
         caption_channels: int = 4096,
         attention_bias: bool = True,
         attention_out_bias: bool = True,
     ) -> None:
+        super().__init__()
+
         out_channels = out_channels or in_channels
         inner_dim = num_attention_heads * attention_head_dim
 
         self.patchify_proj = nn.Linear(in_channels, inner_dim)
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 LTXTransformerBlock(
                     dim=inner_dim,
@@ -177,7 +239,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         )
 
         self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
-        self.proj_out = nn.Linear(inner_dim, self.out_channels)
+        self.proj_out = nn.Linear(inner_dim, out_channels)
 
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)

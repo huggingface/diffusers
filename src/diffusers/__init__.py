@@ -102,7 +102,7 @@ else:
             "I2VGenXLUNet",
             "Kandinsky3UNet",
             "LatteTransformer3DModel",
-            "LTXTransformerModel3D",
+            "LTXTransformer3DModel",
             "LuminaNextDiT2DModel",
             "MochiTransformer3DModel",
             "ModelMixin",
