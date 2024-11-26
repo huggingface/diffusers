@@ -61,6 +61,8 @@ TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
 
+_MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
+
 
 class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     r"""
@@ -2271,7 +2273,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 module_out_features, module_in_features = module_weight.shape
                 if out_features < module_out_features or in_features < module_in_features:
                     raise NotImplementedError(
-                        f"Only LoRAs with input/output features higher than the current modules' input/output features "
+                        f"Only LoRAs with input/output features higher than the current module's input/output features "
                         f"are currently supported. The provided LoRA contains {in_features=} and {out_features=}, which "
                         f"are lower than {module_in_features=} and {module_out_features=}. If you require support for "
                         f"this please open an issue at https://github.com/huggingface/diffusers/issues."
@@ -2309,6 +2311,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     expanded_module.bias.data.copy_(new_bias)
 
                 setattr(parent_module, current_module_name, expanded_module)
+
+                if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
+                    attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
+                    new_value = int(expanded_module.weight.data.shape[1])
+                    old_value = getattr(transformer.config, attribute_name)
+                    setattr(transformer.config, attribute_name, new_value)
+                    logger.info(f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}.")
 
         return has_param_with_shape_update
 
