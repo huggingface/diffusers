@@ -636,11 +636,12 @@ class MochiPipeline(DiffusionPipeline):
             latents,
         )
         joint_attention_mask = self.prepare_joint_attention_mask(prompt_attention_mask, latents)
-        negative_joint_attention_mask = self.prepare_joint_attention_mask(negative_prompt_attention_mask, latents)
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+
+            negative_joint_attention_mask = self.prepare_joint_attention_mask(negative_prompt_attention_mask, latents)
             joint_attention_mask = torch.cat([negative_joint_attention_mask, joint_attention_mask], dim=0)
 
         # 5. Prepare timestep
