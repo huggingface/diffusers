@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...models.autoencoders import AutoencoderKLMochi
+from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import MochiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
         >>> pipe.enable_vae_tiling()
         >>> prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
-        >>> frames = pipe(prompt, num_inference_steps=50, guidance_scale=3.5).frames[0]
+        >>> frames = pipe(prompt, num_inference_steps=28, guidance_scale=3.5).frames[0]
         >>> export_to_video(frames, "mochi.mp4")
         ```
 """
@@ -164,8 +164,8 @@ class MochiPipeline(DiffusionPipeline):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKLMochi`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
@@ -184,7 +184,7 @@ class MochiPipeline(DiffusionPipeline):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKLMochi,
+        vae: AutoencoderKL,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: MochiTransformer3DModel,
@@ -198,11 +198,17 @@ class MochiPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
         )
+        # TODO: determine these scaling factors from model parameters
+        self.vae_spatial_scale_factor = 8
+        self.vae_temporal_scale_factor = 6
+        self.patch_size = 2
 
-        self.vae_scale_factor_spatial = vae.spatial_compression_ratio if hasattr(self, "vae") else 8
-        self.vae_scale_factor_temporal = vae.temporal_compression_ratio if hasattr(self, "vae") else 6
-
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_scale_factor)
+        self.tokenizer_max_length = (
+            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
+        )
+        self.default_height = 480
+        self.default_width = 848
 
     # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -252,6 +258,14 @@ class MochiPipeline(DiffusionPipeline):
         prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
 
         return prompt_embeds, prompt_attention_mask
+
+    def prepare_joint_attention_mask(self, prompt_attention_mask, latents):
+        batch_size, channels, latent_frames, latent_height, latent_width = latents.shape
+        num_latents = latent_frames * latent_height * latent_width
+        num_visual_tokens = num_latents // (self.transformer.config.patch_size**2)
+        mask = F.pad(prompt_attention_mask, (num_visual_tokens, 0), value=True)
+
+        return mask
 
     # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.encode_prompt
     def encode_prompt(
@@ -335,12 +349,7 @@ class MochiPipeline(DiffusionPipeline):
                 dtype=dtype,
             )
 
-        return (
-            prompt_embeds,
-            prompt_attention_mask,
-            negative_prompt_embeds,
-            negative_prompt_attention_mask,
-        )
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     def check_inputs(
         self,
@@ -424,13 +433,6 @@ class MochiPipeline(DiffusionPipeline):
         """
         self.vae.disable_tiling()
 
-    def prepare_joint_attention_mask(self, prompt_attention_mask, latents):
-        batch_size, channels, latent_frames, latent_height, latent_width = latents.shape
-        num_latents = latent_frames * latent_height * latent_width
-        num_visual_tokens = num_latents // (self.transformer.config.patch_size**2)
-        mask = F.pad(prompt_attention_mask, (num_visual_tokens, 0), value=True)
-        return mask
-
     def prepare_latents(
         self,
         batch_size,
@@ -443,9 +445,9 @@ class MochiPipeline(DiffusionPipeline):
         generator,
         latents=None,
     ):
-        height = height // self.vae_scale_factor_spatial
-        width = width // self.vae_scale_factor_spatial
-        num_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        height = height // self.vae_spatial_scale_factor
+        width = width // self.vae_spatial_scale_factor
+        num_frames = (num_frames - 1) // self.vae_temporal_scale_factor + 1
 
         shape = (batch_size, num_channels_latents, num_frames, height, width)
 
@@ -485,7 +487,7 @@ class MochiPipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_frames: int = 19,
-        num_inference_steps: int = 50,
+        num_inference_steps: int = 64,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
@@ -508,13 +510,13 @@ class MochiPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to `self.transformer.config.sample_height * self.vae.spatial_compression_ratio`):
+            height (`int`, *optional*, defaults to `self.default_height`):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
-            width (`int`, *optional*, defaults to `self.transformer.config.sample_width * self.vae.spatial_compression_ratio`):
+            width (`int`, *optional*, defaults to `self.default_width`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
             num_frames (`int`, defaults to `19`):
                 The number of video frames to generate
-            num_inference_steps (`int`, *optional*, defaults to `50`):
+            num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
@@ -574,8 +576,8 @@ class MochiPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        height = height or 480  # self.transformer.config.sample_height * self.vae_scaling_factor_spatial
-        width = width or 848  # self.transformer.config.sample_width * self.vae_scaling_factor_spatial
+        height = height or self.default_height
+        width = width or self.default_width
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -601,6 +603,7 @@ class MochiPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+
         # 3. Prepare text embeddings
         (
             prompt_embeds,
@@ -619,10 +622,6 @@ class MochiPipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        # if self.do_classifier_free_guidance:
-        #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-        #     prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
-
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -636,15 +635,19 @@ class MochiPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        joint_attention_mask = self.prepare_joint_attention_mask(prompt_attention_mask, latents)
+        negative_joint_attention_mask = self.prepare_joint_attention_mask(negative_prompt_attention_mask, latents)
+
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+            joint_attention_mask = torch.cat([negative_joint_attention_mask, joint_attention_mask], dim=0)
 
         # 5. Prepare timestep
         # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
         threshold_noise = 0.025
         sigmas = linear_quadratic_schedule(num_inference_steps, threshold_noise)
         sigmas = np.array(sigmas)
-
-        joint_attention_mask = self.prepare_joint_attention_mask(prompt_attention_mask, latents)
-        negative_joint_attention_mask = self.prepare_joint_attention_mask(negative_prompt_attention_mask, latents)
 
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
@@ -662,14 +665,11 @@ class MochiPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                # latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                # # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                # timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
-
-                latent_model_input = latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
-                noise_pred_text = self.transformer(
+                noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
@@ -677,25 +677,16 @@ class MochiPipeline(DiffusionPipeline):
                     joint_attention_mask=joint_attention_mask,
                     return_dict=False,
                 )[0]
+                # Mochi CFG + Sampling runs in FP32
+                noise_pred = noise_pred.to(torch.float32)
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_uncond = self.transformer(
-                        hidden_states=latent_model_input,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        timestep=timestep,
-                        encoder_attention_mask=negative_prompt_attention_mask,
-                        joint_attention_mask=negative_joint_attention_mask,
-                        return_dict=False,
-                    )[0]
-                    noise_pred = noise_pred_uncond.float() + self.guidance_scale * (
-                        noise_pred_text.float() - noise_pred_uncond.float()
-                    )
-                else:
-                    noise_pred = noise_pred_text
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents.to(torch.float32), return_dict=False)[0]
                 latents = latents.to(latents_dtype)
 
                 if latents.dtype != latents_dtype:
@@ -718,33 +709,27 @@ class MochiPipeline(DiffusionPipeline):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
         if output_type == "latent":
             video = latents
         else:
-            with torch.autocast("cuda", torch.float32):
-                # unscale/denormalize the latents
-                # denormalize with the mean and std if available and not None
-                has_latents_mean = (
-                    hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            # unscale/denormalize the latents
+            # denormalize with the mean and std if available and not None
+            has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+            if has_latents_mean and has_latents_std:
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
                 )
-                has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
-                if has_latents_mean and has_latents_std:
-                    latents_mean = (
-                        torch.tensor(self.vae.config.latents_mean)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents_std = (
-                        torch.tensor(self.vae.config.latents_std)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
-                else:
-                    latents = latents / self.vae.config.scaling_factor
+                latents_std = (
+                    torch.tensor(self.vae.config.latents_std).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
+            else:
+                latents = latents / self.vae.config.scaling_factor
 
-                video = self.vae.decode(latents, return_dict=False)[0]
-                video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = self.vae.decode(latents, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
