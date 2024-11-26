@@ -317,7 +317,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             Configure if the Transformer blocks' attention should contain a bias parameter.
         sample_size (int, defaults to 128):
             The width of the latent images. This parameter is fixed during training.
-        patch_size (int, defaults to 2):
+        patch_size (int, defaults to 1):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
         activation_fn (str, optional, defaults to "gelu-approximate"):
             Activation function to use in feed-forward networks within Transformer blocks.
