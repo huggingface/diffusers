@@ -340,11 +340,15 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
         if self.pos_embed is not None and hidden_states.ndim != 4:
             raise ValueError("hidden_states must be 4D when pos_embed is used")
+
+        # SD3.5 8b controlnet does not have a `pos_embed`,
+        # it use the `pos_embed` from the transformer to process input before passing to controlnet
         elif self.pos_embed is None and hidden_states.ndim != 3:
             raise ValueError("hidden_states must be 3D when pos_embed is not used")
 
         if self.context_embedder is not None and encoder_hidden_states is None:
             raise ValueError("encoder_hidden_states must be provided when context_embedder is used")
+        # SD3.5 8b controlnet does not have a `context_embedder`, it does not use `encoder_hidden_states
         elif self.context_embedder is None and encoder_hidden_states is not None:
             raise ValueError("encoder_hidden_states should not be provided when context_embedder is not used")
 
@@ -353,7 +357,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
         temb = self.time_text_embed(timestep, pooled_projections)
 
-        if encoder_hidden_states is not None:
+        if self.context_embedder is not None:
             encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # add
@@ -383,11 +387,12 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                 )
 
             else:
-                if encoder_hidden_states is not None:
-                    hidden_states = block(
+                if self.context_embedder is not None:
+                    encoder_hidden_states, hidden_states = block(
                         hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
                     )
                 else:
+                    # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
                     hidden_states = block(hidden_states, temb)
 
             block_res_samples = block_res_samples + (hidden_states,)
