@@ -700,30 +700,23 @@ class MochiPipeline(DiffusionPipeline):
         if output_type == "latent":
             video = latents
         else:
-            with torch.autocast("cuda", torch.float32):
-                # unscale/denormalize the latents
-                # denormalize with the mean and std if available and not None
-                has_latents_mean = (
-                    hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            # unscale/denormalize the latents
+            # denormalize with the mean and std if available and not None
+            has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+            has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+            if has_latents_mean and has_latents_std:
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
                 )
-                has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
-                if has_latents_mean and has_latents_std:
-                    latents_mean = (
-                        torch.tensor(self.vae.config.latents_mean)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents_std = (
-                        torch.tensor(self.vae.config.latents_std)
-                        .view(1, 12, 1, 1, 1)
-                        .to(latents.device, latents.dtype)
-                    )
-                    latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
-                else:
-                    latents = latents / self.vae.config.scaling_factor
+                latents_std = (
+                    torch.tensor(self.vae.config.latents_std).view(1, 12, 1, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
+            else:
+                latents = latents / self.vae.config.scaling_factor
 
-                video = self.vae.decode(latents, return_dict=False)[0]
-                video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = self.vae.decode(latents, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
