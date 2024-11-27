@@ -841,6 +841,8 @@ out = pipe(
     wildcard_files=["object.txt", "animal.txt"],
     num_prompt_samples=1
 )
+out.images[0].save("image.png")
+torch.cuda.empty_cache()
 ```
 
 ### Composable Stable diffusion
