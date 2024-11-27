@@ -252,6 +252,7 @@ class MochiPipeline(DiffusionPipeline):
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.to(torch.float32)
 
         prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
         prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
@@ -450,7 +451,7 @@ class MochiPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
         return latents
 
     @property
@@ -594,38 +595,37 @@ class MochiPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        with torch.autocast("cuda", torch.float32):
-            # 3. Prepare text embeddings
-            (
-                prompt_embeds,
-                prompt_attention_mask,
-                negative_prompt_embeds,
-                negative_prompt_attention_mask,
-            ) = self.encode_prompt(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                num_videos_per_prompt=num_videos_per_prompt,
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
-                prompt_attention_mask=prompt_attention_mask,
-                negative_prompt_attention_mask=negative_prompt_attention_mask,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
-            # 4. Prepare latent variables
-            num_channels_latents = self.transformer.config.in_channels
-            latents = self.prepare_latents(
-                batch_size * num_videos_per_prompt,
-                num_channels_latents,
-                height,
-                width,
-                num_frames,
-                prompt_embeds.dtype,
-                device,
-                generator,
-                latents,
-            )
+        # 3. Prepare text embeddings
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+        # 4. Prepare latent variables
+        num_channels_latents = self.transformer.config.in_channels
+        latents = self.prepare_latents(
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            num_frames,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+        )
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
