@@ -16,9 +16,8 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch._prims_common import validate_strides
 import torch.nn.functional as F
-from torch import nn, unsqueeze
+from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
