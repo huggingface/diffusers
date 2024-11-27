@@ -5,7 +5,7 @@ import torch
 from safetensors.torch import load_file
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXTransformer3DModel
+from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXTransformer3DModel
 
 
 def remove_keys_inplace(key: str, state_dict: Dict[str, Any]):
@@ -48,8 +48,8 @@ VAE_KEYS_RENAME_DICT = {
     "conv_shortcut": "conv_shortcut.conv",
     "res_blocks": "resnets",
     "norm3.norm": "norm3",
-    "per_channel_statistics.mean-of-means": "latent_means",
-    "per_channel_statistics.std-of-means": "latent_stds",
+    "per_channel_statistics.mean-of-means": "latents_mean",
+    "per_channel_statistics.std-of-means": "latents_std",
 }
 
 VAE_SPECIAL_KEYS_REMAP = {
@@ -128,6 +128,12 @@ def get_args():
     parser.add_argument(
         "--text_encoder_cache_dir", type=str, default=None, help="Path to text encoder cache directory"
     )
+    parser.add_argument(
+        "--typecast_text_encoder",
+        action="store_true",
+        default=False,
+        help="Whether or not to apply fp16/bf16 precision to text_encoder",
+    )
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
@@ -159,7 +165,7 @@ if __name__ == "__main__":
 
     if args.transformer_ckpt_path is not None:
         transformer: LTXTransformer3DModel = convert_transformer(args.transformer_ckpt_path, dtype)
-        if not args.save_piipeline:
+        if not args.save_pipeline:
             transformer.save_pretrained(
                 args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant
             )
@@ -182,6 +188,20 @@ if __name__ == "__main__":
             param.data = param.data.contiguous()
 
         scheduler = FlowMatchEulerDiscreteScheduler(
-            shift=0.1,
             use_dynamic_shifting=True,
+            base_shift=0.95,
+            max_shift=2.05,
+            base_image_seq_len=1024,
+            max_image_seq_len=4096,
+            shift_terminal=0.1,
         )
+
+        pipe = LTXPipeline(
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+        )
+
+        pipe.save_pretrained(args.output_path, safe_serialization=True, variant=variant, max_shard_size="5GB")

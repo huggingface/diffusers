@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -45,6 +46,15 @@ class LTXAttentionProcessor2_0:
                 "LTXAttentionProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
+    def _apply_rotary_emb(self, x: torch.Tensor, image_rotary_emb: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+        cos, sin = image_rotary_emb
+
+        x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
+        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
+
+        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        return out
+
     def __call__(
         self,
         attn: Attention,
@@ -59,12 +69,12 @@ class LTXAttentionProcessor2_0:
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
+        apply_rotary_emb = False
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
+            apply_rotary_emb = True
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -72,6 +82,10 @@ class LTXAttentionProcessor2_0:
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
+
+        if image_rotary_emb is not None and apply_rotary_emb:
+            query = self._apply_rotary_emb(query, image_rotary_emb)
+            key = self._apply_rotary_emb(key, image_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -89,13 +103,96 @@ class LTXAttentionProcessor2_0:
         return hidden_states
 
 
+class LTXRoPE(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        base_num_frames: int = 20,
+        base_height: int = 2048,
+        base_width: int = 2048,
+        patch_size: int = 1,
+        patch_size_t: int = 1,
+        theta: float = 10000.0,
+    ) -> None:
+        super().__init__()
+
+        self.dim = dim
+        self.base_num_frames = base_num_frames
+        self.base_height = base_height
+        self.base_width = base_width
+        self.patch_size = patch_size
+        self.patch_size_t = patch_size_t
+        self.theta = theta
+
+    def forward(
+        self, hidden_states: torch.Tensor, rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        post_patch_num_frames = num_frames // self.patch_size_t
+        post_patch_height = height // self.patch_size
+        post_patch_width = width // self.patch_size
+
+        # Always compute rope in fp32
+        grid_h = torch.arange(post_patch_height, dtype=torch.float32, device=hidden_states.device)
+        grid_w = torch.arange(post_patch_width, dtype=torch.float32, device=hidden_states.device)
+        grid_f = torch.arange(post_patch_num_frames, dtype=torch.float32, device=hidden_states.device)
+        grid = torch.meshgrid(grid_f, grid_h, grid_w, indexing="ij")
+        grid = torch.stack(grid, dim=0)
+        grid = grid.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+
+        if rope_interpolation_scale is not None:
+            grid[:, 0:1] = grid[:, 0:1] * rope_interpolation_scale[0] * self.patch_size_t / self.base_num_frames
+            grid[:, 1:2] = grid[:, 1:2] * rope_interpolation_scale[1] * self.patch_size / self.base_height
+            grid[:, 2:3] = grid[:, 2:3] * rope_interpolation_scale[2] * self.patch_size / self.base_width
+
+        grid = grid.flatten(2, 4).transpose(1, 2)
+
+        start = 1.0
+        end = self.theta
+        freqs = self.theta ** torch.linspace(
+            math.log(start, self.theta),
+            math.log(end, self.theta),
+            self.dim // 6,
+            device=hidden_states.device,
+            dtype=torch.float32,
+        )
+        freqs = freqs * math.pi / 2.0
+        freqs = freqs * (grid.unsqueeze(-1) * 2 - 1)
+        freqs = freqs.transpose(-1, -2).flatten(2)
+
+        cos_freqs = freqs.cos().repeat_interleave(2, dim=-1)
+        sin_freqs = freqs.sin().repeat_interleave(2, dim=-1)
+
+        if self.dim % 6 != 0:
+            cos_padding = torch.ones_like(cos_freqs[:, :, : self.dim % 6])
+            sin_padding = torch.zeros_like(cos_freqs[:, :, : self.dim % 6])
+            cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
+            sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
+
+        cos_freqs = cos_freqs.to(dtype=hidden_states.dtype)
+        sin_freqs = sin_freqs.to(dtype=hidden_states.dtype)
+
+        return cos_freqs, sin_freqs
+
+
 @maybe_allow_in_graph
 class LTXTransformerBlock(nn.Module):
     r"""
     Transformer block used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 
     Args:
-        TODO(aryan)
+        dim (`int`):
+            The number of channels in the input and output.
+        num_attention_heads (`int`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`):
+            The number of channels in each head.
+        qk_norm (`str`, defaults to `"rms_norm"`):
+            The normalization layer to use.
+        activation_fn (`str`, defaults to `"swiglu"`):
+            Activation function to use in feed-forward.
+        eps (`float`, defaults to `1e-6`):
+            Epsilon value for normalization layers.
     """
 
     def __init__(
@@ -141,7 +238,8 @@ class LTXTransformerBlock(nn.Module):
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
 
-        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
+        # TODO(aryan): Create a layer for this
+        self.scale_shift_table = nn.Parameter(torch.randn(6, dim))
 
     def forward(
         self,
@@ -188,7 +286,26 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
     A Transformer model for video-like data used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 
     Args:
-        TODO(aryan)
+        in_channels (`int`, defaults to `128`):
+            The number of channels in the input.
+        out_channels (`int`, defaults to `128`):
+            The number of channels in the output.
+        patch_size (`int`, defaults to `1`):
+            The size of the spatial patches to use in the patch embedding layer.
+        patch_size_t (`int`, defaults to `1`):
+            The size of the tmeporal patches to use in the patch embedding layer.
+        num_attention_heads (`int`, defaults to `32`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `64`):
+            The number of channels in each head.
+        cross_attention_dim (`int`, defaults to `64`):
+            The number of channels for cross attention heads.
+        num_layers (`int`, defaults to `28`):
+            The number of layers of Transformer blocks to use.
+        activation_fn (`str`, defaults to `"swiglu"`):
+            Activation function to use in feed-forward.
+        qk_norm (`str`, defaults to `"rms_norm_across_heads"`):
+            The normalization layer to use.
     """
 
     _supports_gradient_checkpointing = True
@@ -219,6 +336,16 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.patchify_proj = nn.Linear(in_channels, inner_dim)
 
+        self.rope = LTXRoPE(
+            dim=inner_dim,
+            base_num_frames=20,
+            base_height=2048,
+            base_width=2048,
+            patch_size=patch_size,
+            patch_size_t=patch_size_t,
+            theta=10000.0,
+        )
+
         self.transformer_blocks = nn.ModuleList(
             [
                 LTXTransformerBlock(
@@ -240,7 +367,8 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels)
 
-        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+        # TODO(aryan): create a layer for this
+        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim))
         self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
@@ -257,9 +385,11 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rope_interpolation_scale: Optional[Tuple[float, float, float]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
+        image_rotary_emb = self.rope(hidden_states, rope_interpolation_scale)
+
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
@@ -281,7 +411,6 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         temb, embedded_timestep = self.adaln_single(
             timestep.flatten(),
-            {"resolution": None, "aspect_ratio": None},
             batch_size=batch_size,
             hidden_dtype=hidden_states.dtype,
         )

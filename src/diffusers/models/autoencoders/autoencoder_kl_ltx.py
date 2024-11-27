@@ -118,11 +118,15 @@ class LTXResnetBlock3d(nn.Module):
         self.nonlinearity = get_activation(non_linearity)
 
         self.norm1 = RMSNormNd(dim=in_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
-        self.conv1 = LTXCausalConv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal)
+        self.conv1 = LTXCausalConv3d(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
+        )
 
         self.norm2 = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = LTXCausalConv3d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal)
+        self.conv2 = LTXCausalConv3d(
+            in_channels=out_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
+        )
 
         self.norm3 = None
         self.conv_shortcut = None
@@ -246,7 +250,15 @@ class LTXDownBlock3D(nn.Module):
         self.downsamplers = None
         if spatio_temporal_scale:
             self.downsamplers = nn.ModuleList(
-                [LTXCausalConv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=(2, 2, 2), is_causal=is_causal)]
+                [
+                    LTXCausalConv3d(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        kernel_size=3,
+                        stride=(2, 2, 2),
+                        is_causal=is_causal,
+                    )
+                ]
             )
 
         self.conv_out = None
@@ -257,7 +269,7 @@ class LTXDownBlock3D(nn.Module):
                 dropout=dropout,
                 eps=resnet_eps,
                 non_linearity=resnet_act_fn,
-                is_causal=is_causal
+                is_causal=is_causal,
             )
 
         self.gradient_checkpointing = False
@@ -428,10 +440,7 @@ class LTXUpBlock3d(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.conv_in is not None:
             hidden_states = self.conv_in(hidden_states)
 
@@ -502,7 +511,11 @@ class LTXEncoder3d(nn.Module):
         output_channel = block_out_channels[0]
 
         self.conv_in = LTXCausalConv3d(
-            in_channels=self.in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal,
+            in_channels=self.in_channels,
+            out_channels=output_channel,
+            kernel_size=3,
+            stride=1,
+            is_causal=is_causal,
         )
 
         # down blocks
@@ -525,7 +538,10 @@ class LTXEncoder3d(nn.Module):
 
         # mid block
         self.mid_block = LTXMidBlock3d(
-            in_channels=output_channel, num_layers=layers_per_block[-1], resnet_eps=resnet_norm_eps, is_causal=is_causal
+            in_channels=output_channel,
+            num_layers=layers_per_block[-1],
+            resnet_eps=resnet_norm_eps,
+            is_causal=is_causal,
         )
 
         # out
@@ -632,13 +648,12 @@ class LTXDecoder3d(nn.Module):
         layers_per_block = tuple(reversed(layers_per_block))
         output_channel = block_out_channels[0]
 
-        self.conv_in = LTXCausalConv3d(in_channels=in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal)
+        self.conv_in = LTXCausalConv3d(
+            in_channels=in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal
+        )
 
         self.mid_block = LTXMidBlock3d(
-            in_channels=output_channel,
-            num_layers=layers_per_block[0],
-            resnet_eps=resnet_norm_eps,
-            is_causal=is_causal
+            in_channels=output_channel, num_layers=layers_per_block[0], resnet_eps=resnet_norm_eps, is_causal=is_causal
         )
 
         # up blocks
@@ -654,7 +669,7 @@ class LTXDecoder3d(nn.Module):
                 num_layers=layers_per_block[i + 1],
                 resnet_eps=resnet_norm_eps,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
-                is_causal=is_causal
+                is_causal=is_causal,
             )
 
             self.up_blocks.append(up_block)
@@ -663,11 +678,7 @@ class LTXDecoder3d(nn.Module):
         self.norm_out = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=False, channel_dim=1)
         self.conv_act = nn.SiLU()
         self.conv_out = LTXCausalConv3d(
-            in_channels=output_channel,
-            out_channels=self.out_channels,
-            kernel_size=3,
-            stride=1,
-            is_causal=is_causal
+            in_channels=output_channel, out_channels=self.out_channels, kernel_size=3, stride=1, is_causal=is_causal
         )
 
         self.gradient_checkpointing = False
@@ -790,13 +801,13 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             is_causal=decoder_causal,
         )
 
-        latent_means = torch.zeros((latent_channels,), requires_grad=False)
-        latent_stds = torch.zeros((latent_channels,), requires_grad=False)
-        self.register_buffer("latent_means", latent_means, persistent=True)
-        self.register_buffer("latent_stds", latent_stds, persistent=True)
+        latents_mean = torch.zeros((latent_channels,), requires_grad=False)
+        latents_std = torch.zeros((latent_channels,), requires_grad=False)
+        self.register_buffer("latents_mean", latents_mean, persistent=True)
+        self.register_buffer("latents_std", latents_std, persistent=True)
 
-        self.spatial_compression_ratio = patch_size * patch_size
-        self.temporal_compression_ratio = patch_size_t
+        self.spatial_compression_ratio = patch_size * 2 ** sum(spatio_temporal_scaling)
+        self.temporal_compression_ratio = patch_size_t * 2 ** sum(spatio_temporal_scaling)
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
@@ -809,8 +820,8 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
 
         # When decoding temporally long video latents, the memory requirement is very high. By decoding latent frames
         # at a fixed frame batch size (based on `self.num_latent_frames_batch_sizes`), the memory requirement can be lowered.
-        self.use_framewise_encoding = True
-        self.use_framewise_decoding = True
+        self.use_framewise_encoding = False
+        self.use_framewise_decoding = False
 
         # This can be configured based on the amount of GPU memory available.
         # `16` for sample frames and `2` for latent frames are sensible defaults for consumer GPUs.
