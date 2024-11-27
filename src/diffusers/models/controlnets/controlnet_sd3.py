@@ -61,6 +61,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         qk_norm: Optional[str] = None,
         pos_embed_type: Optional[str] = "sincos",
         use_pos_embed: bool = True,
+        force_zeros_for_pooled_projection: bool = True,
     ):
         super().__init__()
         default_out_channels = in_channels
