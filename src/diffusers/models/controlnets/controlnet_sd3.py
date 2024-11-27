@@ -349,7 +349,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
         if self.context_embedder is not None and encoder_hidden_states is None:
             raise ValueError("encoder_hidden_states must be provided when context_embedder is used")
-        # SD3.5 8b controlnet does not have a `context_embedder`, it does not use `encoder_hidden_states
+        # SD3.5 8b controlnet does not have a `context_embedder`, it does not use `encoder_hidden_states`
         elif self.context_embedder is None and encoder_hidden_states is not None:
             raise ValueError("encoder_hidden_states should not be provided when context_embedder is not used")
 
