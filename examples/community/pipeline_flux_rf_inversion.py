@@ -1,4 +1,6 @@
 # Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# modeled after RF Inversion: https://rf-inversion.github.io/, authored by Litu Rout, Yujia Chen, Nataniel Ruiz,
+# Constantine Caramanis, Sanjay Shakkottai and Wen-Sheng Chu.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +54,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import FluxPipeline
 
-        >>> pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = DiffusionPipeline.from_pretrained(
+        ...    "black-forest-labs/FLUX.1-dev",
+        ...    torch_dtype=torch.bfloat16,
+        ...    custom_pipeline="pipeline_flux_rf_inversion")
         >>> pipe.to("cuda")
 
          >>> def download_image(url):
@@ -63,10 +68,14 @@ EXAMPLE_DOC_STRING = """
         >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/tennis.jpg"
         >>> image = download_image(img_url)
 
-        >>> _,__,___ = pipe.invert(image=image, num_inversion_steps=28)
+        >>> _,__,___ = pipe.invert(image=image, num_inversion_steps=28, gamma=0.5)
 
         >>> edited_image = pipe(
-        ...     prompt="a portrait of a tiger",
+        ...     prompt="a tomato",
+        ...     start_timestep=0, 
+        ...     stop_timestep=.38,
+        ...     num_inference_steps=28,
+        ...     eta=0.9, 
         ... ).images[0]
         ```
 """
