@@ -201,7 +201,7 @@ class LTXPipeline(DiffusionPipeline):
         self.default_width = 704
         self.default_frames = 121
 
-    # Copied from diffusers.pipelines.cogvideo.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->128
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -250,7 +250,7 @@ class LTXPipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_attention_mask
 
-    # Copied from diffusers.pipelines.cogvideo.pipeline_mochi.MochiPipeline.encode_prompt
+    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline.encode_prompt with 256->128
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
