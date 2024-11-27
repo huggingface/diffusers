@@ -252,7 +252,6 @@ class MochiPipeline(DiffusionPipeline):
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-        prompt_embeds = prompt_embeds.to(torch.float32)
 
         prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
         prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
@@ -451,7 +450,7 @@ class MochiPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
     @property
