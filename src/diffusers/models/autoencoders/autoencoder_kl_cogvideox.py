@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -28,107 +28,11 @@ from ..activations import get_activation
 from ..downsampling import CogVideoXDownsample3D
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import RMSNorm
 from ..upsampling import CogVideoXUpsample3D
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class LayerNormNd(nn.LayerNorm):
-    def __init__(
-        self,
-        normalized_shape: Union[int, List[int], Tuple[int], torch.Size],
-        eps: float = 1e-5,
-        elementwise_affine: bool = True,
-        bias: bool = True,
-        device=None,
-        dtype=None,
-        channel_dim: int = -1,
-    ) -> None:
-        super().__init__(
-            normalized_shape=normalized_shape,
-            eps=eps,
-            elementwise_affine=elementwise_affine,
-            bias=bias,
-            device=device,
-            dtype=dtype,
-        )
-
-        self.channel_dim = channel_dim
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.channel_dim != -1:
-            hidden_states = hidden_states.movedim(self.channel_dim, -1)
-            hidden_states = super().forward(hidden_states)
-            hidden_states = hidden_states.movedim(-1, self.channel_dim)
-        else:
-            hidden_states = super().forward(hidden_states)
-
-        return hidden_states
-
-    def extra_repr(self) -> str:
-        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
-
-
-class RMSNormNd(RMSNorm):
-    def __init__(
-        self,
-        dim: int,
-        eps: float,
-        elementwise_affine: bool = True,
-        channel_dim: int = -1,
-    ) -> None:
-        super().__init__(
-            dim=dim,
-            eps=eps,
-            elementwise_affine=elementwise_affine,
-        )
-
-        self.channel_dim = channel_dim
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.channel_dim != -1:
-            hidden_states = hidden_states.movedim(self.channel_dim, -1)
-            hidden_states = super().forward(hidden_states)
-            hidden_states = hidden_states.movedim(-1, self.channel_dim)
-        else:
-            hidden_states = super().forward(hidden_states)
-
-        return hidden_states
-
-    def extra_repr(self):
-        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
-
-
-def _get_norm(
-    norm_type: str,
-    num_channels: int,
-    groups: int = 32,
-    eps: float = 1e-6,
-    elementwise_affine: bool = False,
-    bias: bool = True,
-    spatial_norm_dim: Optional[int] = None,
-    channel_dim: int = -1,
-) -> nn.Module:
-    if norm_type == "group_norm":
-        norm = nn.GroupNorm(num_channels=num_channels, num_groups=groups, eps=eps)
-    elif norm_type == "layer_norm":
-        norm = LayerNormNd(
-            num_channels, eps=eps, elementwise_affine=elementwise_affine, bias=bias, channel_dim=channel_dim
-        )
-    elif norm_type == "rms_norm":
-        norm = RMSNormNd(dim=num_channels, eps=eps, elementwise_affine=elementwise_affine, channel_dim=channel_dim)
-    elif norm_type == "spatial_norm":
-        norm = CogVideoXSpatialNorm3D(
-            f_channels=num_channels,
-            zq_channels=spatial_norm_dim,
-            groups=groups,
-        )
-    else:
-        raise ValueError("Invalid `norm_type` specified.")
-    return norm
 
 
 class CogVideoXSafeConv3d(nn.Conv3d):
@@ -179,7 +83,7 @@ class CogVideoXCausalConv3d(nn.Module):
         in_channels: int,
         out_channels: int,
         kernel_size: Union[int, Tuple[int, int, int]],
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: int = 1,
         dilation: int = 1,
         pad_mode: str = "constant",
     ):
@@ -223,10 +127,8 @@ class CogVideoXCausalConv3d(nn.Module):
         else:
             kernel_size = self.time_kernel_size
             if kernel_size > 1:
-                pad_left = (
-                    conv_cache if conv_cache is not None else inputs[:, :, :1].repeat(1, 1, kernel_size - 1, 1, 1)
-                )
-                inputs = torch.cat([pad_left, inputs], dim=2)
+                cached_inputs = [conv_cache] if conv_cache is not None else [inputs[:, :, :1]] * (kernel_size - 1)
+                inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
     def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -315,8 +217,6 @@ class CogVideoXResnetBlock3D(nn.Module):
             Activation function to use.
         conv_shortcut (bool, defaults to `False`):
             Whether or not to use a convolution shortcut.
-        norm_type (`str`, defaults to `"group_norm:`):
-            The type of normalization layer to use.
         spatial_norm_dim (`int`, *optional*):
             The dimension to use for spatial norm if it is to be used instead of group norm.
         pad_mode (str, defaults to `"first"`):
@@ -329,12 +229,8 @@ class CogVideoXResnetBlock3D(nn.Module):
         out_channels: Optional[int] = None,
         dropout: float = 0.0,
         temb_channels: int = 512,
-        norm_type: str = "group_norm",
-        final_norm_type: Optional[str] = None,
         groups: int = 32,
         eps: float = 1e-6,
-        elementwise_affine: bool = False,
-        norm_bias: bool = True,
         non_linearity: str = "swish",
         conv_shortcut: bool = False,
         spatial_norm_dim: Optional[int] = None,
@@ -350,38 +246,26 @@ class CogVideoXResnetBlock3D(nn.Module):
         self.use_conv_shortcut = conv_shortcut
         self.spatial_norm_dim = spatial_norm_dim
 
-        if spatial_norm_dim is not None and norm_type != "spatial_norm":
-            logger.info(
-                '`spatial_norm_dim` is specified but the `norm_type` is not "spatial_norm". The norm type will be overwritten.'
+        if spatial_norm_dim is None:
+            self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=groups, eps=eps)
+            self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=groups, eps=eps)
+        else:
+            self.norm1 = CogVideoXSpatialNorm3D(
+                f_channels=in_channels,
+                zq_channels=spatial_norm_dim,
+                groups=groups,
             )
-            norm_type = "spatial_norm"
-
-        if norm_type == "group_norm":
-            self.norm1 = _get_norm(norm_type, in_channels, groups, eps, channel_dim=1)
-            self.norm2 = _get_norm(norm_type, out_channels, groups, eps, channel_dim=1)
-        elif norm_type == "rms_norm":
-            self.norm1 = _get_norm(norm_type, out_channels, elementwise_affine=elementwise_affine, channel_dim=1)
-            self.norm2 = _get_norm(norm_type, out_channels, elementwise_affine=elementwise_affine, channel_dim=1)
-        elif norm_type == "layer_norm":
-            # num_channels, eps=eps, elementwise_affine=elementwise_affine, bias=bias, channel_dim=channel_dim
-            self.norm1 = _get_norm(
-                norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1
+            self.norm2 = CogVideoXSpatialNorm3D(
+                f_channels=out_channels,
+                zq_channels=spatial_norm_dim,
+                groups=groups,
             )
-            self.norm2 = _get_norm(
-                norm_type, in_channels, eps=eps, elementwise_affine=elementwise_affine, bias=norm_bias, channel_dim=1
-            )
-        elif norm_type == "spatial_norm":
-            assert spatial_norm_dim is not None
-            self.norm1 = _get_norm(norm_type, in_channels, groups, spatial_norm_dim=spatial_norm_dim)
-            self.norm2 = _get_norm(norm_type, out_channels, groups, spatial_norm_dim=spatial_norm_dim)
-        elif norm_type is not None:
-            raise ValueError("Invalid `norm_type` specified.")
 
         self.conv1 = CogVideoXCausalConv3d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, pad_mode=pad_mode
         )
 
-        if temb_channels is not None and temb_channels > 0:
+        if temb_channels > 0:
             self.temb_proj = nn.Linear(in_features=temb_channels, out_features=out_channels)
 
         self.dropout = nn.Dropout(dropout)
@@ -398,14 +282,6 @@ class CogVideoXResnetBlock3D(nn.Module):
                 self.conv_shortcut = CogVideoXSafeConv3d(
                     in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0
                 )
-        else:
-            self.conv_shortcut = None
-
-        self.norm3 = None
-        if final_norm_type is not None:
-            self.norm3 = _get_norm(
-                final_norm_type, in_channels, eps=1e-6, elementwise_affine=True, bias=True, channel_dim=1
-            )
 
     def forward(
         self,
@@ -439,10 +315,7 @@ class CogVideoXResnetBlock3D(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states, new_conv_cache["conv2"] = self.conv2(hidden_states, conv_cache=conv_cache.get("conv2"))
 
-        if self.norm3 is not None:
-            inputs = self.norm3(inputs)
-
-        if self.conv_shortcut is not None:
+        if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 inputs, new_conv_cache["conv_shortcut"] = self.conv_shortcut(
                     inputs, conv_cache=conv_cache.get("conv_shortcut")
@@ -593,8 +466,6 @@ class CogVideoXMidBlock3D(nn.Module):
             Activation function to use.
         resnet_groups (`int`, defaults to `32`):
             Number of groups to separate the channels into for group normalization.
-        norm_type (`str`, defaults to `"group_norm:`):
-            The type of normalization layer to use.
         spatial_norm_dim (`int`, *optional*):
             The dimension to use for spatial norm if it is to be used instead of group norm.
         pad_mode (str, defaults to `"first"`):
@@ -609,7 +480,6 @@ class CogVideoXMidBlock3D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        norm_type: str = "group_norm",
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
@@ -626,7 +496,6 @@ class CogVideoXMidBlock3D(nn.Module):
                     out_channels=in_channels,
                     dropout=dropout,
                     temb_channels=temb_channels,
-                    norm_type=norm_type,
                     groups=resnet_groups,
                     eps=resnet_eps,
                     spatial_norm_dim=spatial_norm_dim,
@@ -693,8 +562,6 @@ class CogVideoXUpBlock3D(nn.Module):
             Activation function to use.
         resnet_groups (`int`, defaults to `32`):
             Number of groups to separate the channels into for group normalization.
-        norm_type (`str`, defaults to `"group_norm:`):
-            The type of normalization layer to use.
         spatial_norm_dim (`int`, defaults to `16`):
             The dimension to use for spatial norm if it is to be used instead of group norm.
         add_upsample (`bool`, defaults to `True`):
@@ -715,7 +582,6 @@ class CogVideoXUpBlock3D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        norm_type: str = "group_norm",
         spatial_norm_dim: int = 16,
         add_upsample: bool = True,
         upsample_padding: int = 1,
@@ -736,7 +602,6 @@ class CogVideoXUpBlock3D(nn.Module):
                     groups=resnet_groups,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
-                    norm_type=norm_type,
                     spatial_norm_dim=spatial_norm_dim,
                     pad_mode=pad_mode,
                 )
@@ -1016,7 +881,6 @@ class CogVideoXDecoder3D(nn.Module):
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             resnet_groups=norm_num_groups,
-            norm_type="spatial_norm",
             spatial_norm_dim=in_channels,
             pad_mode=pad_mode,
         )
@@ -1043,7 +907,6 @@ class CogVideoXDecoder3D(nn.Module):
                     resnet_eps=norm_eps,
                     resnet_act_fn=act_fn,
                     resnet_groups=norm_num_groups,
-                    norm_type="spatial_norm",
                     spatial_norm_dim=in_channels,
                     add_upsample=not is_final_block,
                     compress_time=compress_time,
