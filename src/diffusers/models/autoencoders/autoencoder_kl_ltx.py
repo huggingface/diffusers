@@ -197,8 +197,6 @@ class LTXDownBlock3D(nn.Module):
             Number of input channels.
         out_channels (`int`, *optional*):
             Number of output channels. If None, defaults to `in_channels`.
-        temb_channels (`int`, defaults to `512`):
-            Number of time embedding channels.
         num_layers (`int`, defaults to `1`):
             Number of resnet layers.
         dropout (`float`, defaults to `0.0`):
@@ -207,12 +205,11 @@ class LTXDownBlock3D(nn.Module):
             Epsilon value for normalization layers.
         resnet_act_fn (`str`, defaults to `"swish"`):
             Activation function to use.
-        add_downsample (`bool`, defaults to `True`):
+        spatio_temporal_scale (`bool`, defaults to `True`):
             Whether or not to use a downsampling layer. If not used, output dimension would be same as input dimension.
-        compress_time (`bool`, defaults to `False`):
             Whether or not to downsample across temporal dimension.
-        padding_mode (str, defaults to `"zeros"`):
-            Padding mode.
+        is_causal (`bool`, defaults to `True`):
+            Whether this layer behaves causally (future frames depend only on past frames) or not.
     """
 
     _supports_gradient_checkpointing = True
@@ -221,8 +218,8 @@ class LTXDownBlock3D(nn.Module):
         self,
         in_channels: int,
         out_channels: Optional[int] = None,
-        dropout: float = 0.0,
         num_layers: int = 1,
+        dropout: float = 0.0,
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         spatio_temporal_scale: bool = True,
@@ -299,14 +296,16 @@ class LTXMidBlock3d(nn.Module):
     Args:
         in_channels (`int`):
             Number of input channels.
-        dropout (`float`, defaults to `0.0`):
-            Dropout rate.
         num_layers (`int`, defaults to `1`):
             Number of resnet layers.
+        dropout (`float`, defaults to `0.0`):
+            Dropout rate.
         resnet_eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
         resnet_act_fn (`str`, defaults to `"swish"`):
             Activation function to use.
+        is_causal (`bool`, defaults to `True`):
+            Whether this layer behaves causally (future frames depend only on past frames) or not.
     """
 
     _supports_gradient_checkpointing = True
@@ -314,12 +313,12 @@ class LTXMidBlock3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        dropout: float = 0.0,
         num_layers: int = 1,
+        dropout: float = 0.0,
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         is_causal: bool = True,
-    ):
+    ) -> None:
         super().__init__()
 
         resnets = []
@@ -375,7 +374,10 @@ class LTXUpBlock3d(nn.Module):
         resnet_act_fn (`str`, defaults to `"swish"`):
             Activation function to use.
         spatio_temporal_scale (`bool`, defaults to `True`):
-            Whether or not to use a upsampling layer. If not used, output dimension would be same as input dimension.
+            Whether or not to use a downsampling layer. If not used, output dimension would be same as input dimension.
+            Whether or not to downsample across temporal dimension.
+        is_causal (`bool`, defaults to `True`):
+            Whether this layer behaves causally (future frames depend only on past frames) or not.
     """
 
     _supports_gradient_checkpointing = True
@@ -428,7 +430,7 @@ class LTXUpBlock3d(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.Tensor,
+        hidden_states: torch.Tensor
     ) -> torch.Tensor:
         if self.conv_in is not None:
             hidden_states = self.conv_in(hidden_states)
@@ -459,7 +461,24 @@ class LTXEncoder3d(nn.Module):
     representation.
 
     Args:
-        TODO(aryan)
+        in_channels (`int`):
+            Number of input channels.
+        out_channels (`int`):
+            Number of latent channels.
+        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of output channels for each block.
+        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+            Whether a block should contain spatio-temporal downscaling layers or not.
+        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of layers per block.
+        patch_size (`int`, defaults to `4`):
+            The size of spatial patches.
+        patch_size_t (`int`, defaults to `1`):
+            The size of temporal patches.
+        resnet_norm_eps (`float`, defaults to `1e-6`):
+            Epsilon value for ResNet normalization layers.
+        is_causal (`bool`, defaults to `True`):
+            Whether this layer behaves causally (future frames depend only on past frames) or not.
     """
 
     def __init__(
@@ -570,7 +589,24 @@ class LTXDecoder3d(nn.Module):
     The `LTXDecoder3d` layer of a variational autoencoder that decodes its latent representation into an output sample.
 
     Args:
-        TODO(aryan)
+        in_channels (`int`):
+            Number of latent channels.
+        out_channels (`int`):
+            Number of output channels.
+        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of output channels for each block.
+        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+            Whether a block should contain spatio-temporal upscaling layers or not.
+        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of layers per block.
+        patch_size (`int`, defaults to `4`):
+            The size of spatial patches.
+        patch_size_t (`int`, defaults to `1`):
+            The size of temporal patches.
+        resnet_norm_eps (`float`, defaults to `1e-6`):
+            Epsilon value for ResNet normalization layers.
+        is_causal (`bool`, defaults to `False`):
+            Whether this layer behaves causally (future frames depend only on past frames) or not.
     """
 
     def __init__(
@@ -680,7 +716,35 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
     for all models (such as downloading or saving).
 
     Args:
-        TODO(aryan)
+        in_channels (`int`, defaults to `3`):
+            Number of input channels.
+        out_channels (`int`, defaults to `3`):
+            Number of output channels.
+        latent_channels (`int`, defaults to `128`):
+            Number of latent channels.
+        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of output channels for each block.
+        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+            Whether a block should contain spatio-temporal downscaling or not.
+        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+            The number of layers per block.
+        patch_size (`int`, defaults to `4`):
+            The size of spatial patches.
+        patch_size_t (`int`, defaults to `1`):
+            The size of temporal patches.
+        resnet_norm_eps (`float`, defaults to `1e-6`):
+            Epsilon value for ResNet normalization layers.
+        scaling_factor (`float`, *optional*, defaults to `1.0`):
+            The component-wise standard deviation of the trained latent space computed using the first batch of the
+            training set. This is used to scale the latent space to have unit variance when training the diffusion
+            model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+            diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
+            / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
+            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+        encoder_causal (`bool`, defaults to `True`):
+            Whether the encoder should behave causally (future frames depend only on past frames) or not.
+        decoder_causal (`bool`, defaults to `False`):
+            Whether the decoder should behave causally (future frames depend only on past frames) or not.
     """
 
     _supports_gradient_checkpointing = True
