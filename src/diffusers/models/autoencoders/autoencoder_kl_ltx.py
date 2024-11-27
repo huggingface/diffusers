@@ -1115,9 +1115,6 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
                 else:
                     time = self.decoder(z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width])
 
-                if self.drop_last_temporal_frames and time.size(2) >= self.temporal_compression_ratio:
-                    time = time[:, :, self.temporal_compression_ratio - 1 :]
-
                 row.append(time)
             rows.append(row)
 
