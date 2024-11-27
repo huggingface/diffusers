@@ -17,7 +17,6 @@ from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -258,14 +257,6 @@ class MochiPipeline(DiffusionPipeline):
         prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
 
         return prompt_embeds, prompt_attention_mask
-
-    def prepare_joint_attention_mask(self, prompt_attention_mask, latents):
-        batch_size, channels, latent_frames, latent_height, latent_width = latents.shape
-        num_latents = latent_frames * latent_height * latent_width
-        num_visual_tokens = num_latents // (self.transformer.config.patch_size**2)
-        mask = F.pad(prompt_attention_mask, (num_visual_tokens, 0), value=True)
-
-        return mask
 
     # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.encode_prompt
     def encode_prompt(
@@ -641,9 +632,6 @@ class MochiPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-            negative_joint_attention_mask = self.prepare_joint_attention_mask(negative_prompt_attention_mask, latents)
-            joint_attention_mask = torch.cat([negative_joint_attention_mask, joint_attention_mask], dim=0)
-
         # 5. Prepare timestep
         # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
         threshold_noise = 0.025
@@ -675,7 +663,6 @@ class MochiPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     encoder_attention_mask=prompt_attention_mask,
-                    joint_attention_mask=joint_attention_mask,
                     return_dict=False,
                 )[0]
                 # Mochi CFG + Sampling runs in FP32

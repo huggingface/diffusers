@@ -3522,7 +3522,7 @@ class MochiAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         query = attn.to_q(hidden_states)
@@ -3576,19 +3576,19 @@ class MochiAttnProcessor2_0:
         encoder_sequence_length = encoder_query.size(2)
         total_length = sequence_length + encoder_sequence_length
 
-        query = torch.cat([query, encoder_query], dim=2)
-        key = torch.cat([key, encoder_key], dim=2)
-        value = torch.cat([value, encoder_value], dim=2)
-
         batch_size, heads, _, dim = query.shape
         attn_outputs = []
         for idx in range(batch_size):
-            mask = attention_mask[idx].unsqueeze(0)
-            valid_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
+            mask = attention_mask[idx][None, :]
+            valid_prompt_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
 
-            valid_query = torch.index_select(query[idx].unsqueeze(0), 2, valid_token_indices)
-            valid_key = torch.index_select(key[idx].unsqueeze(0), 2, valid_token_indices)
-            valid_value = torch.index_select(value[idx].unsqueeze(0), 2, valid_token_indices)
+            valid_encoder_query = torch.index_select(encoder_query[idx][None, :], 2, valid_prompt_token_indices)
+            valid_encoder_key = torch.index_select(encoder_key[idx][None, :], 2, valid_prompt_token_indices)
+            valid_encoder_value = torch.index_select(encoder_value[idx][None, :], 2, valid_prompt_token_indices)
+
+            valid_query = torch.cat([query[idx][None, :], valid_encoder_query], dim=2)
+            valid_key = torch.cat([key[idx][None, :], valid_encoder_key], dim=2)
+            valid_value = torch.cat([value[idx][None, :], valid_encoder_value], dim=2)
 
             attn_output = F.scaled_dot_product_attention(
                 valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False

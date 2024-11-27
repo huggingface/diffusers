@@ -294,8 +294,8 @@ class MochiTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        joint_attention_mask=None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
@@ -310,7 +310,7 @@ class MochiTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=image_rotary_emb,
-            attention_mask=joint_attention_mask,
+            attention_mask=encoder_attention_mask,
         )
 
         hidden_states = hidden_states + self.norm2(attn_hidden_states, torch.tanh(gate_msa).unsqueeze(1))
@@ -502,7 +502,6 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        joint_attention_mask=None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -554,8 +553,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
+                    encoder_attention_mask=encoder_attention_mask,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_mask=joint_attention_mask,
                 )
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
