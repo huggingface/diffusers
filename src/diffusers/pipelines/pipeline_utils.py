@@ -309,10 +309,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if dduf_format:
                 import shutil
                 import tarfile
+
                 dduf_file_path = os.path.join(save_directory, dduf_filename)
 
                 if os.path.isdir(dduf_file_path):
-                    logger.warning(f"Removing the existing folder {dduf_file_path} so that we can save the DDUF archive.")
+                    logger.warning(
+                        f"Removing the existing folder {dduf_file_path} so that we can save the DDUF archive."
+                    )
                     shutil.rmtree(dduf_file_path)
                 if (
                     os.path.exists(dduf_file_path)
