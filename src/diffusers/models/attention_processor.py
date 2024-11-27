@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch._prims_common import validate_strides
 import torch.nn.functional as F
-from torch import nn
+from torch import nn, unsqueeze
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, logging
@@ -3581,29 +3581,25 @@ class MochiAttnProcessor2_0:
         key = torch.cat([key, encoder_key], dim=2)
         value = torch.cat([value, encoder_value], dim=2)
 
-        batch_size, _, _, _ = query.shape
-        """
-        torch.zeros(batch_size * total_length, dim * heads, device=hidden_states.device, dtype=hidden_states.dtype)
+        batch_size, heads, _, dim = query.shape
+        attn_outputs = []
         for idx in range(batch_size):
-            mask = attention_mask[idx]
+            mask = attention_mask[idx].unsqueeze(0)
             valid_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
 
-            valid_query = torch.index_select(query[idx], 2, valid_token_indices)
-            valid_key = torch.index_select(key[idx], 2, valid_token_indices)
-            valid_value = torch.index_select(value[idx], 2, valid_token_indices)
+            valid_query = torch.index_select(query[idx].unsqueeze(0), 2, valid_token_indices)
+            valid_key = torch.index_select(key[idx].unsqueeze(0), 2, valid_token_indices)
+            valid_value = torch.index_select(value[idx].unsqueeze(0), 2, valid_token_indices)
 
             attn_output = F.scaled_dot_product_attention(
                 valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
             )
-        """
+            valid_sequence_length = attn_output.size(2)
+            attn_output = F.pad(attn_output, (0, 0, 0, total_length - valid_sequence_length))
+            attn_outputs.append(attn_output)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, attn_mask=attention_mask.unsqueeze(1).unsqueeze(2), is_causal=False
-        )
-
+        hidden_states = torch.cat(attn_outputs, dim=0)
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        # Zero out tokens based on attention mask
-        hidden_states = hidden_states * attention_mask[:, :, None]
 
         hidden_states, encoder_hidden_states = hidden_states.split_with_sizes(
             (sequence_length, encoder_sequence_length), dim=1
