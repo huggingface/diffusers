@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import numbers
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -570,3 +570,69 @@ class LpNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
+
+
+class LayerNormNd(nn.LayerNorm):
+    def __init__(
+        self,
+        normalized_shape: Union[int, List[int], Tuple[int], torch.Size],
+        eps: float = 1e-5,
+        elementwise_affine: bool = True,
+        bias: bool = True,
+        device=None,
+        dtype=None,
+        channel_dim: int = -1,
+    ) -> None:
+        super().__init__(
+            normalized_shape=normalized_shape,
+            eps=eps,
+            elementwise_affine=elementwise_affine,
+            bias=bias,
+            device=device,
+            dtype=dtype,
+        )
+
+        self.channel_dim = channel_dim
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.channel_dim != -1:
+            hidden_states = hidden_states.movedim(self.channel_dim, -1)
+            hidden_states = super().forward(hidden_states)
+            hidden_states = hidden_states.movedim(-1, self.channel_dim)
+        else:
+            hidden_states = super().forward(hidden_states)
+
+        return hidden_states
+
+    def extra_repr(self) -> str:
+        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
+
+
+class RMSNormNd(RMSNorm):
+    def __init__(
+        self,
+        dim: int,
+        eps: float,
+        elementwise_affine: bool = True,
+        channel_dim: int = -1,
+    ) -> None:
+        super().__init__(
+            dim=dim,
+            eps=eps,
+            elementwise_affine=elementwise_affine,
+        )
+
+        self.channel_dim = channel_dim
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.channel_dim != -1:
+            hidden_states = hidden_states.movedim(self.channel_dim, -1)
+            hidden_states = super().forward(hidden_states)
+            hidden_states = hidden_states.movedim(-1, self.channel_dim)
+        else:
+            hidden_states = super().forward(hidden_states)
+
+        return hidden_states
+
+    def extra_repr(self):
+        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
