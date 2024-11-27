@@ -193,6 +193,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
+        dduf_format: bool = False,
+        dduf_filename: Optional[Union[str, os.PathLike]] = None,
         **kwargs,
     ):
         """
@@ -226,6 +228,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
         model_index_dict.pop("_name_or_path", None)
+
+        if dduf_format and dduf_filename is None:
+            raise RuntimeError("You need set dduf_filename if you want to save your model in DDUF format.")
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
@@ -300,6 +305,31 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 save_kwargs["max_shard_size"] = max_shard_size
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
+
+            if dduf_format:
+                import shutil
+                import tarfile
+                dduf_file_path = os.path.join(save_directory, dduf_filename)
+
+                if os.path.isdir(dduf_file_path):
+                    logger.warning(f"Removing the existing folder {dduf_file_path} so that we can save the DDUF archive.")
+                    shutil.rmtree(dduf_file_path)
+                if (
+                    os.path.exists(dduf_file_path)
+                    and os.path.isfile(dduf_file_path)
+                    and tarfile.is_tarfile(dduf_file_path)
+                ):
+                    # Open in append mode if the file exists
+                    mode = "a"
+                else:
+                    # Open in write mode to create it if it doesn't exist
+                    mode = "w:"
+                with tarfile.open(dduf_file_path, mode) as tar:
+                    dir_to_archive = os.path.join(save_directory, pipeline_component_name)
+                    if os.path.isdir(dir_to_archive):
+                        tar.add(dir_to_archive, arcname=os.path.basename(dir_to_archive))
+                        # remove from save_directory after we added it to the archive
+                        shutil.rmtree(dir_to_archive)
 
         # finally save the config
         self.save_config(save_directory)
@@ -523,6 +553,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing pipeline weights
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
+                    - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf archive or
+                      folder
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights.
@@ -617,6 +649,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            dduf(`str`, *optional*):
+                Load weights from the specified dduf archive or folder.
 
         <Tip>
 
@@ -666,6 +700,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         offload_state_dict = kwargs.pop("offload_state_dict", False)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
+        dduf = kwargs.pop("dduf", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
@@ -736,6 +771,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 custom_pipeline=custom_pipeline,
                 custom_revision=custom_revision,
                 variant=variant,
+                dduf=dduf,
                 load_connected_pipeline=load_connected_pipeline,
                 **kwargs,
             )
@@ -761,6 +797,25 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
+
+        if dduf:
+            import tarfile
+
+            tar_file_path = os.path.join(cached_folder, dduf)
+            extract_to = os.path.join(cached_folder, f"{dduf}_extracted")
+            # if tar file, we need to extract the tarfile and remove it
+            if os.path.isfile(tar_file_path):
+                if tarfile.is_tarfile(tar_file_path):
+                    with tarfile.open(tar_file_path, "r") as tar:
+                        tar.extractall(extract_to)
+                    # remove tar archive to free memory
+                    os.remove(tar_file_path)
+                    # rename folder to match the name of the dduf archive
+                    os.rename(extract_to, tar_file_path)
+                else:
+                    raise RuntimeError("The dduf path passed is not a tar archive")
+            # udapte cached folder location as the dduf content is in a seperate folder
+            cached_folder = tar_file_path
 
         # 2. Define which model components should load variants
         # We retrieve the information by matching whether variant model checkpoints exist in the subfolders.
@@ -1227,6 +1282,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
+            dduf(`str`, *optional*):
+                Load weights from the specified DDUF archive or folder.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
@@ -1267,6 +1324,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
+        dduf = kwargs.pop("dduf", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1346,6 +1404,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
+            # also allow downloading the dduf
+            # TODO: check that the file actually exist
+            if dduf is not None:
+                allow_patterns += [dduf]
 
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
