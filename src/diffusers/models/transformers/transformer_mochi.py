@@ -145,7 +145,7 @@ class MochiAttention(nn.Module):
     def __init__(
         self,
         query_dim: int,
-        processor: Optional["MochiAttnProcessor2_0"],
+        processor: "MochiAttnProcessor2_0",
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
@@ -214,7 +214,7 @@ class MochiAttnProcessor2_0:
 
     def __call__(
         self,
-        attn: MochiAttention,
+        attn: "MochiAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
