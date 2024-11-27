@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -211,6 +211,7 @@ class RFInversionFluxPipeline(
         )
         self.default_sample_size = 128
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
