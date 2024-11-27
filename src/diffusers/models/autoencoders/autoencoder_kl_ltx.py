@@ -59,13 +59,12 @@ class LTXCausalConv3d(nn.Module):
             self.kernel_size,
             stride=stride,
             dilation=dilation,
+            groups=groups,
             padding=padding,
             padding_mode=padding_mode,
-            groups=groups,
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        print(hidden_states.shape)
         time_kernel_size = self.kernel_size[0]
 
         if self.is_causal:
@@ -110,6 +109,7 @@ class LTXResnetBlock3d(nn.Module):
         eps: float = 1e-6,
         elementwise_affine: bool = False,
         non_linearity: str = "swish",
+        is_causal: bool = True,
     ):
         super().__init__()
 
@@ -117,19 +117,19 @@ class LTXResnetBlock3d(nn.Module):
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.norm1 = RMSNormNd(dim=in_channels, eps=eps, elementwise_affine=elementwise_affine, channel_dim=1)
-        self.conv1 = LTXCausalConv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3)
+        self.norm1 = RMSNormNd(dim=in_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
+        self.conv1 = LTXCausalConv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal)
 
-        self.norm2 = RMSNormNd(dim=out_channels, eps=eps, elementwise_affine=elementwise_affine, channel_dim=1)
+        self.norm2 = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = LTXCausalConv3d(in_channels=out_channels, out_channels=out_channels, kernel_size=3)
+        self.conv2 = LTXCausalConv3d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal)
 
         self.norm3 = None
         self.conv_shortcut = None
         if in_channels != out_channels:
             self.norm3 = LayerNormNd(in_channels, eps=eps, elementwise_affine=True, bias=True, channel_dim=1)
             self.conv_shortcut = LTXCausalConv3d(
-                in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1
+                in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, is_causal=is_causal
             )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
@@ -159,6 +159,7 @@ class LTXUpsampler3d(nn.Module):
         self,
         in_channels: int,
         stride: Union[int, Tuple[int, int, int]] = 1,
+        is_causal: bool = True,
     ) -> None:
         super().__init__()
 
@@ -171,6 +172,7 @@ class LTXUpsampler3d(nn.Module):
             out_channels=out_channels,
             kernel_size=3,
             stride=1,
+            is_causal=is_causal,
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -224,6 +226,7 @@ class LTXDownBlock3D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         spatio_temporal_scale: bool = True,
+        is_causal: bool = True,
     ):
         super().__init__()
 
@@ -238,6 +241,7 @@ class LTXDownBlock3D(nn.Module):
                     dropout=dropout,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
+                    is_causal=is_causal,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
@@ -245,7 +249,7 @@ class LTXDownBlock3D(nn.Module):
         self.downsamplers = None
         if spatio_temporal_scale:
             self.downsamplers = nn.ModuleList(
-                [LTXCausalConv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=(2, 2, 2))]
+                [LTXCausalConv3d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=(2, 2, 2), is_causal=is_causal)]
             )
 
         self.conv_out = None
@@ -256,6 +260,7 @@ class LTXDownBlock3D(nn.Module):
                 dropout=dropout,
                 eps=resnet_eps,
                 non_linearity=resnet_act_fn,
+                is_causal=is_causal
             )
 
         self.gradient_checkpointing = False
@@ -313,6 +318,7 @@ class LTXMidBlock3d(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
+        is_causal: bool = True,
     ):
         super().__init__()
 
@@ -325,6 +331,7 @@ class LTXMidBlock3d(nn.Module):
                     dropout=dropout,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
+                    is_causal=is_causal,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
@@ -382,6 +389,7 @@ class LTXUpBlock3d(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         spatio_temporal_scale: bool = True,
+        is_causal: bool = True,
     ):
         super().__init__()
 
@@ -395,11 +403,12 @@ class LTXUpBlock3d(nn.Module):
                 dropout=dropout,
                 eps=resnet_eps,
                 non_linearity=resnet_act_fn,
+                is_causal=is_causal,
             )
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList([LTXUpsampler3d(out_channels, stride=(2, 2, 2))])
+            self.upsamplers = nn.ModuleList([LTXUpsampler3d(out_channels, stride=(2, 2, 2), is_causal=is_causal)])
 
         resnets = []
         for _ in range(num_layers):
@@ -410,6 +419,7 @@ class LTXUpBlock3d(nn.Module):
                     dropout=dropout,
                     eps=resnet_eps,
                     non_linearity=resnet_act_fn,
+                    is_causal=is_causal,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
@@ -420,7 +430,6 @@ class LTXUpBlock3d(nn.Module):
         self,
         hidden_states: torch.Tensor,
     ) -> torch.Tensor:
-        print("in up block", hidden_states.shape)
         if self.conv_in is not None:
             hidden_states = self.conv_in(hidden_states)
 
@@ -463,6 +472,7 @@ class LTXEncoder3d(nn.Module):
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
+        is_causal: bool = True,
     ):
         super().__init__()
 
@@ -473,7 +483,7 @@ class LTXEncoder3d(nn.Module):
         output_channel = block_out_channels[0]
 
         self.conv_in = LTXCausalConv3d(
-            in_channels=self.in_channels, out_channels=output_channel, kernel_size=3, stride=1
+            in_channels=self.in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal,
         )
 
         # down blocks
@@ -489,20 +499,21 @@ class LTXEncoder3d(nn.Module):
                 num_layers=layers_per_block[i],
                 resnet_eps=resnet_norm_eps,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
+                is_causal=is_causal,
             )
 
             self.down_blocks.append(down_block)
 
         # mid block
         self.mid_block = LTXMidBlock3d(
-            in_channels=output_channel, num_layers=layers_per_block[-1], resnet_eps=resnet_norm_eps
+            in_channels=output_channel, num_layers=layers_per_block[-1], resnet_eps=resnet_norm_eps, is_causal=is_causal
         )
 
         # out
-        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-6, elementwise_affine=False, channel_dim=1)
+        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=False, channel_dim=1)
         self.conv_act = nn.SiLU()
         self.conv_out = LTXCausalConv3d(
-            in_channels=output_channel, out_channels=out_channels + 1, kernel_size=3, stride=1
+            in_channels=output_channel, out_channels=out_channels + 1, kernel_size=3, stride=1, is_causal=is_causal
         )
 
         self.gradient_checkpointing = False
@@ -519,9 +530,10 @@ class LTXEncoder3d(nn.Module):
         post_patch_width = width // p
 
         hidden_states = hidden_states.reshape(
-            batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
+            batch_size, num_channels, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
         )
-        hidden_states = hidden_states.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(1, 4)
+        # Thanks for driving me insane with the weird patching order :(
+        hidden_states = hidden_states.permute(0, 1, 3, 7, 5, 2, 4, 6).flatten(1, 4)
         hidden_states = self.conv_in(hidden_states)
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -535,7 +547,7 @@ class LTXEncoder3d(nn.Module):
             for down_block in self.down_blocks:
                 hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), hidden_states)
 
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), hidden_states)
+            hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), hidden_states)
         else:
             for down_block in self.down_blocks:
                 hidden_states = down_block(hidden_states)
@@ -571,6 +583,7 @@ class LTXDecoder3d(nn.Module):
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
+        is_causal: bool = False,
     ) -> None:
         super().__init__()
 
@@ -583,12 +596,13 @@ class LTXDecoder3d(nn.Module):
         layers_per_block = tuple(reversed(layers_per_block))
         output_channel = block_out_channels[0]
 
-        self.conv_in = LTXCausalConv3d(in_channels=in_channels, out_channels=output_channel, kernel_size=3, stride=1)
+        self.conv_in = LTXCausalConv3d(in_channels=in_channels, out_channels=output_channel, kernel_size=3, stride=1, is_causal=is_causal)
 
         self.mid_block = LTXMidBlock3d(
             in_channels=output_channel,
             num_layers=layers_per_block[0],
             resnet_eps=resnet_norm_eps,
+            is_causal=is_causal
         )
 
         # up blocks
@@ -604,18 +618,20 @@ class LTXDecoder3d(nn.Module):
                 num_layers=layers_per_block[i + 1],
                 resnet_eps=resnet_norm_eps,
                 spatio_temporal_scale=spatio_temporal_scaling[i],
+                is_causal=is_causal
             )
 
             self.up_blocks.append(up_block)
 
         # out
-        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-6, elementwise_affine=False, channel_dim=1)
+        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=False, channel_dim=1)
         self.conv_act = nn.SiLU()
         self.conv_out = LTXCausalConv3d(
             in_channels=output_channel,
             out_channels=self.out_channels,
             kernel_size=3,
             stride=1,
+            is_causal=is_causal
         )
 
         self.gradient_checkpointing = False
@@ -650,7 +666,7 @@ class LTXDecoder3d(nn.Module):
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, -1, p_t, p, p, num_frames, height, width)
-        hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 3, 7, 4).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        hidden_states = hidden_states.permute(0, 1, 5, 2, 6, 4, 7, 3).flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
         return hidden_states
 
@@ -682,6 +698,8 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
         scaling_factor: float = 1.0,
+        encoder_causal: bool = True,
+        decoder_causal: bool = False,
     ) -> None:
         super().__init__()
 
@@ -694,6 +712,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             patch_size=patch_size,
             patch_size_t=patch_size_t,
             resnet_norm_eps=resnet_norm_eps,
+            is_causal=encoder_causal,
         )
         self.decoder = LTXDecoder3d(
             in_channels=latent_channels,
@@ -704,6 +723,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             patch_size=patch_size,
             patch_size_t=patch_size_t,
             resnet_norm_eps=resnet_norm_eps,
+            is_causal=decoder_causal,
         )
 
         latent_means = torch.zeros((latent_channels,), requires_grad=False)
@@ -836,7 +856,6 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             h = torch.cat(encoded_slices)
         else:
             h = self._encode(x)
-            print("h:", h.shape)
         posterior = DiagonalGaussianDistribution(h)
 
         if not return_dict:
