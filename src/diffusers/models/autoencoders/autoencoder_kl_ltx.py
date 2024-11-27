@@ -176,7 +176,7 @@ class LTXUpsampler3d(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
-        hidden_states, _ = self.conv(hidden_states)
+        hidden_states = self.conv(hidden_states)
         hidden_states = hidden_states.reshape(
             batch_size, -1, self.stride[0], self.stride[1], self.stride[2], num_frames, height, width
         )
