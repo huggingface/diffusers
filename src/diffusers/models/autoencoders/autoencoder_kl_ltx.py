@@ -1,4 +1,4 @@
-# Copyright 2024 The Mochi team and The HuggingFace Team.
+# Copyright 2024 The Lightricks team and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -470,15 +470,15 @@ class LTXEncoder3d(nn.Module):
     representation.
 
     Args:
-        in_channels (`int`):
+        in_channels (`int`, defaults to 3):
             Number of input channels.
-        out_channels (`int`):
+        out_channels (`int`, defaults to 128):
             Number of latent channels.
         block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
         spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal downscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -605,15 +605,15 @@ class LTXDecoder3d(nn.Module):
     The `LTXDecoder3d` layer of a variational autoencoder that decodes its latent representation into an output sample.
 
     Args:
-        in_channels (`int`):
+        in_channels (`int`, defaults to 128):
             Number of latent channels.
-        out_channels (`int`):
+        out_channels (`int`, defaults to 3):
             Number of output channels.
         block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
         spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal upscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -737,7 +737,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             The number of output channels for each block.
         spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal downscaling or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.

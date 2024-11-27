@@ -189,7 +189,7 @@ class LTXTransformerBlock(nn.Module):
             The number of channels in each head.
         qk_norm (`str`, defaults to `"rms_norm"`):
             The normalization layer to use.
-        activation_fn (`str`, defaults to `"swiglu"`):
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
             Activation function to use in feed-forward.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
@@ -298,11 +298,11 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
             The number of heads to use for multi-head attention.
         attention_head_dim (`int`, defaults to `64`):
             The number of channels in each head.
-        cross_attention_dim (`int`, defaults to `64`):
+        cross_attention_dim (`int`, defaults to `2048 `):
             The number of channels for cross attention heads.
         num_layers (`int`, defaults to `28`):
             The number of layers of Transformer blocks to use.
-        activation_fn (`str`, defaults to `"swiglu"`):
+        activation_fn (`str`, defaults to `"gelu-approximate"`):
             Activation function to use in feed-forward.
         qk_norm (`str`, defaults to `"rms_norm_across_heads"`):
             The normalization layer to use.
