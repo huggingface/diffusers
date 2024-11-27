@@ -16,6 +16,7 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+from torch._prims_common import validate_strides
 import torch.nn.functional as F
 from torch import nn
 
@@ -3574,16 +3575,30 @@ class MochiAttnProcessor2_0:
 
         sequence_length = query.size(2)
         encoder_sequence_length = encoder_query.size(2)
+        total_length = sequence_length + encoder_sequence_length
 
         query = torch.cat([query, encoder_query], dim=2)
         key = torch.cat([key, encoder_key], dim=2)
         value = torch.cat([value, encoder_value], dim=2)
 
-        attention_mask = (1.0 - attention_mask.to(hidden_states.dtype)) * -10000
-        attention_mask = attention_mask.unsqueeze(1)
+        batch_size, _, _, _ = query.shape
+        """
+        torch.zeros(batch_size * total_length, dim * heads, device=hidden_states.device, dtype=hidden_states.dtype)
+        for idx in range(batch_size):
+            mask = attention_mask[idx]
+            valid_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
+
+            valid_query = torch.index_select(query[idx], 2, valid_token_indices)
+            valid_key = torch.index_select(key[idx], 2, valid_token_indices)
+            valid_value = torch.index_select(value[idx], 2, valid_token_indices)
+
+            attn_output = F.scaled_dot_product_attention(
+                valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
+            )
+        """
 
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, dropout_p=0.0, attn_mask=attention_mask, is_causal=False
+            query, key, value, dropout_p=0.0, attn_mask=attention_mask.unsqueeze(1).unsqueeze(2), is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
