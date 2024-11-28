@@ -330,7 +330,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         self.time_embed = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
-        
+
         self.rope = LTXRotaryPosEmbed(
             dim=inner_dim,
             base_num_frames=20,
