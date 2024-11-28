@@ -153,15 +153,15 @@ class GLUMBConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.inverted_conv(x)
-        x = self.depth_conv(x)
+        y = self.inverted_conv(x)
+        y = self.depth_conv(y)
 
-        x, gate = torch.chunk(x, 2, dim=1)
+        y, gate = torch.chunk(y, 2, dim=1)
         gate = self.glu_act(gate)
-        x = x * gate
+        y = y * gate
 
-        x = self.point_conv(x)
-        return x
+        y = self.point_conv(y)
+        return x + y
 
 
 class ResBlock(nn.Module):
@@ -349,7 +349,7 @@ class LiteMLA(nn.Module):
             out = self.relu_quadratic_att(qkv)
         out = self.proj(out)
 
-        return out
+        return x + out
 
 
 class EfficientViTBlock(nn.Module):
@@ -367,30 +367,24 @@ class EfficientViTBlock(nn.Module):
     ):
         super().__init__()
         if context_module == "LiteMLA":
-            self.context_module = ResidualBlock(
-                LiteMLA(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    heads_ratio=heads_ratio,
-                    dim=dim,
-                    norm=(None, norm),
-                    scales=scales,
-                ),
-                nn.Identity(),
+            self.context_module = LiteMLA(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                heads_ratio=heads_ratio,
+                dim=dim,
+                norm=(None, norm),
+                scales=scales,
             )
         else:
             raise ValueError(f"context_module {context_module} is not supported")
         if local_module == "GLUMBConv":
-            self.local_module = ResidualBlock(
-                GLUMBConv(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    expand_ratio=expand_ratio,
-                    use_bias=(True, True, False),
-                    norm=(None, None, norm),
-                    act_func=(act_func, act_func, None),
-                ),
-                nn.Identity(),
+            self.local_module = GLUMBConv(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                expand_ratio=expand_ratio,
+                use_bias=(True, True, False),
+                norm=(None, None, norm),
+                act_func=(act_func, act_func, None),
             )
         else:
             raise NotImplementedError(f"local_module {local_module} is not supported")
