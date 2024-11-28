@@ -630,7 +630,7 @@ class DCAE(ModelMixin, ConfigMixin):
     def decode(self, x: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         x = self.decoder(x)
         if not return_dict:
-            return x
+            return (x, )
         else:
             return DecoderOutput(sample=x)
 
