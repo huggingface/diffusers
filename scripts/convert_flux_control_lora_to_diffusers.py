@@ -185,7 +185,7 @@ def convert_flux_control_lora_checkpoint_to_diffusers(
                 f"double_blocks.{i}.img_mlp.0.{lora_key}.weight"
             )
             if f"double_blocks.{i}.img_mlp.0.{lora_key}.bias" in original_state_dict_keys:
-                converted_state_dict[f"{block_prefix}ff.net.0.proj{lora_key}..bias"] = original_state_dict.pop(
+                converted_state_dict[f"{block_prefix}ff.net.0.proj.{lora_key}.bias"] = original_state_dict.pop(
                     f"double_blocks.{i}.img_mlp.0.{lora_key}.bias"
                 )
 
