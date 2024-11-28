@@ -13,26 +13,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Callable, Union
-from collections import OrderedDict
+from typing import Any, Callable, Tuple, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import BatchNorm2d
-from huggingface_hub import PyTorchModelHubMixin
-import ipdb
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
-
 from ..activations import get_activation
-from ..normalization import RMSNorm2d
-from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
-from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
-from ..attention import DCAELiteMLA
+from ..modeling_utils import ModelMixin
+from ..normalization import RMSNormNd
 
-from .vae import DecoderOutput
+
+def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
+    x = list(x) if isinstance(x, (list, tuple)) else [x]
+    # repeat elements if necessary
+    if len(x) > 0:
+        x.extend([x[-1] for _ in range(min_len - len(x))])
+    return tuple(x)
+
+
+def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> Optional[nn.Module]:
+    if name is None:
+        norm = None
+    elif name == "rms2d":
+        norm = RMSNormNd(num_features, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+    elif name == "bn2d":
+        norm = BatchNorm2d(num_features=num_features)
+    else:
+        raise ValueError(f"norm {name} is not supported")
+    return norm
 
 
 class ConvLayer(nn.Module):
@@ -49,7 +60,7 @@ class ConvLayer(nn.Module):
         norm="bn2d",
         act_func="relu",
     ):
-        super().__init__()
+        super(ConvLayer, self).__init__()
 
         padding = kernel_size // 2
         padding *= dilation
@@ -65,14 +76,7 @@ class ConvLayer(nn.Module):
             groups=groups,
             bias=use_bias,
         )
-        if norm is None:
-            self.norm = None
-        elif norm == "rms2d":
-            self.norm = RMSNorm2d(num_features=out_channels)
-        elif norm == "bn2d":
-            self.norm = BatchNorm2d(num_features=out_channels)
-        else:
-            raise ValueError(f"norm {norm} is not supported")
+        self.norm = build_norm(norm, num_features=out_channels)
         self.act = get_activation(act_func) if act_func is not None else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -86,6 +90,132 @@ class ConvLayer(nn.Module):
         return x
 
 
+class ConvPixelUnshuffleDownSampleLayer(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        factor: int,
+    ):
+        super().__init__()
+        self.factor = factor
+        out_ratio = factor**2
+        assert out_channels % out_ratio == 0
+        self.conv = ConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels // out_ratio,
+            kernel_size=kernel_size,
+            use_bias=True,
+            norm=None,
+            act_func=None,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = F.pixel_unshuffle(x, self.factor)
+        return x
+
+
+class DownsamplePixelUnshuffleChannelAveraging(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        factor: int,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.factor = factor
+        assert in_channels * factor**2 % out_channels == 0
+        self.group_size = in_channels * factor**2 // out_channels
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.pixel_unshuffle(x, self.factor)
+        x = x.unflatten(1, (-1, self.group_size))
+        x = x.mean(dim=2)
+        return x
+
+
+class ConvPixelShuffleUpSampleLayer(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        factor: int,
+    ):
+        super().__init__()
+        self.factor = factor
+        out_ratio = factor**2
+        self.conv = ConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels * out_ratio,
+            kernel_size=kernel_size,
+            use_bias=True,
+            norm=None,
+            act_func=None,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = F.pixel_shuffle(x, self.factor)
+        return x
+
+
+class InterpolateConvUpSampleLayer(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        factor: int,
+        mode: str = "nearest",
+    ) -> None:
+        super().__init__()
+        self.factor = factor
+        self.mode = mode
+        self.conv = ConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            use_bias=True,
+            norm=None,
+            act_func=None,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = torch.nn.functional.interpolate(x, scale_factor=self.factor, mode=self.mode)
+        x = self.conv(x)
+        return x
+
+
+class ChannelDuplicatingPixelUnshuffleUpSampleLayer(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        factor: int,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.factor = factor
+        assert out_channels * factor**2 % in_channels == 0
+        self.repeats = out_channels * factor**2 // in_channels
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.repeat_interleave(self.repeats, dim=1)
+        x = F.pixel_shuffle(x, self.factor)
+        return x
+
+
+class IdentityLayer(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+
 class GLUMBConv(nn.Module):
     def __init__(
         self,
@@ -95,11 +225,14 @@ class GLUMBConv(nn.Module):
         stride=1,
         mid_channels=None,
         expand_ratio=6,
-        use_bias=(False, False, False),
+        use_bias=False,
         norm=(None, None, "ln2d"),
         act_func=("silu", "silu", None),
     ):
         super().__init__()
+        use_bias = val2tuple(use_bias, 3)
+        norm = val2tuple(norm, 3)
+        act_func = val2tuple(act_func, 3)
 
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
@@ -132,15 +265,15 @@ class GLUMBConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        y = self.inverted_conv(x)
-        y = self.depth_conv(y)
+        x = self.inverted_conv(x)
+        x = self.depth_conv(x)
 
-        y, gate = torch.chunk(y, 2, dim=1)
+        x, gate = torch.chunk(x, 2, dim=1)
         gate = self.glu_act(gate)
-        y = y * gate
+        x = x * gate
 
-        y = self.point_conv(y)
-        return x + y
+        x = self.point_conv(x)
+        return x
 
 
 class ResBlock(nn.Module):
@@ -152,11 +285,15 @@ class ResBlock(nn.Module):
         stride=1,
         mid_channels=None,
         expand_ratio=1,
-        use_bias=(False, False),
+        use_bias=False,
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
     ):
         super().__init__()
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
         self.conv1 = ConvLayer(
@@ -177,11 +314,163 @@ class ResBlock(nn.Module):
             norm=norm[1],
             act_func=act_func[1],
         )
-        self.shortcut = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv2(self.conv1(x)) + x
+        x = self.conv1(x)
+        x = self.conv2(x)
         return x
+
+
+class LiteMLA(nn.Module):
+    r"""Lightweight multi-scale linear attention"""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        heads: Optional[int] = None,
+        heads_ratio: float = 1.0,
+        dim=8,
+        use_bias=False,
+        norm=(None, "bn2d"),
+        act_func=(None, None),
+        kernel_func="relu",
+        scales: tuple[int, ...] = (5,),
+        eps=1.0e-15,
+    ):
+        super(LiteMLA, self).__init__()
+        self.eps = eps
+        heads = int(in_channels // dim * heads_ratio) if heads is None else heads
+
+        total_dim = heads * dim
+
+        use_bias = val2tuple(use_bias, 2)
+        norm = val2tuple(norm, 2)
+        act_func = val2tuple(act_func, 2)
+
+        self.dim = dim
+        self.qkv = ConvLayer(
+            in_channels,
+            3 * total_dim,
+            1,
+            use_bias=use_bias[0],
+            norm=norm[0],
+            act_func=act_func[0],
+        )
+        self.aggreg = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(
+                        3 * total_dim,
+                        3 * total_dim,
+                        scale,
+                        padding=scale // 2,
+                        groups=3 * total_dim,
+                        bias=use_bias[0],
+                    ),
+                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
+                )
+                for scale in scales
+            ]
+        )
+        self.kernel_func = get_activation(kernel_func)
+
+        self.proj = ConvLayer(
+            total_dim * (1 + len(scales)),
+            out_channels,
+            1,
+            use_bias=use_bias[1],
+            norm=norm[1],
+            act_func=act_func[1],
+        )
+
+    @torch.autocast(device_type="cuda", enabled=False)
+    def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
+        B, _, H, W = list(qkv.size())
+
+        if qkv.dtype == torch.float16:
+            qkv = qkv.float()
+
+        qkv = torch.reshape(
+            qkv,
+            (
+                B,
+                -1,
+                3 * self.dim,
+                H * W,
+            ),
+        )
+        q, k, v = (
+            qkv[:, :, 0 : self.dim],
+            qkv[:, :, self.dim : 2 * self.dim],
+            qkv[:, :, 2 * self.dim :],
+        )
+
+        # lightweight linear attention
+        q = self.kernel_func(q)
+        k = self.kernel_func(k)
+
+        # linear matmul
+        trans_k = k.transpose(-1, -2)
+
+        v = F.pad(v, (0, 0, 0, 1), mode="constant", value=1)
+        vk = torch.matmul(v, trans_k)
+        out = torch.matmul(vk, q)
+        if out.dtype == torch.bfloat16:
+            out = out.float()
+        out = out[:, :, :-1] / (out[:, :, -1:] + self.eps)
+
+        out = torch.reshape(out, (B, -1, H, W))
+        return out
+
+    def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
+        B, _, H, W = list(qkv.size())
+
+        qkv = torch.reshape(
+            qkv,
+            (
+                B,
+                -1,
+                3 * self.dim,
+                H * W,
+            ),
+        )
+        q, k, v = (
+            qkv[:, :, 0 : self.dim],
+            qkv[:, :, self.dim : 2 * self.dim],
+            qkv[:, :, 2 * self.dim :],
+        )
+
+        q = self.kernel_func(q)
+        k = self.kernel_func(k)
+
+        att_map = torch.matmul(k.transpose(-1, -2), q)  # b h n n
+        original_dtype = att_map.dtype
+        if original_dtype in [torch.float16, torch.bfloat16]:
+            att_map = att_map.float()
+        att_map = att_map / (torch.sum(att_map, dim=2, keepdim=True) + self.eps)  # b h n n
+        att_map = att_map.to(original_dtype)
+        out = torch.matmul(v, att_map)  # b h d n
+
+        out = torch.reshape(out, (B, -1, H, W))
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # generate multi-scale q, k, v
+        qkv = self.qkv(x)
+        multi_scale_qkv = [qkv]
+        for op in self.aggreg:
+            multi_scale_qkv.append(op(qkv))
+        qkv = torch.cat(multi_scale_qkv, dim=1)
+
+        H, W = list(qkv.size())[-2:]
+        if H * W > self.dim:
+            out = self.relu_linear_att(qkv).to(qkv.dtype)
+        else:
+            out = self.relu_quadratic_att(qkv)
+        out = self.proj(out)
+
+        return out
 
 
 class EfficientViTBlock(nn.Module):
@@ -197,26 +486,32 @@ class EfficientViTBlock(nn.Module):
         context_module: str = "LiteMLA",
         local_module: str = "MBConv",
     ):
-        super().__init__()
+        super(EfficientViTBlock, self).__init__()
         if context_module == "LiteMLA":
-            self.context_module = DCAELiteMLA(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                heads_ratio=heads_ratio,
-                dim=dim,
-                norm=(None, norm),
-                scales=scales,
+            self.context_module = ResidualBlock(
+                LiteMLA(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    heads_ratio=heads_ratio,
+                    dim=dim,
+                    norm=(None, norm),
+                    scales=scales,
+                ),
+                IdentityLayer(),
             )
         else:
             raise ValueError(f"context_module {context_module} is not supported")
         if local_module == "GLUMBConv":
-            self.local_module = GLUMBConv(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                expand_ratio=expand_ratio,
-                use_bias=(True, True, False),
-                norm=(None, None, norm),
-                act_func=(act_func, act_func, None),
+            self.local_module = ResidualBlock(
+                GLUMBConv(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    expand_ratio=expand_ratio,
+                    use_bias=(True, True, False),
+                    norm=(None, None, norm),
+                    act_func=(act_func, act_func, None),
+                ),
+                IdentityLayer(),
             )
         else:
             raise NotImplementedError(f"local_module {local_module} is not supported")
@@ -265,354 +560,320 @@ class ResidualBlock(nn.Module):
         return res
 
 
+class OpSequential(nn.Module):
+    def __init__(self, op_list: list[Optional[nn.Module]]):
+        super(OpSequential, self).__init__()
+        valid_op_list = []
+        for op in op_list:
+            if op is not None:
+                valid_op_list.append(op)
+        self.op_list = nn.ModuleList(valid_op_list)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for op in self.op_list:
+            x = op(x)
+        return x
+
+
+def build_stage_main(
+    width: int, depth: int, block_type: str | list[str], norm: str, act: str, input_width: int
+) -> list[nn.Module]:
+    assert isinstance(block_type, str) or (isinstance(block_type, list) and depth == len(block_type))
+    stage = []
+    for d in range(depth):
+        current_block_type = block_type[d] if isinstance(block_type, list) else block_type
+
+        in_channels = width if d > 0 else input_width
+        out_channels = width
+        
+        if current_block_type == "ResBlock":
+            assert in_channels == out_channels
+            main_block = ResBlock(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=3,
+                stride=1,
+                use_bias=(True, False),
+                norm=(None, norm),
+                act_func=(act, None),
+            )
+            block = ResidualBlock(main_block, IdentityLayer())
+        elif current_block_type == "EViT_GLU":
+            assert in_channels == out_channels
+            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
+        elif current_block_type == "EViTS5_GLU":
+            assert in_channels == out_channels
+            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
+        else:
+            raise ValueError(f"block_type {current_block_type} is not supported")
+        
+        stage.append(block)
+    return stage
+
+
+def build_downsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
+    if block_type == "Conv":
+        block = ConvLayer(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            stride=2,
+            use_bias=True,
+            norm=None,
+            act_func=None,
+        )
+    elif block_type == "ConvPixelUnshuffle":
+        block = ConvPixelUnshuffleDownSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
+        )
+    else:
+        raise ValueError(f"block_type {block_type} is not supported for downsampling")
+    if shortcut is None:
+        pass
+    elif shortcut == "averaging":
+        shortcut_block = DownsamplePixelUnshuffleChannelAveraging(
+            in_channels=in_channels, out_channels=out_channels, factor=2
+        )
+        block = ResidualBlock(block, shortcut_block)
+    else:
+        raise ValueError(f"shortcut {shortcut} is not supported for downsample")
+    return block
+
+
+def build_upsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
+    if block_type == "ConvPixelShuffle":
+        block = ConvPixelShuffleUpSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
+        )
+    elif block_type == "InterpolateConv":
+        block = InterpolateConvUpSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
+        )
+    else:
+        raise ValueError(f"block_type {block_type} is not supported for upsampling")
+    if shortcut is None:
+        pass
+    elif shortcut == "duplicating":
+        shortcut_block = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+            in_channels=in_channels, out_channels=out_channels, factor=2
+        )
+        block = ResidualBlock(block, shortcut_block)
+    else:
+        raise ValueError(f"shortcut {shortcut} is not supported for upsample")
+    return block
+
+
 class Encoder(nn.Module):
     def __init__(
-        self, 
+        self,
         in_channels: int,
         latent_channels: int,
-        width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
-        depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        block_out_channels: list[int] = [128, 256, 512, 512, 1024, 1024],
+        layers_per_block: list[int] = [2, 2, 2, 2, 2, 2],
         block_type: str | list[str] = "ResBlock",
-        norm: str = "rms2d",
-        act: str = "silu",
         downsample_block_type: str = "ConvPixelUnshuffle",
-        downsample_shortcut: Optional[str] = "averaging",
-        out_norm: Optional[str] = None,
-        out_act: Optional[str] = None,
-        out_shortcut: Optional[str] = "averaging",
-        double_latent: bool = False,
     ):
         super().__init__()
-        num_stages = len(width_list)
+        num_stages = len(block_out_channels)
         self.num_stages = num_stages
+        assert len(layers_per_block) == num_stages
+        assert len(block_out_channels) == num_stages
+        assert isinstance(block_type, str) or (
+            isinstance(block_type, list) and len(block_type) == num_stages
+        )
 
-        # validate config
-        if len(depth_list) != num_stages or len(width_list) != num_stages:
-            raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
-        if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
-            raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
-        
-        # project in
-        if depth_list[0] > 0:
-            project_in_block = nn.Conv2d(
+        factor = 1 if layers_per_block[0] > 0 else 2
+
+        if factor == 1:
+            self.conv_in = ConvLayer(
                 in_channels=in_channels,
-                out_channels=width_list[0],
+                out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
                 kernel_size=3,
-                padding=1,
+                stride=1,
+                use_bias=True,
+                norm=None,
+                act_func=None,
             )
-        elif depth_list[1] > 0:
-            if downsample_block_type == "Conv":
-                project_in_block = nn.Conv2d(
-                    in_channels=in_channels,
-                    out_channels=width_list[1],
-                    kernel_size=3,
-                    stride=2,
-                    padding=1,
-                )
-            elif downsample_block_type == "ConvPixelUnshuffle":
-                project_in_block = ConvPixelUnshuffleDownsample2D(
-                    in_channels=in_channels, out_channels=width_list[1], kernel_size=3, factor=2
-                )
-            else:
-                raise ValueError(f"block_type {downsample_block_type} is not supported for downsampling")
+        elif factor == 2:
+            self.conv_in = build_downsample_block(
+                block_type=downsample_block_type, in_channels=in_channels, out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], shortcut=None
+            )
         else:
-            raise ValueError(f"depth list {depth_list} is not supported for encoder project in")
-        self.project_in = project_in_block
+            raise
 
-        # stages
-        self.stages: list[nn.Module] = []
-        for stage_id, (width, depth) in enumerate(zip(width_list, depth_list)):
+        self.stages: list[OpSequential] = []
+        for stage_id, (width, depth) in enumerate(zip(block_out_channels, layers_per_block)):
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
-            if not (isinstance(stage_block_type, str) or (isinstance(stage_block_type, list) and depth == len(stage_block_type))):
-                raise ValueError(f"block type {stage_block_type} is not supported for encoder stage {stage_id} with depth {depth}")
-            stage = []
-            # stage main
-            for d in range(depth):
-                current_block_type = stage_block_type[d] if isinstance(stage_block_type, list) else stage_block_type
-                if current_block_type == "ResBlock":
-                    block = ResBlock(
-                        in_channels=width,
-                        out_channels=width,
-                        kernel_size=3,
-                        stride=1,
-                        use_bias=(True, False),
-                        norm=(None, norm),
-                        act_func=(act, None),
-                    )
-                elif current_block_type == "EViTGLU":
-                    block = EfficientViTBlock(width, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
-                elif current_block_type == "EViTS5GLU":
-                    block = EfficientViTBlock(width, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
-                else:
-                    raise ValueError(f"block type {current_block_type} is not supported")
-                stage.append(block)
-            # downsample
+            stage = build_stage_main(
+                width=width, depth=depth, block_type=stage_block_type, norm="rms2d", act="silu", input_width=width
+            )
             if stage_id < num_stages - 1 and depth > 0:
-                downsample_out_channels = width_list[stage_id + 1]
-                if downsample_block_type == "Conv":
-                    downsample_block = nn.Conv2d(
-                        in_channels=width,
-                        out_channels=downsample_out_channels,
-                        kernel_size=3,
-                        stride=2,
-                        padding=1,
-                    )
-                elif downsample_block_type == "ConvPixelUnshuffle":
-                    downsample_block = ConvPixelUnshuffleDownsample2D(
-                        in_channels=width, out_channels=downsample_out_channels, kernel_size=3, factor=2
-                    )
-                else:
-                    raise ValueError(f"downsample_block_type {downsample_block_type} is not supported for downsampling")
-                if downsample_shortcut is None:
-                    pass
-                elif downsample_shortcut == "averaging":
-                    shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
-                        in_channels=width, out_channels=downsample_out_channels, factor=2
-                    )
-                    downsample_block = ResidualBlock(downsample_block, shortcut_block)
-                else:
-                    raise ValueError(f"shortcut {downsample_shortcut} is not supported for downsample")
+                downsample_block = build_downsample_block(
+                    block_type=downsample_block_type,
+                    in_channels=width,
+                    out_channels=block_out_channels[stage_id + 1],
+                    shortcut="averaging",
+                )
                 stage.append(downsample_block)
-            self.stages.append(nn.Sequential(*stage))
+            self.stages.append(OpSequential(stage))
         self.stages = nn.ModuleList(self.stages)
 
-        # project out
-        project_out_layers: list[nn.Module] = []
-        if out_norm is None:
-            pass
-        elif out_norm == "rms2d":
-            project_out_layers.append(RMSNorm2d(num_features=width_list[-1]))
-        elif out_norm == "bn2d":
-            project_out_layers.append(BatchNorm2d(num_features=width_list[-1]))
-        else:
-            raise ValueError(f"norm {out_norm} is not supported for encoder project out")
-        if out_act is not None:
-            project_out_layers.append(get_activation(out_act))
-        project_out_out_channels = 2 * latent_channels if double_latent else latent_channels
-        project_out_layers.append(ConvLayer(
-            in_channels=width_list[-1],
-            out_channels=project_out_out_channels,
+        self.norm_out = DownsamplePixelUnshuffleChannelAveraging(
+            in_channels=block_out_channels[-1], out_channels=latent_channels, factor=1
+        )
+        self.conv_out = ConvLayer(
+            in_channels=block_out_channels[-1],
+            out_channels=latent_channels,
             kernel_size=3,
             stride=1,
             use_bias=True,
             norm=None,
             act_func=None,
-        ))
-        project_out_block = nn.Sequential(*project_out_layers)
-        if out_shortcut is None:
-            pass
-        elif out_shortcut == "averaging":
-            shortcut_block = PixelUnshuffleChannelAveragingDownsample2D(
-                in_channels=width_list[-1], out_channels=project_out_out_channels, factor=1
-            )
-            project_out_block = ResidualBlock(project_out_block, shortcut_block)
-        else:
-            raise ValueError(f"shortcut {out_shortcut} is not supported for encoder project out")
-        self.project_out = project_out_block
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.project_in(x)
+        x = self.conv_in(x)
         for stage in self.stages:
-            if len(stage) == 0:
+            if len(stage.op_list) == 0:
                 continue
             x = stage(x)
-        x = self.project_out(x)
+        x = self.conv_out(x) + self.norm_out(x)
         return x
 
 
 class Decoder(nn.Module):
     def __init__(
-        self, 
+        self,
         in_channels: int,
         latent_channels: int,
-        in_shortcut: Optional[str] = "duplicating",
-        width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
-        depth_list: list[int] = [2, 2, 2, 2, 2, 2],
+        block_out_channels: list[int] = [128, 256, 512, 512, 1024, 1024],
+        layers_per_block: list[int] = [2, 2, 2, 2, 2, 2],
         block_type: str | list[str] = "ResBlock",
         norm: str | list[str] = "rms2d",
         act: str | list[str] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
+        upsample_match_channel: bool = True,
         upsample_shortcut: str = "duplicating",
-        out_norm: str = "rms2d",
-        out_act: str = "relu",
     ):
         super().__init__()
-        num_stages = len(width_list)
+        num_stages = len(block_out_channels)
         self.num_stages = num_stages
+        assert len(layers_per_block) == num_stages
+        assert len(block_out_channels) == num_stages
+        assert isinstance(block_type, str) or (
+            isinstance(block_type, list) and len(block_type) == num_stages
+        )
+        assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
+        assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
-        # validate config
-        if len(depth_list) != num_stages or len(width_list) != num_stages:
-            raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
-        if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
-            raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
-        if not isinstance(norm, (str, list)) or (isinstance(norm, list) and len(norm) != num_stages):
-            raise ValueError(f"norm should be either a str or a list of str with length {num_stages}, but got {norm}")
-        if not isinstance(act, (str, list)) or (isinstance(act, list) and len(act) != num_stages):
-            raise ValueError(f"act should be either a str or a list of str with length {num_stages}, but got {act}")
-
-        # project in
-        project_in_block = ConvLayer(
+        self.conv_in = ConvLayer(
             in_channels=latent_channels,
-            out_channels=width_list[-1],
+            out_channels=block_out_channels[-1],
             kernel_size=3,
             stride=1,
             use_bias=True,
             norm=None,
             act_func=None,
         )
-        if in_shortcut is None:
-            pass
-        elif in_shortcut == "duplicating":
-            shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
-                in_channels=latent_channels, out_channels=width_list[-1], factor=1
-            )
-            project_in_block = ResidualBlock(project_in_block, shortcut_block)
-        else:
-            raise ValueError(f"shortcut {in_shortcut} is not supported for decoder project in")
-        self.project_in = project_in_block
+        self.norm_in = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+            in_channels=latent_channels, out_channels=block_out_channels[-1], factor=1
+        )
 
-        # stages
-        self.stages: list[nn.Module] = []
-        for stage_id, (width, depth) in reversed(list(enumerate(zip(width_list, depth_list)))):
+        self.stages: list[OpSequential] = []
+        for stage_id, (width, depth) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
             stage = []
-            # upsample
             if stage_id < num_stages - 1 and depth > 0:
-                upsample_out_channels = width
-                if upsample_block_type == "ConvPixelShuffle":
-                    upsample_block = ConvPixelShuffleUpsample2D(
-                        in_channels=width_list[stage_id + 1], out_channels=upsample_out_channels, kernel_size=3, factor=2
-                    )
-                elif upsample_block_type == "InterpolateConv":
-                    upsample_block = Upsample2D(channels=width_list[stage_id + 1], use_conv=True, out_channels=upsample_out_channels)
-                else:
-                    raise ValueError(f"upsample_block_type {upsample_block_type} is not supported")
-                if upsample_shortcut is None:
-                    pass
-                elif upsample_shortcut == "duplicating":
-                    shortcut_block = ChannelDuplicatingPixelUnshuffleUpsample2D(
-                        in_channels=width_list[stage_id + 1], out_channels=upsample_out_channels, factor=2
-                    )
-                    upsample_block = ResidualBlock(upsample_block, shortcut_block)
-                else:
-                    raise ValueError(f"shortcut {upsample_shortcut} is not supported for upsample")
+                upsample_block = build_upsample_block(
+                    block_type=upsample_block_type,
+                    in_channels=block_out_channels[stage_id + 1],
+                    out_channels=width if upsample_match_channel else block_out_channels[stage_id + 1],
+                    shortcut=upsample_shortcut,
+                )
                 stage.append(upsample_block)
-            # stage main
+
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
             stage_norm = norm[stage_id] if isinstance(norm, list) else norm
             stage_act = act[stage_id] if isinstance(act, list) else act
-            for d in range(depth):
-                current_block_type = stage_block_type[d] if isinstance(stage_block_type, list) else stage_block_type
-                if current_block_type == "ResBlock":
-                    block = ResBlock(
-                        in_channels=width,
-                        out_channels=width,
-                        kernel_size=3,
-                        stride=1,
-                        use_bias=(True, False),
-                        norm=(None, stage_norm),
-                        act_func=(stage_act, None),
-                    )
-                elif current_block_type == "EViTGLU":
-                    block = EfficientViTBlock(width, norm=stage_norm, act_func=stage_act, local_module="GLUMBConv", scales=())
-                elif current_block_type == "EViTS5GLU":
-                    block = EfficientViTBlock(width, norm=stage_norm, act_func=stage_act, local_module="GLUMBConv", scales=(5,))
-                else:
-                    raise ValueError(f"block type {current_block_type} is not supported")
-                stage.append(block)
-
-            self.stages.insert(0, nn.Sequential(*stage))
-        self.stages = nn.ModuleList(self.stages)
-
-        # project out
-        project_out_layers: list[nn.Module] = []
-        if depth_list[0] > 0:
-            project_out_in_channels = width_list[0]
-        elif depth_list[1] > 0:
-            project_out_in_channels = width_list[1]
-        else:
-            raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
-        if out_norm is None:
-            pass
-        elif out_norm == "rms2d":
-            project_out_layers.append(RMSNorm2d(num_features=project_out_in_channels))
-        elif out_norm == "bn2d":
-            project_out_layers.append(BatchNorm2d(num_features=project_out_in_channels))
-        else:
-            raise ValueError(f"norm {out_norm} is not supported for decoder project out")
-        project_out_layers.append(get_activation(out_act))
-        if depth_list[0] > 0:
-            project_out_layers.append(
-                ConvLayer(
-                    in_channels=project_out_in_channels,
-                    out_channels=in_channels,
-                    kernel_size=3,
-                    stride=1,
-                    use_bias=True,
-                    norm=None,
-                    act_func=None,
+            stage.extend(
+                build_stage_main(
+                    width=width,
+                    depth=depth,
+                    block_type=stage_block_type,
+                    norm=stage_norm,
+                    act=stage_act,
+                    input_width=(
+                        width if upsample_match_channel else block_out_channels[min(stage_id + 1, num_stages - 1)]
+                    ),
                 )
             )
-        elif depth_list[1] > 0:
-            if upsample_block_type == "ConvPixelShuffle":
-                project_out_conv = ConvPixelShuffleUpsample2D(
-                    in_channels=project_out_in_channels, out_channels=in_channels, kernel_size=3, factor=2
-                )
-            elif upsample_block_type == "InterpolateConv":
-                project_out_conv = Upsample2D(channels=project_out_in_channels, use_conv=True, out_channels=in_channels)
-            else:
-                raise ValueError(f"upsample_block_type {upsample_block_type} is not supported for upsampling")
+            self.stages.insert(0, OpSequential(stage))
+        self.stages = nn.ModuleList(self.stages)
 
-            project_out_layers.append(project_out_conv)
+        factor  = 1 if layers_per_block[0] > 0 else 2
+
+        self.norm_out = RMSNormNd(block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+        self.conv_act = nn.ReLU()
+        self.conv_out = None
+
+        if factor == 1:
+            self.conv_out = ConvLayer(
+                in_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+                out_channels=in_channels,
+                kernel_size=3,
+                stride=1,
+                use_bias=True,
+                norm=None,
+                act_func=None,
+            )
         else:
-            raise ValueError(f"depth list {depth_list} is not supported for decoder project out")
-        self.project_out = nn.Sequential(*project_out_layers)
+            self.conv_out = build_upsample_block(
+                block_type=upsample_block_type, in_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], out_channels=in_channels, shortcut=None
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.project_in(x)
+        x = self.conv_in(x) + self.norm_in(x)
         for stage in reversed(self.stages):
-            if len(stage) == 0:
+            if len(stage.op_list) == 0:
                 continue
             x = stage(x)
-        x = self.project_out(x)
+        x = self.norm_out(x)
+        x = self.conv_act(x)
+        x = self.conv_out(x)
         return x
 
 
-class DCAE(ModelMixin, ConfigMixin):
+class AutoencoderDC(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
         in_channels: int = 3,
         latent_channels: int = 32,
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
+        decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
         encoder_block_type: str | list[str] = "ResBlock",
-        encoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
-        encoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
-        encoder_norm: str = "rms2d",
-        encoder_act: str = "silu",
         downsample_block_type: str = "ConvPixelUnshuffle",
         decoder_block_type: str | list[str] = "ResBlock",
-        decoder_width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
-        decoder_depth_list: list[int] = [2, 2, 2, 2, 2, 2],
         decoder_norm: str = "rms2d",
         decoder_act: str = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
         scaling_factor: Optional[float] = None,
+        **kwargs,
     ):
         super().__init__()
         self.encoder = Encoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
-            width_list=encoder_width_list,
-            depth_list=encoder_depth_list,
+            block_out_channels=block_out_channels,
+            layers_per_block=encoder_layers_per_block,
             block_type=encoder_block_type,
-            norm=encoder_norm,
-            act=encoder_act,
             downsample_block_type=downsample_block_type,
         )
         self.decoder = Decoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
-            width_list=decoder_width_list,
-            depth_list=decoder_depth_list,
+            block_out_channels=block_out_channels,
+            layers_per_block=decoder_layers_per_block,
             block_type=decoder_block_type,
             norm=decoder_norm,
             act=decoder_act,
@@ -627,14 +888,87 @@ class DCAE(ModelMixin, ConfigMixin):
         x = self.encoder(x)
         return x
 
-    def decode(self, x: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, x: torch.Tensor) -> torch.Tensor:
         x = self.decoder(x)
-        if not return_dict:
-            return x
-        else:
-            return DecoderOutput(sample=x)
+        return x
 
     def forward(self, x: torch.Tensor, global_step: int) -> torch.Tensor:
         x = self.encoder(x)
         x = self.decoder(x)
         return x, torch.tensor(0), {}
+
+
+def dc_ae_f32c32(name: str) -> dict:
+    if name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
+        cfg = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu"],
+        }
+    elif name in ["dc-ae-f32c32-sana-1.0"]:
+        cfg = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
+            "encoder_layers_per_block": [2, 2, 2, 3, 3, 3],
+            "downsample_block_type": "Conv",
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
+            "upsample_block_type": "InterpolateConv",
+            "scaling_factor": 0.41407,
+        }
+    else:
+        raise NotImplementedError
+    return cfg
+
+
+def dc_ae_f64c128(name: str,) -> dict:
+    if name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
+        cfg = {
+            "latent_channels": 128,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
+        }
+    else:
+        raise NotImplementedError
+    return cfg
+
+
+def dc_ae_f128c512(name: str,) -> dict:
+    if name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
+        cfg = {
+            "latent_channels": 512,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
+        }
+    else:
+        raise NotImplementedError
+    return cfg
+
+
+REGISTERED_DCAE_MODEL: dict[str, Callable] = {
+    "dc-ae-f32c32-in-1.0": dc_ae_f32c32,
+    "dc-ae-f64c128-in-1.0": dc_ae_f64c128,
+    "dc-ae-f128c512-in-1.0": dc_ae_f128c512,
+    #################################################################################################
+    "dc-ae-f32c32-mix-1.0": dc_ae_f32c32,
+    "dc-ae-f64c128-mix-1.0": dc_ae_f64c128,
+    "dc-ae-f128c512-mix-1.0": dc_ae_f128c512,
+    #################################################################################################
+    "dc-ae-f32c32-sana-1.0": dc_ae_f32c32,
+}
