@@ -146,11 +146,11 @@ class LTXPipeline(DiffusionPipeline):
     Reference: https://github.com/Lightricks/LTX-Video
 
     Args:
-        transformer ([`MochiTransformer3DModel`]):
+        transformer ([`LTXTransformer3DModel`]):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
+        vae ([`AutoencoderKLLTX`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
@@ -185,14 +185,14 @@ class LTXPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.vae_spatial_scale_factor = self.vae.spatial_compression_ratio if hasattr(self, "vae") else 32
-        self.vae_temporal_scale_factor = self.vae.temporal_compression_ratio if hasattr(self, "vae") else 8
+        self.vae_spatial_compression_ratio = self.vae.spatial_compression_ratio if hasattr(self, "vae") else 32
+        self.vae_temporal_compression_ratio = self.vae.temporal_compression_ratio if hasattr(self, "vae") else 8
         self.transformer_spatial_patch_size = self.transformer.config.patch_size if hasattr(self, "transformer") else 1
         self.transformer_temporal_patch_size = (
             self.transformer.config.patch_size_t if hasattr(self, "transformer") else 1
         )
 
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 128
         )
@@ -389,24 +389,25 @@ class LTXPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        num_frames,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        height = height // self.vae_spatial_scale_factor
-        width = width // self.vae_spatial_scale_factor
-        num_frames = (num_frames - 1) // self.vae_temporal_scale_factor + 1
+        batch_size: int = 1,
+        num_channels_latents: int = 128,
+        height: int = 512,
+        width: int = 704,
+        num_frames: int = 161,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
+        height = height // self.vae_spatial_compression_ratio
+        width = width // self.vae_spatial_compression_ratio
+        num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
 
         shape = (batch_size, num_channels_latents, num_frames, height, width)
 
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -545,7 +546,7 @@ class LTXPipeline(DiffusionPipeline):
 
         height = height or self.default_height
         width = width or self.default_width
-        latent_frame_rate = frame_rate // self.vae_temporal_scale_factor
+        latent_frame_rate = frame_rate // self.vae_temporal_compression_ratio
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -609,10 +610,13 @@ class LTXPipeline(DiffusionPipeline):
         )
 
         # 5. Prepare timesteps
+        latent_frames = latents.size(2)
+        latent_height = height // self.vae_spatial_compression_ratio
+        latent_width = width // self.vae_spatial_compression_ratio
+        video_sequence_length = latent_height * latent_width * latent_frames
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        image_seq_len = latents.size(1)
         mu = calculate_shift(
-            image_seq_len,
+            video_sequence_length,
             self.scheduler.config.base_image_seq_len,
             self.scheduler.config.max_image_seq_len,
             self.scheduler.config.base_shift,
@@ -632,8 +636,8 @@ class LTXPipeline(DiffusionPipeline):
         # 6. Prepare micro-conditions
         rope_interpolation_scale = (
             1 / latent_frame_rate,
-            self.vae_spatial_scale_factor,
-            self.vae_spatial_scale_factor,
+            self.vae_spatial_compression_ratio,
+            self.vae_spatial_compression_ratio,
         )
 
         # 7. Denoising loop

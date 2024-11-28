@@ -46,15 +46,6 @@ class LTXAttentionProcessor2_0:
                 "LTXAttentionProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
-    def _apply_rotary_emb(self, x: torch.Tensor, image_rotary_emb: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
-        cos, sin = image_rotary_emb
-
-        x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
-        x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-
-        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
-        return out
-
     def __call__(
         self,
         attn: Attention,
@@ -84,8 +75,18 @@ class LTXAttentionProcessor2_0:
         key = attn.norm_k(key)
 
         if image_rotary_emb is not None and apply_rotary_emb:
-            query = self._apply_rotary_emb(query, image_rotary_emb)
-            key = self._apply_rotary_emb(key, image_rotary_emb)
+
+            def apply_rotary_emb(x, freqs):
+                cos, sin = freqs
+
+                x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
+                x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
+
+                out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+                return out
+
+            query = self.apply_rotary_emb(query, image_rotary_emb)
+            key = self.apply_rotary_emb(key, image_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -103,7 +104,7 @@ class LTXAttentionProcessor2_0:
         return hidden_states
 
 
-class LTXRoPE(nn.Module):
+class LTXRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -335,7 +336,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.patchify_proj = nn.Linear(in_channels, inner_dim)
 
-        self.rope = LTXRoPE(
+        self.rope = LTXRotaryPosEmbed(
             dim=inner_dim,
             base_num_frames=20,
             base_height=2048,

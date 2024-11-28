@@ -604,9 +604,6 @@ class LayerNormNd(nn.LayerNorm):
 
         return hidden_states
 
-    def extra_repr(self) -> str:
-        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
-
 
 class RMSNormNd(RMSNorm):
     def __init__(
@@ -633,6 +630,3 @@ class RMSNormNd(RMSNorm):
             hidden_states = super().forward(hidden_states)
 
         return hidden_states
-
-    def extra_repr(self):
-        return f"{super().extra_repr()}, channel_dim={self.channel_dim}"
