@@ -14,11 +14,12 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import unittest
 from typing import List
 
 import numpy as np
-from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
@@ -32,8 +33,8 @@ from diffusers.utils.testing_utils import (
     is_torchao_available,
     require_torch,
     require_torch_gpu,
-    require_torch_multi_gpu,
     require_torchao_version_greater,
+    slow,
     torch_device,
 )
 
@@ -44,14 +45,6 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.dtypes.affine_quantized_tensor import TensorCoreTiledLayoutType
-
-
-def check_torchao_quantized(test_module, qlayer, batch_size=1, context_size=1024):
-    weight = qlayer.weight
-    test_module.assertTrue(isinstance(weight, AffineQuantizedTensor))
-    test_module.assertEqual(weight.quant_min, 0)
-    test_module.assertEqual(weight.quant_max, 15)
-    test_module.assertTrue(isinstance(weight.layout_type, TensorCoreTiledLayoutType))
 
 
 def check_forward(test_module, model, batch_size=1, context_size=1024):
@@ -65,7 +58,7 @@ def check_forward(test_module, model, batch_size=1, context_size=1024):
 @require_torch
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
-# @slow
+@slow
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
         """
@@ -99,7 +92,7 @@ class TorchAoConfigTest(unittest.TestCase):
 @require_torch
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
-# @slow
+@slow
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
@@ -107,51 +100,18 @@ class TorchAoTest(unittest.TestCase):
         gc.collect()
 
     def get_dummy_components(self, quantization_config: TorchAoConfig):
-        torch.manual_seed(0)
-        # TODO(aryan): push dummy model to hub
+        model_id = "hf-internal-testing/tiny-flux-pipe"
         transformer = FluxTransformer2DModel.from_pretrained(
-            "./dummy-flux",
+            model_id,
+            subfolder="transformer",
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
         )
-        clip_text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-            hidden_act="gelu",
-            projection_dim=32,
-        )
-
-        torch.manual_seed(0)
-        text_encoder = CLIPTextModel(clip_text_encoder_config)
-
-        torch.manual_seed(0)
-        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
-
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
-
-        torch.manual_seed(0)
-        vae = AutoencoderKL(
-            sample_size=32,
-            in_channels=3,
-            out_channels=3,
-            block_out_channels=(4,),
-            layers_per_block=1,
-            latent_channels=1,
-            norm_num_groups=1,
-            use_quant_conv=False,
-            use_post_quant_conv=False,
-            shift_factor=0.0609,
-            scaling_factor=1.5035,
-        )
-
+        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
+        text_encoder_2 = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
+        tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
+        tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
+        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -190,9 +150,10 @@ class TorchAoTest(unittest.TestCase):
         output = pipe(**inputs)[0]
         output_slice = output[-1, -1, -3:, -3:].flatten()
 
-        self.assertFalse(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_quantization(self):
+        # TODO(aryan): update these values from our CI
         QUANTIZATION_TYPES_TO_TEST = [
             ("int4wo", np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])),
             ("int4dq", np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])),
@@ -220,129 +181,82 @@ class TorchAoTest(unittest.TestCase):
             quantization_config = TorchAoConfig(quant_type=quantization_name)
             self._test_quant_type(quantization_config, expected_slice)
 
-    @unittest.skip("TODO(aryan): This test is not yet implemented.")
     def test_int4wo_quant_bfloat16_conversion(self):
-        pass
-        # """
-        # Testing the dtype of model will be modified to be bfloat16 for int4 weight only quantization
-        # """
-        # quant_config = TorchAoConfig("int4_weight_only", group_size=32)
+        """
+        Tests whether the dtype of model will be modified to bfloat16 for int4 weight-only quantization.
+        """
+        quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
 
-        # # Note: we quantize the bfloat16 model on the fly to int4
-        # quantized_model = AutoModelForCausalLM.from_pretrained(
-        #     self.model_name,
-        #     torch_dtype=None,
-        #     device_map=torch_device,
-        #     quantization_config=quant_config,
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        qlayer = quantized_model.transformer_blocks[0].attn.to_q
+        weight = qlayer.weight
+        self.assertTrue(isinstance(weight, AffineQuantizedTensor))
+        self.assertEqual(weight.quant_min, 0)
+        self.assertEqual(weight.quant_max, 15)
+        self.assertTrue(isinstance(weight.layout_type, TensorCoreTiledLayoutType))
 
-        # check_torchao_quantized(self, quantized_model.model.layers[0].self_attn.v_proj)
-
-        # input_ids = tokenizer(self.input_text, return_tensors="pt").to(torch_device)
-
-        # output = quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
-        # self.assertEqual(tokenizer.decode(output[0], skip_special_tokens=True), self.EXPECTED_OUTPUT)
-
-    @require_torch_multi_gpu
-    @unittest.skip("TODO(aryan): This test is not yet implemented.")
-    def test_int4wo_quant_multi_gpu(self):
-        pass
-        # """
-        # Simple test that checks if the quantized model int4 wieght only is working properly with multiple GPUs
-        # set CUDA_VISIBLE_DEVICES=0,1 if you have more than 2 GPUS
-        # """
-
-        # quant_config = TorchAoConfig("int4_weight_only", group_size=32)
-        # quantized_model = AutoModelForCausalLM.from_pretrained(
-        #     self.model_name,
-        #     torch_dtype=torch.bfloat16,
-        #     device_map="auto",
-        #     quantization_config=quant_config,
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-
-        # self.assertTrue(set(quantized_model.hf_device_map.values()) == {0, 1})
-
-        # input_ids = tokenizer(self.input_text, return_tensors="pt").to(torch_device)
-
-        # output = quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
-        # self.assertEqual(tokenizer.decode(output[0], skip_special_tokens=True), self.EXPECTED_OUTPUT)
-
-    @unittest.skip("TODO(aryan): This test is not yet implemented.")
     def test_int4wo_offload(self):
-        pass
-        # """
-        # Simple test that checks if the quantized model int4 wieght only is working properly with cpu/disk offload
-        # """
+        """
+        Test if the quantized model int4 weight-only is working properly with cpu/disk offload.
+        """
 
-        # device_map_offload = {
-        #     "model.embed_tokens": 0,
-        #     "model.layers.0": 0,
-        #     "model.layers.1": 0,
-        #     "model.layers.2": 0,
-        #     "model.layers.3": 0,
-        #     "model.layers.4": 0,
-        #     "model.layers.5": 0,
-        #     "model.layers.6": 0,
-        #     "model.layers.7": 0,
-        #     "model.layers.8": 0,
-        #     "model.layers.9": 0,
-        #     "model.layers.10": 0,
-        #     "model.layers.11": 0,
-        #     "model.layers.12": 0,
-        #     "model.layers.13": 0,
-        #     "model.layers.14": 0,
-        #     "model.layers.15": 0,
-        #     "model.layers.16": 0,
-        #     "model.layers.17": 0,
-        #     "model.layers.18": 0,
-        #     "model.layers.19": "cpu",
-        #     "model.layers.20": "cpu",
-        #     "model.layers.21": "disk",
-        #     "model.norm": 0,
-        #     "model.rotary_emb": 0,
-        #     "lm_head": 0,
-        # }
+        device_map_offload = {
+            "time_text_embed": torch_device,
+            "context_embedder": torch_device,
+            "x_embedder": torch_device,
+            "transformer_blocks.0": "cpu",
+            "single_transformer_blocks.0": "disk",
+            "norm_out": torch_device,
+            "proj_out": "cpu",
+        }
 
-        # quant_config = TorchAoConfig("int4_weight_only", group_size=32)
+        batch_size = 1
+        num_latent_channels = 4
+        num_image_channels = 3
+        height = width = 4
+        sequence_length = 48
+        embedding_dim = 32
 
-        # quantized_model = AutoModelForCausalLM.from_pretrained(
-        #     self.model_name,
-        #     torch_dtype=torch.bfloat16,
-        #     device_map=device_map_offload,
-        #     quantization_config=quant_config,
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(
+            torch_device, dtype=torch.bfloat16
+        )
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
+            torch_device, dtype=torch.bfloat16
+        )
+        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(torch_device, dtype=torch.bfloat16)
+        text_ids = torch.randn((sequence_length, num_image_channels)).to(torch_device, dtype=torch.bfloat16)
+        image_ids = torch.randn((height * width, num_image_channels)).to(torch_device, dtype=torch.bfloat16)
+        timestep = torch.tensor([1.0]).to(torch_device, dtype=torch.bfloat16).expand(batch_size)
 
-        # input_ids = tokenizer(self.input_text, return_tensors="pt").to(torch_device)
+        with tempfile.TemporaryDirectory() as offload_folder:
+            quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
+            quantized_model = FluxTransformer2DModel.from_pretrained(
+                "hf-internal-testing/tiny-flux-pipe",
+                subfolder="transformer",
+                quantization_config=quantization_config,
+                device_map=device_map_offload,
+                torch_dtype=torch.bfloat16,
+                offload_folder=offload_folder,
+            )
 
-        # output = quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
-        # EXPECTED_OUTPUT = "What are we having for dinner?\n- 2. What is the temperature outside"
+            output = quantized_model(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                img_ids=image_ids,
+                txt_ids=text_ids,
+                pooled_projections=pooled_prompt_embeds,
+                timestep=timestep,
+            )
 
-        # self.assertEqual(tokenizer.decode(output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
-
-    @unittest.skip("TODO(aryan): This test is not yet implemented.")
-    def test_int8_dynamic_activation_int8_weight_quant(self):
-        pass
-        # """
-        # Simple LLM model testing int8_dynamic_activation_int8_weight
-        # """
-        # quant_config = TorchAoConfig("int8_dynamic_activation_int8_weight")
-
-        # # Note: we quantize the bfloat16 model on the fly to int4
-        # quantized_model = AutoModelForCausalLM.from_pretrained(
-        #     self.model_name,
-        #     device_map=torch_device,
-        #     quantization_config=quant_config,
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-
-        # input_ids = tokenizer(self.input_text, return_tensors="pt").to(torch_device)
-
-        # output = quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
-        # EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-        # self.assertEqual(tokenizer.decode(output[0], skip_special_tokens=True), EXPECTED_OUTPUT)
+            output_slice = output.flatten()[-9:].detach().cpu().numpy()
+            # TODO(aryan): get slice from CI
+            expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+            self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
 
 # @require_torch_gpu
