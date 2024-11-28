@@ -953,6 +953,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -1461,6 +1462,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -2089,6 +2091,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -2533,6 +2536,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
