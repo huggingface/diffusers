@@ -18,8 +18,10 @@ models, which are popular for generating high-quality images but are notoriously
 While these models run well on high-end setups or in the cloud, lighter versions are essential for
 consumer-grade devices—and that's where quantization comes into play.
 
-In this guide, we'll explore different types of quantization, from 8-bit to NF4—using `bitsandbytes` [1],
-a powerful library that simplifies the quantization process. We'll work with the FLUX.1-dev [2] model,
+In this guide, we'll explore different types of quantization, from 8-bit to NF4—using
+[`bitsandbytes`](https://github.com/bitsandbytes-foundation/bitsandbytes),
+a powerful library that simplifies the quantization process. We'll work with the
+[FLUX.1-dev model]((https://huggingface.co/black-forest-labs/FLUX.1-dev)),
 demonstrating how quantization can help you run it on less than 16GB of VRAM—even on a free Google Colab instance.
 
 To follow along, first install the latest versions of `diffusers` and `bitsandbytes`:
@@ -456,11 +458,6 @@ savings.
 
 ## Training
 
-Diffusers also support training [LoRAs](./training/lora) with quantized weights. Refer to the [flux_lora_quantization.py](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/flux_lora_quantization) script for an example of how to fine-tune FLUX.1-dev with LoRA and bitsandbytes.
-
-
-## References
-
-- [1] [bitsandbytes GitHub Repository](https://github.com/bitsandbytes-foundation/bitsandbytes)
-- [2] [FLUX.1-dev Model on Hugging Face](https://huggingface.co/black-forest-labs/FLUX.1-dev)
-- [3] [Training LoRAs with Quantized Weights for FLUX.1-dev](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/flux_lora_quantization)
+Diffusers also support training [LoRAs](./training/lora) with quantized weights. Refer to the
+[flux_lora_quantization.py](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/flux_lora_quantization)
+script for an example of how to fine-tune FLUX.1-dev with LoRA and bitsandbytes.
