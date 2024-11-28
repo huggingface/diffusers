@@ -282,3 +282,28 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
 
         assert max_diff < 1e-3
+
+    def test_flux_xlabs_load_lora_with_single_blocks(self):
+        self.pipeline.load_lora_weights(
+            "salinasr/test_xlabs_flux_lora_with_singleblocks", weight_name="lora.safetensors"
+        )
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "a wizard mouse playing chess"
+
+        out = self.pipeline(
+            prompt,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=3.5,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+        out_slice = out[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array(
+            [0.04882812, 0.04101562, 0.04882812, 0.03710938, 0.02929688, 0.02734375, 0.0234375, 0.01757812, 0.0390625]
+        )
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3

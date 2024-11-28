@@ -26,7 +26,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, MultiControlNetModel, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -37,7 +37,6 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
-from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
