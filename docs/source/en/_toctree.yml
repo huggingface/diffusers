@@ -55,6 +55,8 @@
 - sections:
   - local: using-diffusers/overview_techniques
     title: Overview
+  - local: using-diffusers/create_a_server
+    title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
   - local: using-diffusers/merge_loras

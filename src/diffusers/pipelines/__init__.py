@@ -127,12 +127,17 @@ else:
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
     _import_structure["flux"] = [
+        "FluxControlPipeline",
+        "FluxControlImg2ImgPipeline",
         "FluxControlNetPipeline",
         "FluxControlNetImg2ImgPipeline",
         "FluxControlNetInpaintPipeline",
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
+        "FluxFillPipeline",
+        "FluxPriorReduxPipeline",
+        "ReduxImageEncoder",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -521,12 +526,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionPipeline,
         )
         from .flux import (
+            FluxControlImg2ImgPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
+            FluxControlPipeline,
+            FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
+            FluxPriorReduxPipeline,
+            ReduxImageEncoder,
         )
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
