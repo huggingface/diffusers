@@ -142,7 +142,7 @@ class Encoder(nn.Module):
 
         sample = self.conv_in(sample)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -291,7 +291,7 @@ class Decoder(nn.Module):
         sample = self.conv_in(sample)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -544,7 +544,7 @@ class MaskConditionDecoder(nn.Module):
         sample = self.conv_in(sample)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -876,7 +876,7 @@ class EncoderTiny(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         r"""The forward method of the `EncoderTiny` class."""
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -962,7 +962,7 @@ class DecoderTiny(nn.Module):
         # Clamp.
         x = torch.tanh(x / 3) * 3
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):

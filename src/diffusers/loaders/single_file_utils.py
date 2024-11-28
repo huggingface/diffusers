@@ -62,7 +62,14 @@ CHECKPOINT_KEY_NAMES = {
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
     "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
-    "controlnet": "control_model.time_embed.0.weight",
+    "controlnet": [
+        "control_model.time_embed.0.weight",
+        "controlnet_cond_embedding.conv_in.weight",
+    ],
+    # TODO: find non-Diffusers keys for controlnet_xl
+    "controlnet_xl": "add_embedding.linear_1.weight",
+    "controlnet_xl_large": "down_blocks.1.attentions.0.transformer_blocks.0.attn1.to_k.weight",
+    "controlnet_xl_mid": "down_blocks.1.attentions.0.norm.weight",
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
@@ -75,6 +82,7 @@ CHECKPOINT_KEY_NAMES = {
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
     "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    "sd35_large": "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
     "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.0.pos_encoder.pe",
     "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
@@ -95,6 +103,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "inpainting": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-inpainting"},
     "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
+    "controlnet_xl_large": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0"},
+    "controlnet_xl_mid": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-mid"},
+    "controlnet_xl_small": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-small"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
     "v1": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5"},
     "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
@@ -112,6 +123,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     },
     "sd3": {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3-medium-diffusers",
+    },
+    "sd35_large": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large",
     },
     "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
     "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
@@ -477,8 +491,16 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
         model_type = "upscale"
 
-    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_type = "controlnet"
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["controlnet"]):
+        if CHECKPOINT_KEY_NAMES["controlnet_xl"] in checkpoint:
+            if CHECKPOINT_KEY_NAMES["controlnet_xl_large"] in checkpoint:
+                model_type = "controlnet_xl_large"
+            elif CHECKPOINT_KEY_NAMES["controlnet_xl_mid"] in checkpoint:
+                model_type = "controlnet_xl_mid"
+            else:
+                model_type = "controlnet_xl_small"
+        else:
+            model_type = "controlnet"
 
     elif (
         CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
@@ -504,8 +526,11 @@ def infer_diffusers_model_type(checkpoint):
     ):
         model_type = "stable_cascade_stage_b"
 
-    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint:
+    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["sd3"]].shape[-1] == 9216:
         model_type = "sd3"
+
+    elif CHECKPOINT_KEY_NAMES["sd35_large"] in checkpoint:
+        model_type = "sd35_large"
 
     elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
         if CHECKPOINT_KEY_NAMES["animatediff_scribble"] in checkpoint:
@@ -1065,6 +1090,9 @@ def convert_controlnet_checkpoint(
     config,
     **kwargs,
 ):
+    # Return checkpoint if it's already been converted
+    if "time_embedding.linear_1.weight" in checkpoint:
+        return checkpoint
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
     if "time_embed.0.weight" in checkpoint:
@@ -1670,6 +1698,22 @@ def swap_scale_shift(weight, dim):
     return new_weight
 
 
+def get_attn2_layers(state_dict):
+    attn2_layers = []
+    for key in state_dict.keys():
+        if "attn2." in key:
+            # Extract the layer number from the key
+            layer_num = int(key.split(".")[1])
+            attn2_layers.append(layer_num)
+
+    return tuple(sorted(set(attn2_layers)))
+
+
+def get_caption_projection_dim(state_dict):
+    caption_projection_dim = state_dict["context_embedder.weight"].shape[0]
+    return caption_projection_dim
+
+
 def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
@@ -1678,7 +1722,10 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             checkpoint[k.replace("model.diffusion_model.", "")] = checkpoint.pop(k)
 
     num_layers = list(set(int(k.split(".", 2)[1]) for k in checkpoint if "joint_blocks" in k))[-1] + 1  # noqa: C401
-    caption_projection_dim = 1536
+    dual_attention_layers = get_attn2_layers(checkpoint)
+
+    caption_projection_dim = get_caption_projection_dim(checkpoint)
+    has_qk_norm = any("ln_q" in key for key in checkpoint.keys())
 
     # Positional and patch embeddings.
     converted_state_dict["pos_embed.pos_embed"] = checkpoint.pop("pos_embed")
@@ -1735,6 +1782,21 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.weight"] = torch.cat([context_v])
         converted_state_dict[f"transformer_blocks.{i}.attn.add_v_proj.bias"] = torch.cat([context_v_bias])
 
+        # qk norm
+        if has_qk_norm:
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_q.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_k.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn.ln_k.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_q.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_q.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn.norm_added_k.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.context_block.attn.ln_k.weight"
+            )
+
         # output projections.
         converted_state_dict[f"transformer_blocks.{i}.attn.to_out.0.weight"] = checkpoint.pop(
             f"joint_blocks.{i}.x_block.attn.proj.weight"
@@ -1748,6 +1810,38 @@ def convert_sd3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             )
             converted_state_dict[f"transformer_blocks.{i}.attn.to_add_out.bias"] = checkpoint.pop(
                 f"joint_blocks.{i}.context_block.attn.proj.bias"
+            )
+
+        if i in dual_attention_layers:
+            # Q, K, V
+            sample_q2, sample_k2, sample_v2 = torch.chunk(
+                checkpoint.pop(f"joint_blocks.{i}.x_block.attn2.qkv.weight"), 3, dim=0
+            )
+            sample_q2_bias, sample_k2_bias, sample_v2_bias = torch.chunk(
+                checkpoint.pop(f"joint_blocks.{i}.x_block.attn2.qkv.bias"), 3, dim=0
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.weight"] = torch.cat([sample_q2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_q.bias"] = torch.cat([sample_q2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.weight"] = torch.cat([sample_k2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_k.bias"] = torch.cat([sample_k2_bias])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.weight"] = torch.cat([sample_v2])
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_v.bias"] = torch.cat([sample_v2_bias])
+
+            # qk norm
+            if has_qk_norm:
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_q.weight"] = checkpoint.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_q.weight"
+                )
+                converted_state_dict[f"transformer_blocks.{i}.attn2.norm_k.weight"] = checkpoint.pop(
+                    f"joint_blocks.{i}.x_block.attn2.ln_k.weight"
+                )
+
+            # output projections.
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.weight"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.weight"
+            )
+            converted_state_dict[f"transformer_blocks.{i}.attn2.to_out.0.bias"] = checkpoint.pop(
+                f"joint_blocks.{i}.x_block.attn2.proj.bias"
             )
 
         # norms.

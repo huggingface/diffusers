@@ -469,7 +469,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
 
         # MMDiT blocks.
         for index_block, block in enumerate(self.joint_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -500,7 +500,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin):
             combined_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
             for index_block, block in enumerate(self.single_transformer_blocks):
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                     def create_custom_forward(module, return_dict=None):
                         def custom_forward(*inputs):

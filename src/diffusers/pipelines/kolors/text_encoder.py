@@ -590,7 +590,7 @@ class GLMTransformer(torch.nn.Module):
         if not kv_caches:
             kv_caches = [None for _ in range(self.num_layers)]
         presents = () if use_cache else None
-        if self.gradient_checkpointing and self.training:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
             if use_cache:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
@@ -604,7 +604,7 @@ class GLMTransformer(torch.nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer = self._get_layer(index)
-            if self.gradient_checkpointing and self.training:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 layer_ret = torch.utils.checkpoint.checkpoint(
                     layer, hidden_states, attention_mask, rotary_pos_emb, kv_caches[index], use_cache
                 )
