@@ -193,7 +193,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
-        dduf_format: bool = False,
         dduf_filename: Optional[Union[str, os.PathLike]] = None,
         **kwargs,
     ):
@@ -228,9 +227,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model_index_dict.pop("_diffusers_version", None)
         model_index_dict.pop("_module", None)
         model_index_dict.pop("_name_or_path", None)
-
-        if dduf_format and dduf_filename is None:
-            raise RuntimeError("You need set dduf_filename if you want to save your model in DDUF format.")
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
@@ -306,9 +302,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-            if dduf_format:
+            if dduf_filename:
                 import shutil
-                import tarfile
+                import zipfile
+
+                def zipdir(dir_to_archive, zipf):
+                    "zip a directory"
+                    for root, dirs, files in os.walk(dir_to_archive):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.join(
+                                os.path.basename(dir_to_archive), os.path.relpath(file_path, start=dir_to_archive)
+                            )
+                            zipf.write(file_path, arcname=arcname)
 
                 dduf_file_path = os.path.join(save_directory, dduf_filename)
 
@@ -320,22 +326,29 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if (
                     os.path.exists(dduf_file_path)
                     and os.path.isfile(dduf_file_path)
-                    and tarfile.is_tarfile(dduf_file_path)
+                    and zipfile.is_zipfile(dduf_file_path)
                 ):
                     # Open in append mode if the file exists
                     mode = "a"
                 else:
                     # Open in write mode to create it if it doesn't exist
-                    mode = "w:"
-                with tarfile.open(dduf_file_path, mode) as tar:
+                    mode = "w"
+                with zipfile.ZipFile(dduf_file_path, mode=mode, compression=zipfile.ZIP_STORED) as zipf:
                     dir_to_archive = os.path.join(save_directory, pipeline_component_name)
                     if os.path.isdir(dir_to_archive):
-                        tar.add(dir_to_archive, arcname=os.path.basename(dir_to_archive))
-                        # remove from save_directory after we added it to the archive
+                        zipdir(dir_to_archive, zipf)
                         shutil.rmtree(dir_to_archive)
 
         # finally save the config
         self.save_config(save_directory)
+
+        if dduf_filename:
+            import zipfile
+
+            with zipfile.ZipFile(dduf_file_path, mode="a", compression=zipfile.ZIP_STORED) as zipf:
+                config_path = os.path.join(save_directory, self.config_name)
+                zipf.write(config_path, arcname=os.path.basename(config_path))
+                os.remove(config_path)
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
@@ -652,7 +665,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             variant (`str`, *optional*):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
-            dduf(`str`, *optional*):
+            dduf (`str`, *optional*):
                 Load weights from the specified dduf archive or folder.
 
         <Tip>
@@ -796,29 +809,29 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             logger.warning(warn_msg)
 
+        if dduf:
+            import zipfile
+
+            zip_file_path = os.path.join(cached_folder, dduf)
+            extract_to = os.path.join(cached_folder, f"{dduf}_extracted")
+            # if zip file, we need to extract the zipfile and remove it
+            if os.path.isfile(zip_file_path):
+                if zipfile.is_zipfile(zip_file_path):
+                    with zipfile.ZipFile(zip_file_path, "r") as zipf:
+                        zipf.extractall(extract_to)
+                    # remove zip archive to free memory
+                    os.remove(zip_file_path)
+                    # rename folder to match the name of the dduf archive
+                    os.rename(extract_to, zip_file_path)
+                else:
+                    raise RuntimeError("The dduf path passed is not a zip archive")
+            # udapte cached folder location as the dduf content is in a seperate folder
+            cached_folder = zip_file_path
+
         config_dict = cls.load_config(cached_folder)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
-
-        if dduf:
-            import tarfile
-
-            tar_file_path = os.path.join(cached_folder, dduf)
-            extract_to = os.path.join(cached_folder, f"{dduf}_extracted")
-            # if tar file, we need to extract the tarfile and remove it
-            if os.path.isfile(tar_file_path):
-                if tarfile.is_tarfile(tar_file_path):
-                    with tarfile.open(tar_file_path, "r") as tar:
-                        tar.extractall(extract_to)
-                    # remove tar archive to free memory
-                    os.remove(tar_file_path)
-                    # rename folder to match the name of the dduf archive
-                    os.rename(extract_to, tar_file_path)
-                else:
-                    raise RuntimeError("The dduf path passed is not a tar archive")
-            # udapte cached folder location as the dduf content is in a seperate folder
-            cached_folder = tar_file_path
 
         # 2. Define which model components should load variants
         # We retrieve the information by matching whether variant model checkpoints exist in the subfolders.
