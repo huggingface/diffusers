@@ -632,6 +632,8 @@ class LTXPipeline(DiffusionPipeline):
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
+        print(self.scheduler.sigmas)
+        print(len(self.scheduler.sigmas))
 
         # 6. Prepare micro-conditions
         rope_interpolation_scale = (

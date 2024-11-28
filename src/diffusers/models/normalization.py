@@ -572,7 +572,7 @@ class LpNorm(nn.Module):
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
 
 
-class LayerNormNd(nn.LayerNorm):
+class LayerNormNd(nn.Module):
     def __init__(
         self,
         normalized_shape: Union[int, List[int], Tuple[int], torch.Size],
@@ -583,29 +583,23 @@ class LayerNormNd(nn.LayerNorm):
         dtype=None,
         channel_dim: int = -1,
     ) -> None:
-        super().__init__(
-            normalized_shape=normalized_shape,
-            eps=eps,
-            elementwise_affine=elementwise_affine,
-            bias=bias,
-            device=device,
-            dtype=dtype,
-        )
+        super().__init__()
 
+        self.norm = nn.LayerNorm(normalized_shape, eps, elementwise_affine, bias, device, dtype)
         self.channel_dim = channel_dim
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.channel_dim != -1:
             hidden_states = hidden_states.movedim(self.channel_dim, -1)
-            hidden_states = super().forward(hidden_states)
+            hidden_states = self.norm(hidden_states)
             hidden_states = hidden_states.movedim(-1, self.channel_dim)
         else:
-            hidden_states = super().forward(hidden_states)
+            hidden_states = self.norm(hidden_states)
 
         return hidden_states
 
 
-class RMSNormNd(RMSNorm):
+class RMSNormNd(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -613,20 +607,17 @@ class RMSNormNd(RMSNorm):
         elementwise_affine: bool = True,
         channel_dim: int = -1,
     ) -> None:
-        super().__init__(
-            dim=dim,
-            eps=eps,
-            elementwise_affine=elementwise_affine,
-        )
+        super().__init__()
 
+        self.norm = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
         self.channel_dim = channel_dim
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.channel_dim != -1:
             hidden_states = hidden_states.movedim(self.channel_dim, -1)
-            hidden_states = super().forward(hidden_states)
+            hidden_states = self.norm(hidden_states)
             hidden_states = hidden_states.movedim(-1, self.channel_dim)
         else:
-            hidden_states = super().forward(hidden_states)
+            hidden_states = self.norm(hidden_states)
 
         return hidden_states

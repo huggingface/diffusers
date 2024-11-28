@@ -8,7 +8,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXTransformer3DModel
 
 
-def remove_keys_inplace(key: str, state_dict: Dict[str, Any]):
+def remove_keys_(key: str, state_dict: Dict[str, Any]):
     state_dict.pop(key)
 
 
@@ -47,15 +47,14 @@ VAE_KEYS_RENAME_DICT = {
     # common
     "conv_shortcut": "conv_shortcut.conv",
     "res_blocks": "resnets",
-    "norm3.norm": "norm3",
     "per_channel_statistics.mean-of-means": "latents_mean",
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
 VAE_SPECIAL_KEYS_REMAP = {
-    "per_channel_statistics.channel": remove_keys_inplace,
-    "per_channel_statistics.mean-of-means": remove_keys_inplace,
-    "per_channel_statistics.mean-of-stds": remove_keys_inplace,
+    "per_channel_statistics.channel": remove_keys_,
+    "per_channel_statistics.mean-of-means": remove_keys_,
+    "per_channel_statistics.mean-of-stds": remove_keys_,
 }
 
 

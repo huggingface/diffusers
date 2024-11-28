@@ -62,10 +62,10 @@ class LTXAttentionProcessor2_0:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        apply_rotary_emb = False
+        use_rotary_emb = False
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-            apply_rotary_emb = True
+            use_rotary_emb = True
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -74,19 +74,9 @@ class LTXAttentionProcessor2_0:
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        if image_rotary_emb is not None and apply_rotary_emb:
-
-            def apply_rotary_emb(x, freqs):
-                cos, sin = freqs
-
-                x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
-                x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-
-                out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
-                return out
-
-            query = self.apply_rotary_emb(query, image_rotary_emb)
-            key = self.apply_rotary_emb(key, image_rotary_emb)
+        if image_rotary_emb is not None and use_rotary_emb:
+            query = apply_rotary_emb(query, image_rotary_emb)
+            key = apply_rotary_emb(key, image_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -367,7 +357,6 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels)
 
-        # TODO(aryan): create a layer for this
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
@@ -467,3 +456,13 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
+
+
+def apply_rotary_emb(x, freqs):
+    cos, sin = freqs
+
+    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
+    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
+
+    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    return out
