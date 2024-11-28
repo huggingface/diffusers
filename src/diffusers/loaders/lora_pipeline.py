@@ -410,6 +410,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
                 if "use_dora" in lora_config_kwargs:
                     if lora_config_kwargs["use_dora"]:
                         if is_peft_version("<", "0.9.0"):
@@ -419,6 +420,17 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                     else:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -950,6 +962,17 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                     else:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -1447,6 +1470,17 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                     else:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -2064,6 +2098,17 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     else:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -2497,6 +2542,17 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                     else:
                         if is_peft_version("<", "0.9.0"):
                             lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
