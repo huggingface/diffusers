@@ -21,7 +21,14 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from ...image_processor import PipelineImageInput
 from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel, UNetMotionModel
+from ...models import (
+    AutoencoderKL,
+    ControlNetModel,
+    ImageProjection,
+    MultiControlNetModel,
+    UNet2DConditionModel,
+    UNetMotionModel,
+)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
 from ...schedulers import (
@@ -35,7 +42,6 @@ from ...schedulers import (
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
-from ..controlnet.multicontrolnet import MultiControlNetModel
 from ..free_init_utils import FreeInitMixin
 from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin

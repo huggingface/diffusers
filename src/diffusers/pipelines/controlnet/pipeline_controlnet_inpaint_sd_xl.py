@@ -35,7 +35,7 @@ from ...loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, MultiControlNetModel, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
@@ -54,7 +54,6 @@ from ...utils import (
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-from .multicontrolnet import MultiControlNetModel
 
 
 if is_invisible_watermark_available():
