@@ -36,6 +36,7 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_unet_state_dict_to_peft,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
@@ -208,6 +209,10 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+
+        if is_lora:
+            deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
+            deprecate("load_attn_procs", "0.40.0", deprecation_message)
 
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
@@ -765,6 +770,7 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import (
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
+            IPAdapterXFormersAttnProcessor,
         )
 
         if low_cpu_mem_usage:
@@ -804,11 +810,15 @@ class UNet2DConditionLoadersMixin:
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
-
             else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
+                if "XFormers" in str(self.attn_processors[name].__class__):
+                    attn_processor_class = IPAdapterXFormersAttnProcessor
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:

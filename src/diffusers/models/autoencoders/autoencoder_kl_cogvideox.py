@@ -420,7 +420,7 @@ class CogVideoXDownBlock3D(nn.Module):
         for i, resnet in enumerate(self.resnets):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -522,7 +522,7 @@ class CogVideoXMidBlock3D(nn.Module):
         for i, resnet in enumerate(self.resnets):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -636,7 +636,7 @@ class CogVideoXUpBlock3D(nn.Module):
         for i, resnet in enumerate(self.resnets):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -773,7 +773,7 @@ class CogVideoXEncoder3D(nn.Module):
 
         hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -939,7 +939,7 @@ class CogVideoXDecoder3D(nn.Module):
 
         hidden_states, new_conv_cache["conv_in"] = self.conv_in(sample, conv_cache=conv_cache.get("conv_in"))
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -1057,6 +1057,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         force_upcast: float = True,
         use_quant_conv: bool = False,
         use_post_quant_conv: bool = False,
+        invert_scale_latents: bool = False,
     ):
         super().__init__()
 

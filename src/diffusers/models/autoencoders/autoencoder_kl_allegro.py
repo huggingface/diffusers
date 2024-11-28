@@ -506,7 +506,7 @@ class AllegroEncoder3D(nn.Module):
         sample = self.temp_conv_in(sample)
         sample = sample + residual
 
-        if self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -646,7 +646,7 @@ class AllegroDecoder3D(nn.Module):
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
 
-        if self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
