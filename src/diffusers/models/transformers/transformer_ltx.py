@@ -324,8 +324,13 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         out_channels = out_channels or in_channels
         inner_dim = num_attention_heads * attention_head_dim
 
-        self.patchify_proj = nn.Linear(in_channels, inner_dim)
+        self.proj_in = nn.Linear(in_channels, inner_dim)
 
+        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+        self.time_embed = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
+
+        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
+        
         self.rope = LTXRotaryPosEmbed(
             dim=inner_dim,
             base_num_frames=20,
@@ -356,11 +361,6 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.norm_out = nn.LayerNorm(inner_dim, eps=1e-6, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels)
-
-        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-        self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
-
-        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         self.gradient_checkpointing = False
 
@@ -396,9 +396,9 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
             batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
         )
         hidden_states = hidden_states.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
-        hidden_states = self.patchify_proj(hidden_states)
+        hidden_states = self.proj_in(hidden_states)
 
-        temb, embedded_timestep = self.adaln_single(
+        temb, embedded_timestep = self.time_embed(
             timestep.flatten(),
             batch_size=batch_size,
             hidden_dtype=hidden_states.dtype,

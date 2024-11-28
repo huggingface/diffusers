@@ -15,6 +15,8 @@ def remove_keys_(key: str, state_dict: Dict[str, Any]):
 TOKENIZER_MAX_LENGTH = 128
 
 TRANSFORMER_KEYS_RENAME_DICT = {
+    "patchify_proj": "proj_in",
+    "adaln_single": "time_embed",
     "q_norm": "norm_q",
     "k_norm": "norm_k",
 }
