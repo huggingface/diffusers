@@ -1089,7 +1089,7 @@ class JointAttnProcessor2_0:
     ) -> torch.FloatTensor:
         residual = hidden_states
 
-        batch_size = hidden_states.shape[0]
+        batch_size, sequence_length, _ = hidden_states.shape
 
         # `sample` projections.
         query = attn.to_q(hidden_states)
@@ -1129,11 +1129,27 @@ class JointAttnProcessor2_0:
             if attn.norm_added_k is not None:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
+            query_pad_size = query.size(2)
+            key_pad_size = key.size(2)
+
             query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
             key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
             value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+            if attention_mask is not None:
+                padding_shape = (attention_mask.shape[0], query_pad_size)
+                padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+                query_attention_mask = torch.cat([padding, attention_mask], dim=2).unsqueeze(2)  # N, Iq + Tq, 1
+
+                padding_shape = (attention_mask.shape[0], key_pad_size)
+                padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+                key_attention_mask = torch.cat([padding, attention_mask], dim=2).unsqueeze(1)  # N, 1, Ik + Tk
+
+                attention_mask = torch.bmm(query_attention_mask, key_attention_mask)
+
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -1896,10 +1912,24 @@ class FluxAttnProcessor2_0:
             if attn.norm_added_k is not None:
                 encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
 
+            query_pad_size = query.size(2)
+            key_pad_size = key.size(2)
+
             # attention
             query = torch.cat([encoder_hidden_states_query_proj, query], dim=2)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
             value = torch.cat([encoder_hidden_states_value_proj, value], dim=2)
+
+            if attention_mask is not None:
+                padding_shape = (attention_mask.shape[0], query_pad_size)
+                padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+                query_attention_mask = torch.cat([padding, attention_mask], dim=2).unsqueeze(2)  # N, Iq + Tq, 1
+
+                padding_shape = (attention_mask.shape[0], key_pad_size)
+                padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+                key_attention_mask = torch.cat([padding, attention_mask], dim=2).unsqueeze(1)  # N, 1, Ik + Tk
+
+                attention_mask = torch.bmm(query_attention_mask, key_attention_mask)
 
         if image_rotary_emb is not None:
             from .embeddings import apply_rotary_emb
@@ -1907,7 +1937,9 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, dropout_p=0.0, is_causal=False, attention_mask=attention_mask
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
