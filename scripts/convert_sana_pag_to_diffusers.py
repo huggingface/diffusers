@@ -7,6 +7,9 @@ from contextlib import nullcontext
 
 import torch
 from accelerate import init_empty_weights
+from termcolor import colored
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from diffusers import (
     DCAE,
     DPMSolverMultistepScheduler,
@@ -16,8 +19,7 @@ from diffusers import (
 )
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
-from termcolor import colored
-from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
@@ -203,7 +205,7 @@ def main(args):
         # Scheduler
         if args.scheduler_type == "flow-dpm_solver":
             scheduler = DPMSolverMultistepScheduler(
-                flow_shift=flow_shift, 
+                flow_shift=flow_shift,
                 use_flow_sigmas=True,
                 prediction_type="flow_prediction",
             )
