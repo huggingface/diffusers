@@ -13,6 +13,7 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     slow,
+    torch_device,
 )
 
 from .single_file_testing_utils import (

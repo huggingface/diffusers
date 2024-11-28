@@ -49,7 +49,7 @@ class ControlNetModelSingleFileTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
         backend_empty_cache(torch_device)
-        
+
     def test_single_file_components(self):
         model = self.model_class.from_pretrained(self.repo_id)
         model_single_file = self.model_class.from_single_file(self.ckpt_path)
