@@ -525,7 +525,7 @@ class RMSNorm(nn.Module):
 
         self.weight = None
         self.bias = None
-        
+
         if elementwise_affine:
             self.weight = nn.Parameter(torch.ones(dim))
             if bias:

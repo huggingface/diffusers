@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Tuple, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -34,7 +34,7 @@ def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
     return tuple(x)
 
 
-def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> Optional[nn.Module]:
+def build_norm(name: Optional[str] = "bn2d", num_features: Optional[int] = None) -> Optional[nn.Module]:
     if name is None:
         norm = None
     elif name == "rms2d":
@@ -481,7 +481,7 @@ def build_stage_main(
 
         in_channels = width if d > 0 else input_width
         out_channels = width
-        
+
         if current_block_type == "ResBlock":
             assert in_channels == out_channels
             block = ResBlock(
@@ -501,7 +501,7 @@ def build_stage_main(
             block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
         else:
             raise ValueError(f"block_type {current_block_type} is not supported")
-        
+
         stage.append(block)
     return stage
 
@@ -543,7 +543,7 @@ class DCDownBlock2d(nn.Module):
         shortcut: bool = True,
     ) -> None:
         super().__init__()
-        
+
         self.downsample = downsample
         self.factor = 2
         self.stride = 1 if downsample else 2
@@ -552,7 +552,7 @@ class DCDownBlock2d(nn.Module):
         if downsample:
             assert out_channels % out_ratio == 0
             out_channels = out_channels // out_ratio
-        
+
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
@@ -560,13 +560,13 @@ class DCDownBlock2d(nn.Module):
             stride=self.stride,
             padding=kernel_size // 2,
         )
-        
+
         self.shortcut = None
         if shortcut:
             self.shortcut = DownsamplePixelUnshuffleChannelAveraging(
                 in_channels=in_channels, out_channels=out_channels, factor=2
             )
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         x = self.conv(hidden_states)
         if self.downsample:
@@ -594,8 +594,8 @@ class DCUpBlock2d(nn.Module):
         self.interpolation_mode = interpolation_mode
         self.factor = 2
         self.stride = 1
-        
-        out_ratio = self.factor ** 2
+
+        out_ratio = self.factor**2
         if not interpolate:
             out_channels = out_channels * out_ratio
 
@@ -612,7 +612,7 @@ class DCUpBlock2d(nn.Module):
             self.shortcut = UpsampleChannelDuplicatingPixelUnshuffle(
                 in_channels=in_channels, out_channels=out_channels, factor=2
             )
-    
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.interpolate:
             x = F.interpolate(hidden_states, scale_factor=self.factor, mode=self.interpolation_mode)
@@ -620,12 +620,12 @@ class DCUpBlock2d(nn.Module):
         else:
             x = self.conv(hidden_states)
             x = F.pixel_shuffle(x, self.factor)
-        
+
         if self.shortcut is not None:
             hidden_states = x + self.shortcut(hidden_states)
         else:
             hidden_states = x
-        
+
         return hidden_states
 
 
@@ -644,9 +644,7 @@ class Encoder(nn.Module):
         self.num_stages = num_stages
         assert len(layers_per_block) == num_stages
         assert len(block_out_channels) == num_stages
-        assert isinstance(block_type, str) or (
-            isinstance(block_type, list) and len(block_type) == num_stages
-        )
+        assert isinstance(block_type, str) or (isinstance(block_type, list) and len(block_type) == num_stages)
 
         factor = 1 if layers_per_block[0] > 0 else 2
 
@@ -722,19 +720,11 @@ class Decoder(nn.Module):
         self.num_stages = num_stages
         assert len(layers_per_block) == num_stages
         assert len(block_out_channels) == num_stages
-        assert isinstance(block_type, str) or (
-            isinstance(block_type, list) and len(block_type) == num_stages
-        )
+        assert isinstance(block_type, str) or (isinstance(block_type, list) and len(block_type) == num_stages)
         assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
         assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
-        self.conv_in = nn.Conv2d(
-            latent_channels,
-            block_out_channels[-1],
-            kernel_size=3,
-            stride=1,
-            padding=1
-        )
+        self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
         self.norm_in = UpsampleChannelDuplicatingPixelUnshuffle(
             in_channels=latent_channels, out_channels=block_out_channels[-1], factor=1
         )
@@ -767,9 +757,15 @@ class Decoder(nn.Module):
             stages.insert(0, nn.Sequential(*current_stage))
         self.stages = nn.ModuleList(stages)
 
-        factor  = 1 if layers_per_block[0] > 0 else 2
+        factor = 1 if layers_per_block[0] > 0 else 2
 
-        self.norm_out = RMSNormNd(block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+        self.norm_out = RMSNormNd(
+            block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+            eps=1e-5,
+            elementwise_affine=True,
+            bias=True,
+            channel_dim=1,
+        )
         self.conv_act = nn.ReLU()
         self.conv_out = None
 
@@ -884,7 +880,9 @@ def dc_ae_f32c32(name: str) -> dict:
     return cfg
 
 
-def dc_ae_f64c128(name: str,) -> dict:
+def dc_ae_f64c128(
+    name: str,
+) -> dict:
     if name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
         cfg = {
             "latent_channels": 128,
@@ -901,14 +899,34 @@ def dc_ae_f64c128(name: str,) -> dict:
     return cfg
 
 
-def dc_ae_f128c512(name: str,) -> dict:
+def dc_ae_f128c512(
+    name: str,
+) -> dict:
     if name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
         cfg = {
             "latent_channels": 512,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "encoder_block_type": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+            ],
             "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
             "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_block_type": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+            ],
             "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
             "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
             "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],

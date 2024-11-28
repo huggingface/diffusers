@@ -3,7 +3,6 @@ from typing import Any, Dict
 
 import torch
 from safetensors.torch import load_file
-from transformers import T5EncoderModel, T5Tokenizer
 
 from diffusers import AutoencoderDC
 
