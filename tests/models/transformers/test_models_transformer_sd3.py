@@ -147,3 +147,23 @@ class SD35TransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SD3Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    def test_skip_layers(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Forward pass without skipping layers
+        output_full = model(**inputs_dict).sample
+
+        # Forward pass with skipping layers 0 (since there's only one layer in this test setup)
+        inputs_dict_with_skip = inputs_dict.copy()
+        inputs_dict_with_skip["skip_layers"] = [0]
+        output_skip = model(**inputs_dict_with_skip).sample
+
+        # Check that the outputs are different
+        self.assertFalse(
+            torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        # Check that the outputs have the same shape
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")

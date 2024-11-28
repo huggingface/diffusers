@@ -8,7 +8,7 @@ from diffusers.utils import BaseOutput
 @dataclass
 class MochiPipelineOutput(BaseOutput):
     r"""
-    Output class for CogVideo pipelines.
+    Output class for Mochi pipelines.
 
     Args:
         frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
