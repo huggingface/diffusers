@@ -20,14 +20,15 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 VAE_KEYS_RENAME_DICT = {
     # common
+    "op_list.": "",
     "norm.": "norm.norm.",
     # encoder
-    "encoder.project_in": "encoder.conv_in",
-    "encoder.project_out.main.op_list.0": "encoder.conv_out",
+    "encoder.project_in.conv": "encoder.conv_in",
+    "encoder.project_out.main.0.conv": "encoder.conv_out",
     # decoder
-    "decoder.project_in.main": "decoder.conv_in",
-    "decoder.project_out.op_list.0": "decoder.norm_out.norm",
-    "decoder.project_out.op_list.2": "decoder.conv_out",
+    "decoder.project_in.main.conv": "decoder.conv_in",
+    "decoder.project_out.0": "decoder.norm_out.norm",
+    "decoder.project_out.2.conv": "decoder.conv_out",
 }
 
 VAE_SPECIAL_KEYS_REMAP = {}

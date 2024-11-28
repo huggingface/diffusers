@@ -46,7 +46,7 @@ def build_norm(name: Optional[str]="bn2d", num_features: Optional[int]=None) -> 
     return norm
 
 
-class ConvLayer(nn.Module):
+class DCConv2d(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -60,7 +60,7 @@ class ConvLayer(nn.Module):
         norm="bn2d",
         act_func="relu",
     ):
-        super(ConvLayer, self).__init__()
+        super(DCConv2d, self).__init__()
 
         padding = kernel_size // 2
         padding *= dilation
@@ -90,33 +90,6 @@ class ConvLayer(nn.Module):
         return x
 
 
-class ConvPixelUnshuffleDownSampleLayer(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        assert out_channels % out_ratio == 0
-        self.conv = ConvLayer(
-            in_channels=in_channels,
-            out_channels=out_channels // out_ratio,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_unshuffle(x, self.factor)
-        return x
-
-
 class DownsamplePixelUnshuffleChannelAveraging(nn.Module):
     def __init__(
         self,
@@ -138,7 +111,7 @@ class DownsamplePixelUnshuffleChannelAveraging(nn.Module):
         return x
 
 
-class ConvPixelShuffleUpSampleLayer(nn.Module):
+class UpsamplePixelShuffle(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -149,7 +122,7 @@ class ConvPixelShuffleUpSampleLayer(nn.Module):
         super().__init__()
         self.factor = factor
         out_ratio = factor**2
-        self.conv = ConvLayer(
+        self.conv = DCConv2d(
             in_channels=in_channels,
             out_channels=out_channels * out_ratio,
             kernel_size=kernel_size,
@@ -164,7 +137,7 @@ class ConvPixelShuffleUpSampleLayer(nn.Module):
         return x
 
 
-class InterpolateConvUpSampleLayer(nn.Module):
+class UpsampleInterpolate(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -176,7 +149,7 @@ class InterpolateConvUpSampleLayer(nn.Module):
         super().__init__()
         self.factor = factor
         self.mode = mode
-        self.conv = ConvLayer(
+        self.conv = DCConv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
@@ -191,7 +164,7 @@ class InterpolateConvUpSampleLayer(nn.Module):
         return x
 
 
-class ChannelDuplicatingPixelUnshuffleUpSampleLayer(nn.Module):
+class UpsampleChannelDuplicatingPixelUnshuffle(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -237,7 +210,7 @@ class GLUMBConv(nn.Module):
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
         self.glu_act = get_activation(act_func[1])
-        self.inverted_conv = ConvLayer(
+        self.inverted_conv = DCConv2d(
             in_channels,
             mid_channels * 2,
             1,
@@ -245,7 +218,7 @@ class GLUMBConv(nn.Module):
             norm=norm[0],
             act_func=act_func[0],
         )
-        self.depth_conv = ConvLayer(
+        self.depth_conv = DCConv2d(
             mid_channels * 2,
             mid_channels * 2,
             kernel_size,
@@ -255,7 +228,7 @@ class GLUMBConv(nn.Module):
             norm=norm[1],
             act_func=None,
         )
-        self.point_conv = ConvLayer(
+        self.point_conv = DCConv2d(
             mid_channels,
             out_channels,
             1,
@@ -296,7 +269,7 @@ class ResBlock(nn.Module):
 
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
-        self.conv1 = ConvLayer(
+        self.conv1 = DCConv2d(
             in_channels,
             mid_channels,
             kernel_size,
@@ -305,7 +278,7 @@ class ResBlock(nn.Module):
             norm=norm[0],
             act_func=act_func[0],
         )
-        self.conv2 = ConvLayer(
+        self.conv2 = DCConv2d(
             mid_channels,
             out_channels,
             kernel_size,
@@ -349,7 +322,7 @@ class LiteMLA(nn.Module):
         act_func = val2tuple(act_func, 2)
 
         self.dim = dim
-        self.qkv = ConvLayer(
+        self.qkv = DCConv2d(
             in_channels,
             3 * total_dim,
             1,
@@ -375,7 +348,7 @@ class LiteMLA(nn.Module):
         )
         self.kernel_func = get_activation(kernel_func)
 
-        self.proj = ConvLayer(
+        self.proj = DCConv2d(
             total_dim * (1 + len(scales)),
             out_channels,
             1,
@@ -486,7 +459,7 @@ class EfficientViTBlock(nn.Module):
         context_module: str = "LiteMLA",
         local_module: str = "MBConv",
     ):
-        super(EfficientViTBlock, self).__init__()
+        super().__init__()
         if context_module == "LiteMLA":
             self.context_module = ResidualBlock(
                 LiteMLA(
@@ -560,21 +533,6 @@ class ResidualBlock(nn.Module):
         return res
 
 
-class OpSequential(nn.Module):
-    def __init__(self, op_list: list[Optional[nn.Module]]):
-        super(OpSequential, self).__init__()
-        valid_op_list = []
-        for op in op_list:
-            if op is not None:
-                valid_op_list.append(op)
-        self.op_list = nn.ModuleList(valid_op_list)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for op in self.op_list:
-            x = op(x)
-        return x
-
-
 def build_stage_main(
     width: int, depth: int, block_type: str | list[str], norm: str, act: str, input_width: int
 ) -> list[nn.Module]:
@@ -611,56 +569,135 @@ def build_stage_main(
     return stage
 
 
-def build_downsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
-    if block_type == "Conv":
-        block = ConvLayer(
+class DownsamplePixelUnshuffle(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        factor: int,
+    ):
+        super().__init__()
+        self.factor = factor
+        out_ratio = factor**2
+        assert out_channels % out_ratio == 0
+        self.conv = DCConv2d(
             in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            stride=2,
+            out_channels=out_channels // out_ratio,
+            kernel_size=kernel_size,
             use_bias=True,
             norm=None,
             act_func=None,
         )
-    elif block_type == "ConvPixelUnshuffle":
-        block = ConvPixelUnshuffleDownSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
-        )
-    else:
-        raise ValueError(f"block_type {block_type} is not supported for downsampling")
-    if shortcut is None:
-        pass
-    elif shortcut == "averaging":
-        shortcut_block = DownsamplePixelUnshuffleChannelAveraging(
-            in_channels=in_channels, out_channels=out_channels, factor=2
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for downsample")
-    return block
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = F.pixel_unshuffle(x, self.factor)
+        return x
 
 
-def build_upsample_block(block_type: str, in_channels: int, out_channels: int, shortcut: Optional[str]) -> nn.Module:
-    if block_type == "ConvPixelShuffle":
-        block = ConvPixelShuffleUpSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
+class DCDownBlock2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        downsample: bool = False,
+        shortcut: bool = True,
+    ) -> None:
+        super().__init__()
+        
+        self.downsample = downsample
+        self.factor = 2
+        self.stride = 1 if downsample else 2
+
+        out_ratio = self.factor**2
+        if downsample:
+            assert out_channels % out_ratio == 0
+            out_channels = out_channels // out_ratio
+        
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=(kernel_size, kernel_size),
+            stride=self.stride,
+            padding=kernel_size // 2,
         )
-    elif block_type == "InterpolateConv":
-        block = InterpolateConvUpSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, kernel_size=3, factor=2
-        )
-    else:
-        raise ValueError(f"block_type {block_type} is not supported for upsampling")
-    if shortcut is None:
-        pass
-    elif shortcut == "duplicating":
-        shortcut_block = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
-            in_channels=in_channels, out_channels=out_channels, factor=2
-        )
-        block = ResidualBlock(block, shortcut_block)
-    else:
-        raise ValueError(f"shortcut {shortcut} is not supported for upsample")
-    return block
+        
+        self.shortcut = None
+        if shortcut:
+            self.shortcut = DownsamplePixelUnshuffleChannelAveraging(
+                in_channels=in_channels, out_channels=out_channels, factor=2
+            )
+    
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        x = self.conv(hidden_states)
+        if self.downsample:
+            x = F.pixel_unshuffle(x, self.factor)
+        if self.shortcut is not None:
+            hidden_states = x + self.shortcut(hidden_states)
+        else:
+            hidden_states = x
+        return hidden_states
+
+
+class DCUpBlock2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        interpolate: bool = False,
+        shortcut: bool = True,
+        interpolation_mode: str = "nearest",
+    ) -> None:
+        super().__init__()
+
+        self.interpolate = interpolate
+        self.interpolation_method = interpolation_mode
+        self.factor = 2
+        self.stride = 1
+        
+        out_ratio = self.factor ** 2
+        if not interpolate:
+            out_channels = out_channels * out_ratio
+
+        if interpolate:
+            nn.conv = DCConv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+            )
+        else:
+            self.conv = DCConv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                use_bias=True,
+                norm=None,
+                act_func=None,
+            )
+            self.conv = UpsamplePixelShuffle(
+                in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, factor=2
+            )
+
+        self.shortcut = None
+        if shortcut:
+            self.shortcut = UpsampleChannelDuplicatingPixelUnshuffle(
+                in_channels=in_channels, out_channels=out_channels, factor=2
+            )
+    
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.interpolate:
+            x = torch.nn.functional.interpolate(x, scale_factor=self.factor, mode=self.interpolation_mode)
+            x = self.conv(x)
+        else:
+            x = self.conv(hidden_states)
+        if self.shortcut is not None:
+            hidden_states = x + self.shortcut(hidden_states)
+        else:
+            hidden_states = x
+        return hidden_states
 
 
 class Encoder(nn.Module):
@@ -685,50 +722,49 @@ class Encoder(nn.Module):
         factor = 1 if layers_per_block[0] > 0 else 2
 
         if factor == 1:
-            self.conv_in = ConvLayer(
-                in_channels=in_channels,
-                out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+            self.conv_in = nn.Conv2d(
+                in_channels,
+                block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
                 kernel_size=3,
                 stride=1,
-                use_bias=True,
-                norm=None,
-                act_func=None,
+                padding=1,
             )
         elif factor == 2:
-            self.conv_in = build_downsample_block(
-                block_type=downsample_block_type, in_channels=in_channels, out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], shortcut=None
+            self.conv_in = DCDownBlock2d(
+                in_channels=in_channels,
+                out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+                downsample=downsample_block_type == "ConvPixelUnshuffle",
+                shortcut=False,
             )
         else:
             raise
 
-        self.stages: list[OpSequential] = []
+        stages = []
         for stage_id, (width, depth) in enumerate(zip(block_out_channels, layers_per_block)):
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
-            stage = build_stage_main(
+            current_stage = build_stage_main(
                 width=width, depth=depth, block_type=stage_block_type, norm="rms2d", act="silu", input_width=width
             )
             if stage_id < num_stages - 1 and depth > 0:
-                downsample_block = build_downsample_block(
-                    block_type=downsample_block_type,
+                downsample_block = DCDownBlock2d(
                     in_channels=width,
                     out_channels=block_out_channels[stage_id + 1],
-                    shortcut="averaging",
+                    downsample=downsample_block_type == "ConvPixelUnshuffle",
+                    shortcut=True,
                 )
-                stage.append(downsample_block)
-            self.stages.append(OpSequential(stage))
-        self.stages = nn.ModuleList(self.stages)
+                current_stage.append(downsample_block)
+            stages.append(nn.Sequential(*current_stage))
+        self.stages = nn.ModuleList(stages)
 
-        self.norm_out = DownsamplePixelUnshuffleChannelAveraging(
-            in_channels=block_out_channels[-1], out_channels=latent_channels, factor=1
-        )
-        self.conv_out = ConvLayer(
-            in_channels=block_out_channels[-1],
-            out_channels=latent_channels,
+        self.conv_out = nn.Conv2d(
+            block_out_channels[-1],
+            latent_channels,
             kernel_size=3,
             stride=1,
-            use_bias=True,
-            norm=None,
-            act_func=None,
+            padding=1,
+        )
+        self.norm_out = DownsamplePixelUnshuffleChannelAveraging(
+            in_channels=block_out_channels[-1], out_channels=latent_channels, factor=1
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -752,7 +788,6 @@ class Decoder(nn.Module):
         norm: str | list[str] = "rms2d",
         act: str | list[str] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
-        upsample_match_channel: bool = True,
         upsample_shortcut: str = "duplicating",
     ):
         super().__init__()
@@ -766,48 +801,44 @@ class Decoder(nn.Module):
         assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
         assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
-        self.conv_in = ConvLayer(
-            in_channels=latent_channels,
-            out_channels=block_out_channels[-1],
+        self.conv_in = nn.Conv2d(
+            latent_channels,
+            block_out_channels[-1],
             kernel_size=3,
             stride=1,
-            use_bias=True,
-            norm=None,
-            act_func=None,
+            padding=1
         )
-        self.norm_in = ChannelDuplicatingPixelUnshuffleUpSampleLayer(
+        self.norm_in = UpsampleChannelDuplicatingPixelUnshuffle(
             in_channels=latent_channels, out_channels=block_out_channels[-1], factor=1
         )
 
-        self.stages: list[OpSequential] = []
+        stages = []
         for stage_id, (width, depth) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
-            stage = []
+            current_stage = []
             if stage_id < num_stages - 1 and depth > 0:
-                upsample_block = build_upsample_block(
-                    block_type=upsample_block_type,
-                    in_channels=block_out_channels[stage_id + 1],
-                    out_channels=width if upsample_match_channel else block_out_channels[stage_id + 1],
+                upsample_block = DCUpBlock2d(
+                    block_out_channels[stage_id + 1],
+                    width,
+                    interpolate=upsample_block_type == "InterpolateConv",
                     shortcut=upsample_shortcut,
                 )
-                stage.append(upsample_block)
+                current_stage.append(upsample_block)
 
             stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
             stage_norm = norm[stage_id] if isinstance(norm, list) else norm
             stage_act = act[stage_id] if isinstance(act, list) else act
-            stage.extend(
+            current_stage.extend(
                 build_stage_main(
                     width=width,
                     depth=depth,
                     block_type=stage_block_type,
                     norm=stage_norm,
                     act=stage_act,
-                    input_width=(
-                        width if upsample_match_channel else block_out_channels[min(stage_id + 1, num_stages - 1)]
-                    ),
+                    input_width=width,
                 )
             )
-            self.stages.insert(0, OpSequential(stage))
-        self.stages = nn.ModuleList(self.stages)
+            stages.insert(0, nn.Sequential(*current_stage))
+        self.stages = nn.ModuleList(stages)
 
         factor  = 1 if layers_per_block[0] > 0 else 2
 
@@ -816,18 +847,18 @@ class Decoder(nn.Module):
         self.conv_out = None
 
         if factor == 1:
-            self.conv_out = ConvLayer(
-                in_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
-                out_channels=in_channels,
+            self.conv_out = nn.Conv2d(
+                block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+                in_channels,
                 kernel_size=3,
                 stride=1,
-                use_bias=True,
-                norm=None,
-                act_func=None,
+                padding=1,
             )
         else:
-            self.conv_out = build_upsample_block(
-                block_type=upsample_block_type, in_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1], out_channels=in_channels, shortcut=None
+            self.conv_out = DCUpBlock2d(
+                block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
+                in_channels,
+                shortcut=False,
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
