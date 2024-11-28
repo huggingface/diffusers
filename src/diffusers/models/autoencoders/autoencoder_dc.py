@@ -27,33 +27,12 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 
 from ..activations import get_activation
+from ..normalization import RMSNorm2d
 from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
 from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
+from ..attention import DCAELiteMLA
 
 from .vae import DecoderOutput
-
-
-class RMSNorm2d(nn.Module):
-    def __init__(self, num_features: int, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True) -> None:
-        super().__init__()
-        self.num_features = num_features
-        self.eps = eps
-        self.elementwise_affine = elementwise_affine
-        if self.elementwise_affine:
-            self.weight = torch.nn.parameter.Parameter(torch.empty(self.num_features))
-            if bias:
-                self.bias = torch.nn.parameter.Parameter(torch.empty(self.num_features))
-            else:
-                self.register_parameter('bias', None)
-        else:
-            self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = (x / torch.sqrt(torch.square(x.float()).mean(dim=1, keepdim=True) + self.eps)).to(x.dtype)
-        if self.elementwise_affine:
-            x = x * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
-        return x
 
 
 class ConvLayer(nn.Module):
@@ -205,153 +184,6 @@ class ResBlock(nn.Module):
         return x
 
 
-class LiteMLA(nn.Module):
-    r"""Lightweight multi-scale linear attention"""
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        heads: Optional[int] = None,
-        heads_ratio: float = 1.0,
-        dim=8,
-        use_bias=(False, False),
-        norm=(None, "bn2d"),
-        act_func=(None, None),
-        kernel_func="relu",
-        scales: tuple[int, ...] = (5,),
-        eps=1.0e-15,
-    ):
-        super().__init__()
-        self.eps = eps
-        heads = int(in_channels // dim * heads_ratio) if heads is None else heads
-
-        total_dim = heads * dim
-
-        self.dim = dim
-        self.qkv = ConvLayer(
-            in_channels,
-            3 * total_dim,
-            1,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
-        )
-        self.aggreg = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(
-                        3 * total_dim,
-                        3 * total_dim,
-                        scale,
-                        padding=scale // 2,
-                        groups=3 * total_dim,
-                        bias=use_bias[0],
-                    ),
-                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
-                )
-                for scale in scales
-            ]
-        )
-        self.kernel_func = get_activation(kernel_func)
-
-        self.proj = ConvLayer(
-            total_dim * (1 + len(scales)),
-            out_channels,
-            1,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
-        )
-
-    def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        B, _, H, W = list(qkv.size())
-
-        if qkv.dtype == torch.float16:
-            qkv = qkv.float()
-
-        qkv = torch.reshape(
-            qkv,
-            (
-                B,
-                -1,
-                3 * self.dim,
-                H * W,
-            ),
-        )
-        q, k, v = (
-            qkv[:, :, 0 : self.dim],
-            qkv[:, :, self.dim : 2 * self.dim],
-            qkv[:, :, 2 * self.dim :],
-        )
-
-        # lightweight linear attention
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
-
-        # linear matmul
-        trans_k = k.transpose(-1, -2)
-
-        v = F.pad(v, (0, 0, 0, 1), mode="constant", value=1)
-        vk = torch.matmul(v, trans_k)
-        out = torch.matmul(vk, q)
-        if out.dtype == torch.bfloat16:
-            out = out.float()
-        out = out[:, :, :-1] / (out[:, :, -1:] + self.eps)
-
-        out = torch.reshape(out, (B, -1, H, W))
-        return out
-
-    def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        B, _, H, W = list(qkv.size())
-
-        qkv = torch.reshape(
-            qkv,
-            (
-                B,
-                -1,
-                3 * self.dim,
-                H * W,
-            ),
-        )
-        q, k, v = (
-            qkv[:, :, 0 : self.dim],
-            qkv[:, :, self.dim : 2 * self.dim],
-            qkv[:, :, 2 * self.dim :],
-        )
-
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
-
-        att_map = torch.matmul(k.transpose(-1, -2), q)  # b h n n
-        original_dtype = att_map.dtype
-        if original_dtype in [torch.float16, torch.bfloat16]:
-            att_map = att_map.float()
-        att_map = att_map / (torch.sum(att_map, dim=2, keepdim=True) + self.eps)  # b h n n
-        att_map = att_map.to(original_dtype)
-        out = torch.matmul(v, att_map)  # b h d n
-
-        out = torch.reshape(out, (B, -1, H, W))
-        return out
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # generate multi-scale q, k, v
-        qkv = self.qkv(x)
-        multi_scale_qkv = [qkv]
-        for op in self.aggreg:
-            multi_scale_qkv.append(op(qkv))
-        qkv = torch.cat(multi_scale_qkv, dim=1)
-
-        H, W = list(qkv.size())[-2:]
-        if H * W > self.dim:
-            out = self.relu_linear_att(qkv).to(qkv.dtype)
-        else:
-            out = self.relu_quadratic_att(qkv)
-        out = self.proj(out)
-
-        return x + out
-
-
 class EfficientViTBlock(nn.Module):
     def __init__(
         self,
@@ -367,7 +199,7 @@ class EfficientViTBlock(nn.Module):
     ):
         super().__init__()
         if context_module == "LiteMLA":
-            self.context_module = LiteMLA(
+            self.context_module = DCAELiteMLA(
                 in_channels=in_channels,
                 out_channels=in_channels,
                 heads_ratio=heads_ratio,
