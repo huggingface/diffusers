@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoencoderKLLTX
 
-The 3D variational autoencoder (VAE) model with KL loss used in [LTX](https://huggingface.co/Lightricks/LTX-Video) was introduced in by Lightricks.
+The 3D variational autoencoder (VAE) model with KL loss used in [LTX](https://huggingface.co/Lightricks/LTX-Video) was introduced by Lightricks.
 
 The model can be loaded with the following code snippet.
 

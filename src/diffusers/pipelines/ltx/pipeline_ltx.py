@@ -481,7 +481,7 @@ class LTXPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to `self.default_width`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
-            num_frames (`int`, defaults to `19`):
+            num_frames (`int`, defaults to `81 `):
                 The number of video frames to generate
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -490,7 +490,7 @@ class LTXPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
-            guidance_scale (`float`, defaults to `4.5`):
+            guidance_scale (`float`, defaults to `3 `):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -529,7 +529,7 @@ class LTXPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to `256`):
+            max_sequence_length (`int` defaults to `128 `):
                 Maximum sequence length to use with the `prompt`.
 
         Examples:
