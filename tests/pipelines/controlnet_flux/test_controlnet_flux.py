@@ -170,7 +170,7 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         assert image.shape == (1, 32, 32, 3)
 
         expected_slice = np.array(
-            [0.7348633, 0.41333008, 0.6621094, 0.5444336, 0.47607422, 0.5859375, 0.44677734, 0.4506836, 0.40454102]
+            [0.47387695, 0.63134766, 0.5605469, 0.61621094, 0.7207031, 0.7089844, 0.70410156, 0.6113281, 0.64160156]
         )
 
         assert (
@@ -180,6 +180,28 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
+
+    def test_flux_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        height_width_pairs = [(32, 32), (72, 56)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+
+            inputs.update(
+                {
+                    "control_image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    )
+                }
+            )
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
 
 
 @slow
