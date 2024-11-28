@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -87,47 +87,6 @@ class DCConv2d(nn.Module):
             x = self.norm(x)
         if self.act:
             x = self.act(x)
-        return x
-
-
-class DownsamplePixelUnshuffleChannelAveraging(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert in_channels * factor**2 % out_channels == 0
-        self.group_size = in_channels * factor**2 // out_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.pixel_unshuffle(x, self.factor)
-        x = x.unflatten(1, (-1, self.group_size))
-        x = x.mean(dim=2)
-        return x
-
-
-class UpsampleChannelDuplicatingPixelUnshuffle(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert out_channels * factor**2 % in_channels == 0
-        self.repeats = out_channels * factor**2 // in_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.repeat_interleave(self.repeats, dim=1)
-        x = F.pixel_shuffle(x, self.factor)
         return x
 
 
@@ -212,29 +171,32 @@ class ResBlock(nn.Module):
 
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
-        self.conv1 = DCConv2d(
+        self.conv1 = nn.Conv2d(
             in_channels,
             mid_channels,
-            kernel_size,
-            stride,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=kernel_size // 2,
+            bias=use_bias[0],
         )
-        self.conv2 = DCConv2d(
+        self.norm1 = build_norm(norm[0], num_features=mid_channels) if norm[0] is not None else nn.Identity()
+        self.act1 = get_activation(act_func[0]) if act_func[0] is not None else nn.Identity()
+
+        self.conv2 = nn.Conv2d(
             mid_channels,
             out_channels,
-            kernel_size,
-            1,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+            bias=use_bias[1],
         )
+        self.norm2 = build_norm(norm[1], num_features=out_channels) if norm[1] is not None else nn.Identity()
+        self.act2 = get_activation(act_func[1]) if act_func[1] is not None else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
-        x = self.conv1(x)
-        x = self.conv2(x)
+        x = self.act1(self.norm1(self.conv1(x)))
+        x = self.act2(self.norm2(self.conv2(x)))
         return x + residual
 
 
@@ -266,14 +228,9 @@ class LiteMLA(nn.Module):
         act_func = val2tuple(act_func, 2)
 
         self.dim = dim
-        self.qkv = DCConv2d(
-            in_channels,
-            3 * total_dim,
-            1,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
-        )
+
+        self.qkv = nn.Conv2d(in_channels, 3 * total_dim, kernel_size=1, stride=1, padding=0, bias=use_bias[0])
+
         self.aggreg = nn.ModuleList(
             [
                 nn.Sequential(
@@ -292,14 +249,16 @@ class LiteMLA(nn.Module):
         )
         self.kernel_func = get_activation(kernel_func)
 
-        self.proj = DCConv2d(
+        self.proj_out = nn.Conv2d(
             total_dim * (1 + len(scales)),
             out_channels,
-            1,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=act_func[1],
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=use_bias[1],
         )
+        self.norm_out = build_norm(norm[1], num_features=out_channels) or nn.Identity()
+        self.act_out = get_activation(act_func[1]) if act_func[1] is not None else nn.Identity()
 
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
@@ -309,12 +268,7 @@ class LiteMLA(nn.Module):
 
         qkv = torch.reshape(
             qkv,
-            (
-                B,
-                -1,
-                3 * self.dim,
-                H * W,
-            ),
+            (B, -1, 3 * self.dim, H * W),
         )
         q, k, v = (
             qkv[:, :, 0 : self.dim],
@@ -342,15 +296,7 @@ class LiteMLA(nn.Module):
     def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
-        qkv = torch.reshape(
-            qkv,
-            (
-                B,
-                -1,
-                3 * self.dim,
-                H * W,
-            ),
-        )
+        qkv = torch.reshape(qkv, (B, -1, 3 * self.dim, H * W))
         q, k, v = (
             qkv[:, :, 0 : self.dim],
             qkv[:, :, self.dim : 2 * self.dim],
@@ -375,9 +321,11 @@ class LiteMLA(nn.Module):
         residual = x
         # generate multi-scale q, k, v
         qkv = self.qkv(x)
+
         multi_scale_qkv = [qkv]
         for op in self.aggreg:
             multi_scale_qkv.append(op(qkv))
+
         qkv = torch.cat(multi_scale_qkv, dim=1)
 
         H, W = list(qkv.size())[-2:]
@@ -385,7 +333,10 @@ class LiteMLA(nn.Module):
             out = self.relu_linear_att(qkv).to(qkv.dtype)
         else:
             out = self.relu_quadratic_att(qkv)
-        out = self.proj(out)
+
+        out = self.proj_out(out)
+        out = self.norm_out(out)
+        out = self.act_out(out)
 
         return out + residual
 
@@ -415,6 +366,7 @@ class EfficientViTBlock(nn.Module):
             )
         else:
             raise ValueError(f"context_module {context_module} is not supported")
+
         if local_module == "GLUMBConv":
             self.local_module = GLUMBConv(
                 in_channels=in_channels,
@@ -433,46 +385,8 @@ class EfficientViTBlock(nn.Module):
         return x
 
 
-#################################################################################
-#                             Functional Blocks                                 #
-#################################################################################
-
-
-class ResidualBlock(nn.Module):
-    def __init__(
-        self,
-        main: Optional[nn.Module],
-        shortcut: Optional[nn.Module],
-        post_act=None,
-        pre_norm: Optional[nn.Module] = None,
-    ):
-        super().__init__()
-
-        self.pre_norm = pre_norm
-        self.main = main
-        self.shortcut = shortcut
-        self.post_act = get_activation(post_act) if post_act is not None else None
-
-    def forward_main(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pre_norm is None:
-            return self.main(x)
-        else:
-            return self.main(self.pre_norm(x))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.main is None:
-            res = x
-        elif self.shortcut is None:
-            res = self.forward_main(x)
-        else:
-            res = self.forward_main(x) + self.shortcut(x)
-            if self.post_act:
-                res = self.post_act(res)
-        return res
-
-
 def build_stage_main(
-    width: int, depth: int, block_type: str | list[str], norm: str, act: str, input_width: int
+    width: int, depth: int, block_type: str | List[str], norm: str, act: str, input_width: int
 ) -> list[nn.Module]:
     assert isinstance(block_type, str) or (isinstance(block_type, list) and depth == len(block_type))
     stage = []
@@ -506,33 +420,6 @@ def build_stage_main(
     return stage
 
 
-class DownsamplePixelUnshuffle(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        assert out_channels % out_ratio == 0
-        self.conv = DCConv2d(
-            in_channels=in_channels,
-            out_channels=out_channels // out_ratio,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_unshuffle(x, self.factor)
-        return x
-
-
 class DCDownBlock2d(nn.Module):
     def __init__(
         self,
@@ -547,6 +434,8 @@ class DCDownBlock2d(nn.Module):
         self.downsample = downsample
         self.factor = 2
         self.stride = 1 if downsample else 2
+        self.group_size = in_channels * self.factor**2 // out_channels
+        self.shortcut = shortcut
 
         out_ratio = self.factor**2
         if downsample:
@@ -561,20 +450,19 @@ class DCDownBlock2d(nn.Module):
             padding=kernel_size // 2,
         )
 
-        self.shortcut = None
-        if shortcut:
-            self.shortcut = DownsamplePixelUnshuffleChannelAveraging(
-                in_channels=in_channels, out_channels=out_channels, factor=2
-            )
-
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         x = self.conv(hidden_states)
         if self.downsample:
             x = F.pixel_unshuffle(x, self.factor)
-        if self.shortcut is not None:
-            hidden_states = x + self.shortcut(hidden_states)
+
+        if self.shortcut:
+            y = F.pixel_unshuffle(hidden_states, self.factor)
+            y = y.unflatten(1, (-1, self.group_size))
+            y = y.mean(dim=2)
+            hidden_states = x + y
         else:
             hidden_states = x
+
         return hidden_states
 
 
@@ -594,10 +482,12 @@ class DCUpBlock2d(nn.Module):
         self.interpolation_mode = interpolation_mode
         self.factor = 2
         self.stride = 1
-
         out_ratio = self.factor**2
+
         if not interpolate:
             out_channels = out_channels * out_ratio
+
+        self.repeats = out_channels * self.factor**2 // in_channels
 
         self.conv = nn.Conv2d(
             in_channels,
@@ -607,11 +497,7 @@ class DCUpBlock2d(nn.Module):
             padding=kernel_size // 2,
         )
 
-        self.shortcut = None
-        if shortcut:
-            self.shortcut = UpsampleChannelDuplicatingPixelUnshuffle(
-                in_channels=in_channels, out_channels=out_channels, factor=2
-            )
+        self.shortcut = shortcut
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.interpolate:
@@ -621,8 +507,10 @@ class DCUpBlock2d(nn.Module):
             x = self.conv(hidden_states)
             x = F.pixel_shuffle(x, self.factor)
 
-        if self.shortcut is not None:
-            hidden_states = x + self.shortcut(hidden_states)
+        if self.shortcut:
+            y = hidden_states.repeat_interleave(self.repeats, dim=1)
+            y = F.pixel_shuffle(y, self.factor)
+            hidden_states = x + y
         else:
             hidden_states = x
 
@@ -634,9 +522,9 @@ class Encoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
-        block_out_channels: list[int] = [128, 256, 512, 512, 1024, 1024],
-        layers_per_block: list[int] = [2, 2, 2, 2, 2, 2],
-        block_type: str | list[str] = "ResBlock",
+        block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
+        layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
+        block_type: str | List[str] = "ResBlock",
         downsample_block_type: str = "ConvPixelUnshuffle",
     ):
         super().__init__()
@@ -690,16 +578,22 @@ class Encoder(nn.Module):
             stride=1,
             padding=1,
         )
-        self.norm_out = DownsamplePixelUnshuffleChannelAveraging(
-            in_channels=block_out_channels[-1], out_channels=latent_channels, factor=1
-        )
+        self.norm_factor = 1
+        norm_in_channels = block_out_channels[-1]
+        norm_out_channels = latent_channels
+        self.norm_group_size = norm_in_channels * self.norm_factor**2 // norm_out_channels
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv_in(x)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_in(hidden_states)
         for stage in self.stages:
-            x = stage(x)
-        x = self.conv_out(x) + self.norm_out(x)
-        return x
+            hidden_states = stage(hidden_states)
+
+        x = F.pixel_unshuffle(hidden_states, self.norm_factor)
+        x = x.unflatten(1, (-1, self.norm_group_size))
+        x = x.mean(dim=2)
+
+        hidden_states = self.conv_out(hidden_states) + x
+        return hidden_states
 
 
 class Decoder(nn.Module):
@@ -707,11 +601,11 @@ class Decoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
-        block_out_channels: list[int] = [128, 256, 512, 512, 1024, 1024],
-        layers_per_block: list[int] = [2, 2, 2, 2, 2, 2],
-        block_type: str | list[str] = "ResBlock",
-        norm: str | list[str] = "rms2d",
-        act: str | list[str] = "silu",
+        block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
+        layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
+        block_type: str | List[str] = "ResBlock",
+        norm: str | List[str] = "rms2d",
+        act: str | List[str] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
         upsample_shortcut: str = "duplicating",
     ):
@@ -725,9 +619,10 @@ class Decoder(nn.Module):
         assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
         self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
-        self.norm_in = UpsampleChannelDuplicatingPixelUnshuffle(
-            in_channels=latent_channels, out_channels=block_out_channels[-1], factor=1
-        )
+
+        self.norm_factor = 1
+        # TODO(aryan): Make sure this is divisible
+        self.norm_repeats = block_out_channels[-1] * self.norm_factor**2 // latent_channels
 
         stages = []
         for stage_id, (width, depth) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
@@ -785,14 +680,19 @@ class Decoder(nn.Module):
                 shortcut=False,
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv_in(x) + self.norm_in(x)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        x = hidden_states.repeat_interleave(self.norm_repeats, dim=1)
+        x = F.pixel_shuffle(x, self.norm_factor)
+
+        hidden_states = self.conv_in(hidden_states) + x
+
         for stage in reversed(self.stages):
-            x = stage(x)
-        x = self.norm_out(x)
-        x = self.conv_act(x)
-        x = self.conv_out(x)
-        return x
+            hidden_states = stage(hidden_states)
+
+        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.conv_act(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
+        return hidden_states
 
 
 class AutoencoderDC(ModelMixin, ConfigMixin):
@@ -804,14 +704,13 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
         encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
         decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
-        encoder_block_type: str | list[str] = "ResBlock",
+        encoder_block_type: str | List[str] = "ResBlock",
         downsample_block_type: str = "ConvPixelUnshuffle",
-        decoder_block_type: str | list[str] = "ResBlock",
+        decoder_block_type: str | List[str] = "ResBlock",
         decoder_norm: str = "rms2d",
         decoder_act: str = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
         scaling_factor: Optional[float] = None,
-        **kwargs,
     ):
         super().__init__()
         self.encoder = Encoder(
@@ -849,101 +748,3 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         x = self.encoder(x)
         x = self.decoder(x)
         return x, torch.tensor(0), {}
-
-
-def dc_ae_f32c32(name: str) -> dict:
-    if name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
-        cfg = {
-            "latent_channels": 32,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu"],
-        }
-    elif name in ["dc-ae-f32c32-sana-1.0"]:
-        cfg = {
-            "latent_channels": 32,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
-            "encoder_layers_per_block": [2, 2, 2, 3, 3, 3],
-            "downsample_block_type": "Conv",
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
-            "upsample_block_type": "InterpolateConv",
-            "scaling_factor": 0.41407,
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-def dc_ae_f64c128(
-    name: str,
-) -> dict:
-    if name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
-        cfg = {
-            "latent_channels": 128,
-            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2],
-            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-def dc_ae_f128c512(
-    name: str,
-) -> dict:
-    if name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
-        cfg = {
-            "latent_channels": 512,
-            "encoder_block_type": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-            ],
-            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2, 2],
-            "decoder_block_type": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-                "EViT_GLU",
-            ],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
-            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
-            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
-        }
-    else:
-        raise NotImplementedError
-    return cfg
-
-
-REGISTERED_DCAE_MODEL: dict[str, Callable] = {
-    "dc-ae-f32c32-in-1.0": dc_ae_f32c32,
-    "dc-ae-f64c128-in-1.0": dc_ae_f64c128,
-    "dc-ae-f128c512-in-1.0": dc_ae_f128c512,
-    #################################################################################################
-    "dc-ae-f32c32-mix-1.0": dc_ae_f32c32,
-    "dc-ae-f64c128-mix-1.0": dc_ae_f64c128,
-    "dc-ae-f128c512-mix-1.0": dc_ae_f128c512,
-    #################################################################################################
-    "dc-ae-f32c32-sana-1.0": dc_ae_f32c32,
-}

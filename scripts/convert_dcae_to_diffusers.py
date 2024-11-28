@@ -26,6 +26,13 @@ VAE_KEYS_RENAME_DICT = {
     "point_conv": "conv_point",
     "inverted_conv": "conv_inverted",
     "conv.conv.": "conv.",
+    "conv1.conv": "conv1",
+    "conv2.conv": "conv2",
+    "conv1.norm": "norm2",
+    "conv2.norm": "norm2",
+    "qkv.conv": "qkv",
+    "proj.conv": "proj_out",
+    "proj.norm": "norm_out",
     # encoder
     "encoder.project_in.conv": "encoder.conv_in",
     "encoder.project_out.0.conv": "encoder.conv_out",
@@ -112,6 +119,74 @@ def convert_vae(ckpt_path: str, dtype: torch.dtype):
 
     vae.load_state_dict(original_state_dict, strict=True)
     return vae
+
+
+def get_vae_config(name: str):
+    if name in ["dc-ae-f32c32-sana-1.0"]:
+        config = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
+            "encoder_layers_per_block": [2, 2, 2, 3, 3, 3],
+            "downsample_block_type": "Conv",
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
+            "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
+            "upsample_block_type": "InterpolateConv",
+            "scaling_factor": 0.41407,
+        }
+    elif name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
+        config = {
+            "latent_channels": 32,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu"],
+        }
+    elif name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
+        config = {
+            "latent_channels": 512,
+            "encoder_block_type": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+            ],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2, 2],
+            "decoder_block_type": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+                "EViT_GLU",
+            ],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
+        }
+    elif name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
+        config = {
+            "latent_channels": 128,
+            "encoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
+            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2],
+            "decoder_block_type": ["ResBlock", "ResBlock", "ResBlock", "EViT_GLU", "EViT_GLU", "EViT_GLU", "EViT_GLU"],
+            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2],
+            "decoder_norm": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_act": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
+        }
+
+    return config
 
 
 def get_args():
