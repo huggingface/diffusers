@@ -20,13 +20,18 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 VAE_KEYS_RENAME_DICT = {
     # common
+    "main.": "",
     "op_list.": "",
     "norm.": "norm.norm.",
+    "depth_conv": "conv_depth",
+    "point_conv": "conv_point",
+    "inverted_conv": "conv_inverted",
+    "conv.conv.": "conv.",
     # encoder
     "encoder.project_in.conv": "encoder.conv_in",
-    "encoder.project_out.main.0.conv": "encoder.conv_out",
+    "encoder.project_out.0.conv": "encoder.conv_out",
     # decoder
-    "decoder.project_in.main.conv": "decoder.conv_in",
+    "decoder.project_in.conv": "decoder.conv_in",
     "decoder.project_out.0": "decoder.norm_out.norm",
     "decoder.project_out.2.conv": "decoder.conv_out",
 }

@@ -111,59 +111,6 @@ class DownsamplePixelUnshuffleChannelAveraging(nn.Module):
         return x
 
 
-class UpsamplePixelShuffle(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        self.conv = DCConv2d(
-            in_channels=in_channels,
-            out_channels=out_channels * out_ratio,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
-class UpsampleInterpolate(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-        mode: str = "nearest",
-    ) -> None:
-        super().__init__()
-        self.factor = factor
-        self.mode = mode
-        self.conv = DCConv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            use_bias=True,
-            norm=None,
-            act_func=None,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.nn.functional.interpolate(x, scale_factor=self.factor, mode=self.mode)
-        x = self.conv(x)
-        return x
-
-
 class UpsampleChannelDuplicatingPixelUnshuffle(nn.Module):
     def __init__(
         self,
@@ -181,11 +128,6 @@ class UpsampleChannelDuplicatingPixelUnshuffle(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.repeat_interleave(self.repeats, dim=1)
         x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
-class IdentityLayer(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
 
 
@@ -210,7 +152,7 @@ class GLUMBConv(nn.Module):
         mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
 
         self.glu_act = get_activation(act_func[1])
-        self.inverted_conv = DCConv2d(
+        self.conv_inverted = DCConv2d(
             in_channels,
             mid_channels * 2,
             1,
@@ -218,7 +160,7 @@ class GLUMBConv(nn.Module):
             norm=norm[0],
             act_func=act_func[0],
         )
-        self.depth_conv = DCConv2d(
+        self.conv_depth = DCConv2d(
             mid_channels * 2,
             mid_channels * 2,
             kernel_size,
@@ -228,7 +170,7 @@ class GLUMBConv(nn.Module):
             norm=norm[1],
             act_func=None,
         )
-        self.point_conv = DCConv2d(
+        self.conv_point = DCConv2d(
             mid_channels,
             out_channels,
             1,
@@ -238,15 +180,16 @@ class GLUMBConv(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.inverted_conv(x)
-        x = self.depth_conv(x)
+        residual = x
+        x = self.conv_inverted(x)
+        x = self.conv_depth(x)
 
         x, gate = torch.chunk(x, 2, dim=1)
         gate = self.glu_act(gate)
         x = x * gate
 
-        x = self.point_conv(x)
-        return x
+        x = self.conv_point(x)
+        return x + residual
 
 
 class ResBlock(nn.Module):
@@ -289,9 +232,10 @@ class ResBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
         x = self.conv1(x)
         x = self.conv2(x)
-        return x
+        return x + residual
 
 
 class LiteMLA(nn.Module):
@@ -357,7 +301,6 @@ class LiteMLA(nn.Module):
             act_func=act_func[1],
         )
 
-    @torch.autocast(device_type="cuda", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
@@ -429,6 +372,7 @@ class LiteMLA(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = x
         # generate multi-scale q, k, v
         qkv = self.qkv(x)
         multi_scale_qkv = [qkv]
@@ -443,7 +387,7 @@ class LiteMLA(nn.Module):
             out = self.relu_quadratic_att(qkv)
         out = self.proj(out)
 
-        return out
+        return out + residual
 
 
 class EfficientViTBlock(nn.Module):
@@ -461,30 +405,24 @@ class EfficientViTBlock(nn.Module):
     ):
         super().__init__()
         if context_module == "LiteMLA":
-            self.context_module = ResidualBlock(
-                LiteMLA(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    heads_ratio=heads_ratio,
-                    dim=dim,
-                    norm=(None, norm),
-                    scales=scales,
-                ),
-                IdentityLayer(),
+            self.context_module = LiteMLA(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                heads_ratio=heads_ratio,
+                dim=dim,
+                norm=(None, norm),
+                scales=scales,
             )
         else:
             raise ValueError(f"context_module {context_module} is not supported")
         if local_module == "GLUMBConv":
-            self.local_module = ResidualBlock(
-                GLUMBConv(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    expand_ratio=expand_ratio,
-                    use_bias=(True, True, False),
-                    norm=(None, None, norm),
-                    act_func=(act_func, act_func, None),
-                ),
-                IdentityLayer(),
+            self.local_module = GLUMBConv(
+                in_channels=in_channels,
+                out_channels=in_channels,
+                expand_ratio=expand_ratio,
+                use_bias=(True, True, False),
+                norm=(None, None, norm),
+                act_func=(act_func, act_func, None),
             )
         else:
             raise NotImplementedError(f"local_module {local_module} is not supported")
@@ -546,7 +484,7 @@ def build_stage_main(
         
         if current_block_type == "ResBlock":
             assert in_channels == out_channels
-            main_block = ResBlock(
+            block = ResBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 kernel_size=3,
@@ -555,7 +493,6 @@ def build_stage_main(
                 norm=(None, norm),
                 act_func=(act, None),
             )
-            block = ResidualBlock(main_block, IdentityLayer())
         elif current_block_type == "EViT_GLU":
             assert in_channels == out_channels
             block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
@@ -619,7 +556,7 @@ class DCDownBlock2d(nn.Module):
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
-            kernel_size=(kernel_size, kernel_size),
+            kernel_size=kernel_size,
             stride=self.stride,
             padding=kernel_size // 2,
         )
@@ -654,7 +591,7 @@ class DCUpBlock2d(nn.Module):
         super().__init__()
 
         self.interpolate = interpolate
-        self.interpolation_method = interpolation_mode
+        self.interpolation_mode = interpolation_mode
         self.factor = 2
         self.stride = 1
         
@@ -662,24 +599,13 @@ class DCUpBlock2d(nn.Module):
         if not interpolate:
             out_channels = out_channels * out_ratio
 
-        if interpolate:
-            nn.conv = DCConv2d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-            )
-        else:
-            self.conv = DCConv2d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                use_bias=True,
-                norm=None,
-                act_func=None,
-            )
-            self.conv = UpsamplePixelShuffle(
-                in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, factor=2
-            )
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=self.stride,
+            padding=kernel_size // 2,
+        )
 
         self.shortcut = None
         if shortcut:
@@ -689,14 +615,17 @@ class DCUpBlock2d(nn.Module):
     
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.interpolate:
-            x = torch.nn.functional.interpolate(x, scale_factor=self.factor, mode=self.interpolation_mode)
+            x = F.interpolate(hidden_states, scale_factor=self.factor, mode=self.interpolation_mode)
             x = self.conv(x)
         else:
             x = self.conv(hidden_states)
+            x = F.pixel_shuffle(x, self.factor)
+        
         if self.shortcut is not None:
             hidden_states = x + self.shortcut(hidden_states)
         else:
             hidden_states = x
+        
         return hidden_states
 
 
@@ -770,8 +699,6 @@ class Encoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv_in(x)
         for stage in self.stages:
-            if len(stage.op_list) == 0:
-                continue
             x = stage(x)
         x = self.conv_out(x) + self.norm_out(x)
         return x
@@ -858,14 +785,13 @@ class Decoder(nn.Module):
             self.conv_out = DCUpBlock2d(
                 block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
                 in_channels,
+                interpolate=upsample_block_type == "InterpolateConv",
                 shortcut=False,
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv_in(x) + self.norm_in(x)
         for stage in reversed(self.stages):
-            if len(stage.op_list) == 0:
-                continue
             x = stage(x)
         x = self.norm_out(x)
         x = self.conv_act(x)
