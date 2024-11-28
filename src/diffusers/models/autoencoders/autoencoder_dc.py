@@ -13,25 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Callable, Union
-from collections import OrderedDict
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn import BatchNorm2d
-from huggingface_hub import PyTorchModelHubMixin
-import ipdb
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
-
 from ..activations import get_activation
-from ..normalization import RMSNorm2d
-from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
-from ..upsampling import ConvPixelShuffleUpsample2D, ChannelDuplicatingPixelUnshuffleUpsample2D, Upsample2D
 from ..attention import DCAELiteMLA
-
+from ..downsampling import ConvPixelUnshuffleDownsample2D, PixelUnshuffleChannelAveragingDownsample2D
+from ..modeling_utils import ModelMixin
+from ..normalization import RMSNorm2d
+from ..upsampling import ChannelDuplicatingPixelUnshuffleUpsample2D, ConvPixelShuffleUpsample2D, Upsample2D
 from .vae import DecoderOutput
 
 
@@ -267,7 +261,7 @@ class ResidualBlock(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(
-        self, 
+        self,
         in_channels: int,
         latent_channels: int,
         width_list: list[int] = [128, 256, 512, 512, 1024, 1024],
@@ -291,7 +285,7 @@ class Encoder(nn.Module):
             raise ValueError(f"len(depth_list) {len(depth_list)} and len(width_list) {len(width_list)} should be equal to num_stages {num_stages}")
         if not isinstance(block_type, (str, list)) or (isinstance(block_type, list) and len(block_type) != num_stages):
             raise ValueError(f"block_type should be either a str or a list of str with length {num_stages}, but got {block_type}")
-        
+
         # project in
         if depth_list[0] > 0:
             project_in_block = nn.Conv2d(
@@ -422,7 +416,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(
-        self, 
+        self,
         in_channels: int,
         latent_channels: int,
         in_shortcut: Optional[str] = "duplicating",

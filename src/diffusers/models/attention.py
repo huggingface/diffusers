@@ -22,7 +22,14 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, SwiGLU, get_activation
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
-from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX, RMSNorm2d
+from .normalization import (
+    AdaLayerNorm,
+    AdaLayerNormContinuous,
+    AdaLayerNormZero,
+    RMSNorm,
+    RMSNorm2d,
+    SD35AdaLayerNormZeroX,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -1267,7 +1274,7 @@ class DCAELiteMLA(nn.Module):
         total_dim = heads * dim
 
         self.dim = dim
-        
+
         qkv = [nn.Conv2d(in_channels=in_channels, out_channels=3 * total_dim, kernel_size=1, bias=use_bias[0])]
         if norm[0] is None:
             pass
