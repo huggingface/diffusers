@@ -201,7 +201,7 @@ class LTXTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         cross_attention_dim: int,
-        qk_norm: str = "rms_norm",
+        qk_norm: str = "rms_norm_across_heads",
         activation_fn: str = "gelu-approximate",
         attention_bias: bool = True,
         attention_out_bias: bool = True,
@@ -238,8 +238,7 @@ class LTXTransformerBlock(nn.Module):
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
 
-        # TODO(aryan): Create a layer for this
-        self.scale_shift_table = nn.Parameter(torch.randn(6, dim))
+        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
     def forward(
         self,
@@ -368,7 +367,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         self.proj_out = nn.Linear(inner_dim, out_channels)
 
         # TODO(aryan): create a layer for this
-        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim))
+        self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
         self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=False)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
