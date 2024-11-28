@@ -9,8 +9,7 @@ import torch
 from accelerate import init_empty_weights
 from diffusers import (
     DCAE,
-    DCAE_HF,
-    FlowDPMSolverMultistepScheduler,
+    DPMSolverMultistepScheduler,
     FlowMatchEulerDiscreteScheduler,
     SanaPipeline,
     SanaTransformer2DModel,
@@ -186,27 +185,10 @@ def main(args):
     else:
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        dc_ae = DCAE_HF.from_pretrained(f"mit-han-lab/dc-ae-f32c32-sana-1.0")
-        dc_ae_state_dict = dc_ae.state_dict()
-        dc_ae = DCAE(
-            in_channels=3,
-            latent_channels=32,
-            encoder_width_list=[128, 256, 512, 512, 1024, 1024],
-            encoder_depth_list=[2, 2, 2, 3, 3, 3],
-            encoder_block_type=["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            encoder_norm="rms2d",
-            encoder_act="silu",
-            downsample_block_type="Conv",
-            decoder_width_list=[128, 256, 512, 512, 1024, 1024],
-            decoder_depth_list=[3, 3, 3, 3, 3, 3],
-            decoder_block_type=["ResBlock", "ResBlock", "ResBlock", "EViTS5_GLU", "EViTS5_GLU", "EViTS5_GLU"],
-            decoder_norm="rms2d",
-            decoder_act="silu",
-            upsample_block_type="InterpolateConv",
-            scaling_factor=0.41407,
-        )
-        dc_ae.load_state_dict(dc_ae_state_dict, strict=True)
-        dc_ae.to(torch.float32).to(device)
+        dc_ae = DCAE.from_pretrained(
+            "Efficient-Large-Model/dc_ae_f32c32_sana_1.0_diffusers",
+            torch_dtype=torch.float32,
+        ).to(device)
 
         # Text Encoder
         text_encoder_model_path = "google/gemma-2-2b-it"
@@ -220,7 +202,11 @@ def main(args):
 
         # Scheduler
         if args.scheduler_type == "flow-dpm_solver":
-            scheduler = FlowDPMSolverMultistepScheduler(flow_shift=flow_shift)
+            scheduler = DPMSolverMultistepScheduler(
+                flow_shift=flow_shift, 
+                use_flow_sigmas=True,
+                prediction_type="flow_prediction",
+            )
         elif args.scheduler_type == "flow-euler":
             scheduler = FlowMatchEulerDiscreteScheduler(shift=flow_shift)
         else:

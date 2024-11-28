@@ -22,7 +22,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import DCAE_HF, SanaTransformer2DModel
+from ...models import DCAE, SanaTransformer2DModel
 from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
@@ -162,7 +162,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: AutoModelForCausalLM,
-        vae: DCAE_HF,
+        vae: DCAE,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
         pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
@@ -840,22 +840,27 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
+                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-            # set to None for next
 
-        if not output_type == "latent":
-            image = self.vae.decode(latents.to(self.vae.dtype) / self.vae.config.scaling_factor)
+        if output_type == "latent":
+            image = latents
+        else:
+            latents = latents.to(self.vae.dtype)
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             if use_resolution_binning:
                 image = self.image_processor.resize_and_crop_tensor(image, orig_width, orig_height)
-        else:
-            image = latents
 
         if not output_type == "latent":
             image = self.image_processor.postprocess(image, output_type=output_type)
