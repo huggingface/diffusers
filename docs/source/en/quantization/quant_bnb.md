@@ -32,6 +32,7 @@ pip install -Uq diffusers bitsandbytes
 
 We'll start by running the model with full precision using the `bf16` (bfloat16) data type.
 This serves as our baseline to compare against when we apply quantization techniques later.
+If you want to follow along and run this test, you'll need a GPU with more than 32 GB of RAM.
 
 To compare memory usage and output quality, we'll create two global dictionaries: `memory_dict` and `image_dict`.
 These will store the memory allocation of the pipeline and the images generated from the same prompt, respectively.
@@ -52,11 +53,10 @@ Load the model with `bf16` precision:
 
 ```python
 checkpoint_id = "black-forest-labs/FLUX.1-dev"
-bf16_dtype = torch.bfloat16
 
 pipe = FluxPipeline.from_pretrained(
     checkpoint_id,
-    torch_dtype=bf16_dtype,
+    torch_dtype=torch.bfloat16,
 ).to("cuda")
 ```
 
@@ -133,10 +133,6 @@ from transformers import T5EncoderModel
 
 Set the data type to `fp16` (float16):
 
-```python
-fp16_dtype = torch.float16
-```
-
 Quantize the language model:
 
 ```python
@@ -148,7 +144,7 @@ text_encoder_2_8bit = T5EncoderModel.from_pretrained(
     checkpoint_id,
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -164,7 +160,7 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
     checkpoint_id,
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -176,7 +172,7 @@ pipe = FluxPipeline.from_pretrained(
     checkpoint_id,
     transformer=transformer_8bit,
     text_encoder_2=text_encoder_2_8bit,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -223,14 +219,14 @@ Quantize the language model:
 ```python
 quant_config = TransformersBitsAndBytesConfig(
     load_in_4bit=True,
-    bnb_4bit_compute_dtype=fp16_dtype,
+    bnb_4bit_compute_dtype=torch.float16,
 )
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     checkpoint_id,
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -240,14 +236,14 @@ Quantize the denoiser model:
 ```python
 quant_config = DiffusersBitsAndBytesConfig(
     load_in_4bit=True,
-    bnb_4bit_compute_dtype=fp16_dtype,
+    bnb_4bit_compute_dtype=torch.float16,
 )
 
 transformer_4bit = FluxTransformer2DModel.from_pretrained(
     checkpoint_id,
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -259,7 +255,7 @@ pipe = FluxPipeline.from_pretrained(
     checkpoint_id,
     transformer=transformer_4bit,
     text_encoder_2=text_encoder_2_4bit,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -307,14 +303,14 @@ Quantize the language model:
 quant_config = TransformersBitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=fp16_dtype,
+    bnb_4bit_compute_dtype=torch.float16,
 )
 
 text_encoder_2_nf4 = T5EncoderModel.from_pretrained(
     checkpoint_id,
     subfolder="text_encoder_2",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -325,14 +321,14 @@ Quantize the denoiser model:
 quant_config = DiffusersBitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=fp16_dtype,
+    bnb_4bit_compute_dtype=torch.float16,
 )
 
 transformer_nf4 = FluxTransformer2DModel.from_pretrained(
     checkpoint_id,
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
 )
 ```
@@ -344,7 +340,7 @@ pipe = FluxPipeline.from_pretrained(
     checkpoint_id,
     transformer=transformer_nf4,
     text_encoder_2=text_encoder_2_nf4,
-    torch_dtype=fp16_dtype,
+    torch_dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -431,7 +427,7 @@ ax_line = fig.add_subplot(gs[1, :])
 ax_line.plot(keys, memory_values, marker='o', linestyle='-', color='orange')
 ax_line.set_xlabel('Quantization Type')
 ax_line.set_ylabel('Memory Usage (GB)')
-ax_line.set_title('Reduction in Memory Usage with Different Quantization Methods')
+ax_line.set_title('Memory Usage with Different Quantization Methods')
 ax_line.grid(True)
 
 # Annotate each point with memory usage
@@ -458,26 +454,10 @@ introduce artifacts or degrade image quality. However, as you can see, the image
 4-bit and NF4 quantization are still quite acceptable, especially considering the significant memory
 savings.
 
-## Training LoRAs with Quantized Weights
+## Training
 
-If you think quantization only helps with **inference**, you're in for a surprise. The `diffusers`
-library supports training of LoRAs (Low-Rank Adaptations) with quantized weights as well.
+Diffusers also support training [LoRAs](./training/lora) with quantized weights. Refer to the [flux_lora_quantization.py](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/flux_lora_quantization) script for an example of how to fine-tune FLUX.1-dev with LoRA and bitsandbytes.
 
-Due to space constraints, we won't dive into the detailed process here. However, you can find an
-experimental setup and more information in the resource linked below.
-
-- An experimental setup [3] for training LoRAs with quantized weights for FLUX.1-dev.
-
-## Conclusion
-
-Quantization is a powerful technique for reducing the memory footprint of diffusion models without
-significantly compromising their performance. By applying 8-bit, 4-bit, or NF4 quantization, you can
-run large models like FLUX.1-dev on hardware with limited VRAM, such as a free-tier Google Colab instance.
-This opens up new possibilities for deploying advanced models on consumer-grade devices.
-
-Whether you're interested in inference or training, quantization provides a practical solution for
-resource constraints. We encourage you to experiment with these techniques and see how they can
-benefit your projects.
 
 ## References
 
