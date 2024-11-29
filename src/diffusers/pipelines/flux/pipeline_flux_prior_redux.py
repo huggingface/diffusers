@@ -334,6 +334,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
+        prompt: Union[str, List[str]] = None,
+        prompt_2: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ):
         r"""
@@ -378,10 +382,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 pooled_prompt_embeds,
                 _,
             ) = self.encode_prompt(
-                prompt=[""] * batch_size,
-                prompt_2=None,
-                prompt_embeds=None,
-                pooled_prompt_embeds=None,
+                prompt=prompt * batch_size,
+                prompt_2=prompt_2,
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
                 device=device,
                 num_images_per_prompt=1,
                 max_sequence_length=512,
