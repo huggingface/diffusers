@@ -142,6 +142,34 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
 
+    def check_inputs(
+        self,
+        prompt,
+        prompt_2,
+        prompt_embeds=None,
+        pooled_prompt_embeds=None,
+    ):
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt_2 is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt_2`: {prompt_2} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
+            raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
+
+        if prompt_embeds is not None and pooled_prompt_embeds is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
         image = self.feature_extractor.preprocess(
@@ -367,6 +395,11 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             batch_size = len(image)
         else:
             batch_size = image.shape[0]
+        if prompt is not None and isinstance(prompt, str):
+            prompt = batch_size * [prompt]
+
+
+
         device = self._execution_device
 
         # 3. Prepare image embeddings
@@ -382,7 +415,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 pooled_prompt_embeds,
                 _,
             ) = self.encode_prompt(
-                prompt=prompt * batch_size,
+                prompt=prompt,
                 prompt_2=prompt_2,
                 prompt_embeds=prompt_embeds,
                 pooled_prompt_embeds=pooled_prompt_embeds,
