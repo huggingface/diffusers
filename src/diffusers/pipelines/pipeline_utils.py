@@ -817,8 +817,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # if zip file, we need to extract the zipfile and remove it
             if os.path.isfile(zip_file_path):
                 if zipfile.is_zipfile(zip_file_path):
-                    with zipfile.ZipFile(zip_file_path, "r") as zipf:
-                        zipf.extractall(extract_to)
+                    # with zipfile.ZipFile(zip_file_path, "r") as zipf:
+                    #     zipf.extractall(extract_to)
+                    with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
+                        file_list = zip_ref.infolist()
+                        for file_info in tqdm(file_list, desc="Extracting files"):
+                            zip_ref.extract(file_info, extract_to)
                     # remove zip archive to free memory
                     os.remove(zip_file_path)
                     # rename folder to match the name of the dduf archive
@@ -1340,7 +1344,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
-        dduf = kwargs.pop("dduf", False)
+        dduf = kwargs.pop("dduf", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1359,7 +1363,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 local_files_only = True
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
-        if not local_files_only:
+        if dduf is not None and not local_files_only:
+            dduf_available = False
+            for sibling in info.siblings:
+                dduf_available = dduf in sibling.rfilename
+            if not dduf_available:
+                raise ValueError(f"Requested {dduf} file is not available in {pretrained_model_name}.")
+
+        if not local_files_only and not dduf:
             filenames = {sibling.rfilename for sibling in info.siblings}
             if variant is not None and _check_legacy_sharding_variant_format(filenames=filenames, variant=variant):
                 warn_msg = (
@@ -1420,11 +1431,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
             allow_patterns += [os.path.join(k, "config.json") for k in model_folder_names]
-            # also allow downloading the dduf
-            # TODO: check that the file actually exist
-            if dduf is not None:
-                allow_patterns += [dduf]
-
             allow_patterns += [
                 SCHEDULER_CONFIG_NAME,
                 CONFIG_NAME,
@@ -1503,10 +1509,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
-        if custom_pipeline is not None and not custom_pipeline.endswith(".py"):
+        if not dduf and custom_pipeline is not None and not custom_pipeline.endswith(".py"):
             user_agent["custom_pipeline"] = custom_pipeline
 
         # download all allow_patterns - ignore_patterns
+        # also allow downloading the dduf
+        if dduf is not None:
+            allow_patterns = [dduf]
+            ignore_patterns = []
         try:
             cached_folder = snapshot_download(
                 pretrained_model_name,
@@ -1521,26 +1531,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
             # retrieve pipeline class from local file
-            cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
-            cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
+            if not dduf:
+                cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+                cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
-            diffusers_module = importlib.import_module(__name__.split(".")[0])
-            pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
+                diffusers_module = importlib.import_module(__name__.split(".")[0])
+                pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
 
-            if pipeline_class is not None and pipeline_class._load_connected_pipes:
-                modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-                connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
-                for connected_pipe_repo_id in connected_pipes:
-                    download_kwargs = {
-                        "cache_dir": cache_dir,
-                        "force_download": force_download,
-                        "proxies": proxies,
-                        "local_files_only": local_files_only,
-                        "token": token,
-                        "variant": variant,
-                        "use_safetensors": use_safetensors,
-                    }
-                    DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
+                if pipeline_class is not None and pipeline_class._load_connected_pipes:
+                    modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+                    connected_pipes = sum([getattr(modelcard.data, k, []) for k in CONNECTED_PIPES_KEYS], [])
+                    for connected_pipe_repo_id in connected_pipes:
+                        download_kwargs = {
+                            "cache_dir": cache_dir,
+                            "force_download": force_download,
+                            "proxies": proxies,
+                            "local_files_only": local_files_only,
+                            "token": token,
+                            "variant": variant,
+                            "use_safetensors": use_safetensors,
+                        }
+                        DiffusionPipeline.download(connected_pipe_repo_id, **download_kwargs)
 
             return cached_folder
 
