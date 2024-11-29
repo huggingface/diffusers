@@ -21,10 +21,6 @@ import torch
 from datasets import load_dataset
 from parameterized import parameterized
 
-
-if is_peft_available():
-    from peft import LoraConfig
-
 from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
@@ -42,6 +38,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
     load_hf_numpy,
+    require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
     require_torch_gpu,
@@ -53,6 +50,10 @@ from diffusers.utils.testing_utils import (
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 enable_full_determinism()
