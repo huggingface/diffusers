@@ -21,7 +21,7 @@ from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
-from ..utils.import_utils import is_torch_npu_available, is_xformers_available
+from ..utils.import_utils import is_torch_npu_available, is_xformers_available, is_torch_xla_version
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
 
 
@@ -37,8 +37,10 @@ else:
     xformers = None
 
 if is_torch_xla_available():
-    from torch_xla.experimental.custom_kernel import flash_attention
-
+    # flash attention pallas kernel is introduced in the torch_xla 2.3 release.
+    if is_torch_xla_version(">", "2.2"):
+        from torch_xla.runtime import is_spmd
+        from torch_xla.experimental.custom_kernel import flash_attention
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
@@ -276,16 +278,21 @@ class Attention(nn.Module):
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
-        # If torch_xla is available, we use pallas flash attention kernel to improve the performance.
+        # If torch_xla is available with the correct version, we use pallas flash attention kernel to improve 
+        # the performance.
         if processor is None:
             if hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
-                if is_torch_xla_available:
+                if (
+                    is_torch_xla_available
+                    and is_torch_xla_version('>', '2.2')
+                    and (not is_spmd() or is_torch_xla_version('>', '2.3'))
+                ):
                     processor = XLAFlashAttnProcessor2_0()
                 else:
                     processor = AttnProcessor2_0()
             else:
                 processor = AttnProcessor()
-        
+
         self.set_processor(processor)
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
@@ -2771,8 +2778,10 @@ class XLAFlashAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-        if not is_torch_xla_available:
-            raise ImportError("XLAFlashAttnProcessor2_0 required torch_xla package.")
+        if is_torch_xla_version("<", "2.3"):
+            raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
+        if is_spmd() and is_torch_xla_version("<", "2.4"):
+            raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
 
     def __call__(
         self,
@@ -2784,10 +2793,6 @@ class XLAFlashAttnProcessor2_0:
         *args,
         **kwargs,
     ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2836,7 +2841,7 @@ class XLAFlashAttnProcessor2_0:
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
-        if XLA_AVAILABLE and all(tensor.shape[2] >= 4096 for tensor in [query, key, value]):
+        if all(tensor.shape[2] >= 4096 for tensor in [query, key, value]):
             if attention_mask is not None:
                 attention_mask = attention_mask.view(batch_size, 1, 1, attention_mask.shape[-1])
                 # Convert mask to float and replace 0s with -inf and 1s with 0
@@ -2849,7 +2854,8 @@ class XLAFlashAttnProcessor2_0:
                 # Apply attention mask to key
                 key = key + attention_mask
             query /= math.sqrt(query.shape[3])
-            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=("data", None, None, None))
+            partition_spec = ("data", None, None, None) if is_spmd() else None
+            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
         else:
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
