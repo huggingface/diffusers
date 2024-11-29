@@ -368,6 +368,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        scales: Optional[Union[float, List[float]]] = None,
         return_dict: bool = True,
     ):
         r"""
