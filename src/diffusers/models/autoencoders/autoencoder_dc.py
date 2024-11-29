@@ -13,12 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import BatchNorm2d
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..activations import get_activation
@@ -40,7 +39,7 @@ def build_norm(name: Optional[str] = "bn2d", num_features: Optional[int] = None)
     elif name == "rms2d":
         norm = RMSNormNd(num_features, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
     elif name == "bn2d":
-        norm = BatchNorm2d(num_features=num_features)
+        norm = nn.BatchNorm2d(num_features=num_features)
     else:
         raise ValueError(f"norm {name} is not supported")
     return norm
@@ -59,20 +58,20 @@ class GLUMBConv(nn.Module):
         self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
         self.norm = RMSNormNd(out_channels, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        residual = hidden_states
 
-        x = self.conv_inverted(x)
-        x = self.nonlinearity(x)
+        hidden_states = self.conv_inverted(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
 
-        x = self.conv_depth(x)
-        x, gate = torch.chunk(x, 2, dim=1)
-        x = x * self.nonlinearity(gate)
+        hidden_states = self.conv_depth(hidden_states)
+        hidden_states, gate = torch.chunk(hidden_states, 2, dim=1)
+        hidden_states = hidden_states * self.nonlinearity(gate)
 
-        x = self.conv_point(x)
-        x = self.norm(x)
+        hidden_states = self.conv_point(hidden_states)
+        hidden_states = self.norm(hidden_states)
 
-        return x + residual
+        return hidden_states + residual
 
 
 class ResBlock(nn.Module):
@@ -80,30 +79,26 @@ class ResBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        norm=("bn2d", "bn2d"),
+        norm_type: str = "bn2d",
         act_func=("relu6", None),
     ) -> None:
         super().__init__()
 
-        norm = val2tuple(norm, 2)
         act_func = val2tuple(act_func, 2)
 
         self.nonlinearity = get_activation(act_func[0]) if act_func[0] is not None else nn.Identity()
 
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
-        self.norm1 = build_norm(norm[0], num_features=in_channels) if norm[0] is not None else nn.Identity()
-
         self.conv2 = nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False)
-        self.norm2 = build_norm(norm[1], num_features=out_channels) if norm[1] is not None else nn.Identity()
+        self.norm = build_norm(norm_type, out_channels)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x
-        x = self.conv1(x)
-        x = self.norm1(x)
-        x = self.nonlinearity(x)
-        x = self.conv2(x)
-        x = self.norm2(x)
-        return x + residual
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        residual = hidden_states
+        hidden_states = self.conv1(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.conv2(hidden_states)
+        hidden_states = self.norm(hidden_states)
+        return hidden_states + residual
 
 
 class LiteMLA(nn.Module):
@@ -244,7 +239,7 @@ class EfficientViTBlock(nn.Module):
     ):
         super().__init__()
 
-        self.context_module = LiteMLA(
+        self.attn = LiteMLA(
             in_channels=in_channels,
             out_channels=in_channels,
             heads_ratio=heads_ratio,
@@ -253,14 +248,14 @@ class EfficientViTBlock(nn.Module):
             scales=scales,
         )
 
-        self.local_module = GLUMBConv(
+        self.conv_out = GLUMBConv(
             in_channels=in_channels,
             out_channels=in_channels,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.context_module(x)
-        x = self.local_module(x)
+        x = self.attn(x)
+        x = self.conv_out(x)
         return x
 
 
@@ -280,7 +275,7 @@ def build_stage_main(
             block = ResBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                norm=(None, norm),
+                norm_type=norm,
                 act_func=(act, None),
             )
         elif current_block_type == "EViT_GLU":
@@ -348,17 +343,16 @@ class DCUpBlock2d(nn.Module):
 
         self.interpolate = interpolate
         self.interpolation_mode = interpolation_mode
+        self.shortcut = shortcut
         self.factor = 2
+        self.repeats = out_channels * self.factor**2 // in_channels
+
         out_ratio = self.factor**2
 
         if not interpolate:
             out_channels = out_channels * out_ratio
 
-        self.repeats = out_channels * self.factor**2 // in_channels
-
         self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
-
-        self.shortcut = shortcut
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.interpolate:
@@ -395,9 +389,7 @@ class Encoder(nn.Module):
         assert len(block_out_channels) == num_stages
         assert isinstance(block_type, str) or (isinstance(block_type, list) and len(block_type) == num_stages)
 
-        factor = 1 if layers_per_block[0] > 0 else 2
-
-        if factor == 1:
+        if layers_per_block[0] > 0:
             self.conv_in = nn.Conv2d(
                 in_channels,
                 block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
@@ -405,15 +397,13 @@ class Encoder(nn.Module):
                 stride=1,
                 padding=1,
             )
-        elif factor == 2:
+        else:
             self.conv_in = DCDownBlock2d(
                 in_channels=in_channels,
                 out_channels=block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
                 downsample=downsample_block_type == "ConvPixelUnshuffle",
                 shortcut=False,
             )
-        else:
-            raise
 
         stages = []
         for stage_id, (width, depth) in enumerate(zip(block_out_channels, layers_per_block)):
@@ -432,13 +422,7 @@ class Encoder(nn.Module):
             stages.append(nn.Sequential(*current_stage))
         self.stages = nn.ModuleList(stages)
 
-        self.conv_out = nn.Conv2d(
-            block_out_channels[-1],
-            latent_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-        )
+        self.conv_out = nn.Conv2d(block_out_channels[-1], latent_channels, 3, 1, 1)
         self.norm_factor = 1
         norm_in_channels = block_out_channels[-1]
         norm_out_channels = latent_channels
@@ -464,9 +448,9 @@ class Decoder(nn.Module):
         latent_channels: int,
         block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
         layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
-        block_type: str | List[str] = "ResBlock",
-        norm: str | List[str] = "rms2d",
-        act: str | List[str] = "silu",
+        block_type: Union[str, List[str]] = "ResBlock",
+        norm: Union[str, List[str]] = "rms2d",
+        act: Union[str, List[str]] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
         upsample_shortcut: str = "duplicating",
     ):
@@ -479,10 +463,9 @@ class Decoder(nn.Module):
         assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
         assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
 
-        self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
+        self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], 3, 1, 1)
 
         self.norm_factor = 1
-        # TODO(aryan): Make sure this is divisible
         self.norm_repeats = block_out_channels[-1] * self.norm_factor**2 // latent_channels
 
         stages = []
@@ -513,32 +496,17 @@ class Decoder(nn.Module):
             stages.insert(0, nn.Sequential(*current_stage))
         self.stages = nn.ModuleList(stages)
 
-        factor = 1 if layers_per_block[0] > 0 else 2
+        channels = block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1]
 
-        self.norm_out = RMSNormNd(
-            block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
-            eps=1e-5,
-            elementwise_affine=True,
-            bias=True,
-            channel_dim=1,
-        )
+        self.norm_out = RMSNormNd(channels, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
         self.conv_act = nn.ReLU()
         self.conv_out = None
 
-        if factor == 1:
-            self.conv_out = nn.Conv2d(
-                block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
-                in_channels,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-            )
+        if layers_per_block[0] > 0:
+            self.conv_out = nn.Conv2d(channels, in_channels, 3, 1, 1)
         else:
             self.conv_out = DCUpBlock2d(
-                block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1],
-                in_channels,
-                interpolate=upsample_block_type == "InterpolateConv",
-                shortcut=False,
+                channels, in_channels, interpolate=upsample_block_type == "InterpolateConv", shortcut=False
             )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -571,7 +539,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         decoder_norm: str = "rms2d",
         decoder_act: str = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
-        scaling_factor: Optional[float] = None,
+        scaling_factor: float = 1.0,
     ):
         super().__init__()
         self.encoder = Encoder(

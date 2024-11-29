@@ -21,6 +21,8 @@ VAE_KEYS_RENAME_DICT = {
     # common
     "main.": "",
     "op_list.": "",
+    "context_module": "attn",
+    "local_module": "conv_out",
     "norm.": "norm.norm.",
     "depth_conv.conv": "conv_depth",
     "inverted_conv.conv": "conv_inverted",
@@ -29,8 +31,7 @@ VAE_KEYS_RENAME_DICT = {
     "conv.conv.": "conv.",
     "conv1.conv": "conv1",
     "conv2.conv": "conv2",
-    "conv1.norm": "norm1",
-    "conv2.norm": "norm2",
+    "conv2.norm": "norm",
     "qkv.conv": "qkv",
     "proj.conv": "proj_out",
     "proj.norm": "norm_out",
