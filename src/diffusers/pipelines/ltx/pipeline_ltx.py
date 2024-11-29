@@ -415,6 +415,24 @@ class LTXPipeline(DiffusionPipeline):
         latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
         return latents
 
+    @staticmethod
+    def _normalize_latents(
+        latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+    ) -> torch.Tensor:
+        latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents = (latents - latents_mean) * scaling_factor / latents_std
+        return latents
+
+    @staticmethod
+    def _denormalize_latents(
+        latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+    ) -> torch.Tensor:
+        latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents = latents * latents_std / scaling_factor + latents_mean
+        return latents
+
     def prepare_latents(
         self,
         batch_size: int = 1,
@@ -443,7 +461,9 @@ class LTXPipeline(DiffusionPipeline):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size)
+        latents = self._pack_latents(
+            latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+        )
         return latents
 
     @property
@@ -709,15 +729,17 @@ class LTXPipeline(DiffusionPipeline):
         if output_type == "latent":
             video = latents
         else:
-            latents = self._unpack_latents(latents, latent_num_frames, latent_height, latent_width, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size)
-            # unscale/denormalize the latents
-            latents_mean = self.vae.latents_mean.view(1, self.vae.config.latent_channels, 1, 1, 1).to(
-                latents.device, latents.dtype
+            latents = self._unpack_latents(
+                latents,
+                latent_num_frames,
+                latent_height,
+                latent_width,
+                self.transformer_spatial_patch_size,
+                self.transformer_temporal_patch_size,
             )
-            latents_std = self.vae.latents_std.view(1, self.vae.config.latent_channels, 1, 1, 1).to(
-                latents.device, latents.dtype
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
-            latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 

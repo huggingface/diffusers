@@ -802,7 +802,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
         )
 
         latents_mean = torch.zeros((latent_channels,), requires_grad=False)
-        latents_std = torch.zeros((latent_channels,), requires_grad=False)
+        latents_std = torch.ones((latent_channels,), requires_grad=False)
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
 

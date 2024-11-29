@@ -116,7 +116,12 @@ class LTXRotaryPosEmbed(nn.Module):
         self.theta = theta
 
     def forward(
-        self, hidden_states: torch.Tensor, num_frames: int, height: int, width: int, rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None
+        self,
+        hidden_states: torch.Tensor,
+        num_frames: int,
+        height: int,
+        width: int,
+        rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size = hidden_states.size(0)
 

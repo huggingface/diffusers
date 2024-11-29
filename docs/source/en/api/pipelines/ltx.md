@@ -28,6 +28,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
   - all
   - __call__
 
+## LTXImageToVideoPipeline
+
+[[autodoc]] LTXImageToVideoPipeline
+  - all
+  - __call__
+
 ## LTXPipelineOutput
 
 [[autodoc]] pipelines.ltx.pipeline_output.LTXPipelineOutput
