@@ -278,13 +278,13 @@ class MochiAttnProcessor2_0:
             mask = attention_mask[idx][None, :]
             valid_prompt_token_indices = torch.nonzero(mask.flatten(), as_tuple=False).flatten()
 
-            valid_encoder_query = torch.index_select(encoder_query[idx][None, :], 2, valid_prompt_token_indices)
-            valid_encoder_key = torch.index_select(encoder_key[idx][None, :], 2, valid_prompt_token_indices)
-            valid_encoder_value = torch.index_select(encoder_value[idx][None, :], 2, valid_prompt_token_indices)
+            valid_encoder_query = encoder_query[idx : idx + 1, :, valid_prompt_token_indices, :]
+            valid_encoder_key = encoder_key[idx : idx + 1, :, valid_prompt_token_indices, :]
+            valid_encoder_value = encoder_value[idx : idx + 1, :, valid_prompt_token_indices, :]
 
-            valid_query = torch.cat([query[idx][None, :], valid_encoder_query], dim=2)
-            valid_key = torch.cat([key[idx][None, :], valid_encoder_key], dim=2)
-            valid_value = torch.cat([value[idx][None, :], valid_encoder_value], dim=2)
+            valid_query = torch.cat([query[idx : idx + 1], valid_encoder_query], dim=2)
+            valid_key = torch.cat([key[idx : idx + 1], valid_encoder_key], dim=2)
+            valid_value = torch.cat([value[idx : idx + 1], valid_encoder_value], dim=2)
 
             attn_output = F.scaled_dot_product_attention(
                 valid_query, valid_key, valid_value, dropout_p=0.0, is_causal=False
@@ -666,6 +666,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     hidden_states,
                     encoder_hidden_states,
                     temb,
+                    encoder_attention_mask,
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
