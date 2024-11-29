@@ -177,7 +177,7 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(accelerator.device, dtype=torch_dtype)
+    pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     # run inference
@@ -1335,10 +1335,7 @@ def main(args):
             "weight_decay": args.adam_weight_decay_text_encoder,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
-        params_to_optimize = [
-            transformer_parameters_with_lr,
-            text_parameters_one_with_lr,
-        ]
+        params_to_optimize = [transformer_parameters_with_lr, text_parameters_one_with_lr]
     else:
         params_to_optimize = [transformer_parameters_with_lr]
 
@@ -1400,7 +1397,6 @@ def main(args):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,
@@ -1652,11 +1648,15 @@ def main(args):
                             prompt=prompts,
                         )
                 else:
+                    elems_to_repeat = len(prompts)
                     if args.train_text_encoder:
                         prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
-                            text_input_ids_list=[tokens_one, tokens_two],
+                            text_input_ids_list=[
+                                tokens_one.repeat(elems_to_repeat, 1),
+                                tokens_two.repeat(elems_to_repeat, 1),
+                            ],
                             max_sequence_length=args.max_sequence_length,
                             device=accelerator.device,
                             prompt=args.instance_prompt,
@@ -1710,7 +1710,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                if accelerator.unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.tensor([args.guidance_scale], device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
@@ -1823,6 +1823,8 @@ def main(args):
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one, text_encoder_two = load_text_encoders(text_encoder_cls_one, text_encoder_cls_two)
+                    text_encoder_one.to(weight_dtype)
+                    text_encoder_two.to(weight_dtype)
                 pipeline = FluxPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -1845,6 +1847,9 @@ def main(args):
                 if not args.train_text_encoder:
                     del text_encoder_one, text_encoder_two
                     free_memory()
+
+                images = None
+                del pipeline
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -1909,6 +1914,9 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+        images = None
+        del pipeline
 
     accelerator.end_training()
 

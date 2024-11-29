@@ -37,6 +37,10 @@ try:
     print("Cuda version:", torch.version.cuda)
     print("CuDNN version:", torch.backends.cudnn.version())
     print("Number of GPUs available:", torch.cuda.device_count())
+    if torch.cuda.is_available():
+        device_properties = torch.cuda.get_device_properties(0)
+        total_memory = device_properties.total_memory / (1024**3)
+        print(f"CUDA memory: {total_memory} GB")
 except ImportError:
     print("Torch version:", None)
 
