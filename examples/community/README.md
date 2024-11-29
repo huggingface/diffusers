@@ -2619,16 +2619,17 @@ for obj in range(bs):
 
 ### Stable Diffusion XL Reference
 
-This pipeline uses the Reference. Refer to the [stable_diffusion_reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference).
+This pipeline uses the Reference. Refer to the [Stable Diffusion Reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-reference) section for more information.
 
 ```py
 import torch
-from PIL import Image
+# from diffusers import DiffusionPipeline
 from diffusers.utils import load_image
-from diffusers import DiffusionPipeline
 from diffusers.schedulers import UniPCMultistepScheduler
 
-input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
+from .stable_diffusion_xl_reference import StableDiffusionXLReferencePipeline
+
+input_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg")
 
 # pipe = DiffusionPipeline.from_pretrained(
 #     "stabilityai/stable-diffusion-xl-base-1.0",
@@ -2646,7 +2647,7 @@ pipe = StableDiffusionXLReferencePipeline.from_pretrained(
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
 result_img = pipe(ref_image=input_image,
-      prompt="1girl",
+      prompt="a dog",
       num_inference_steps=20,
       reference_attn=True,
       reference_adain=True).images[0]
@@ -2654,14 +2655,14 @@ result_img = pipe(ref_image=input_image,
 
 Reference Image
 
-![reference_image](https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png)
+![reference_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg)
 
 Output Image
 
-`prompt: 1 girl`
+`prompt: a dog`
 
-`reference_attn=True, reference_adain=True, num_inference_steps=20`
-![Output_image](https://github.com/zideliu/diffusers/assets/34944964/743848da-a215-48f9-ae39-b5e2ae49fb13)
+`reference_attn=False, reference_adain=True, num_inference_steps=20`
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_adain_dog.png)
 
 Reference Image
 ![reference_image](https://github.com/huggingface/diffusers/assets/34944964/449bdab6-e744-4fb2-9620-d4068d9a741b)
@@ -2682,6 +2683,88 @@ Output Image
 
 `reference_attn=True, reference_adain=True, num_inference_steps=20`
 ![output_image](https://github.com/huggingface/diffusers/assets/34944964/9b2f1aca-886f-49c3-89ec-d2031c8e3670)
+
+### Stable Diffusion XL ControlNet Reference
+
+This pipeline uses the Reference Control and with ControlNet. Refer to the [Stable Diffusion ControlNet Reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-controlnet-reference) and [Stable Diffusion XL Reference](https://github.com/huggingface/diffusers/blob/main/examples/community/README.md#stable-diffusion-xl-reference) sections for more information.
+
+```py
+from diffusers import ControlNetModel, AutoencoderKL
+from diffusers.schedulers import UniPCMultistepScheduler
+from diffusers.utils import load_image
+import numpy as np
+import torch
+
+import cv2
+from PIL import Image
+
+from .stable_diffusion_xl_controlnet_reference import StableDiffusionXLControlNetReferencePipeline
+
+# download an image
+canny_image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg"
+)
+
+ref_image = load_image(
+    "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
+)
+
+# initialize the models and pipeline
+controlnet_conditioning_scale = 0.5  # recommended for good generalization
+controlnet = ControlNetModel.from_pretrained(
+    "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+)
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipe = StableDiffusionXLControlNetReferencePipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
+).to("cuda:0")
+
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+
+# get canny image
+image = np.array(canny_image)
+image = cv2.Canny(image, 100, 200)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image)
+
+# generate image
+image = pipe(
+    prompt="a cat",
+    num_inference_steps=20,
+    controlnet_conditioning_scale=controlnet_conditioning_scale,
+    image=canny_image,
+    ref_image=ref_image,
+    reference_attn=False,
+    reference_adain=True,
+    style_fidelity=1.0,
+    generator=torch.Generator("cuda").manual_seed(42)
+).images[0]
+```
+
+Canny ControlNet Image
+
+![canny_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_input_cat.jpg)
+
+Reference Image
+
+![ref_image](https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png)
+
+Output Image
+
+`prompt: a cat`
+
+`reference_attn=True, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
+
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_attn_adain_canny_cat.png)
+
+`reference_attn=False, reference_adain=True, num_inference_steps=20, style_fidelity=1.0`
+
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_adain_canny_cat.png)
+
+`reference_attn=True, reference_adain=False, num_inference_steps=20, style_fidelity=1.0`
+
+![Output_image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_reference_attn_canny_cat.png)
 
 ### Stable diffusion fabric pipeline
 
@@ -3378,6 +3461,20 @@ best quality, 3persons in garden, a boy blue shirt BREAK
 best quality, 3persons in garden, an old man red suit
 ```
 
+### Use base prompt
+
+You can use a base prompt to apply the prompt to all areas. You can set a base prompt by adding `ADDBASE` at the end. Base prompts can also be combined with common prompts, but the base prompt must be specified first.
+
+```
+2d animation style ADDBASE
+masterpiece, high quality ADDCOMM
+(blue sky)++ BREAK
+green hair twintail BREAK
+book shelf BREAK
+messy desk BREAK
+orange++ dress and sofa
+```
+
 ### Negative prompt
 
 Negative prompts are equally effective across all regions, but it is possible to set region-specific prompts for negative prompts as well. The number of BREAKs must be the same as the number of prompts. If the number of prompts does not match, the negative prompts will be used without being divided into regions.
@@ -3408,6 +3505,7 @@ pipe(prompt=prompt, rp_args=rp_args)
 ### Optional Parameters
 
 - `save_mask`: In `Prompt` mode, choose whether to output the generated mask along with the image. The default is `False`.
+- `base_ratio`: Used with `ADDBASE`. Sets the ratio of the base prompt; if base ratio is set to 0.2, then resulting images will consist of `20%*BASE_PROMPT + 80%*REGION_PROMPT`
 
 The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
