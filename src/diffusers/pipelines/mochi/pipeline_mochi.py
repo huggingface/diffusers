@@ -235,6 +235,9 @@ class MochiPipeline(DiffusionPipeline):
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
         prompt_attention_mask = prompt_attention_mask.bool().to(device)
+        if prompt == "" or prompt[-1] == "":
+            text_input_ids = torch.zeros_like(text_input_ids, device=device)
+            prompt_attention_mask = torch.zeros_like(prompt_attention_mask, dtype=torch.bool, device=device)
 
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
@@ -450,7 +453,8 @@ class MochiPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
+        latents = latents.to(dtype)
         return latents
 
     @property
