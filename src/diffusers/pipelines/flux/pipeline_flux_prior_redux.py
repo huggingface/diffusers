@@ -146,6 +146,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         self,
         prompt,
         prompt_2,
+        image,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
     ):
@@ -164,7 +165,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
         elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
-
+        if prompt is not None and (isinstance(prompt, list) and isinstance(image, list) and len(prompt) != len(image)):
+            raise ValueError(f"number of prompts must be equal to number of images, but {len(prompt)} prompts were provided and {batch_size} images")
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
@@ -388,6 +390,15 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             returning a tuple, the first element is a list with the generated images.
         """
 
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt,
+            prompt_2,
+            image,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+        )
+
         # 2. Define call parameters
         if image is not None and isinstance(image, Image.Image):
             batch_size = 1
@@ -397,8 +408,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             batch_size = image.shape[0]
         if prompt is not None and isinstance(prompt, str):
             prompt = batch_size * [prompt]
-
-
 
         device = self._execution_device
 
