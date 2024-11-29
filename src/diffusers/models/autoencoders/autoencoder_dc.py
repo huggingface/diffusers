@@ -80,13 +80,11 @@ class ResBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         norm_type: str = "bn2d",
-        act_func=("relu6", None),
+        act_fn: str = "relu6",
     ) -> None:
         super().__init__()
 
-        act_func = val2tuple(act_func, 2)
-
-        self.nonlinearity = get_activation(act_func[0]) if act_func[0] is not None else nn.Identity()
+        self.nonlinearity = get_activation(act_fn) if act_fn is not None else nn.Identity()
 
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
         self.conv2 = nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False)
@@ -259,6 +257,23 @@ class EfficientViTBlock(nn.Module):
         return x
 
 
+def get_block_from_block_type(
+    block_type: str,
+    in_channels: int,
+    out_channels: int,
+    norm_type: str,
+    act_fn: str,
+):
+    if block_type == "ResBlock":
+        block = ResBlock(in_channels, out_channels, norm_type, act_fn)
+    
+    elif block_type == "EfficientViTBlock":
+        block = EfficientViTBlock(in_channels, norm=norm_type, scales=())
+
+    else:
+        raise ValueError(f"Block with {block_type=} is not supported.")
+
+
 def build_stage_main(
     width: int, depth: int, block_type: str | List[str], norm: str, act: str, input_width: int
 ) -> list[nn.Module]:
@@ -278,7 +293,7 @@ def build_stage_main(
                 norm_type=norm,
                 act_func=(act, None),
             )
-        elif current_block_type == "EViT_GLU":
+        elif current_block_type == "EfficientViTBlock":
             assert in_channels == out_channels
             block = EfficientViTBlock(in_channels, norm=norm, scales=())
         elif current_block_type == "EViTS5_GLU":
