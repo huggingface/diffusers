@@ -4992,7 +4992,6 @@ AttentionProcessor = Union[
     PAGHunyuanAttnProcessor2_0,
     PAGCFGHunyuanAttnProcessor2_0,
     LuminaAttnProcessor2_0,
-    MochiAttnProcessor2_0,
     FusedAttnProcessor2_0,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
