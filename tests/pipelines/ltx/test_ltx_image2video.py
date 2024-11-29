@@ -18,7 +18,6 @@ import unittest
 import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
-from PIL import Image
 
 from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXImageToVideoPipeline, LTXTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
@@ -97,7 +96,7 @@ class LTXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
 
         image = torch.randn((1, 3, 32, 32), generator=generator, device=device)
-        
+
         inputs = {
             "image": image,
             "prompt": "dance monkey",
