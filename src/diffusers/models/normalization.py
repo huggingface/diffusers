@@ -543,9 +543,6 @@ class RMSNorm(nn.Module):
 
         return hidden_states
 
-    def extra_repr(self) -> str:
-        return f"features={self.dim}, eps={self.eps}, elementwise_affine={self.elementwise_affine}"
-
 
 class GlobalResponseNorm(nn.Module):
     # Taken from https://github.com/facebookresearch/ConvNeXt-V2/blob/3608f67cc1dae164790c5d0aead7bf2d73d9719b/models/utils.py#L105

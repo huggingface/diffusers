@@ -899,12 +899,12 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             return self.tiled_encode(x)
 
         if self.use_framewise_encoding:
-            enc = []
-            for i in range(0, num_frames, self.num_sample_frames_batch_size):
-                x_intermediate = x[:, :, i : i + self.num_sample_frames_batch_size]
-                x_intermediate = self.encoder(x_intermediate)
-                enc.append(x_intermediate)
-            enc = torch.cat(enc, dim=2)
+            # TODO(aryan): requires investigation
+            raise NotImplementedError(
+                "Frame-wise encoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                "quality issues caused by splitting inference across frame dimension. If you believe this "
+                "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
+            )
         else:
             enc = self.encoder(x)
 
@@ -946,12 +946,12 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             return self.tiled_decode(z, return_dict=return_dict)
 
         if self.use_framewise_decoding:
-            dec = []
-            for i in range(0, num_frames, self.num_latent_frames_batch_size):
-                z_intermediate = z[:, :, i : i + self.num_latent_frames_batch_size]
-                z_intermediate = self.decoder(z_intermediate)
-                dec.append(z_intermediate)
-            dec = torch.cat(dec, dim=2)
+            # TODO(aryan): requires investigation
+            raise NotImplementedError(
+                "Frame-wise decoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                "quality issues caused by splitting inference across frame dimension. If you believe this "
+                "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
+            )
         else:
             dec = self.decoder(z)
 
@@ -1031,17 +1031,12 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             row = []
             for j in range(0, width, self.tile_sample_stride_width):
                 if self.use_framewise_encoding:
-                    time = []
-                    for k in range(0, num_frames, self.num_sample_frames_batch_size):
-                        tile = x[
-                            :,
-                            :,
-                            k : k + self.num_sample_frames_batch_size,
-                            i : i + self.tile_sample_min_height,
-                            j : j + self.tile_sample_min_width,
-                        ]
-                        tile = self.encoder(tile)
-                        time.append(tile)
+                    # TODO(aryan): requires investigation
+                    raise NotImplementedError(
+                        "Frame-wise encoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                        "quality issues caused by splitting inference across frame dimension. If you believe this "
+                        "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
+                    )
                 else:
                     time = self.encoder(
                         x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
@@ -1100,18 +1095,12 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin):
             row = []
             for j in range(0, width, tile_latent_stride_width):
                 if self.use_framewise_decoding:
-                    time = []
-                    for k in range(0, num_frames, self.num_latent_frames_batch_size):
-                        tile = z[
-                            :,
-                            :,
-                            k : k + self.num_latent_frames_batch_size,
-                            i : i + tile_latent_min_height,
-                            j : j + tile_latent_min_width,
-                        ]
-                        tile = self.decoder(tile)
-                        time.append(tile)
-                    time = torch.cat(time, dim=2)
+                    # TODO(aryan): requires investigation
+                    raise NotImplementedError(
+                        "Frame-wise decoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                        "quality issues caused by splitting inference across frame dimension. If you believe this "
+                        "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
+                    )
                 else:
                     time = self.decoder(z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width])
 
