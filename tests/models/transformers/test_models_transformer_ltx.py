@@ -26,7 +26,7 @@ from ..test_modeling_common import ModelTesterMixin
 enable_full_determinism()
 
 
-class MochiTransformerTests(ModelTesterMixin, unittest.TestCase):
+class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = LTXTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
@@ -41,7 +41,7 @@ class MochiTransformerTests(ModelTesterMixin, unittest.TestCase):
         embedding_dim = 16
         sequence_length = 16
 
-        hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
+        hidden_states = torch.randn((batch_size, num_frames * height * width, num_channels)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         encoder_attention_mask = torch.ones((batch_size, sequence_length)).bool().to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
@@ -51,15 +51,18 @@ class MochiTransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states": encoder_hidden_states,
             "timestep": timestep,
             "encoder_attention_mask": encoder_attention_mask,
+            "num_frames": num_frames,
+            "height": height,
+            "width": width,
         }
 
     @property
     def input_shape(self):
-        return (4, 2, 16, 16)
+        return (512, 4)
 
     @property
     def output_shape(self):
-        return (4, 2, 16, 16)
+        return (512, 4)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
