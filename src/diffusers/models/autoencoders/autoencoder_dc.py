@@ -46,108 +46,32 @@ def build_norm(name: Optional[str] = "bn2d", num_features: Optional[int] = None)
     return norm
 
 
-class DCConv2d(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        dilation=1,
-        groups=1,
-        use_bias=False,
-        dropout=0,
-        norm="bn2d",
-        act_func="relu",
-    ):
-        super(DCConv2d, self).__init__()
-
-        padding = kernel_size // 2
-        padding *= dilation
-
-        self.dropout = nn.Dropout2d(dropout, inplace=False) if dropout > 0 else None
-        self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=(kernel_size, kernel_size),
-            stride=(stride, stride),
-            padding=padding,
-            dilation=(dilation, dilation),
-            groups=groups,
-            bias=use_bias,
-        )
-        self.norm = build_norm(norm, num_features=out_channels)
-        self.act = get_activation(act_func) if act_func is not None else None
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.dropout is not None:
-            x = self.dropout(x)
-        x = self.conv(x)
-        if self.norm:
-            x = self.norm(x)
-        if self.act:
-            x = self.act(x)
-        return x
-
-
 class GLUMBConv(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        mid_channels=None,
-        expand_ratio=6,
-        use_bias=False,
-        norm=(None, None, "ln2d"),
-        act_func=("silu", "silu", None),
-    ):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
-        use_bias = val2tuple(use_bias, 3)
-        norm = val2tuple(norm, 3)
-        act_func = val2tuple(act_func, 3)
 
-        mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
+        hidden_channels = 4 * in_channels
 
-        self.glu_act = get_activation(act_func[1])
-        self.conv_inverted = DCConv2d(
-            in_channels,
-            mid_channels * 2,
-            1,
-            use_bias=use_bias[0],
-            norm=norm[0],
-            act_func=act_func[0],
-        )
-        self.conv_depth = DCConv2d(
-            mid_channels * 2,
-            mid_channels * 2,
-            kernel_size,
-            stride=stride,
-            groups=mid_channels * 2,
-            use_bias=use_bias[1],
-            norm=norm[1],
-            act_func=None,
-        )
-        self.conv_point = DCConv2d(
-            mid_channels,
-            out_channels,
-            1,
-            use_bias=use_bias[2],
-            norm=norm[2],
-            act_func=act_func[2],
-        )
+        self.nonlinearity = nn.SiLU()
+
+        self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
+        self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
+        self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
+        self.norm = RMSNormNd(out_channels, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
-        x = self.conv_inverted(x)
-        x = self.conv_depth(x)
 
+        x = self.conv_inverted(x)
+        x = self.nonlinearity(x)
+
+        x = self.conv_depth(x)
         x, gate = torch.chunk(x, 2, dim=1)
-        gate = self.glu_act(gate)
-        x = x * gate
+        x = x * self.nonlinearity(gate)
 
         x = self.conv_point(x)
+        x = self.norm(x)
+
         return x + residual
 
 
@@ -156,47 +80,29 @@ class ResBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size=3,
-        stride=1,
-        mid_channels=None,
-        expand_ratio=1,
-        use_bias=False,
         norm=("bn2d", "bn2d"),
         act_func=("relu6", None),
-    ):
+    ) -> None:
         super().__init__()
-        use_bias = val2tuple(use_bias, 2)
+
         norm = val2tuple(norm, 2)
         act_func = val2tuple(act_func, 2)
 
-        mid_channels = round(in_channels * expand_ratio) if mid_channels is None else mid_channels
+        self.nonlinearity = get_activation(act_func[0]) if act_func[0] is not None else nn.Identity()
 
-        self.conv1 = nn.Conv2d(
-            in_channels,
-            mid_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=kernel_size // 2,
-            bias=use_bias[0],
-        )
-        self.norm1 = build_norm(norm[0], num_features=mid_channels) if norm[0] is not None else nn.Identity()
-        self.act1 = get_activation(act_func[0]) if act_func[0] is not None else nn.Identity()
+        self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
+        self.norm1 = build_norm(norm[0], num_features=in_channels) if norm[0] is not None else nn.Identity()
 
-        self.conv2 = nn.Conv2d(
-            mid_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=kernel_size // 2,
-            bias=use_bias[1],
-        )
+        self.conv2 = nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False)
         self.norm2 = build_norm(norm[1], num_features=out_channels) if norm[1] is not None else nn.Identity()
-        self.act2 = get_activation(act_func[1]) if act_func[1] is not None else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
-        x = self.act1(self.norm1(self.conv1(x)))
-        x = self.act2(self.norm2(self.conv2(x)))
+        x = self.conv1(x)
+        x = self.norm1(x)
+        x = self.nonlinearity(x)
+        x = self.conv2(x)
+        x = self.norm2(x)
         return x + residual
 
 
@@ -207,90 +113,75 @@ class LiteMLA(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        heads: Optional[int] = None,
+        num_attention_heads: Optional[int] = None,
         heads_ratio: float = 1.0,
         dim=8,
-        use_bias=False,
         norm=(None, "bn2d"),
         act_func=(None, None),
-        kernel_func="relu",
         scales: tuple[int, ...] = (5,),
-        eps=1.0e-15,
+        eps: float = 1e-15,
     ):
-        super(LiteMLA, self).__init__()
-        self.eps = eps
-        heads = int(in_channels // dim * heads_ratio) if heads is None else heads
+        super().__init__()
 
-        total_dim = heads * dim
-
-        use_bias = val2tuple(use_bias, 2)
         norm = val2tuple(norm, 2)
         act_func = val2tuple(act_func, 2)
 
+        self.eps = eps
         self.dim = dim
 
-        self.qkv = nn.Conv2d(in_channels, 3 * total_dim, kernel_size=1, stride=1, padding=0, bias=use_bias[0])
+        num_attention_heads = (
+            int(in_channels // dim * heads_ratio) if num_attention_heads is None else num_attention_heads
+        )
+        inner_dim = num_attention_heads * dim
+
+        # TODO(aryan): Convert to nn.linear
+        self.qkv = nn.Conv2d(in_channels, 3 * inner_dim, 1, 1, 0, bias=False)
 
         self.aggreg = nn.ModuleList(
             [
                 nn.Sequential(
                     nn.Conv2d(
-                        3 * total_dim,
-                        3 * total_dim,
+                        3 * inner_dim,
+                        3 * inner_dim,
                         scale,
                         padding=scale // 2,
-                        groups=3 * total_dim,
-                        bias=use_bias[0],
+                        groups=3 * inner_dim,
+                        bias=False,
                     ),
-                    nn.Conv2d(3 * total_dim, 3 * total_dim, 1, groups=3 * heads, bias=use_bias[0]),
+                    nn.Conv2d(3 * inner_dim, 3 * inner_dim, 1, 1, 0, groups=3 * num_attention_heads, bias=False),
                 )
                 for scale in scales
             ]
         )
-        self.kernel_func = get_activation(kernel_func)
+        self.kernel_nonlinearity = nn.ReLU()
 
-        self.proj_out = nn.Conv2d(
-            total_dim * (1 + len(scales)),
-            out_channels,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            bias=use_bias[1],
-        )
+        self.proj_out = nn.Conv2d(inner_dim * (1 + len(scales)), out_channels, 1, 1, 0, bias=False)
         self.norm_out = build_norm(norm[1], num_features=out_channels) or nn.Identity()
         self.act_out = get_activation(act_func[1]) if act_func[1] is not None else nn.Identity()
 
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 
-        if qkv.dtype == torch.float16:
-            qkv = qkv.float()
+        qkv = qkv.float()
+        qkv = torch.reshape(qkv, (B, -1, 3 * self.dim, H * W))
 
-        qkv = torch.reshape(
-            qkv,
-            (B, -1, 3 * self.dim, H * W),
-        )
-        q, k, v = (
-            qkv[:, :, 0 : self.dim],
-            qkv[:, :, self.dim : 2 * self.dim],
-            qkv[:, :, 2 * self.dim :],
-        )
+        query, key, value = (qkv[:, :, 0 : self.dim], qkv[:, :, self.dim : 2 * self.dim], qkv[:, :, 2 * self.dim :])
 
         # lightweight linear attention
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
+        query = self.kernel_nonlinearity(query)
+        key = self.kernel_nonlinearity(key)
 
         # linear matmul
-        trans_k = k.transpose(-1, -2)
+        k_T = key.transpose(-1, -2)
 
-        v = F.pad(v, (0, 0, 0, 1), mode="constant", value=1)
-        vk = torch.matmul(v, trans_k)
-        out = torch.matmul(vk, q)
-        if out.dtype == torch.bfloat16:
-            out = out.float()
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)
+        vk = torch.matmul(value, k_T)
+        out = torch.matmul(vk, query)
+        out = out.float()
+
         out = out[:, :, :-1] / (out[:, :, -1:] + self.eps)
-
         out = torch.reshape(out, (B, -1, H, W))
+
         return out
 
     def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
@@ -303,15 +194,16 @@ class LiteMLA(nn.Module):
             qkv[:, :, 2 * self.dim :],
         )
 
-        q = self.kernel_func(q)
-        k = self.kernel_func(k)
+        q = self.kernel_nonlinearity(q)
+        k = self.kernel_nonlinearity(k)
 
         att_map = torch.matmul(k.transpose(-1, -2), q)  # b h n n
+
         original_dtype = att_map.dtype
-        if original_dtype in [torch.float16, torch.bfloat16]:
-            att_map = att_map.float()
+        att_map = att_map.float()
         att_map = att_map / (torch.sum(att_map, dim=2, keepdim=True) + self.eps)  # b h n n
         att_map = att_map.to(original_dtype)
+
         out = torch.matmul(v, att_map)  # b h d n
 
         out = torch.reshape(out, (B, -1, H, W))
@@ -347,37 +239,24 @@ class EfficientViTBlock(nn.Module):
         in_channels: int,
         heads_ratio: float = 1.0,
         dim=32,
-        expand_ratio: float = 4,
         scales: tuple[int, ...] = (5,),
         norm: str = "bn2d",
-        act_func: str = "hswish",
-        context_module: str = "LiteMLA",
-        local_module: str = "MBConv",
     ):
         super().__init__()
-        if context_module == "LiteMLA":
-            self.context_module = LiteMLA(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                heads_ratio=heads_ratio,
-                dim=dim,
-                norm=(None, norm),
-                scales=scales,
-            )
-        else:
-            raise ValueError(f"context_module {context_module} is not supported")
 
-        if local_module == "GLUMBConv":
-            self.local_module = GLUMBConv(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                expand_ratio=expand_ratio,
-                use_bias=(True, True, False),
-                norm=(None, None, norm),
-                act_func=(act_func, act_func, None),
-            )
-        else:
-            raise NotImplementedError(f"local_module {local_module} is not supported")
+        self.context_module = LiteMLA(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            heads_ratio=heads_ratio,
+            dim=dim,
+            norm=(None, norm),
+            scales=scales,
+        )
+
+        self.local_module = GLUMBConv(
+            in_channels=in_channels,
+            out_channels=in_channels,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.context_module(x)
@@ -401,18 +280,15 @@ def build_stage_main(
             block = ResBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=3,
-                stride=1,
-                use_bias=(True, False),
                 norm=(None, norm),
                 act_func=(act, None),
             )
         elif current_block_type == "EViT_GLU":
             assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=())
+            block = EfficientViTBlock(in_channels, norm=norm, scales=())
         elif current_block_type == "EViTS5_GLU":
             assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, act_func=act, local_module="GLUMBConv", scales=(5,))
+            block = EfficientViTBlock(in_channels, norm=norm, scales=(5,))
         else:
             raise ValueError(f"block_type {current_block_type} is not supported")
 
@@ -421,14 +297,7 @@ def build_stage_main(
 
 
 class DCDownBlock2d(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int = 3,
-        downsample: bool = False,
-        shortcut: bool = True,
-    ) -> None:
+    def __init__(self, in_channels: int, out_channels: int, downsample: bool = False, shortcut: bool = True) -> None:
         super().__init__()
 
         self.downsample = downsample
@@ -445,9 +314,9 @@ class DCDownBlock2d(nn.Module):
         self.conv = nn.Conv2d(
             in_channels,
             out_channels,
-            kernel_size=kernel_size,
+            kernel_size=3,
             stride=self.stride,
-            padding=kernel_size // 2,
+            padding=1,
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -471,7 +340,6 @@ class DCUpBlock2d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: int = 3,
         interpolate: bool = False,
         shortcut: bool = True,
         interpolation_mode: str = "nearest",
@@ -481,7 +349,6 @@ class DCUpBlock2d(nn.Module):
         self.interpolate = interpolate
         self.interpolation_mode = interpolation_mode
         self.factor = 2
-        self.stride = 1
         out_ratio = self.factor**2
 
         if not interpolate:
@@ -489,13 +356,7 @@ class DCUpBlock2d(nn.Module):
 
         self.repeats = out_channels * self.factor**2 // in_channels
 
-        self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=self.stride,
-            padding=kernel_size // 2,
-        )
+        self.conv = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
 
         self.shortcut = shortcut
 
@@ -524,7 +385,7 @@ class Encoder(nn.Module):
         latent_channels: int,
         block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
         layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
-        block_type: str | List[str] = "ResBlock",
+        block_type: Union[str, List[str]] = "ResBlock",
         downsample_block_type: str = "ConvPixelUnshuffle",
     ):
         super().__init__()
