@@ -116,17 +116,14 @@ class LTXRotaryPosEmbed(nn.Module):
         self.theta = theta
 
     def forward(
-        self, hidden_states: torch.Tensor, rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None
+        self, hidden_states: torch.Tensor, num_frames: int, height: int, width: int, rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        post_patch_num_frames = num_frames // self.patch_size_t
-        post_patch_height = height // self.patch_size
-        post_patch_width = width // self.patch_size
+        batch_size = hidden_states.size(0)
 
         # Always compute rope in fp32
-        grid_h = torch.arange(post_patch_height, dtype=torch.float32, device=hidden_states.device)
-        grid_w = torch.arange(post_patch_width, dtype=torch.float32, device=hidden_states.device)
-        grid_f = torch.arange(post_patch_num_frames, dtype=torch.float32, device=hidden_states.device)
+        grid_h = torch.arange(height, dtype=torch.float32, device=hidden_states.device)
+        grid_w = torch.arange(width, dtype=torch.float32, device=hidden_states.device)
+        grid_f = torch.arange(num_frames, dtype=torch.float32, device=hidden_states.device)
         grid = torch.meshgrid(grid_f, grid_h, grid_w, indexing="ij")
         grid = torch.stack(grid, dim=0)
         grid = grid.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
@@ -374,28 +371,20 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
+        num_frames: int,
+        height: int,
+        width: int,
         rope_interpolation_scale: Optional[Tuple[float, float, float]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
-        image_rotary_emb = self.rope(hidden_states, rope_interpolation_scale)
+        image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale)
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p = self.config.patch_size
-        p_t = self.config.patch_size_t
-
-        post_patch_height = height // p
-        post_patch_width = width // p
-        post_patch_num_frames = num_frames // p_t
-
-        hidden_states = hidden_states.reshape(
-            batch_size, -1, post_patch_num_frames, p_t, post_patch_height, p, post_patch_width, p
-        )
-        hidden_states = hidden_states.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
+        batch_size = hidden_states.size(0)
         hidden_states = self.proj_in(hidden_states)
 
         temb, embedded_timestep = self.time_embed(
@@ -446,12 +435,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states * (1 + scale) + shift
-        hidden_states = self.proj_out(hidden_states)
-
-        hidden_states = hidden_states.reshape(
-            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p
-        )
-        output = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        output = self.proj_out(hidden_states)
 
         if not return_dict:
             return (output,)
