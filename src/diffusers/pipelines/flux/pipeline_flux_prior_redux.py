@@ -150,7 +150,6 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds=None,
         pooled_prompt_embeds=None,
     ):
-
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -166,7 +165,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         elif prompt_2 is not None and (not isinstance(prompt_2, str) and not isinstance(prompt_2, list)):
             raise ValueError(f"`prompt_2` has to be of type `str` or `list` but is {type(prompt_2)}")
         if prompt is not None and (isinstance(prompt, list) and isinstance(image, list) and len(prompt) != len(image)):
-            raise ValueError(f"number of prompts must be equal to number of images, but {len(prompt)} prompts were provided and {len(image)} images")
+            raise ValueError(
+                f"number of prompts must be equal to number of images, but {len(prompt)} prompts were provided and {len(image)} images"
+            )
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
