@@ -57,6 +57,12 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
 
 
 def _maybe_adjust_config(config):
+    """
+    We may run into some ambiguous configuration values when a model has module names, sharing a common prefix
+    (`proj_out.weight` and `blocks.transformer.proj_out.weight`, for example) and they have different LoRA ranks. This
+    method removes the ambiguity by following what is described here:
+    https://github.com/huggingface/diffusers/pull/9985#issuecomment-2493840028.
+    """
     rank_pattern = config["rank_pattern"].copy()
     target_modules = config["target_modules"]
     original_r = config["r"]
@@ -65,6 +71,10 @@ def _maybe_adjust_config(config):
         key_rank = rank_pattern[key]
 
         # try to detect ambiguity
+        # `target_modules` can also be a str, in which case this loop would loop
+        # over the chars of the str. The technically correct way to match LoRA keys
+        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
+        # But this cuts it for now.
         exact_matches = [mod for mod in target_modules if mod == key]
         substring_matches = [mod for mod in target_modules if key in mod and mod != key]
         ambiguous_key = key

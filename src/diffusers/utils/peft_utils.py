@@ -181,7 +181,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
     use_dora = any("lora_magnitude_vector" in k for k in peft_state_dict)
     # for now we know that the "bias" keys are only associated with `lora_B`.
-    lora_bias = any("lora_B" and "bias" in k for k in peft_state_dict)
+    lora_bias = any("lora_B" in k and k.endswith(".bias") for k in peft_state_dict)
 
     lora_config_kwargs = {
         "r": r,

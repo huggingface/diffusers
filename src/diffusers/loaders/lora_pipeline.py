@@ -1981,7 +1981,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         logger.info(
             "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will directly update the state_dict of the transformer "
             'as opposed to the LoRA layers that will co-exist separately until the "fuse_lora()" method is called. That is to say, the normalization layers will always be directly '
-            "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed."
+            "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed. This might also have implications when dealing with multiple LoRAs. "
+            "If you notice something unexpected, please open an issue: https://github.com/huggingface/diffusers/issues."
         )
 
         # We can't load with strict=True because the current state_dict does not contain all the transformer keys
@@ -2286,6 +2287,10 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         norm_state_dict=None,
         prefix=None,
     ) -> bool:
+        """
+        Control LoRA expands the shape of the input layer from (3072, 64) to (3072, 128). This method handles that and
+        generalizes things a bit so that any parameter that needs expansion receives appropriate treatement.
+        """
         state_dict = {}
         if lora_state_dict is not None:
             state_dict.update(lora_state_dict)
