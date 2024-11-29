@@ -511,9 +511,6 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
 
-        init_latents = self._pack_latents(
-            init_latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-        )
         conditioning_mask = self._pack_latents(
             conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         ).squeeze(-1)
@@ -570,6 +567,8 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
