@@ -699,7 +699,7 @@ class LTXPipeline(DiffusionPipeline):
                     rope_interpolation_scale=rope_interpolation_scale,
                     return_dict=False,
                 )[0]
-                # noise_pred = noise_pred.float()
+                noise_pred = noise_pred.float()
 
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -707,8 +707,7 @@ class LTXPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                # latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
                 latents = latents.to(dtype=latents_dtype)
 
                 if callback_on_step_end is not None:
