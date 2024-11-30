@@ -12,12 +12,13 @@ def remove_keys_(key: str, state_dict: Dict[str, Any]):
 
 
 def remap_qkv_(key: str, state_dict: Dict[str, Any]):
-    qkv = state_dict.pop(key)
-    q, k, v = torch.chunk(qkv, 3, dim=0)
-    parent_module, _, _ = key.rpartition(".qkv.conv.weight")
-    state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
-    state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
-    state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
+    # qkv = state_dict.pop(key)
+    # q, k, v = torch.chunk(qkv, 3, dim=0)
+    # parent_module, _, _ = key.rpartition(".qkv.conv.weight")
+    # state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
+    # state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
+    # state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
+    state_dict[key.replace("qkv.conv", "to_qkv")] = state_dict.pop(key)
 
 
 VAE_KEYS_RENAME_DICT = {
@@ -75,16 +76,30 @@ def convert_vae(ckpt_path: str, dtype: torch.dtype):
     vae = AutoencoderDC(
         in_channels=3,
         latent_channels=32,
-        encoder_block_types=("ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"),
-        decoder_block_types=("ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"),
+        encoder_block_types=(
+            "ResBlock",
+            "ResBlock",
+            "ResBlock",
+            "EfficientViTBlock",
+            "EfficientViTBlock",
+            "EfficientViTBlock",
+        ),
+        decoder_block_types=(
+            "ResBlock",
+            "ResBlock",
+            "ResBlock",
+            "EfficientViTBlock",
+            "EfficientViTBlock",
+            "EfficientViTBlock",
+        ),
         block_out_channels=(128, 256, 512, 512, 1024, 1024),
         encoder_layers_per_block=(2, 2, 2, 3, 3, 3),
         decoder_layers_per_block=(3, 3, 3, 3, 3, 3),
         encoder_qkv_multiscales=((), (), (), (5,), (5,), (5,)),
         decoder_qkv_multiscales=((), (), (), (5,), (5,), (5,)),
         downsample_block_type="Conv",
-        upsample_block_type="InterpolateConv",
-        decoder_norm_types="rms2d",
+        upsample_block_type="interpolate",
+        decoder_norm_types="rms_norm",
         decoder_act_fns="silu",
         scaling_factor=0.41407,
     ).to(dtype=dtype)
@@ -101,8 +116,6 @@ def convert_vae(ckpt_path: str, dtype: torch.dtype):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
-    print(original_state_dict.__len__())
-    print(len(vae.state_dict().keys()))
     vae.load_state_dict(original_state_dict, strict=True)
     return vae
 
@@ -119,20 +132,34 @@ def get_vae_config(name: str):
             "encoder_layers_per_block": (2, 2, 2, 3, 3, 3),
             "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
             "downsample_block_type": "Conv",
-            "upsample_block_type": "InterpolateConv",
+            "upsample_block_type": "interpolate",
             "scaling_factor": 0.41407,
         }
     elif name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
         config = {
             "latent_channels": 32,
-            "encoder_block_types": ["ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"],
-            "decoder_block_types": ["ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"],
+            "encoder_block_types": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ],
+            "decoder_block_types": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ],
             "block_out_channels": [128, 256, 512, 512, 1024, 1024],
             "encoder_layers_per_block": [0, 4, 8, 2, 2, 2],
             "decoder_layers_per_block": [0, 5, 10, 2, 2, 2],
             "encoder_qkv_multiscales": ((), (), (), (), (), ()),
             "decoder_qkv_multiscales": ((), (), (), (), (), ()),
-            "decoder_norm_types": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_norm_types": ["batch_norm", "batch_norm", "batch_norm", "rms_norm", "rms_norm", "rms_norm"],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu"],
         }
     elif name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
@@ -163,20 +190,53 @@ def get_vae_config(name: str):
             "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
             "encoder_qkv_multiscales": ((), (), (), (), (), (), (), ()),
             "decoder_qkv_multiscales": ((), (), (), (), (), (), (), ()),
-            "decoder_norm_types": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_norm_types": [
+                "batch_norm",
+                "batch_norm",
+                "batch_norm",
+                "rms_norm",
+                "rms_norm",
+                "rms_norm",
+                "rms_norm",
+                "rms_norm",
+            ],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
         }
     elif name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
         config = {
             "latent_channels": 128,
-            "encoder_block_types": ["ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"],
-            "decoder_block_types": ["ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"],
+            "encoder_block_types": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ],
+            "decoder_block_types": [
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ],
             "block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
             "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2],
             "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2],
             "encoder_qkv_multiscales": ((), (), (), (), (), (), ()),
             "decoder_qkv_multiscales": ((), (), (), (), (), (), ()),
-            "decoder_norm_types": ["bn2d", "bn2d", "bn2d", "rms2d", "rms2d", "rms2d", "rms2d"],
+            "decoder_norm_types": [
+                "batch_norm",
+                "batch_norm",
+                "batch_norm",
+                "rms_norm",
+                "rms_norm",
+                "rms_norm",
+                "rms_norm",
+            ],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
         }
 
