@@ -291,7 +291,7 @@ def build_stage_main(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 norm_type=norm,
-                act_func=(act, None),
+                act_fn=act,
             )
         elif current_block_type == "EfficientViTBlock":
             assert in_channels == out_channels
