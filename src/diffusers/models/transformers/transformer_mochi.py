@@ -27,9 +27,7 @@ from ..attention import FeedForward
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import (
-    AdaLayerNormContinuous,
-)
+from ..normalization import AdaLayerNormContinuous, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-n
@@ -40,42 +38,16 @@ class MochiModulatedRMSNorm(nn.Module):
         super().__init__()
 
         self.eps = eps
+        self.norm = RMSNorm(0, eps, False)
 
     def forward(self, hidden_states, scale=None):
         hidden_states_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
 
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states.to(torch.float32) * torch.rsqrt(variance + self.eps)
+        hidden_states = self.norm(hidden_states)
 
         if scale is not None:
             hidden_states = hidden_states * scale
-
-        hidden_states = hidden_states.to(hidden_states_dtype)
-
-        return hidden_states
-
-
-class MochiRMSNorm(nn.Module):
-    def __init__(self, dim, eps: float, elementwise_affine=True):
-        super().__init__()
-
-        self.eps = eps
-        if elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(dim))
-        else:
-            self.weight = None
-
-    def forward(self, hidden_states):
-        hidden_states_dtype = hidden_states.dtype
-
-        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states.to(torch.float32) * torch.rsqrt(variance + self.eps)
-
-        if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
-            hidden_states = hidden_states * self.weight
 
         hidden_states = hidden_states.to(hidden_states_dtype)
 
@@ -167,10 +139,10 @@ class MochiAttention(nn.Module):
 
         self.heads = out_dim // dim_head if out_dim is not None else heads
 
-        self.norm_q = MochiRMSNorm(dim_head, eps)
-        self.norm_k = MochiRMSNorm(dim_head, eps)
-        self.norm_added_q = MochiRMSNorm(dim_head, eps)
-        self.norm_added_k = MochiRMSNorm(dim_head, eps)
+        self.norm_q = RMSNorm(dim_head, eps, True)
+        self.norm_k = RMSNorm(dim_head, eps, True)
+        self.norm_added_q = RMSNorm(dim_head, eps, True)
+        self.norm_added_k = RMSNorm(dim_head, eps, True)
 
         self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
         self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
