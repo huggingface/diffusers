@@ -583,7 +583,7 @@ class LTXPipeline(DiffusionPipeline):
 
         height = height or self.default_height
         width = width or self.default_width
-        latent_frame_rate = frame_rate // self.vae_temporal_compression_ratio
+        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
