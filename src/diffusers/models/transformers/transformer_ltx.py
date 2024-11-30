@@ -73,10 +73,14 @@ class LTXAttentionProcessor2_0:
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
+        # torch.save(query, "query.pt")
+        # torch.save(key, "key.pt")
 
         if image_rotary_emb is not None and use_rotary_emb:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
+            # torch.save(query, "query_rope.pt")
+            # torch.save(key, "key_rope.pt")
 
         query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
@@ -85,11 +89,13 @@ class LTXAttentionProcessor2_0:
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
+        # torch.save(hidden_states, "sdpa.pt")
         hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
+        # torch.save(hidden_states, "to_out.pt")
 
         return hidden_states
 
@@ -243,19 +249,22 @@ class LTXTransformerBlock(nn.Module):
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
         norm_hidden_states = self.norm1(hidden_states)
+        # torch.save(norm_hidden_states, "block_norm1.pt")
 
         num_ada_params = self.scale_shift_table.shape[0]
         ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
-
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+        # torch.save(norm_hidden_states, "block_scale_shift1.pt")
 
         attn_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=None,
             image_rotary_emb=image_rotary_emb,
         )
+        # torch.save(attn_hidden_states, "block_attn1.pt")
         hidden_states = hidden_states + attn_hidden_states * gate_msa
+        # torch.save(hidden_states, "block_attn1_result.pt")
 
         attn_hidden_states = self.attn2(
             hidden_states,
@@ -264,10 +273,13 @@ class LTXTransformerBlock(nn.Module):
             attention_mask=encoder_attention_mask,
         )
         hidden_states = hidden_states + attn_hidden_states
+        # torch.save(hidden_states, "block_attn2.pt")
         norm_hidden_states = self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp
+        # torch.save(norm_hidden_states, "block_scale_shift2.pt")
 
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + ff_output * gate_mlp
+        # torch.save(hidden_states, "block_out.pt")
 
         return hidden_states
 
@@ -383,14 +395,20 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> torch.Tensor:
         image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale)
+        # torch.save(image_rotary_emb, "rope.pt")
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
+        # torch.save(hidden_states, "input_hidden_states.pt")
+        # torch.save(encoder_hidden_states, "input_encoder_hidden_states.pt")
+        # torch.save(encoder_attention_mask, "input_encoder_attention_mask.pt")
+
         batch_size = hidden_states.size(0)
         hidden_states = self.proj_in(hidden_states)
+        # torch.save(hidden_states, "patchify_proj.pt")
 
         temb, embedded_timestep = self.time_embed(
             timestep.flatten(),
@@ -400,11 +418,14 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
         temb = temb.view(batch_size, -1, temb.size(-1))
         embedded_timestep = embedded_timestep.view(batch_size, -1, embedded_timestep.size(-1))
+        # torch.save(temb, "timestep.pt")
+        # torch.save(embedded_timestep, "embedded_timestep.pt")
 
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
+        # torch.save(encoder_hidden_states, "caption_projection.pt")
 
-        for block in self.transformer_blocks:
+        for i, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -435,12 +456,19 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
                     encoder_attention_mask=encoder_attention_mask,
                 )
 
+            # print(f"block_{i}:", hidden_states.flatten().mean(), hidden_states.flatten().std())
+            # torch.save(hidden_states, f"block_{i}.pt")
+
         scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
         shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
 
         hidden_states = self.norm_out(hidden_states)
+        # torch.save(hidden_states, "norm_out.pt")
         hidden_states = hidden_states * (1 + scale) + shift
+        # torch.save(hidden_states, "scale_shift.pt")
         output = self.proj_out(hidden_states)
+        # torch.save(output, "proj_out.pt")
+        # exit()
 
         if not return_dict:
             return (output,)
@@ -450,8 +478,10 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 def apply_rotary_emb(x, freqs):
     cos, sin = freqs
 
-    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D//2]
+    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, D//2, 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
 
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    # breakpoint()
+    # out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    out = x * cos + x_rotated * sin
     return out
