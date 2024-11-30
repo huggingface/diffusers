@@ -20,3 +20,4 @@ if is_torch_available():
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_temporal import TransformerTemporalModel
+    from .transformer_omnigen import OmniGenTransformerModel

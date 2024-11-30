@@ -26,7 +26,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import logging
 from ..attention_processor import AttentionProcessor
-from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
+from ..normalization import AdaLayerNorm
 from ..embeddings import OmniGenPatchEmbed, OmniGenTimestepEmbed
 from ..modeling_utils import ModelMixin
 
@@ -162,7 +162,7 @@ class OmniGenBaseTransformer(Phi3Model):
         )
 
 
-class OmniGenTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     The Transformer model introduced in OmniGen.
 
@@ -338,6 +338,7 @@ class OmniGenTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if return_past_key_values:
             return latents, past_key_values
         return latents
+
 
 
 
