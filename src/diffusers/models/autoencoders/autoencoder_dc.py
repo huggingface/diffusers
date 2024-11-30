@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -25,15 +25,7 @@ from ..modeling_utils import ModelMixin
 from ..normalization import RMSNormNd
 
 
-def val2tuple(x: list | tuple | Any, min_len: int = 1) -> tuple:
-    x = list(x) if isinstance(x, (list, tuple)) else [x]
-    # repeat elements if necessary
-    if len(x) > 0:
-        x.extend([x[-1] for _ in range(min_len - len(x))])
-    return tuple(x)
-
-
-def build_norm(name: Optional[str] = "bn2d", num_features: Optional[int] = None) -> Optional[nn.Module]:
+def get_norm_layer(name: Optional[str] = "bn2d", num_features: Optional[int] = None) -> Optional[nn.Module]:
     if name is None:
         norm = None
     elif name == "rms2d":
@@ -85,10 +77,9 @@ class ResBlock(nn.Module):
         super().__init__()
 
         self.nonlinearity = get_activation(act_fn) if act_fn is not None else nn.Identity()
-
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
         self.conv2 = nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False)
-        self.norm = build_norm(norm_type, out_channels)
+        self.norm = get_norm_layer(norm_type, out_channels)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
@@ -97,6 +88,31 @@ class ResBlock(nn.Module):
         hidden_states = self.conv2(hidden_states)
         hidden_states = self.norm(hidden_states)
         return hidden_states + residual
+
+
+class MLAProjection(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        num_attention_heads: int,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+
+        self.proj_in = nn.Conv2d(
+            3 * in_channels,
+            3 * in_channels,
+            kernel_size,
+            padding=kernel_size // 2,
+            groups=3 * in_channels,
+            bias=False,
+        )
+        self.proj_out = nn.Conv2d(3 * in_channels, 3 * in_channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
+    
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states
 
 
 class LiteMLA(nn.Module):
@@ -108,122 +124,111 @@ class LiteMLA(nn.Module):
         out_channels: int,
         num_attention_heads: Optional[int] = None,
         heads_ratio: float = 1.0,
-        dim=8,
-        norm=(None, "bn2d"),
-        act_func=(None, None),
-        scales: tuple[int, ...] = (5,),
+        attention_head_dim: int = 8,
+        norm_type: str = "bn2d",
+        kernel_sizes: Tuple[int, ...] = (5,),
         eps: float = 1e-15,
     ):
         super().__init__()
 
-        norm = val2tuple(norm, 2)
-        act_func = val2tuple(act_func, 2)
-
         self.eps = eps
-        self.dim = dim
+        self.attention_head_dim = attention_head_dim
 
         num_attention_heads = (
-            int(in_channels // dim * heads_ratio) if num_attention_heads is None else num_attention_heads
+            int(in_channels // attention_head_dim * heads_ratio) if num_attention_heads is None else num_attention_heads
         )
-        inner_dim = num_attention_heads * dim
+        inner_dim = num_attention_heads * attention_head_dim
 
         # TODO(aryan): Convert to nn.linear
-        self.qkv = nn.Conv2d(in_channels, 3 * inner_dim, 1, 1, 0, bias=False)
+        # self.qkv = nn.Conv2d(in_channels, 3 * inner_dim, 1, 1, 0, bias=False)
+        self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
 
-        self.aggreg = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(
-                        3 * inner_dim,
-                        3 * inner_dim,
-                        scale,
-                        padding=scale // 2,
-                        groups=3 * inner_dim,
-                        bias=False,
-                    ),
-                    nn.Conv2d(3 * inner_dim, 3 * inner_dim, 1, 1, 0, groups=3 * num_attention_heads, bias=False),
-                )
-                for scale in scales
-            ]
-        )
+        self.to_qkv_multiscale = nn.ModuleList()
+        for kernel_size in kernel_sizes:
+            self.to_qkv_multiscale.append(MLAProjection(inner_dim, num_attention_heads, kernel_size))
+
         self.kernel_nonlinearity = nn.ReLU()
 
-        self.proj_out = nn.Conv2d(inner_dim * (1 + len(scales)), out_channels, 1, 1, 0, bias=False)
-        self.norm_out = build_norm(norm[1], num_features=out_channels) or nn.Identity()
-        self.act_out = get_activation(act_func[1]) if act_func[1] is not None else nn.Identity()
+        self.proj_out = nn.Conv2d(inner_dim * (1 + len(kernel_sizes)), out_channels, 1, 1, 0, bias=False)
+        self.norm_out = get_norm_layer(norm_type, num_features=out_channels)
 
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        B, _, H, W = list(qkv.size())
+        batch_size, _, height, width = qkv.shape
 
         qkv = qkv.float()
-        qkv = torch.reshape(qkv, (B, -1, 3 * self.dim, H * W))
+        qkv = torch.reshape(qkv, (batch_size, -1, 3 * self.attention_head_dim, height * width))
 
-        query, key, value = (qkv[:, :, 0 : self.dim], qkv[:, :, self.dim : 2 * self.dim], qkv[:, :, 2 * self.dim :])
+        query, key, value = (qkv[:, :, 0 : self.attention_head_dim], qkv[:, :, self.attention_head_dim : 2 * self.attention_head_dim], qkv[:, :, 2 * self.attention_head_dim :])
 
         # lightweight linear attention
         query = self.kernel_nonlinearity(query)
         key = self.kernel_nonlinearity(key)
-
-        # linear matmul
-        k_T = key.transpose(-1, -2)
-
         value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)
-        vk = torch.matmul(value, k_T)
-        out = torch.matmul(vk, query)
-        out = out.float()
 
-        out = out[:, :, :-1] / (out[:, :, -1:] + self.eps)
-        out = torch.reshape(out, (B, -1, H, W))
+        key_T = key.transpose(-1, -2)
+        scores = torch.matmul(value, key_T)
+        output = torch.matmul(scores, query)
+        
+        output = output.float()
+        output = output[:, :, :-1] / (output[:, :, -1:] + self.eps)
+        output = torch.reshape(output, (batch_size, -1, height, width))
 
-        return out
+        return output
 
     def relu_quadratic_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        B, _, H, W = list(qkv.size())
+        batch_size, _, height, width = list(qkv.size())
 
-        qkv = torch.reshape(qkv, (B, -1, 3 * self.dim, H * W))
-        q, k, v = (
-            qkv[:, :, 0 : self.dim],
-            qkv[:, :, self.dim : 2 * self.dim],
-            qkv[:, :, 2 * self.dim :],
+        qkv = torch.reshape(qkv, (batch_size, -1, 3 * self.attention_head_dim, height * width))
+        query, key, value = (
+            qkv[:, :, 0 : self.attention_head_dim],
+            qkv[:, :, self.attention_head_dim : 2 * self.attention_head_dim],
+            qkv[:, :, 2 * self.attention_head_dim :],
         )
 
-        q = self.kernel_nonlinearity(q)
-        k = self.kernel_nonlinearity(k)
+        query = self.kernel_nonlinearity(query)
+        key = self.kernel_nonlinearity(key)
 
-        att_map = torch.matmul(k.transpose(-1, -2), q)  # b h n n
+        scores = torch.matmul(key.transpose(-1, -2), query)
 
-        original_dtype = att_map.dtype
-        att_map = att_map.float()
-        att_map = att_map / (torch.sum(att_map, dim=2, keepdim=True) + self.eps)  # b h n n
-        att_map = att_map.to(original_dtype)
+        original_dtype = scores.dtype
+        scores = scores.float()
+        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
+        scores = scores.to(original_dtype)
 
-        out = torch.matmul(v, att_map)  # b h d n
+        output = torch.matmul(value, scores)
+        output = torch.reshape(output, (batch_size, -1, height, width))
+        
+        return output
 
-        out = torch.reshape(out, (B, -1, H, W))
-        return out
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x
-        # generate multi-scale q, k, v
-        qkv = self.qkv(x)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        residual = hidden_states
+        
+        hidden_states = hidden_states.movedim(1, -1)
+        query = self.to_q(hidden_states)
+        key = self.to_k(hidden_states)
+        value = self.to_v(hidden_states)
+        qkv = torch.cat([query, key, value], dim=-1)
+        qkv = qkv.movedim(-1, 1)
 
         multi_scale_qkv = [qkv]
-        for op in self.aggreg:
-            multi_scale_qkv.append(op(qkv))
+        
+        for block in self.to_qkv_multiscale:
+            multi_scale_qkv.append(block(qkv))
 
         qkv = torch.cat(multi_scale_qkv, dim=1)
 
-        H, W = list(qkv.size())[-2:]
-        if H * W > self.dim:
-            out = self.relu_linear_att(qkv).to(qkv.dtype)
+        height, width = qkv.shape[-2:]
+        if height * width > self.attention_head_dim:
+            hidden_states = self.relu_linear_att(qkv).to(qkv.dtype)
         else:
-            out = self.relu_quadratic_att(qkv)
+            hidden_states = self.relu_quadratic_att(qkv)
 
-        out = self.proj_out(out)
-        out = self.norm_out(out)
-        out = self.act_out(out)
+        hidden_states = self.proj_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states)
 
-        return out + residual
+        return hidden_states + residual
 
 
 class EfficientViTBlock(nn.Module):
@@ -231,9 +236,9 @@ class EfficientViTBlock(nn.Module):
         self,
         in_channels: int,
         heads_ratio: float = 1.0,
-        dim=32,
-        scales: tuple[int, ...] = (5,),
-        norm: str = "bn2d",
+        dim: int = 32,
+        qkv_multiscales: Tuple[int, ...] = (5,),
+        norm_type: str = "bn2d",
     ):
         super().__init__()
 
@@ -241,9 +246,9 @@ class EfficientViTBlock(nn.Module):
             in_channels=in_channels,
             out_channels=in_channels,
             heads_ratio=heads_ratio,
-            dim=dim,
-            norm=(None, norm),
-            scales=scales,
+            attention_head_dim=dim,
+            norm_type=norm_type,
+            kernel_sizes=qkv_multiscales,
         )
 
         self.conv_out = GLUMBConv(
@@ -263,21 +268,23 @@ def get_block_from_block_type(
     out_channels: int,
     norm_type: str,
     act_fn: str,
+    qkv_mutliscales: Tuple[int] = (),
 ):
     if block_type == "ResBlock":
         block = ResBlock(in_channels, out_channels, norm_type, act_fn)
     
     elif block_type == "EfficientViTBlock":
-        block = EfficientViTBlock(in_channels, norm=norm_type, scales=())
+        block = EfficientViTBlock(in_channels, norm_type=norm_type, qkv_multiscales=qkv_mutliscales)
 
     else:
         raise ValueError(f"Block with {block_type=} is not supported.")
+    
+    return block
 
 
 def build_stage_main(
-    width: int, depth: int, block_type: str | List[str], norm: str, act: str, input_width: int
+    width: int, depth: int, block_type: str | List[str], norm: str, act: str, input_width: int, qkv_multiscales=()
 ) -> list[nn.Module]:
-    assert isinstance(block_type, str) or (isinstance(block_type, list) and depth == len(block_type))
     stage = []
     for d in range(depth):
         current_block_type = block_type[d] if isinstance(block_type, list) else block_type
@@ -285,23 +292,7 @@ def build_stage_main(
         in_channels = width if d > 0 else input_width
         out_channels = width
 
-        if current_block_type == "ResBlock":
-            assert in_channels == out_channels
-            block = ResBlock(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                norm_type=norm,
-                act_fn=act,
-            )
-        elif current_block_type == "EfficientViTBlock":
-            assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, scales=())
-        elif current_block_type == "EViTS5_GLU":
-            assert in_channels == out_channels
-            block = EfficientViTBlock(in_channels, norm=norm, scales=(5,))
-        else:
-            raise ValueError(f"block_type {current_block_type} is not supported")
-
+        block = get_block_from_block_type(current_block_type, in_channels, out_channels, norm_type=norm, act_fn=act, qkv_mutliscales=qkv_multiscales)
         stage.append(block)
     return stage
 
@@ -392,17 +383,18 @@ class Encoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
-        block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
-        layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
-        block_type: Union[str, List[str]] = "ResBlock",
+        block_type: Union[str, Tuple[str]] = "ResBlock",
+        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
+        qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         downsample_block_type: str = "ConvPixelUnshuffle",
     ):
         super().__init__()
+        
         num_stages = len(block_out_channels)
-        self.num_stages = num_stages
-        assert len(layers_per_block) == num_stages
-        assert len(block_out_channels) == num_stages
-        assert isinstance(block_type, str) or (isinstance(block_type, list) and len(block_type) == num_stages)
+
+        if isinstance(block_type, str):
+            block_type = (block_type,) * num_stages
 
         if layers_per_block[0] > 0:
             self.conv_in = nn.Conv2d(
@@ -422,9 +414,9 @@ class Encoder(nn.Module):
 
         stages = []
         for stage_id, (width, depth) in enumerate(zip(block_out_channels, layers_per_block)):
-            stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
+            stage_block_type = block_type[stage_id]
             current_stage = build_stage_main(
-                width=width, depth=depth, block_type=stage_block_type, norm="rms2d", act="silu", input_width=width
+                width=width, depth=depth, block_type=stage_block_type, norm="rms2d", act="silu", input_width=width, qkv_multiscales=qkv_multiscales[stage_id]
             )
             if stage_id < num_stages - 1 and depth > 0:
                 downsample_block = DCDownBlock2d(
@@ -461,22 +453,25 @@ class Decoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
-        block_out_channels: List[int] = [128, 256, 512, 512, 1024, 1024],
-        layers_per_block: List[int] = [2, 2, 2, 2, 2, 2],
-        block_type: Union[str, List[str]] = "ResBlock",
-        norm: Union[str, List[str]] = "rms2d",
-        act: Union[str, List[str]] = "silu",
+        block_type: Union[str, Tuple[str]] = "ResBlock",
+        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
+        qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        norm_type: Union[str, Tuple[str]] = "rms2d",
+        act_fn: Union[str, Tuple[str]] = "silu",
         upsample_block_type: str = "ConvPixelShuffle",
         upsample_shortcut: str = "duplicating",
     ):
         super().__init__()
+        
         num_stages = len(block_out_channels)
-        self.num_stages = num_stages
-        assert len(layers_per_block) == num_stages
-        assert len(block_out_channels) == num_stages
-        assert isinstance(block_type, str) or (isinstance(block_type, list) and len(block_type) == num_stages)
-        assert isinstance(norm, str) or (isinstance(norm, list) and len(norm) == num_stages)
-        assert isinstance(act, str) or (isinstance(act, list) and len(act) == num_stages)
+
+        if isinstance(block_type, str):
+            block_type = (block_type,) * num_stages
+        if isinstance(norm_type, str):
+            norm_type = (norm_type,) * num_stages
+        if isinstance(act_fn, str):
+            act_fn = (act_fn,) * num_stages
 
         self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], 3, 1, 1)
 
@@ -495,9 +490,9 @@ class Decoder(nn.Module):
                 )
                 current_stage.append(upsample_block)
 
-            stage_block_type = block_type[stage_id] if isinstance(block_type, list) else block_type
-            stage_norm = norm[stage_id] if isinstance(norm, list) else norm
-            stage_act = act[stage_id] if isinstance(act, list) else act
+            stage_block_type = block_type[stage_id]
+            stage_norm = norm_type[stage_id]
+            stage_act = act_fn[stage_id]
             current_stage.extend(
                 build_stage_main(
                     width=width,
@@ -506,6 +501,7 @@ class Decoder(nn.Module):
                     norm=stage_norm,
                     act=stage_act,
                     input_width=width,
+                    qkv_multiscales=qkv_multiscales[stage_id],
                 )
             )
             stages.insert(0, nn.Sequential(*current_stage))
@@ -545,40 +541,44 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         latent_channels: int = 32,
+        encoder_block_types: Union[str, Tuple[str]] = "ResBlock",
+        decoder_block_types: Union[str, Tuple[str]] = "ResBlock",
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
         encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
         decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
-        encoder_block_type: str | List[str] = "ResBlock",
-        downsample_block_type: str = "ConvPixelUnshuffle",
-        decoder_block_type: str | List[str] = "ResBlock",
-        decoder_norm: str = "rms2d",
-        decoder_act: str = "silu",
+        encoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        decoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         upsample_block_type: str = "ConvPixelShuffle",
+        downsample_block_type: str = "ConvPixelUnshuffle",
+        decoder_norm_types: Union[str, Tuple[str]] = "rms2d",
+        decoder_act_fns: Union[str, Tuple[str]] = "silu",
         scaling_factor: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
+        
         self.encoder = Encoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
+            block_type=encoder_block_types,
             block_out_channels=block_out_channels,
             layers_per_block=encoder_layers_per_block,
-            block_type=encoder_block_type,
+            qkv_multiscales=encoder_qkv_multiscales,
             downsample_block_type=downsample_block_type,
         )
         self.decoder = Decoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
+            block_type=decoder_block_types,
             block_out_channels=block_out_channels,
             layers_per_block=decoder_layers_per_block,
-            block_type=decoder_block_type,
-            norm=decoder_norm,
-            act=decoder_act,
+            qkv_multiscales=decoder_qkv_multiscales,
+            norm_type=decoder_norm_types,
+            act_fn=decoder_act_fns,
             upsample_block_type=upsample_block_type,
         )
 
-    @property
-    def spatial_compression_ratio(self) -> int:
-        return 2 ** (self.decoder.num_stages - 1)
+        self.spatial_compression_ratio = 2 ** (len(block_out_channels) - 1)
+        self.temporal_compression_ratio = 1
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self.encoder(x)
@@ -588,7 +588,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         x = self.decoder(x)
         return x
 
-    def forward(self, x: torch.Tensor, global_step: int) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.encoder(x)
         x = self.decoder(x)
-        return x, torch.tensor(0), {}
+        return x
