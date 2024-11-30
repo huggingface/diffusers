@@ -71,7 +71,7 @@ class AdaLayerNorm(nn.Module):
 
         if self.chunk_dim == 1:
             # This is a bit weird why we have the order of "shift, scale" here and "scale, shift" in the
-            # other if-branch. This branch is specific to CogVideoX for now.
+            # other if-branch. This branch is specific to CogVideoX and OmniGen for now.
             shift, scale = temb.chunk(2, dim=1)
             shift = shift[:, None, :]
             scale = scale[:, None, :]

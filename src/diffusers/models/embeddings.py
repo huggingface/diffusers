@@ -288,6 +288,91 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
+
+class OmniGenPatchEmbed(nn.Module):
+    """2D Image to Patch Embedding with support for OmniGen."""
+
+    def __init__(
+        self,
+        patch_size: int =2,
+        in_channels: int =4,
+        embed_dim: int =768,
+        bias: bool =True,
+        interpolation_scale: float =1,
+        pos_embed_max_size: int =192,
+        base_size: int =64,
+    ):
+        super().__init__()
+
+        self.output_image_proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+        self.input_image_proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+        )
+
+        self.patch_size = patch_size
+        self.interpolation_scale = interpolation_scale
+        self.pos_embed_max_size = pos_embed_max_size
+
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim, self.pos_embed_max_size, base_size=base_size, interpolation_scale=self.interpolation_scale
+        )
+        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=True)
+
+    def cropped_pos_embed(self, height, width):
+        """Crops positional embeddings for SD3 compatibility."""
+        if self.pos_embed_max_size is None:
+            raise ValueError("`pos_embed_max_size` must be set for cropping.")
+
+        height = height // self.patch_size
+        width = width // self.patch_size
+        if height > self.pos_embed_max_size:
+            raise ValueError(
+                f"Height ({height}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+        if width > self.pos_embed_max_size:
+            raise ValueError(
+                f"Width ({width}) cannot be greater than `pos_embed_max_size`: {self.pos_embed_max_size}."
+            )
+
+        top = (self.pos_embed_max_size - height) // 2
+        left = (self.pos_embed_max_size - width) // 2
+        spatial_pos_embed = self.pos_embed.reshape(1, self.pos_embed_max_size, self.pos_embed_max_size, -1)
+        spatial_pos_embed = spatial_pos_embed[:, top : top + height, left : left + width, :]
+        spatial_pos_embed = spatial_pos_embed.reshape(1, -1, spatial_pos_embed.shape[-1])
+        return spatial_pos_embed
+
+    def patch_embeddings(self, latent, is_input_image: bool):
+        if is_input_image:
+            latent = self.input_image_proj(latent)
+        else:
+            latent = self.output_image_proj(latent)
+        latent = latent.flatten(2).transpose(1, 2)
+        return latent
+
+    def forward(self, latent, is_input_image: bool, padding_latent=None):
+        if isinstance(latent, list):
+            if padding_latent is None:
+                padding_latent = [None] * len(latent)
+            patched_latents, num_tokens, shapes = [], [], []
+            for sub_latent, padding in zip(latent, padding_latent):
+                height, width = sub_latent.shape[-2:]
+                sub_latent = self.patch_embeddings(sub_latent, is_input_image)
+                pos_embed = self.cropped_pos_embed(height, width)
+                sub_latent = sub_latent + pos_embed
+                if padding is not None:
+                    sub_latent = torch.cat([sub_latent, padding], dim=-2)
+                patched_latents.append(sub_latent)
+        else:
+            height, width = latent.shape[-2:]
+            pos_embed = self.cropped_pos_embed(height, width)
+            latent = self.patch_embeddings(latent, is_input_image)
+            latent = latent + pos_embed
+
+        return latent
+
+
 class LuminaPatchEmbed(nn.Module):
     """2D Image to Patch Embedding with support for Lumina-T2X"""
 
@@ -933,6 +1018,48 @@ class Timesteps(nn.Module):
             scale=self.scale,
         )
         return t_emb
+
+
+class OmniGenTimestepEmbed(nn.Module):
+    """
+    Embeds scalar timesteps into vector representations for OmniGen
+    """
+
+    def __init__(self, hidden_size, frequency_embedding_size=256):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+        )
+        self.frequency_embedding_size = frequency_embedding_size
+
+    @staticmethod
+    def timestep_embedding(t, dim, max_period=10000):
+        """
+        Create sinusoidal timestep embeddings.
+        :param t: a 1-D Tensor of N indices, one per batch element.
+                          These may be fractional.
+        :param dim: the dimension of the output.
+        :param max_period: controls the minimum frequency of the embeddings.
+        :return: an (N, D) Tensor of positional embeddings.
+        """
+        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
+        ).to(device=t.device)
+        args = t[:, None].float() * freqs[None]
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        return embedding
+
+    def forward(self, t, dtype=torch.float32):
+        t_freq = self.timestep_embedding(t, self.frequency_embedding_size).to(dtype)
+        t_emb = self.mlp(t_freq)
+        return t_emb
+
 
 
 class GaussianFourierProjection(nn.Module):
