@@ -193,7 +193,19 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
     ):
         super().__init__()
         if isinstance(controlnet, (list, tuple)):
+            for controlnet_model in controlnet:
+                # for SD3.5 8b controlnet, it shares the pos_embed with the transformer
+                if (
+                    hasattr(controlnet_model.config, "use_pos_embed")
+                    and controlnet_model.config.use_pos_embed is False
+                ):
+                    pos_embed = controlnet_model._get_pos_embed_from_transformer(transformer)
+                    controlnet_model.pos_embed = pos_embed.to(controlnet_model.dtype).to(controlnet_model.device)
             controlnet = SD3MultiControlNetModel(controlnet)
+        else:
+            if hasattr(controlnet.config, "use_pos_embed") and controlnet.config.use_pos_embed is False:
+                pos_embed = controlnet._get_pos_embed_from_transformer(transformer)
+                controlnet.pos_embed = pos_embed.to(controlnet.dtype).to(controlnet.device)
 
         self.register_modules(
             vae=vae,
@@ -1042,15 +1054,9 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                if controlnet_config.use_pos_embed is False:
-                    # sd35 (offical) 8b controlnet
-                    controlnet_model_input = self.transformer.pos_embed(latent_model_input)
-                else:
-                    controlnet_model_input = latent_model_input
-
                 # controlnet(s) inference
                 control_block_samples = self.controlnet(
-                    hidden_states=controlnet_model_input,
+                    hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=controlnet_encoder_hidden_states,
                     pooled_projections=controlnet_pooled_projections,
