@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import os
 from typing import Callable, Dict, List, Optional, Union
 
@@ -1956,7 +1957,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key.replace(f"{prefix}.", "")] = state_dict.pop(key)
+                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
 
         # Find invalid keys
         transformer_state_dict = transformer.state_dict()
@@ -2278,6 +2279,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
         if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
             transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
+            transformer._transformer_norm_layers = None
 
     @classmethod
     def _maybe_expand_transformer_param_shape_or_error_(
@@ -2303,15 +2305,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             if key.split(".")[0] == prefix:
                 state_dict[key.replace(f"{prefix}.", "")] = state_dict.pop(key)
 
-        def get_submodule(module, name):
-            for part in name.split("."):
-                if len(name) == 0:
-                    break
-                if not hasattr(module, part):
-                    raise AttributeError(f"Submodule '{part}' not found in '{module}'.")
-                module = getattr(module, part)
-            return module
-
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
 
@@ -2320,12 +2313,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 module_weight = module.weight.data
                 module_bias = module.bias.data if hasattr(module, "bias") else None
                 bias = module_bias is not None
-                name_split = name.split(".")
 
-                lora_A_name = f"{name}.lora_A"
-                lora_B_name = f"{name}.lora_B"
-                lora_A_weight_name = f"{lora_A_name}.weight"
-                lora_B_weight_name = f"{lora_B_name}.weight"
+                lora_A_weight_name = f"{name}.lora_A.weight"
+                lora_B_weight_name = f"{name}.lora_B.weight"
 
                 if lora_A_weight_name not in state_dict.keys():
                     continue
@@ -2353,9 +2343,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 )
 
                 has_param_with_shape_update = True
-                parent_module_name = ".".join(name_split[:-1])
-                current_module_name = name_split[-1]
-                parent_module = get_submodule(transformer, parent_module_name)
+                parent_module_name, _, current_module_name = name.rpartition(".")
+                parent_module = transformer.get_submodule(parent_module_name)
 
                 expanded_module = torch.nn.Linear(
                     in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
