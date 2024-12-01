@@ -35,7 +35,6 @@ from diffusers.utils.testing_utils import (
     require_torch,
     require_torch_gpu,
     require_torchao_version_greater,
-    slow,
     torch_device,
 )
 
@@ -75,7 +74,6 @@ if is_torchao_available():
 @require_torch
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
-@slow
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
         """
@@ -109,7 +107,6 @@ class TorchAoConfigTest(unittest.TestCase):
 @require_torch
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
-@slow
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
@@ -329,7 +326,6 @@ class TorchAoTest(unittest.TestCase):
 @require_torch
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
-@slow
 class TorchAoSerializationTest(unittest.TestCase):
     model_name = "hf-internal-testing/tiny-flux-pipe"
     quant_method, quant_method_kwargs = None, None
