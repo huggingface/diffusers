@@ -640,7 +640,7 @@ class LTXPipeline(DiffusionPipeline):
             height,
             width,
             num_frames,
-            prompt_embeds.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -684,9 +684,10 @@ class LTXPipeline(DiffusionPipeline):
                     continue
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latent_model_input.to(prompt_embeds.type)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = t.expand(latent_model_input.shape[0])
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -707,7 +708,7 @@ class LTXPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 latents = latents.to(dtype=latents_dtype)
 
                 if callback_on_step_end is not None:
@@ -740,6 +741,7 @@ class LTXPipeline(DiffusionPipeline):
             latents = self._denormalize_latents(
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
+            latents = latents.to(prompt_embeds.dtype)
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
