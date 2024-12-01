@@ -96,7 +96,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             if weights_only:
                 torch_version = version.parse(importlib.metadata.version("torch"))
                 if torch_version < version.parse("2.5.0"):
-                    # TODO(aryan): TorchAO is compatible with Pytorch 2.2 for certain quantization types. Try to see if we can support it
+                    # TODO(aryan): TorchAO is compatible with Pytorch >= 2.2 for certain quantization types. Try to see if we can support it in future
                     raise RuntimeError(
                         f"In order to use TorchAO pre-quantized model, you need to have torch>=2.5.0. However, the current version is {torch_version}."
                     )
@@ -112,7 +112,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                 )
 
         if torch_dtype is None:
-            # we need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
+            # We need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
             logger.warning(
                 "Overriding `torch_dtype` with `torch_dtype=torch.bfloat16` due to requirements of `torchao` "
                 "to enable model loading in different precisions. Pass your own `torch_dtype` to specify the "
@@ -122,8 +122,11 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         return torch_dtype
 
-    def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
+    def adjust_target_dtype(self, target_dtype: torch.dtype) -> torch.dtype:
         supported_dtypes = (
+            # At the moment, only int8 is supported for integer quantization dtypes.
+            # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
+            # to support more quantization methods, such as intx_weight_only.
             torch.int8,
             torch.float8_e4m3fn,
             torch.float8_e5m2,
@@ -138,6 +141,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         if isinstance(target_dtype, supported_dtypes):
             return target_dtype
 
+        # We need one of the supported dtypes to be selected in order for accelerate to determine
+        # the total size of modules/parameters for auto device placement. This method will not be
+        # called when device_map is not "auto".
         raise ValueError(
             f"You are using `device_map='auto'` on a TorchAO quantized model but a suitable target dtype "
             f"could not be inferred. The supported target_dtypes are: {supported_dtypes}. If you think the "
@@ -145,8 +151,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         )
 
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
-        # TODO(aryan): Not sure what to do here @sayakpaul, @DN6
-        # need more space for the quantization parameters (e.g. scale). Tested with int4 wo and group size = 128
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
 
@@ -159,14 +163,14 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         **kwargs,
     ) -> bool:
         param_device = kwargs.pop("param_device", None)
-        # check if the param_name is not in self.modules_to_not_convert
+        # Check if the param_name is not in self.modules_to_not_convert
         if any((key + "." in param_name) or (key == param_name) for key in self.modules_to_not_convert):
             return False
         elif param_device == "cpu" and self.offload:
             # We don't quantize weights that we offload
             return False
         else:
-            # we only quantize the weight of nn.Linear
+            # We only quantize the weight of nn.Linear
             module, tensor_name = get_module_from_name(model, param_name)
             return isinstance(module, torch.nn.Linear) and (tensor_name == "weight")
 
@@ -249,5 +253,4 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     @property
     def is_trainable(self):
-        # TODO(aryan): needs testing
         return self.quantization_config.quant_type.startswith("int8")

@@ -23,9 +23,32 @@ pip install -U torch torchao
 
 Now you can quantize a model by passing a [`TorchAoConfig`] to [`~ModelMixin.from_pretrained`]. This works for any model in any modality, as long as it supports loading with [Accelerate](https://hf.co/docs/accelerate/index) and contains `torch.nn.Linear` layers.
 
-## Usage
+```python
+from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
+
+model_id = "black-forest-labs/Flux.1-Dev"
+dtype = torch.bfloat16
+
+quantization_config = TorchAoConfig("int8wo")
+transformer = FluxTransformer2DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    quantization_config=quantization_config,
+    torch_dtype=dtype,
+)
+pipe = FluxPipeline.from_pretrained(
+    model_id,
+    transformer=transformer,
+    torch_dtype=dtype,
+)
+pipe.to("cuda")
+
+prompt = "A cat holding a sign that says hello world"
+image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+image.save("output.png")
+```
 
 ## Resources
 
-- [TorchAO Quantization API]()
+- [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
 - [Diffusers-TorchAO examples](https://github.com/sayakpaul/diffusers-torchao)

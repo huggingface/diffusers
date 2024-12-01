@@ -412,18 +412,20 @@ class TorchAoConfig(QuantizationConfigMixin):
             https://github.com/pytorch/ao/tree/main/torchao/quantization#other-available-quantization-techniques
 
     Example:
+        ```python
+        from diffusers import FluxTransformer2DModel, TorchAoConfig
 
-    ```python
-    TODO(aryan): update
-    quantization_config = TorchAoConfig("int4_weight_only", group_size=32)
-    # int4_weight_only quant is only working with *torch.bfloat16* dtype right now
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id, device_map="cuda", torch_dtype=torch.bfloat16, quantization_config=quantization_config
-    )
-    ```
+        quantization_config = TorchAoConfig("int8wo")
+        transformer = FluxTransformer2DModel.from_pretrained(
+            "black-forest-labs/Flux.1-Dev",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
+        ```
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List] = None, **kwargs):
+    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List] = None, **kwargs) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
@@ -481,7 +483,6 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
-                "int4": int4_weight_only,
                 "int4wo": int4_weight_only,
                 "int4_weight_only": int4_weight_only,
                 # int4 weight + int8 activation
@@ -491,7 +492,6 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             INT8_QUANTIZATION_TYPES = {
                 # int8 weight + bfloat16/float16 activation
-                "int8": int8_weight_only,
                 "int8wo": int8_weight_only,
                 "int8_weight_only": int8_weight_only,
                 # int8 weight + int8 activation
@@ -532,17 +532,14 @@ class TorchAoConfig(QuantizationConfigMixin):
             # TODO(aryan): handle torch 2.2/2.3
             FLOATX_QUANTIZATION_TYPES = {
                 # float8_e5m2 weight + bfloat16/float16 activation
-                "float8": float8_weight_only,
-                "float8_weight_only": float8_weight_only,
                 "float8wo": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float8_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
+                "float8_weight_only": float8_weight_only,
                 "float8wo_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
                 # float8_e4m3 weight + bfloat16/float16 activation
-                "float8_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
                 "float8wo_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
                 # float8_e5m2 weight + float8 activation (dynamic)
-                "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
                 "float8dq": float8_dynamic_activation_float8_weight,
+                "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
                 # ===== Matrix multiplication is not supported in float8_e5m2 so the following error out.
                 # However, changing activation_dtype=torch.float8_e4m3 might work here =====
                 # "float8dq_e5m2": partial(
@@ -581,7 +578,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 5: torch.uint5,
                 6: torch.uint6,
                 7: torch.uint7,
-                # 8: torch.uint8,
+                # 8: torch.uint8,  # uint8 quantization is not supported
             }
 
             def generate_uintx_quantization_types(bits: int):
@@ -626,7 +623,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "float_a16w5": partial(fpx_weight_only, ebits=3, mbits=1),
                 "float_a16w6": partial(fpx_weight_only, ebits=3, mbits=2),
                 "float_a16w7": partial(fpx_weight_only, ebits=4, mbits=2),
-                "float_a16w8": partial(fpx_weight_only, ebits=5, mbits=2),
+                "float_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
             }
 
             QUANTIZATION_TYPES = {}
@@ -647,6 +644,11 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     @staticmethod
     def _is_cuda_capability_atleast_8_9() -> bool:
+        if not torch.cuda.is_available():
+            if torch.mps.is_available():
+                return False
+            raise RuntimeError("TorchAO requires a CUDA compatible GPU and installation of PyTorch.")
+
         major, minor = torch.cuda.get_device_capability()
         if major == 8:
             return minor >= 9

@@ -28,6 +28,7 @@ from diffusers import (
     FluxTransformer2DModel,
     TorchAoConfig,
 )
+from diffusers.models.attention_processor import Attention
 from diffusers.utils.testing_utils import (
     is_torch_available,
     is_torchao_available,
@@ -41,18 +42,34 @@ from diffusers.utils.testing_utils import (
 
 if is_torch_available():
     import torch
+    import torch.nn as nn
+
+    class LoRALayer(nn.Module):
+        """Wraps a linear layer with LoRA-like adapter - Used for testing purposes only
+
+        Taken from
+        https://github.com/huggingface/transformers/blob/566302686a71de14125717dea9a6a45b24d42b37/tests/quantization/bnb/test_4bit.py#L62C5-L78C77
+        """
+
+        def __init__(self, module: nn.Module, rank: int):
+            super().__init__()
+            self.module = module
+            self.adapter = nn.Sequential(
+                nn.Linear(module.in_features, rank, bias=False),
+                nn.Linear(rank, module.out_features, bias=False),
+            )
+            small_std = (2.0 / (5 * min(module.in_features, module.out_features))) ** 0.5
+            nn.init.normal_(self.adapter[0].weight, std=small_std)
+            nn.init.zeros_(self.adapter[1].weight)
+            self.adapter.to(module.weight.device)
+
+        def forward(self, input, *args, **kwargs):
+            return self.module(input, *args, **kwargs) + self.adapter(input)
+
 
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.dtypes.affine_quantized_tensor import TensorCoreTiledLayoutType
-
-
-def check_forward(test_module, model, batch_size=1, context_size=1024):
-    # Test forward pass
-    with torch.no_grad():
-        out = model(torch.zeros([batch_size, context_size], device=model.device, dtype=torch.int32)).logits
-    test_module.assertEqual(out.shape[0], batch_size)
-    test_module.assertEqual(out.shape[1], context_size)
 
 
 @require_torch
@@ -97,7 +114,6 @@ class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def get_dummy_components(self, quantization_config: TorchAoConfig):
         model_id = "hf-internal-testing/tiny-flux-pipe"
@@ -140,6 +156,32 @@ class TorchAoTest(unittest.TestCase):
         }
 
         return inputs
+
+    def get_dummy_tensor_inputs(self, device=None):
+        batch_size = 1
+        num_latent_channels = 4
+        num_image_channels = 3
+        height = width = 4
+        sequence_length = 48
+        embedding_dim = 32
+
+        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(device, dtype=torch.bfloat16)
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
+            device, dtype=torch.bfloat16
+        )
+        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(device, dtype=torch.bfloat16)
+        text_ids = torch.randn((sequence_length, num_image_channels)).to(device, dtype=torch.bfloat16)
+        image_ids = torch.randn((height * width, num_image_channels)).to(device, dtype=torch.bfloat16)
+        timestep = torch.tensor([1.0]).to(device, dtype=torch.bfloat16).expand(batch_size)
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "pooled_projections": pooled_prompt_embeds,
+            "txt_ids": text_ids,
+            "img_ids": image_ids,
+            "timestep": timestep,
+        }
 
     def _test_quant_type(self, quantization_config: TorchAoConfig, expected_slice: List[float]):
         components = self.get_dummy_components(quantization_config)
@@ -193,14 +235,13 @@ class TorchAoTest(unittest.TestCase):
             torch_dtype=torch.bfloat16,
         )
 
-        qlayer = quantized_model.transformer_blocks[0].attn.to_q
-        weight = qlayer.weight
+        weight = quantized_model.transformer_blocks[0].ff.net[2].weight
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
         self.assertEqual(weight.quant_min, 0)
         self.assertEqual(weight.quant_max, 15)
         self.assertTrue(isinstance(weight.layout_type, TensorCoreTiledLayoutType))
 
-    def test_int4wo_offload(self):
+    def test_offload(self):
         """
         Test if the quantized model int4 weight-only is working properly with cpu/disk offload.
         """
@@ -215,23 +256,7 @@ class TorchAoTest(unittest.TestCase):
             "proj_out": "cpu",
         }
 
-        batch_size = 1
-        num_latent_channels = 4
-        num_image_channels = 3
-        height = width = 4
-        sequence_length = 48
-        embedding_dim = 32
-
-        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(
-            torch_device, dtype=torch.bfloat16
-        )
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
-            torch_device, dtype=torch.bfloat16
-        )
-        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(torch_device, dtype=torch.bfloat16)
-        text_ids = torch.randn((sequence_length, num_image_channels)).to(torch_device, dtype=torch.bfloat16)
-        image_ids = torch.randn((height * width, num_image_channels)).to(torch_device, dtype=torch.bfloat16)
-        timestep = torch.tensor([1.0]).to(torch_device, dtype=torch.bfloat16).expand(batch_size)
+        inputs = self.get_dummy_tensor_inputs(torch_device)
 
         with tempfile.TemporaryDirectory() as offload_folder:
             quantization_config = TorchAoConfig("int4_weight_only", group_size=64)
@@ -244,115 +269,161 @@ class TorchAoTest(unittest.TestCase):
                 offload_folder=offload_folder,
             )
 
-            output = quantized_model(
-                hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                img_ids=image_ids,
-                txt_ids=text_ids,
-                pooled_projections=pooled_prompt_embeds,
-                timestep=timestep,
-            )
+            output = quantized_model(**inputs)[0]
 
-            output_slice = output.flatten()[-9:].detach().cpu().numpy()
+            output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
             # TODO(aryan): get slice from CI
             expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
             self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
+    def test_modules_to_not_convert(self):
+        quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
 
-# @require_torch_gpu
-# @require_torchao
-# class TorchAoSerializationTest(unittest.TestCase):
-#     input_text = "What are we having for dinner?"
-#     max_new_tokens = 10
-#     ORIGINAL_EXPECTED_OUTPUT = "What are we having for dinner?\n- 1. What is the temperature outside"
-#     # TODO: investigate why we don't have the same output as the original model for this test
-#     SERIALIZED_EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-#     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-#     quant_scheme, quant_scheme_kwargs = "int4_weight_only", {"group_size": 32}
-#     device = "cuda:0"
+        unquantized_layer = quantized_model.transformer_blocks[0].ff.net[2]
+        self.assertTrue(isinstance(unquantized_layer, torch.nn.Linear))
+        self.assertFalse(isinstance(unquantized_layer.weight, AffineQuantizedTensor))
+        self.assertEquals(unquantized_layer.weight.dtype, torch.bfloat16)
 
-#     # called only once for all test in this class
-#     @classmethod
-#     def setUpClass(cls):
-#         cls.quant_config = TorchAoConfig(cls.quant_scheme, **cls.quant_scheme_kwargs)
-#         cls.quantized_model = AutoModelForCausalLM.from_pretrained(
-#             cls.model_name,
-#             torch_dtype=torch.bfloat16,
-#             device_map=cls.device,
-#             quantization_config=cls.quant_config,
-#         )
-#         cls.tokenizer = AutoTokenizer.from_pretrained(cls.model_name)
+        quantized_layer = quantized_model.proj_out
+        self.assertTrue(isinstance(quantized_layer.weight, AffineQuantizedTensor))
+        self.assertEquals(quantized_layer.weight.layout_tensor.data.dtype, torch.int8)
 
-#     def tearDown(self):
-#         gc.collect()
-#         torch.cuda.empty_cache()
-#         gc.collect()
+    def test_training(self):
+        quantization_config = TorchAoConfig("int8_weight_only")
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        ).to(torch_device)
 
-#     def test_original_model_expected_output(self):
-#         input_ids = self.tokenizer(self.input_text, return_tensors="pt").to(self.device)
-#         output = self.quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
+        for param in quantized_model.parameters():
+            # freeze the model as only adapter layers will be trained
+            param.requires_grad = False
+            if param.ndim == 1:
+                param.data = param.data.to(torch.float32)
 
-#         self.assertEqual(self.tokenizer.decode(output[0], skip_special_tokens=True), self.ORIGINAL_EXPECTED_OUTPUT)
+        for _, module in quantized_model.named_modules():
+            if isinstance(module, Attention):
+                module.to_q = LoRALayer(module.to_q, rank=4)
+                module.to_k = LoRALayer(module.to_k, rank=4)
+                module.to_v = LoRALayer(module.to_v, rank=4)
 
-#     def check_serialization_expected_output(self, device, expected_output):
-#         """
-#         Test if we can serialize and load/infer the model again on the same device
-#         """
-#         with tempfile.TemporaryDirectory() as tmpdirname:
-#             self.quantized_model.save_pretrained(tmpdirname, safe_serialization=False)
-#             loaded_quantized_model = AutoModelForCausalLM.from_pretrained(
-#                 self.model_name, torch_dtype=torch.bfloat16, device_map=self.device
-#             )
-#             input_ids = self.tokenizer(self.input_text, return_tensors="pt").to(self.device)
+        with torch.amp.autocast(str(torch_device), dtype=torch.bfloat16):
+            inputs = self.get_dummy_tensor_inputs(torch_device)
+            output = quantized_model(**inputs)[0]
+            output.norm().backward()
 
-#             output = loaded_quantized_model.generate(**input_ids, max_new_tokens=self.max_new_tokens)
-#             self.assertEqual(self.tokenizer.decode(output[0], skip_special_tokens=True), expected_output)
-
-#     def test_serialization_expected_output(self):
-#         self.check_serialization_expected_output(self.device, self.SERIALIZED_EXPECTED_OUTPUT)
+        for module in quantized_model.modules():
+            if isinstance(module, LoRALayer):
+                self.assertTrue(module.adapter[1].weight.grad is not None)
+                self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
 
 
-# class TorchAoSerializationW8A8Test(TorchAoSerializationTest):
-#     quant_scheme, quant_scheme_kwargs = "int8_dynamic_activation_int8_weight", {}
-#     ORIGINAL_EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-#     SERIALIZED_EXPECTED_OUTPUT = ORIGINAL_EXPECTED_OUTPUT
-#     device = "cuda:0"
+@require_torch
+@require_torch_gpu
+@require_torchao_version_greater("0.6.0")
+@slow
+class TorchAoSerializationTest(unittest.TestCase):
+    model_name = "hf-internal-testing/tiny-flux-pipe"
+    quant_method, quant_method_kwargs = None, None
+    device = "cuda"
+
+    def tearDown(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_dummy_model(self, device=None):
+        quantization_config = TorchAoConfig(self.quant_method, **self.quant_method_kwargs)
+        quantized_model = FluxTransformer2DModel.from_pretrained(
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
+        return quantized_model.to(device)
+
+    def get_dummy_tensor_inputs(self, device=None):
+        batch_size = 1
+        num_latent_channels = 4
+        num_image_channels = 3
+        height = width = 4
+        sequence_length = 48
+        embedding_dim = 32
+
+        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(device, dtype=torch.bfloat16)
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
+            device, dtype=torch.bfloat16
+        )
+        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(device, dtype=torch.bfloat16)
+        text_ids = torch.randn((sequence_length, num_image_channels)).to(device, dtype=torch.bfloat16)
+        image_ids = torch.randn((height * width, num_image_channels)).to(device, dtype=torch.bfloat16)
+        timestep = torch.tensor([1.0]).to(device, dtype=torch.bfloat16).expand(batch_size)
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "pooled_projections": pooled_prompt_embeds,
+            "txt_ids": text_ids,
+            "img_ids": image_ids,
+            "timestep": timestep,
+        }
+
+    def test_original_model_expected_slice(self):
+        quantized_model = self.get_dummy_model(torch_device)
+        inputs = self.get_dummy_tensor_inputs(torch_device)
+        output = quantized_model(**inputs)[0]
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertTrue(np.allclose(output_slice, self.expected_slice, atol=1e-3, rtol=1e-3))
+
+    def check_serialization_expected_slice(self, expected_slice):
+        quantized_model = self.get_dummy_model(self.device)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            quantized_model.save_pretrained(tmp_dir, safe_serialization=False)
+            loaded_quantized_model = FluxTransformer2DModel.from_pretrained(
+                tmp_dir, torch_dtype=torch.bfloat16, device_map=torch_device, use_safetensors=False
+            )
+
+        inputs = self.get_dummy_tensor_inputs(torch_device)
+        output = loaded_quantized_model(**inputs)[0]
+
+        output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
+
+    def test_serialization_expected_slice(self):
+        self.check_serialization_expected_slice(self.serialized_expected_slice)
 
 
-# class TorchAoSerializationW8Test(TorchAoSerializationTest):
-#     quant_scheme, quant_scheme_kwargs = "int8_weight_only", {}
-#     ORIGINAL_EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-#     SERIALIZED_EXPECTED_OUTPUT = ORIGINAL_EXPECTED_OUTPUT
-#     device = "cuda:0"
+class TorchAoSerializationINTA8W8Test(TorchAoSerializationTest):
+    quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}
+    expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    serialized_expected_slice = expected_slice
+    device = "cuda"
 
 
-# class TorchAoSerializationW8A8CPUTest(TorchAoSerializationTest):
-#     quant_scheme, quant_scheme_kwargs = "int8_dynamic_activation_int8_weight", {}
-#     ORIGINAL_EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-#     SERIALIZED_EXPECTED_OUTPUT = ORIGINAL_EXPECTED_OUTPUT
-#     device = "cpu"
-
-#     def test_serialization_expected_output_cuda(self):
-#         """
-#         Test if we can serialize on device (cpu) and load/infer the model on cuda
-#         """
-#         new_device = "cuda:0"
-#         self.check_serialization_expected_output(new_device, self.SERIALIZED_EXPECTED_OUTPUT)
+class TorchAoSerializationINTA16W8Test(TorchAoSerializationTest):
+    quant_method, quant_method_kwargs = "int8_weight_only", {}
+    expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    serialized_expected_slice = expected_slice
+    device = "cuda"
 
 
-# class TorchAoSerializationW8CPUTest(TorchAoSerializationTest):
-#     quant_scheme, quant_scheme_kwargs = "int8_weight_only", {}
-#     ORIGINAL_EXPECTED_OUTPUT = "What are we having for dinner?\n\nJessica: (smiling)"
-#     SERIALIZED_EXPECTED_OUTPUT = ORIGINAL_EXPECTED_OUTPUT
-#     device = "cpu"
-
-#     def test_serialization_expected_output_cuda(self):
-#         """
-#         Test if we can serialize on device (cpu) and load/infer the model on cuda
-#         """
-#         new_device = "cuda:0"
-#         self.check_serialization_expected_output(new_device, self.SERIALIZED_EXPECTED_OUTPUT)
+class TorchAoSerializationINTA8W8CPUTest(TorchAoSerializationTest):
+    quant_method, quant_method_kwargs = "int8_dynamic_activation_int8_weight", {}
+    expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    serialized_expected_slice = expected_slice
+    device = "cpu"
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TorchAoSerializationINTA16W8CPUTest(TorchAoSerializationTest):
+    quant_method, quant_method_kwargs = "int8_weight_only", {}
+    expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    serialized_expected_slice = expected_slice
+    device = "cpu"
