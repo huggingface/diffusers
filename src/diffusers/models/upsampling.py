@@ -167,7 +167,9 @@ class Upsample2D(nn.Module):
         if self.interpolate:
             # upsample_nearest_nhwc also fails when the number of output elements is large
             # https://github.com/pytorch/pytorch/issues/141831
-            scale_factor = 2 if output_size is None else max([f/s for f,s in zip(output_size, hidden_states.shape[-2:])])
+            scale_factor = (
+                2 if output_size is None else max([f / s for f, s in zip(output_size, hidden_states.shape[-2:])])
+            )
             if hidden_states.numel() * scale_factor > pow(2, 31):
                 hidden_states = hidden_states.contiguous()
 
