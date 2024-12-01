@@ -388,6 +388,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                         **ckpt_kwargs,
                     )
                 else:
+                    # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(block), hidden_states, temb, **ckpt_kwargs
                     )
