@@ -348,50 +348,6 @@ class KUpsample2D(nn.Module):
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
 
 
-class ConvPixelShuffleUpsample2D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        self.conv = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels * out_ratio,
-            kernel_size=kernel_size,
-            padding=kernel_size // 2,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
-class ChannelDuplicatingPixelUnshuffleUpsample2D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert out_channels * factor**2 % in_channels == 0
-        self.repeats = out_channels * factor**2 // in_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.repeat_interleave(self.repeats, dim=1)
-        x = F.pixel_shuffle(x, self.factor)
-        return x
-
-
 class CogVideoXUpsample3D(nn.Module):
     r"""
     A 3D Upsample layer using in CogVideoX by Tsinghua University & ZhipuAI # Todo: Wait for paper relase.

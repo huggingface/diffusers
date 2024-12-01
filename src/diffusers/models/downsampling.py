@@ -285,53 +285,6 @@ class KDownsample2D(nn.Module):
         return F.conv2d(inputs, weight, stride=2)
 
 
-class ConvPixelUnshuffleDownsample2D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.factor = factor
-        out_ratio = factor**2
-        assert out_channels % out_ratio == 0
-        self.conv = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels // out_ratio,
-            kernel_size=kernel_size,
-            padding=kernel_size // 2,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv(x)
-        x = F.pixel_unshuffle(x, self.factor)
-        return x
-
-
-class PixelUnshuffleChannelAveragingDownsample2D(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        factor: int,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.factor = factor
-        assert in_channels * factor**2 % out_channels == 0
-        self.group_size = in_channels * factor**2 // out_channels
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.pixel_unshuffle(x, self.factor)
-        B, C, H, W = x.shape
-        x = x.view(B, self.out_channels, self.group_size, H, W)
-        x = x.mean(dim=2)
-        return x
-
-
 class CogVideoXDownsample3D(nn.Module):
     # Todo: Wait for paper relase.
     r"""
