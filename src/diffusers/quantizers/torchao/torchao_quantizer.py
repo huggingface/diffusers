@@ -122,7 +122,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         return torch_dtype
 
-    def adjust_target_dtype(self, target_dtype: torch.dtype) -> torch.dtype:
+    def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         supported_dtypes = (
             # At the moment, only int8 is supported for integer quantization dtypes.
             # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
