@@ -702,7 +702,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
             height,
             width,
             num_frames,
-            prompt_embeds.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -749,9 +749,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
                     continue
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                timestep = t.expand(latent_model_input.shape[0])
                 timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
 
                 noise_pred = self.transformer(
@@ -773,13 +774,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
                     timestep, _ = timestep.chunk(2)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents_dtype = latents.dtype
-                # latents = self.scheduler.step(noise_pred, t, latents.float(), return_dict=False)[0]
-                # latents = latents.to(dtype=latents_dtype)
-
                 # ============= TODO(aryan): needs a look by YiYi
-                latents = latents.float()
-
                 noise_pred = self._unpack_latents(
                     noise_pred,
                     latent_num_frames,
@@ -805,7 +800,6 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
-                latents = latents.to(dtype=latents_dtype)
                 # =============
 
                 if callback_on_step_end is not None:
@@ -838,6 +832,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
             latents = self._denormalize_latents(
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
+            latents = latents.to(prompt_embeds.dtype)
             video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
