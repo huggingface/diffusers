@@ -285,11 +285,11 @@ class TorchAoTest(unittest.TestCase):
         unquantized_layer = quantized_model.transformer_blocks[0].ff.net[2]
         self.assertTrue(isinstance(unquantized_layer, torch.nn.Linear))
         self.assertFalse(isinstance(unquantized_layer.weight, AffineQuantizedTensor))
-        self.assertEquals(unquantized_layer.weight.dtype, torch.bfloat16)
+        self.assertEqual(unquantized_layer.weight.dtype, torch.bfloat16)
 
         quantized_layer = quantized_model.proj_out
         self.assertTrue(isinstance(quantized_layer.weight, AffineQuantizedTensor))
-        self.assertEquals(quantized_layer.weight.layout_tensor.data.dtype, torch.int8)
+        self.assertEqual(quantized_layer.weight.layout_tensor.data.dtype, torch.int8)
 
     def test_training(self):
         quantization_config = TorchAoConfig("int8_weight_only")
