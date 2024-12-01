@@ -161,9 +161,6 @@ class LTXRotaryPosEmbed(nn.Module):
             cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
             sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
 
-        cos_freqs = cos_freqs.to(dtype=hidden_states.dtype)
-        sin_freqs = sin_freqs.to(dtype=hidden_states.dtype)
-
         return cos_freqs, sin_freqs
 
 
