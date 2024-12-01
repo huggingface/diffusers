@@ -1835,22 +1835,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if not (has_lora_keys or has_norm_keys):
             raise ValueError("Invalid LoRA checkpoint.")
 
-        def prune_state_dict_(state_dict):
-            pruned_keys = []
-            for key in list(state_dict.keys()):
-                is_lora_key_present = "lora" in key
-                is_norm_key_present = any(norm_key in key for norm_key in supported_norm_keys)
-                if not is_lora_key_present and not is_norm_key_present:
-                    state_dict.pop(key)
-                    pruned_keys.append(key)
-            return pruned_keys
-
-        pruned_keys = prune_state_dict_(state_dict)
-        if len(pruned_keys) > 0:
-            logger.warning(
-                f"The provided LoRA state dict contains additional weights that are not compatible with Flux. The following are the incompatible weights:\n{pruned_keys}"
-            )
-
         transformer_lora_state_dict = {
             k: state_dict.pop(k) for k in list(state_dict.keys()) if "transformer." in k and "lora" in k
         }
@@ -1883,7 +1867,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             )
 
         if len(transformer_norm_state_dict) > 0:
-            self._transformer_norm_layers = self._load_norm_into_transformer(
+            transformer._transformer_norm_layers = self._load_norm_into_transformer(
                 transformer_norm_state_dict,
                 transformer=transformer,
                 discard_original_layers=False,
@@ -1977,7 +1961,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         overwritten_layers_state_dict = {}
         if not discard_original_layers:
             for key in state_dict.keys():
-                overwritten_layers_state_dict[key] = transformer_state_dict[key]
+                overwritten_layers_state_dict[key] = transformer_state_dict[key].clone()
 
         logger.info(
             "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will directly update the state_dict of the transformer "
@@ -2237,10 +2221,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         pipeline.fuse_lora(lora_scale=0.7)
         ```
         """
+
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
         if (
-            hasattr(self, "_transformer_norm_layers")
-            and isinstance(self._transformer_norm_layers, dict)
-            and len(self._transformer_norm_layers.keys()) > 0
+            hasattr(transformer, "_transformer_norm_layers")
+            and isinstance(transformer._transformer_norm_layers, dict)
+            and len(transformer._transformer_norm_layers.keys()) > 0
         ):
             logger.info(
                 "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will be directly updated the state_dict of the transformer "
@@ -2303,7 +2289,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
             if key.split(".")[0] == prefix:
-                state_dict[key.replace(f"{prefix}.", "")] = state_dict.pop(key)
+                state_dict[key[len(f"{prefix}.") :]] = state_dict.pop(key)
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
