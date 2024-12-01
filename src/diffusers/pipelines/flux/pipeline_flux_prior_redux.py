@@ -369,7 +369,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        scales: Optional[Union[float, List[float]]] = None,
+        prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.,
+        pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.,
         return_dict: bool = True,
     ):
         r"""
@@ -418,6 +419,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             batch_size = image.shape[0]
         if prompt is not None and isinstance(prompt, str):
             prompt = batch_size * [prompt]
+        if isinstance(prompt_embeds_scale, float):
+            prompt_embeds_scale = batch_size * [prompt_embeds_scale]
+        if isinstance(pooled_prompt_embeds_scale, float):
+            pooled_prompt_embeds_scale = batch_size * [pooled_prompt_embeds_scale]
 
         device = self._execution_device
 
@@ -449,9 +454,21 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             # pooled_prompt_embeds is 768, clip text encoder hidden size
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
+        print("1 prompt_embeds.shape", prompt_embeds.shape)
+        prompt_embeds_scale = torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
+        pooled_prompt_embeds_scale = torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None]
+
+
         # Concatenate image and text embeddings
         prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
+        print("2 prompt_embeds.shape", prompt_embeds.shape)
+        prompt_embeds *= prompt_embeds_scale
+        pooled_prompt_embeds *= pooled_prompt_embeds_scale
+        print("3 prompt_embeds.shape", prompt_embeds.shape)
 
+        prompt_embeds = torch.sum(prompt_embeds, dim=0)
+        pooled_prompt_embeds = torch.sum(pooled_prompt_embeds, dim=0)
+        print("4 prompt_embeds.shape", prompt_embeds.shape)
         # Offload all models
         self.maybe_free_model_hooks()
 
