@@ -666,7 +666,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
 
 
 def _convert_bfl_flux_control_lora_to_diffusers(old_state_dict):
-    # in SD3 original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
+    # in Flux original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
     # while in diffusers it split into scale, shift. Here we swap the linear projection weights in order to be able to use diffusers implementation
     def swap_scale_shift(weight):
         shift, scale = weight.chunk(2, dim=0)
@@ -755,15 +755,13 @@ def _convert_bfl_flux_control_lora_to_diffusers(old_state_dict):
             new_key = new_key.replace("img_mod.lin", "norm1.linear")
             new_key = new_key.replace("txt_mod.lin", "norm1_context.linear")
             new_key = new_key.replace("img_mlp.0", "ff.net.0.proj")
-            new_key = new_key.replace("img_mlp.2", "ff.net.2.proj")
+            new_key = new_key.replace("img_mlp.2", "ff.net.2")
             new_key = new_key.replace("txt_mlp.0", "ff_context.net.0.proj")
-            new_key = new_key.replace("txt_mlp.2", "ff_context.net.2.proj")
+            new_key = new_key.replace("txt_mlp.2", "ff_context.net.2")
             new_key = new_key.replace("img_attn.proj", "attn.to_out.0")
             new_key = new_key.replace("img_attn.norm.query_norm.scale", "attn.norm_q.weight")
             new_key = new_key.replace("img_attn.norm.key_norm.scale", "attn.norm_k.weight")
-            new_key = new_key.replace("txt_attn.proj", "attn.to_add_out.0")
-            # new_key = new_key.replace("txt_attn.norm.query_norm.scale", "attn.norm_added_q.weight")
-            # new_key = new_key.replace("txt_attn.norm.key_norm.scale", "attn.norm_added_k.weight")
+            new_key = new_key.replace("txt_attn.proj", "attn.to_add_out")
             converted_state_dict[new_key] = original_state_dict.pop(key)
 
     def remap_single_blocks(key, converted_state_dict, original_state_dict):
@@ -817,10 +815,9 @@ def _convert_bfl_flux_control_lora_to_diffusers(old_state_dict):
             )
 
         else:
-            new_key = key.replace("modulation.lin", "norm.linear")
+            new_key = key.replace("single_blocks", "single_transformer_blocks")
+            new_key = new_key.replace("modulation.lin", "norm.linear")
             new_key = new_key.replace("linear2", "proj_out")
-            # new_key = new_key.replace("norm.query_norm.scale", "attn.norm_q.weight")
-            # new_key = new_key.replace("norm.key_norm.scale", "attn.norm_k.weight")
             converted_state_dict[new_key] = original_state_dict.pop(key)
 
     def remap_final_layer(key, converted_state_dict, original_state_dict):
