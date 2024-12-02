@@ -183,6 +183,21 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
     def stretch_shift_to_terminal(self, t: torch.Tensor) -> torch.Tensor:
+        r"""
+        Stretches and shifts the timestep schedule to ensure it terminates at the configured `shift_terminal` config
+        value.
+
+        Reference:
+        https://github.com/Lightricks/LTX-Video/blob/a01a171f8fe3d99dce2728d60a73fecf4d4238ae/ltx_video/schedulers/rf.py#L51
+
+        Args:
+            t (`torch.Tensor`):
+                A tensor of timesteps to be stretched and shifted.
+
+        Returns:
+            `torch.Tensor`:
+                A tensor of adjusted timesteps such that the final value equals `self.config.shift_terminal`.
+        """
         one_minus_z = 1 - t
         scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
         stretched_t = 1 - (one_minus_z / scale_factor)

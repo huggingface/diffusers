@@ -774,7 +774,6 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
                     timestep, _ = timestep.chunk(2)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                # ============= TODO(aryan): needs a look by YiYi
                 noise_pred = self._unpack_latents(
                     noise_pred,
                     latent_num_frames,
@@ -800,7 +799,6 @@ class LTXImageToVideoPipeline(DiffusionPipeline):
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
-                # =============
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

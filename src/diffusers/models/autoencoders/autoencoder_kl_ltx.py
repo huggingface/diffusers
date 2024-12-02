@@ -23,7 +23,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import LayerNormNd, RMSNormNd
+from ..normalization import RMSNorm
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -117,12 +117,12 @@ class LTXResnetBlock3d(nn.Module):
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.norm1 = RMSNormNd(dim=in_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
+        self.norm1 = RMSNorm(in_channels, eps=1e-8, elementwise_affine=elementwise_affine)
         self.conv1 = LTXCausalConv3d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
         )
 
-        self.norm2 = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=elementwise_affine, channel_dim=1)
+        self.norm2 = RMSNorm(out_channels, eps=1e-8, elementwise_affine=elementwise_affine)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = LTXCausalConv3d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, is_causal=is_causal
@@ -131,7 +131,7 @@ class LTXResnetBlock3d(nn.Module):
         self.norm3 = None
         self.conv_shortcut = None
         if in_channels != out_channels:
-            self.norm3 = LayerNormNd(in_channels, eps=eps, elementwise_affine=True, bias=True, channel_dim=1)
+            self.norm3 = nn.LayerNorm(in_channels, eps=eps, elementwise_affine=True, bias=True)
             self.conv_shortcut = LTXCausalConv3d(
                 in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, is_causal=is_causal
             )
@@ -139,17 +139,17 @@ class LTXResnetBlock3d(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         hidden_states = inputs
 
-        hidden_states = self.norm1(hidden_states)
+        hidden_states = self.norm1(hidden_states.movedim(1, -1)).movedim(-1, 1)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv1(hidden_states)
 
-        hidden_states = self.norm2(hidden_states)
+        hidden_states = self.norm2(hidden_states.movedim(1, -1)).movedim(-1, 1)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
 
         if self.norm3 is not None:
-            inputs = self.norm3(inputs)
+            inputs = self.norm3(inputs.movedim(1, -1)).movedim(-1, 1)
 
         if self.conv_shortcut is not None:
             inputs = self.conv_shortcut(inputs)
@@ -545,7 +545,7 @@ class LTXEncoder3d(nn.Module):
         )
 
         # out
-        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=False, channel_dim=1)
+        self.norm_out = RMSNorm(out_channels, eps=1e-8, elementwise_affine=False)
         self.conv_act = nn.SiLU()
         self.conv_out = LTXCausalConv3d(
             in_channels=output_channel, out_channels=out_channels + 1, kernel_size=3, stride=1, is_causal=is_causal
@@ -589,7 +589,7 @@ class LTXEncoder3d(nn.Module):
 
             hidden_states = self.mid_block(hidden_states)
 
-        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states)
 
@@ -675,7 +675,7 @@ class LTXDecoder3d(nn.Module):
             self.up_blocks.append(up_block)
 
         # out
-        self.norm_out = RMSNormNd(dim=out_channels, eps=1e-8, elementwise_affine=False, channel_dim=1)
+        self.norm_out = RMSNorm(out_channels, eps=1e-8, elementwise_affine=False)
         self.conv_act = nn.SiLU()
         self.conv_out = LTXCausalConv3d(
             in_channels=output_channel, out_channels=self.out_channels, kernel_size=3, stride=1, is_causal=is_causal
@@ -704,7 +704,7 @@ class LTXDecoder3d(nn.Module):
             for up_block in self.up_blocks:
                 hidden_states = up_block(hidden_states)
 
-        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states)
 

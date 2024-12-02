@@ -62,10 +62,8 @@ class LTXAttentionProcessor2_0:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        use_rotary_emb = False
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-            use_rotary_emb = True
 
         query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
@@ -74,7 +72,7 @@ class LTXAttentionProcessor2_0:
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        if image_rotary_emb is not None and use_rotary_emb:
+        if image_rotary_emb is not None:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
@@ -255,7 +253,7 @@ class LTXTransformerBlock(nn.Module):
         attn_hidden_states = self.attn2(
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
-            image_rotary_emb=image_rotary_emb,
+            image_rotary_emb=None,
             attention_mask=encoder_attention_mask,
         )
         hidden_states = hidden_states + attn_hidden_states
