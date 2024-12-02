@@ -36,7 +36,6 @@ from diffusers.utils.testing_utils import (
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -134,7 +133,6 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
 
-@slow
 @nightly
 @require_torch_gpu
 @require_peft_backend

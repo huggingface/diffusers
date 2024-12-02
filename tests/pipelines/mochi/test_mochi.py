@@ -28,7 +28,6 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -263,7 +262,6 @@ class MochiPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
 
-@slow
 @nightly
 @require_torch_gpu
 @require_big_gpu_with_torch_cuda

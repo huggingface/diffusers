@@ -35,7 +35,6 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_big_gpu_with_torch_cuda,
-    slow,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -205,7 +204,6 @@ class FluxControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             assert (output_height, output_width) == (expected_height, expected_width)
 
 
-@slow
 @nightly
 @require_big_gpu_with_torch_cuda
 @pytest.mark.big_gpu_with_torch_cuda
