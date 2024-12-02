@@ -193,7 +193,9 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
     ):
         super().__init__()
         if isinstance(controlnet, (list, tuple)):
-            for controlnet_model in controlnet:
+            controlnet = SD3MultiControlNetModel(controlnet)
+        if isinstance(controlnet, SD3MultiControlNetModel):
+            for controlnet_model in controlnet.nets:
                 # for SD3.5 8b controlnet, it shares the pos_embed with the transformer
                 if (
                     hasattr(controlnet_model.config, "use_pos_embed")
@@ -201,8 +203,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 ):
                     pos_embed = controlnet_model._get_pos_embed_from_transformer(transformer)
                     controlnet_model.pos_embed = pos_embed.to(controlnet_model.dtype).to(controlnet_model.device)
-            controlnet = SD3MultiControlNetModel(controlnet)
-        else:
+        elif isinstance(controlnet, SD3ControlNetModel):
             if hasattr(controlnet.config, "use_pos_embed") and controlnet.config.use_pos_embed is False:
                 pos_embed = controlnet._get_pos_embed_from_transformer(transformer)
                 controlnet.pos_embed = pos_embed.to(controlnet.dtype).to(controlnet.device)
