@@ -144,11 +144,14 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
+        image,
         prompt,
         prompt_2,
-        image,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
+        prompt_embeds_scale=1.,
+        pooled_prompt_embeds_scale=1.,
+
     ):
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -171,6 +174,10 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
+            )
+        if isinstance(prompt_embeds_scale, list) and (isinstance(image, list) and len(prompt_embeds_scale) != len(image)):
+            raise ValueError(
+                f"number of weights must be equal to number of images, but {len(prompt_embeds_scale)} weights were provided and {len(image)} images"
             )
 
     def encode_image(self, image, device, num_images_per_prompt):
