@@ -907,11 +907,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance and skip_guidance_layers is None
-                    else latents
-                )
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
@@ -935,6 +931,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                         else False
                     )
                     if skip_guidance_layers is not None and should_skip_layers:
+                        timestep = t.expand(latents.shape[0])
+                        latent_model_input = latents
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
