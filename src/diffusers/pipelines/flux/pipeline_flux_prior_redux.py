@@ -454,21 +454,16 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             # pooled_prompt_embeds is 768, clip text encoder hidden size
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
-        print("1 prompt_embeds.shape", prompt_embeds.shape)
-        prompt_embeds_scale = torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
-        pooled_prompt_embeds_scale = torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None]
-
-
-        # Concatenate image and text embeddings
+        # scale & oncatenate image and text embeddings
         prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
-        print("2 prompt_embeds.shape", prompt_embeds.shape)
-        prompt_embeds *= prompt_embeds_scale
-        pooled_prompt_embeds *= pooled_prompt_embeds_scale
-        print("3 prompt_embeds.shape", prompt_embeds.shape)
 
-        prompt_embeds = torch.sum(prompt_embeds, dim=0)
-        pooled_prompt_embeds = torch.sum(pooled_prompt_embeds, dim=0)
-        print("4 prompt_embeds.shape", prompt_embeds.shape)
+        prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
+        pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None]
+
+        # weighted sum
+        prompt_embeds = torch.sum(prompt_embeds, dim=0, keepdim=True)
+        pooled_prompt_embeds = torch.sum(pooled_prompt_embeds, dim=0, keepdim=True)
+
         # Offload all models
         self.maybe_free_model_hooks()
 
