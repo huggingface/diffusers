@@ -15,9 +15,9 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.fft as fft
 import torch.nn.functional as F
 from torch import nn
-import torch.fft as fft
 
 from ...utils import deprecate, is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
@@ -2538,7 +2538,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 scaleu = scaleu_kwargs[j]
                 scaleu_b, scaleu_s = scaleu["scaleu_b"], scaleu["scaleu_s"]
 
-                hidden_states = torch.einsum('bchw,c->bchw', hidden_states, scaleu_b)
+                hidden_states = torch.einsum("bchw,c->bchw", hidden_states, scaleu_b)
                 res_hidden_states = Fourier_filter(res_hidden_states, threshold=1, scale=scaleu_s)
 
             # FreeU: Only operate on the first two stages
@@ -2679,7 +2679,7 @@ class UpBlock2D(nn.Module):
                 scaleu = scaleu_kwargs[j]
                 scaleu_b, scaleu_s = scaleu["scaleu_b"], scaleu["scaleu_s"]
 
-                hidden_states = torch.einsum('bchw,c->bchw', hidden_states, scaleu_b)
+                hidden_states = torch.einsum("bchw,c->bchw", hidden_states, scaleu_b)
                 res_hidden_states = Fourier_filter(res_hidden_states, threshold=1, scale=scaleu_s)
 
             # FreeU: Only operate on the first two stages

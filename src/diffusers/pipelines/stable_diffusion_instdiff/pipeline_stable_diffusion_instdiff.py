@@ -14,11 +14,11 @@
 
 import inspect
 import warnings
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL.Image
 import torch
-from copy import deepcopy
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
@@ -51,7 +51,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Insert objects described by text at the region defined by bounding boxes
         >>> pipe = StableDiffusionINSTDIFFPipeline.from_pretrained(
-        ...     "kyeongry/instancediffusion_sd15", variant=None, torch_dtype=torch.float16,
+        ...     "kyeongry/instancediffusion_sd15",
+        ...     variant=None,
+        ...     torch_dtype=torch.float16,
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -69,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         ...     "a yellow American robin standing on the rock",
         ...     "a brown Maltipoo dog standing on the rock",
         ...     "a close up of a small waterfall in the woods",
-        ... ]     
+        ... ]
 
         >>> images = pipe(
         ...     prompt=prompt,
@@ -562,10 +564,9 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                 content described by the corresponding `instdiff_phrases`. Each rectangular box is defined as a
                 `List[float]` of 4 elements `[xmin, ymin, xmax, ymax]` where each value is between [0,1].
             instdiff_scheduled_sampling_beta (`float`, defaults to 0.3):
-                Scheduled Sampling factor from [InstanceDiffusion: InstanceDiffusion: Instance-level 
-                Control for Image Generation](https://arxiv.org/pdf/2402.03290).
-                Scheduled Sampling factor is only varied for scheduled sampling during inference for
-                improved quality and controllability.
+                Scheduled Sampling factor from [InstanceDiffusion: InstanceDiffusion: Instance-level Control for Image
+                Generation](https://arxiv.org/pdf/2402.03290). Scheduled Sampling factor is only varied for scheduled
+                sampling during inference for improved quality and controllability.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -704,17 +705,17 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                         negative_prompt_embeds=None,
                         clip_skip=clip_skip,
                     )
-    
+
                 # For classifier free guidance, we need to do two forward passes.
                 # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing two forward passes
                 if do_classifier_free_guidance:
                     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-    
+
                 # 5. Prepare timesteps
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
                 timesteps = self.scheduler.timesteps
-    
+
                 # For each entity, described in phrases, is denoted with a bounding box,
                 # we represent the location information as (xmin,ymin,xmax,ymax)
                 boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
@@ -722,16 +723,16 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                     max_objs, self.unet.config.cross_attention_dim, device=device, dtype=self.text_encoder.dtype
                 )
                 masks = torch.zeros(max_objs, device=device, dtype=self.text_encoder.dtype)
-    
+
                 if j < n_objs:
-                    boxes[:1] = torch.tensor(instdiff_boxes[j:j+1])
-                    text_embeddings[:1] = _text_embeddings[j:j+1]
+                    boxes[:1] = torch.tensor(instdiff_boxes[j : j + 1])
+                    text_embeddings[:1] = _text_embeddings[j : j + 1]
                     masks[:1] = 1
                 else:
                     boxes[:n_objs] = torch.tensor(instdiff_boxes)
                     text_embeddings[:n_objs] = _text_embeddings
                     masks[:n_objs] = 1
-    
+
                 repeat_batch = batch_size * num_images_per_prompt
                 boxes = boxes.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
                 text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
@@ -744,28 +745,32 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                     masks[: repeat_batch // 2] = 0
                 if cross_attention_kwargs is None:
                     cross_attention_kwargs = {}
-                cross_attention_kwargs["instdiff"] = {"boxes": boxes, "positive_embeddings": text_embeddings, "masks": masks}
-    
+                cross_attention_kwargs["instdiff"] = {
+                    "boxes": boxes,
+                    "positive_embeddings": text_embeddings,
+                    "masks": masks,
+                }
+
                 num_alpha_steps = int(instdiff_scheduled_sampling_alpha * len(timesteps))
                 num_beta_steps = int(instdiff_scheduled_sampling_beta * len(timesteps))
-    
+
                 # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
                 extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-    
+
                 # 7. Denoising loop
                 latents = deepcopy(init_latents)
                 for i, t in enumerate(timesteps[:num_beta_steps]):
                     scale = 1.0 if i < num_alpha_steps else 0.0
                     self.set_scale(scale)
                     self.enable_fuser(scale > 0.0)
-    
+
                     if latents.shape[1] != 4:
                         latents = torch.randn_like(latents[:, :4])
-    
+
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-    
+
                     # predict the noise residual
                     noise_pred = self.unet(
                         latent_model_input,
@@ -773,15 +778,15 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                         encoder_hidden_states=prompt_embeds,
                         cross_attention_kwargs=cross_attention_kwargs,
                     ).sample
-    
+
                     # perform guidance
                     if do_classifier_free_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-    
+
                     # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-    
+
                 latents_lst.append(latents)
                 progress_bar.update()
 

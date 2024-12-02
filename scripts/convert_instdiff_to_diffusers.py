@@ -4,10 +4,8 @@ import re
 import torch
 import yaml
 from transformers import (
-    CLIPProcessor,
     CLIPTextModel,
     CLIPTokenizer,
-    CLIPVisionModelWithProjection,
 )
 
 from diffusers import (

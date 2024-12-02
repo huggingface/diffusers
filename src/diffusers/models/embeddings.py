@@ -1815,9 +1815,11 @@ class INSTDIFFTextBoundingboxProjection(nn.Module):
         self.convnext_feature_dim = 3072
         self.num_tokens = (self.resize_input // self.down_factor) ** 2
 
-        self.in_conv = nn.Conv2d(max_objs,3,3,1,1) # from num_sem to 3 channels
+        self.in_conv = nn.Conv2d(max_objs, 3, 3, 1, 1)  # from num_sem to 3 channels
         self.convnext_tiny_backbone = convnext_tiny(pretrained=True)
-        self.pos_embedding = nn.Parameter(torch.empty(1, self.num_tokens, self.convnext_feature_dim).normal_(std=0.02))  # from BERT
+        self.pos_embedding = nn.Parameter(
+            torch.empty(1, self.num_tokens, self.convnext_feature_dim).normal_(std=0.02)
+        )  # from BERT
 
         if isinstance(out_dim, tuple):
             out_dim = out_dim[0]
@@ -1836,13 +1838,15 @@ class INSTDIFFTextBoundingboxProjection(nn.Module):
             else:
                 input_dim_ = self.positive_len + input_dim
 
-            self.linears_list.append(nn.Sequential(
-                nn.Linear(input_dim_, mid_dim),
-                nn.SiLU(),
-                nn.Linear(mid_dim, mid_dim),
-                nn.SiLU(),
-                nn.Linear(mid_dim, out_dim),
-            ))
+            self.linears_list.append(
+                nn.Sequential(
+                    nn.Linear(input_dim_, mid_dim),
+                    nn.SiLU(),
+                    nn.Linear(mid_dim, mid_dim),
+                    nn.SiLU(),
+                    nn.Linear(mid_dim, out_dim),
+                )
+            )
 
         self.null_positive_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
         self.null_position_feature = torch.nn.Parameter(torch.zeros([self.position_dim]))
@@ -1892,9 +1896,9 @@ class INSTDIFFTextBoundingboxProjection(nn.Module):
         # learnable null embedding
         positive_null = self.null_positive_feature.view(1, 1, -1)
         xyxy_null = self.null_position_feature.view(1, 1, -1)
-        point_null =  self.null_point_feature.view(1, 1, -1)
-        scribble_null =  self.null_scribble_feature.view(1, 1, -1)
-        polygon_null =  self.null_polygon_feature.view(1, 1, -1)
+        point_null = self.null_point_feature.view(1, 1, -1)
+        scribble_null = self.null_scribble_feature.view(1, 1, -1)
+        polygon_null = self.null_polygon_feature.view(1, 1, -1)
         seg_null = self.null_seg_feature.view(1, 1, -1)
         seg_null = seg_null.repeat(B, self.num_tokens, 1)
 
@@ -1927,9 +1931,11 @@ class INSTDIFFTextBoundingboxProjection(nn.Module):
             if idx == len(linears) - 1:
                 objs.append(linears(layout_embeddings))
             else:
-                objs.append(linears(
-                    torch.cat([positive_embeddings, layout_embeddings], dim=-1),
-                ))
+                objs.append(
+                    linears(
+                        torch.cat([positive_embeddings, layout_embeddings], dim=-1),
+                    )
+                )
         objs = torch.cat(objs, dim=1)
 
         return objs

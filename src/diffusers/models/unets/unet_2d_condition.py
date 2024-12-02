@@ -35,10 +35,10 @@ from ..attention_processor import (
 from ..embeddings import (
     GaussianFourierProjection,
     GLIGENTextBoundingboxProjection,
-    INSTDIFFTextBoundingboxProjection,
     ImageHintTimeEmbedding,
     ImageProjection,
     ImageTimeEmbedding,
+    INSTDIFFTextBoundingboxProjection,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,
@@ -445,10 +445,12 @@ class UNet2DConditionModel(
                         b_dim = prev_output_channel if j == 0 else output_channel
 
                     self.register_parameter(
-                        'scaleu_b_{}'.format(cnt), nn.Parameter(torch.zeros(b_dim)),
+                        "scaleu_b_{}".format(cnt),
+                        nn.Parameter(torch.zeros(b_dim)),
                     )
                     self.register_parameter(
-                        'scaleu_s_{}'.format(cnt), nn.Parameter(torch.zeros(1)),
+                        "scaleu_s_{}".format(cnt),
+                        nn.Parameter(torch.zeros(1)),
                     )
                     cnt += 1
 
@@ -722,7 +724,8 @@ class UNet2DConditionModel(
                 positive_len = cross_attention_dim[0]
 
             self.position_net = INSTDIFFTextBoundingboxProjection(
-                positive_len=positive_len, out_dim=cross_attention_dim,
+                positive_len=positive_len,
+                out_dim=cross_attention_dim,
             )
 
     @property
@@ -1314,10 +1317,13 @@ class UNet2DConditionModel(
 
             scaleu_kwargs = None
             if cross_attention_kwargs is not None and cross_attention_kwargs.get("instdiff", None) is not None:
-                scaleu_kwargs = {j: {
-                    "scaleu_b": torch.tanh(getattr(self, 'scaleu_b_{}'.format(cnt+j)) ) + 1,
-                    "scaleu_s": torch.tanh(getattr(self, 'scaleu_s_{}'.format(cnt+j)) ) + 1,
-                } for j in range(len(res_samples))}
+                scaleu_kwargs = {
+                    j: {
+                        "scaleu_b": torch.tanh(getattr(self, "scaleu_b_{}".format(cnt + j))) + 1,
+                        "scaleu_s": torch.tanh(getattr(self, "scaleu_s_{}".format(cnt + j))) + 1,
+                    }
+                    for j in range(len(res_samples))
+                }
 
                 cnt += len(res_samples)
 
