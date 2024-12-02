@@ -35,6 +35,7 @@ from ..utils import (
 )
 from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _fetch_state_dict  # noqa
 from .lora_conversion_utils import (
+    _convert_bfl_flux_control_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
@@ -1758,6 +1759,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         if is_xlabs:
             state_dict = _convert_xlabs_flux_lora_to_diffusers(state_dict)
             # xlabs doesn't use `alpha`.
+            return (state_dict, None) if return_alphas else state_dict
+
+        is_bfl_control = any("query_norm.scale" in k for k in state_dict)
+        if is_bfl_control:
+            state_dict = _convert_bfl_flux_control_lora_to_diffusers(state_dict)
             return (state_dict, None) if return_alphas else state_dict
 
         # For state dicts like
