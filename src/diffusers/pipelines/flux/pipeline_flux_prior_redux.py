@@ -462,7 +462,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             # pooled_prompt_embeds is 768, clip text encoder hidden size
             pooled_prompt_embeds = torch.zeros((batch_size, 768), device=device, dtype=image_embeds.dtype)
 
-        # scale & oncatenate image and text embeddings
+        # scale & concatenate image and text embeddings
         prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
 
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
