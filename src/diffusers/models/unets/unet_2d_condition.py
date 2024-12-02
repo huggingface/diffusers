@@ -35,6 +35,7 @@ from ..attention_processor import (
 from ..embeddings import (
     GaussianFourierProjection,
     GLIGENTextBoundingboxProjection,
+    INSTDIFFTextBoundingboxProjection,
     ImageHintTimeEmbedding,
     ImageProjection,
     ImageTimeEmbedding,
@@ -420,6 +421,7 @@ class UNet2DConditionModel(
         )
         only_cross_attention = list(reversed(only_cross_attention))
 
+        cnt = 0
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -434,6 +436,21 @@ class UNet2DConditionModel(
                 self.num_upsamplers += 1
             else:
                 add_upsample = False
+
+            if attention_type == "unifusion":
+                for j in range(reversed_layers_per_block[i] + 1):
+                    if prev_output_channel == output_channel:
+                        b_dim = prev_output_channel
+                    else:
+                        b_dim = prev_output_channel if j == 0 else output_channel
+
+                    self.register_parameter(
+                        'scaleu_b_{}'.format(cnt), nn.Parameter(torch.zeros(b_dim)),
+                    )
+                    self.register_parameter(
+                        'scaleu_s_{}'.format(cnt), nn.Parameter(torch.zeros(1)),
+                    )
+                    cnt += 1
 
             up_block = get_up_block(
                 up_block_type,
@@ -482,6 +499,7 @@ class UNet2DConditionModel(
         )
 
         self._set_pos_net_if_use_gligen(attention_type=attention_type, cross_attention_dim=cross_attention_dim)
+        self._set_pos_net_if_use_instdiff(attention_type=attention_type, cross_attention_dim=cross_attention_dim)
 
     def _check_config(
         self,
@@ -693,6 +711,18 @@ class UNet2DConditionModel(
             feature_type = "text-only" if attention_type == "gated" else "text-image"
             self.position_net = GLIGENTextBoundingboxProjection(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
+            )
+
+    def _set_pos_net_if_use_instdiff(self, attention_type: str, cross_attention_dim: int):
+        if attention_type == "unifusion":
+            positive_len = 768
+            if isinstance(cross_attention_dim, int):
+                positive_len = cross_attention_dim
+            elif isinstance(cross_attention_dim, (list, tuple)):
+                positive_len = cross_attention_dim[0]
+
+            self.position_net = INSTDIFFTextBoundingboxProjection(
+                positive_len=positive_len, out_dim=cross_attention_dim,
             )
 
     @property
@@ -1168,11 +1198,15 @@ class UNet2DConditionModel(
         # 2. pre-process
         sample = self.conv_in(sample)
 
-        # 2.5 GLIGEN position net
-        if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
+        # 2.5 GLIGEN or InstanceDiffusion position net
+        if cross_attention_kwargs is not None:
             cross_attention_kwargs = cross_attention_kwargs.copy()
-            gligen_args = cross_attention_kwargs.pop("gligen")
-            cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
+            if cross_attention_kwargs.get("gligen", None) is not None:
+                gligen_args = cross_attention_kwargs.pop("gligen")
+                cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
+            elif cross_attention_kwargs.get("instdiff", None) is not None:
+                instdiff_args = cross_attention_kwargs.pop("instdiff")
+                cross_attention_kwargs["instdiff"] = {"objs": self.position_net(**instdiff_args)}
 
         # 3. down
         # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
@@ -1266,6 +1300,7 @@ class UNet2DConditionModel(
             sample = sample + mid_block_additional_residual
 
         # 5. up
+        cnt = 0
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
@@ -1277,6 +1312,15 @@ class UNet2DConditionModel(
             if not is_final_block and forward_upsample_size:
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
+            scaleu_kwargs = None
+            if cross_attention_kwargs is not None and cross_attention_kwargs.get("instdiff", None) is not None:
+                scaleu_kwargs = {j: {
+                    "scaleu_b": torch.tanh(getattr(self, 'scaleu_b_{}'.format(cnt+j)) ) + 1,
+                    "scaleu_s": torch.tanh(getattr(self, 'scaleu_s_{}'.format(cnt+j)) ) + 1,
+                } for j in range(len(res_samples))}
+
+                cnt += len(res_samples)
+
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 sample = upsample_block(
                     hidden_states=sample,
@@ -1287,6 +1331,7 @@ class UNet2DConditionModel(
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
+                    scaleu_kwargs=scaleu_kwargs,
                 )
             else:
                 sample = upsample_block(
@@ -1294,6 +1339,7 @@ class UNet2DConditionModel(
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
+                    scaleu_kwargs=scaleu_kwargs,
                 )
 
         # 6. post-process

@@ -22,6 +22,7 @@ from torch import nn
 from ..utils import deprecate
 from .activations import FP32SiLU, get_activation
 from .attention_processor import Attention
+from .convnext import convnext_tiny
 
 
 def get_timestep_embedding(
@@ -1668,6 +1669,27 @@ def get_fourier_embeds_from_boundingbox(embed_dim, box):
     return emb
 
 
+def get_fourier_embeds(embed_dim, box):
+    """
+    Args:
+        embed_dim: int
+        box: a 3-D tensor [B x N x 4 (or 2)] representing the bounding boxes (or points) for GLIGEN pipeline
+    Returns:
+        [B x N x embed_dim] tensor of positional embeddings
+    """
+
+    batch_size, num_boxes = box.shape[:2]
+
+    emb = 100 ** (torch.arange(embed_dim) / embed_dim)
+    emb = emb[None, None, None].to(device=box.device, dtype=box.dtype)
+    emb = emb * box.unsqueeze(-1)
+
+    emb = torch.stack((emb.sin(), emb.cos()), dim=-1)
+    emb = emb.permute(0, 1, 3, 4, 2).reshape(batch_size, num_boxes, -1)
+
+    return emb
+
+
 class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
@@ -1757,6 +1779,158 @@ class GLIGENTextBoundingboxProjection(nn.Module):
             objs_text = self.linears_text(torch.cat([phrases_embeddings, xyxy_embedding], dim=-1))
             objs_image = self.linears_image(torch.cat([image_embeddings, xyxy_embedding], dim=-1))
             objs = torch.cat([objs_text, objs_image], dim=1)
+
+        return objs
+
+
+class INSTDIFFTextBoundingboxProjection(nn.Module):
+    def __init__(
+        self,
+        positive_len=768,
+        mid_dim=3072,
+        out_dim=768,
+        n_scribble_points=20,
+        n_polygon_points=256,
+        fourier_freqs=16,
+        fourier_freqs_polygons=16,
+    ):
+        super().__init__()
+        self.positive_len = positive_len
+        self.out_dim = out_dim
+
+        self.n_scribble_points = n_scribble_points
+        self.n_polygon_points = n_polygon_points
+
+        self.fourier_embedder_dim = fourier_freqs
+        self.fourier_embedder_polygons_dim = fourier_freqs_polygons
+
+        self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
+        self.point_dim = fourier_freqs * 2 * 2
+        self.scribble_dim = fourier_freqs_polygons * 2 * n_scribble_points * 2
+        self.polygon_dim = fourier_freqs_polygons * 2 * n_polygon_points * 2
+
+        max_objs = 30
+        self.resize_input = 512
+        self.down_factor = 64  # determined by the convnext backbone
+        self.convnext_feature_dim = 3072
+        self.num_tokens = (self.resize_input // self.down_factor) ** 2
+
+        self.in_conv = nn.Conv2d(max_objs,3,3,1,1) # from num_sem to 3 channels
+        self.convnext_tiny_backbone = convnext_tiny(pretrained=True)
+        self.pos_embedding = nn.Parameter(torch.empty(1, self.num_tokens, self.convnext_feature_dim).normal_(std=0.02))  # from BERT
+
+        if isinstance(out_dim, tuple):
+            out_dim = out_dim[0]
+
+        input_dim_list = [
+            self.position_dim,
+            self.point_dim,
+            self.scribble_dim,
+            self.polygon_dim,
+            self.convnext_feature_dim,
+        ]
+        self.linears_list = nn.ModuleList([])
+        for idx, input_dim in enumerate(input_dim_list):
+            if idx == len(input_dim_list) - 1:
+                input_dim_ = input_dim
+            else:
+                input_dim_ = self.positive_len + input_dim
+
+            self.linears_list.append(nn.Sequential(
+                nn.Linear(input_dim_, mid_dim),
+                nn.SiLU(),
+                nn.Linear(mid_dim, mid_dim),
+                nn.SiLU(),
+                nn.Linear(mid_dim, out_dim),
+            ))
+
+        self.null_positive_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+        self.null_position_feature = torch.nn.Parameter(torch.zeros([self.position_dim]))
+        self.null_point_feature = torch.nn.Parameter(torch.zeros([self.point_dim]))
+        self.null_scribble_feature = torch.nn.Parameter(torch.zeros([self.scribble_dim]))
+        self.null_polygon_feature = torch.nn.Parameter(torch.zeros([self.polygon_dim]))
+        self.null_seg_feature = torch.nn.Parameter(torch.zeros([self.convnext_feature_dim]))
+
+    def forward(
+        self,
+        boxes,
+        masks,
+        positive_embeddings,
+        points=None,
+        scribbles=None,
+        polygons=None,
+        segs=None,
+    ):
+        B, N, _ = boxes.shape
+        device = boxes.device
+        dtype = boxes.dtype
+        masks = masks.unsqueeze(-1)
+
+        if points is None:
+            points = (boxes[:, :, :2] + boxes[:, :, 2:]) / 2.0
+
+        if scribbles is None:
+            scribbles = torch.zeros(B, N, self.n_scribble_points * 2, device=device, dtype=dtype)
+
+        if polygons is None:
+            polygons = torch.zeros(B, N, self.n_polygon_points * 2, device=device, dtype=dtype)
+
+        if segs is None:
+            segs = torch.zeros(B, N, self.resize_input, self.resize_input, device=device, dtype=dtype)
+
+        # embedding position (it may includes padding as placeholder)
+        xyxy_embedding = get_fourier_embeds(self.fourier_embedder_dim, boxes)
+        point_embedding = get_fourier_embeds(self.fourier_embedder_dim, points)
+        scribble_embedding = get_fourier_embeds(self.fourier_embedder_polygons_dim, scribbles)
+        polygon_embedding = get_fourier_embeds(self.fourier_embedder_polygons_dim, polygons)
+        segs = torch.nn.functional.interpolate(segs, self.resize_input, mode="nearest")
+        segs_feature = self.in_conv(segs)
+        segs_feature = self.convnext_tiny_backbone(segs_feature)
+        segs_feature = segs_feature.reshape(B, -1, self.num_tokens)
+        segs_feature = segs_feature.permute(0, 2, 1)
+
+        # learnable null embedding
+        positive_null = self.null_positive_feature.view(1, 1, -1)
+        xyxy_null = self.null_position_feature.view(1, 1, -1)
+        point_null =  self.null_point_feature.view(1, 1, -1)
+        scribble_null =  self.null_scribble_feature.view(1, 1, -1)
+        polygon_null =  self.null_polygon_feature.view(1, 1, -1)
+        seg_null = self.null_seg_feature.view(1, 1, -1)
+        seg_null = seg_null.repeat(B, self.num_tokens, 1)
+
+        # replace padding with learnable null embedding
+        positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
+
+        zeros = torch.zeros_like(masks).to(masks.device)
+        zeros_ = torch.zeros(masks.shape[0]).to(masks.device).view(-1, 1, 1)
+        masks = masks.detach().clone()
+
+        xyxy_embedding = xyxy_embedding * masks + (1 - masks) * xyxy_null
+        point_embedding = point_embedding * masks + (1 - masks) * point_null
+
+        scribble_embedding = scribble_embedding * zeros + (1 - zeros) * scribble_null
+        polygon_embedding = polygon_embedding * zeros + (1 - zeros) * polygon_null
+
+        seg_embedding = segs_feature * zeros_ + (1 - zeros_) * seg_null + self.pos_embedding
+
+        embeddings_list = [
+            xyxy_embedding,
+            point_embedding,
+            scribble_embedding,
+            polygon_embedding,
+            seg_embedding,
+        ]
+        objs = []
+        for idx, (linears, layout_embeddings) in enumerate(
+            zip(self.linears_list, embeddings_list),
+        ):
+            if idx == len(linears) - 1:
+                objs.append(linears(layout_embeddings))
+            else:
+                objs.append(linears(
+                    torch.cat([positive_embeddings, layout_embeddings], dim=-1),
+                ))
+        objs = torch.cat(objs, dim=1)
 
         return objs
 

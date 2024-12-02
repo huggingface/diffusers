@@ -72,6 +72,8 @@ class GatedSelfAttentionDense(nn.Module):
 
         self.enabled = True
 
+        self.scale = 1
+
     def forward(self, x: torch.Tensor, objs: torch.Tensor) -> torch.Tensor:
         if not self.enabled:
             return x
@@ -79,8 +81,8 @@ class GatedSelfAttentionDense(nn.Module):
         n_visual = x.shape[1]
         objs = self.linear(objs)
 
-        x = x + self.alpha_attn.tanh() * self.attn(self.norm1(torch.cat([x, objs], dim=1)))[:, :n_visual, :]
-        x = x + self.alpha_dense.tanh() * self.ff(self.norm2(x))
+        x = x + self.scale * self.alpha_attn.tanh() * self.attn(self.norm1(torch.cat([x, objs], dim=1)))[:, :n_visual, :]
+        x = x + self.scale * self.alpha_dense.tanh() * self.ff(self.norm2(x))
 
         return x
 
@@ -279,7 +281,7 @@ class BasicTransformerBlock(nn.Module):
         final_dropout (`bool` *optional*, defaults to False):
             Whether to apply a final dropout after the last feed-forward layer.
         attention_type (`str`, *optional*, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
+            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"` or `"unifusion"`.
         positional_embeddings (`str`, *optional*, defaults to `None`):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
@@ -443,7 +445,7 @@ class BasicTransformerBlock(nn.Module):
         )
 
         # 4. Fuser
-        if attention_type == "gated" or attention_type == "gated-text-image":
+        if attention_type in ["gated", "gated-text-image", "unifusion"]:
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # 5. Scale-shift for PixArt-Alpha.
@@ -500,9 +502,12 @@ class BasicTransformerBlock(nn.Module):
         if self.pos_embed is not None:
             norm_hidden_states = self.pos_embed(norm_hidden_states)
 
-        # 1. Prepare GLIGEN inputs
+        # 1. Prepare GLIGEN or InstanceDiffusion inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-        gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
+        if cross_attention_kwargs.get("gligen", None) is not None:
+            fuser_kwargs = cross_attention_kwargs.pop("gligen", None)
+        elif cross_attention_kwargs.get("instdiff", None) is not None:
+            fuser_kwargs = cross_attention_kwargs.pop("instdiff", None)
 
         attn_output = self.attn1(
             norm_hidden_states,
@@ -520,9 +525,9 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        # 1.2 GLIGEN Control
-        if gligen_kwargs is not None:
-            hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
+        # 1.2 Region Control
+        if fuser_kwargs is not None:
+            hidden_states = self.fuser(hidden_states, fuser_kwargs["objs"])
 
         # 3. Cross-Attention
         if self.attn2 is not None:
@@ -869,7 +874,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         final_dropout (`bool` defaults to `False`):
             Whether to apply a final dropout after the last feed-forward layer.
         attention_type (`str`, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
+            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"` or `"unifusion"`.
         positional_embeddings (`str`, *optional*):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):

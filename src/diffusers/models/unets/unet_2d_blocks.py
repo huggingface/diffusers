@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+import torch.fft as fft
 
 from ...utils import deprecate, is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
@@ -38,6 +39,32 @@ from ..transformers.transformer_2d import Transformer2DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def Fourier_filter(x_in, threshold, scale):
+    x = x_in
+    B, C, H, W = x.shape
+
+    # Non-power of 2 images must be float32
+    if (W & (W - 1)) != 0 or (H & (H - 1)) != 0:
+        x = x.to(dtype=torch.float32)
+
+    # FFT
+    x_freq = fft.fftn(x, dim=(-2, -1))
+    x_freq = fft.fftshift(x_freq, dim=(-2, -1))
+
+    B, C, H, W = x_freq.shape
+    mask = torch.ones((B, C, H, W), device=x.device)
+
+    crow, ccol = H // 2, W // 2
+    mask[..., crow - threshold : crow + threshold, ccol - threshold : ccol + threshold] = scale
+    x_freq = x_freq * mask
+
+    # IFFT
+    x_freq = fft.ifftshift(x_freq, dim=(-2, -1))
+    x_filtered = fft.ifftn(x_freq, dim=(-2, -1)).real
+
+    return x_filtered.to(dtype=x_in.dtype)
 
 
 def get_down_block(
@@ -2489,6 +2516,7 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
+        scaleu_kwargs: Optional[dict] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2501,10 +2529,17 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        for resnet, attn in zip(self.resnets, self.attentions):
+        for j, (resnet, attn) in enumerate(zip(self.resnets, self.attentions)):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            if scaleu_kwargs is not None:
+                scaleu = scaleu_kwargs[j]
+                scaleu_b, scaleu_s = scaleu["scaleu_b"], scaleu["scaleu_s"]
+
+                hidden_states = torch.einsum('bchw,c->bchw', hidden_states, scaleu_b)
+                res_hidden_states = Fourier_filter(res_hidden_states, threshold=1, scale=scaleu_s)
 
             # FreeU: Only operate on the first two stages
             if is_freeu_enabled:
@@ -2620,6 +2655,7 @@ class UpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
+        scaleu_kwargs: Optional[dict] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -2634,10 +2670,17 @@ class UpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        for resnet in self.resnets:
+        for j, resnet in enumerate(self.resnets):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            if scaleu_kwargs is not None:
+                scaleu = scaleu_kwargs[j]
+                scaleu_b, scaleu_s = scaleu["scaleu_b"], scaleu["scaleu_s"]
+
+                hidden_states = torch.einsum('bchw,c->bchw', hidden_states, scaleu_b)
+                res_hidden_states = Fourier_filter(res_hidden_states, threshold=1, scale=scaleu_s)
 
             # FreeU: Only operate on the first two stages
             if is_freeu_enabled:
