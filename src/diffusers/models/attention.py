@@ -504,10 +504,11 @@ class BasicTransformerBlock(nn.Module):
 
         # 1. Prepare GLIGEN or InstanceDiffusion inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
+        fuser_kwargs = None
         if cross_attention_kwargs.get("gligen", None) is not None:
-            fuser_kwargs = cross_attention_kwargs.pop("gligen", None)
+            fuser_kwargs = cross_attention_kwargs.pop("gligen")
         elif cross_attention_kwargs.get("instdiff", None) is not None:
-            fuser_kwargs = cross_attention_kwargs.pop("instdiff", None)
+            fuser_kwargs = cross_attention_kwargs.pop("instdiff")
 
         attn_output = self.attn1(
             norm_hidden_states,
