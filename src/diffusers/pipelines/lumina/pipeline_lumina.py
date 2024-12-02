@@ -25,7 +25,7 @@ from transformers import AutoModel, AutoTokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.embeddings import get_2d_rotary_pos_embed_lumina
-from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
+from ...models.transformers.lumina_nextdit2d import LuminaextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -777,7 +777,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
+            self.scheduler, num_inference_steps, device, timesteps,
         )
 
         # 5. Prepare latents.

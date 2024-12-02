@@ -12,27 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Tuple, Union, List
+from typing import Any, Dict, Optional, Tuple, Union, List
 
+from dataclasses import dataclass
 import torch
-from torch import nn
 import torch.utils.checkpoint
-
-from transformers.modeling_outputs import BaseModelOutputWithPast
+from torch import nn
+from transformers.cache_utils import DynamicCache
 from transformers import Phi3Model, Phi3Config
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_outputs import BaseModelOutputWithPast
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import logging
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers
 from ..attention_processor import AttentionProcessor
-from ..normalization import AdaLayerNorm
 from ..embeddings import OmniGenPatchEmbed, OmniGenTimestepEmbed
+from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..normalization import AdaLayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
+
+@dataclass
+class OmniGen2DModelOutput(Transformer2DModelOutput):
+    """
+    The output of [`Transformer2DModel`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
+            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
+            distributions for the unnoised latent pixels.
+        past_key_values (`transformers.cache_utils.DynamicCache`)
+    """
+
+    sample: "torch.Tensor"  # noqa: F821
+    past_key_values: "DynamicCache"
 
 
 class OmniGenBaseTransformer(Phi3Model):
@@ -43,6 +61,37 @@ class OmniGenBaseTransformer(Phi3Model):
     Parameters:
         config: Phi3Config
     """
+
+    def prefetch_layer(self, layer_idx: int, device: torch.device):
+        "Starts prefetching the next layer cache"
+        with torch.cuda.stream(self.prefetch_stream):
+            # Prefetch next layer tensors to GPU
+            for name, param in self.layers[layer_idx].named_parameters():
+                param.data = param.data.to(device, non_blocking=True)
+
+    def evict_previous_layer(self, layer_idx: int):
+        "Moves the previous layer cache to the CPU"
+        prev_layer_idx = layer_idx - 1
+        for name, param in self.layers[prev_layer_idx].named_parameters():
+            param.data = param.data.to("cpu", non_blocking=True)
+
+    def get_offload_layer(self, layer_idx: int, device: torch.device):
+        # init stream
+        if not hasattr(self, "prefetch_stream"):
+            self.prefetch_stream = torch.cuda.Stream()
+
+        # delete previous layer
+        # main stream sync shouldn't be necessary since all computation on iter i-1 is finished by iter i
+        # torch.cuda.current_stream().synchronize()
+        # avoid extra eviction of last layer
+        if layer_idx > 0:
+            self.evict_previous_layer(layer_idx)
+
+        # make sure the current layer is ready
+        self.prefetch_stream.synchronize()
+
+        # load next layer
+        self.prefetch_layer((layer_idx + 1) % len(self.layers), device)
 
     def forward(
             self,
@@ -56,7 +105,7 @@ class OmniGenBaseTransformer(Phi3Model):
             output_hidden_states: Optional[bool] = None,
             return_dict: Optional[bool] = None,
             cache_position: Optional[torch.LongTensor] = None,
-            offload_model: Optional[bool] = False,
+            offload_transformer_block: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -124,6 +173,13 @@ class OmniGenBaseTransformer(Phi3Model):
                     cache_position,
                 )
             else:
+                if offload_transformer_block and not self.training:
+                    if not not torch.cuda.is_available():
+                        logger.warning_once(
+                            "We don't detecte any available GPU, so diable `offload_transformer_block`"
+                        )
+                    else:
+                        self.get_offload_layer(layer_idx, device=inputs_embeds.device)
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
@@ -162,7 +218,7 @@ class OmniGenBaseTransformer(Phi3Model):
         )
 
 
-class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     The Transformer model introduced in OmniGen.
 
@@ -197,7 +253,10 @@ class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         hidden_size = transformer_config.hidden_size
 
-        self.patch_embedding = OmniGenPatchEmbed(patch_size=patch_size, in_channels=in_channels, embed_dim=hidden_size, pos_embed_max_size=pos_embed_max_size)
+        self.patch_embedding = OmniGenPatchEmbed(patch_size=patch_size,
+                                                 in_channels=in_channels,
+                                                 embed_dim=hidden_size,
+                                                 pos_embed_max_size=pos_embed_max_size)
 
         self.time_token = OmniGenTimestepEmbed(hidden_size)
         self.t_embedder = OmniGenTimestepEmbed(hidden_size)
@@ -207,7 +266,6 @@ class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.llm = OmniGenBaseTransformer(config=transformer_config)
         self.llm.config.use_cache = False
-
 
     def unpatchify(self, x, h, w):
         """
@@ -222,11 +280,10 @@ class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         imgs = x.reshape(shape=(x.shape[0], c, h, w))
         return imgs
 
-
-    def prepare_condition_embeddings(self, input_ids, input_img_latents, input_image_sizes, padding_latent):
+    def prepare_condition_embeddings(self, input_ids, input_img_latents, input_image_sizes):
         condition_embeds = None
         if input_img_latents is not None:
-            input_latents = self.patch_embedding(input_img_latents, is_input_images=True, padding_latent=padding_latent)
+            input_latents = self.patch_embedding(input_img_latents, is_input_images=True)
         if input_ids is not None:
             condition_embeds = self.llm.embed_tokens(input_ids).clone()
             input_img_inx = 0
@@ -303,44 +360,54 @@ class OmniGenTransformerModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             module.gradient_checkpointing = value
 
     def forward(self,
-                hidden_states,
-                timestep,
-                input_ids,
-                input_img_latents,
-                input_image_sizes,
-                attention_mask,
-                position_ids,
-                padding_latent=None,
-                past_key_values=None,
-                return_past_key_values=True,
-                offload_model: bool = False):
+                hidden_states: torch.Tensor,
+                timestep: Union[int, float, torch.LongTensor],
+                condition_tokens: torch.Tensor,
+                attention_mask: torch.Tensor,
+                position_ids: torch.Tensor,
+                past_key_values: DynamicCache = None,
+                offload_transformer_block: bool = False,
+                attention_kwargs: Optional[Dict[str, Any]] = None,
+                return_dict: bool = True,
+                ):
 
-        height, width =  hidden_states.size(-2)
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
+        height, width = hidden_states.size(-2)
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
 
         time_token = self.time_token(timestep, dtype=hidden_states.dtype).unsqueeze(1)
 
-        condition_embeds = self.prepare_condition_embeddings(input_ids, input_img_latents, input_image_sizes, padding_latent)
-        if condition_embeds is not None:
-            input_emb = torch.cat([condition_embeds, time_token, hidden_states], dim=1)
+        if condition_tokens is not None:
+            input_emb = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
         else:
             input_emb = torch.cat([time_token, hidden_states], dim=1)
-        output = self.llm(inputs_embeds=input_emb, attention_mask=attention_mask, position_ids=position_ids,
-                          past_key_values=past_key_values, offload_model=offload_model)
+        output = self.llm(inputs_embeds=input_emb,
+                          attention_mask=attention_mask,
+                          position_ids=position_ids,
+                          past_key_values=past_key_values,
+                          offload_transformer_block=offload_transformer_block)
         output, past_key_values = output.last_hidden_state, output.past_key_values
 
         image_embedding = output[:, -num_tokens_for_output_image:]
         time_emb = self.t_embedder(timestep, dtype=hidden_states.dtype)
         x = self.final_layer(image_embedding, time_emb)
-        latents = self.unpatchify(x, height, width)
+        output = self.unpatchify(x, height, width)
 
-        if return_past_key_values:
-            return latents, past_key_values
-        return latents
-
-
-
-
-
-
+        if not return_dict:
+            return (output, past_key_values)
+        return OmniGen2DModelOutput(sample=output, past_key_values=past_key_values)

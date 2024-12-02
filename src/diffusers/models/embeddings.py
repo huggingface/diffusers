@@ -351,7 +351,20 @@ class OmniGenPatchEmbed(nn.Module):
         latent = latent.flatten(2).transpose(1, 2)
         return latent
 
-    def forward(self, latent, is_input_image: bool, padding_latent=None):
+    def forward(self,
+                latent: torch.Tensor,
+                is_input_image: bool,
+                padding_latent: torch.Tensor = None
+                ):
+        """
+        Args:
+            latent:
+            is_input_image:
+            padding_latent: When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence length.
+
+        Returns: torch.Tensor
+
+        """
         if isinstance(latent, list):
             if padding_latent is None:
                 padding_latent = [None] * len(latent)
@@ -362,7 +375,7 @@ class OmniGenPatchEmbed(nn.Module):
                 pos_embed = self.cropped_pos_embed(height, width)
                 sub_latent = sub_latent + pos_embed
                 if padding is not None:
-                    sub_latent = torch.cat([sub_latent, padding], dim=-2)
+                    sub_latent = torch.cat([sub_latent, padding.to(sub_latent.device)], dim=-2)
                 patched_latents.append(sub_latent)
         else:
             height, width = latent.shape[-2:]

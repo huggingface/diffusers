@@ -3,7 +3,7 @@ os.environ['HF_HUB_CACHE'] = '/share/shitao/downloaded_models2'
 
 from huggingface_hub import snapshot_download
 
-from diffusers.models import OmniGenTransformerModel
+from diffusers.models import OmniGenTransformer2DModel
 from transformers import Phi3Model, Phi3Config
 
 
@@ -11,7 +11,7 @@ from safetensors.torch import load_file
 
 model_name = "Shitao/OmniGen-v1"
 config = Phi3Config.from_pretrained("Shitao/OmniGen-v1")
-model = OmniGenTransformerModel(transformer_config=config)
+model = OmniGenTransformer2DModel(transformer_config=config)
 cache_folder = os.getenv('HF_HUB_CACHE')
 model_name = snapshot_download(repo_id=model_name,
                                 cache_dir=cache_folder,
