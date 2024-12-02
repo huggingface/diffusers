@@ -376,8 +376,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.,
-        pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.,
+        prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
+        pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
         return_dict: bool = True,
     ):
         r"""
@@ -465,7 +465,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
 
         prompt_embeds *= torch.tensor(prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None, None]
-        pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[:, None]
+        pooled_prompt_embeds *= torch.tensor(pooled_prompt_embeds_scale, device=device, dtype=image_embeds.dtype)[
+            :, None
+        ]
 
         # weighted sum
         prompt_embeds = torch.sum(prompt_embeds, dim=0, keepdim=True)
