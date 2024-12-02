@@ -411,11 +411,13 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
+            image,
             prompt,
             prompt_2,
-            image,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
+            prompt_embeds_scale=prompt_embeds_scale,
+            pooled_prompt_embeds_scale=pooled_prompt_embeds_scale,
         )
 
         # 2. Define call parameters
