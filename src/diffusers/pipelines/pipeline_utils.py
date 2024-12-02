@@ -392,6 +392,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device = device or device_arg
 
+        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
+        # PR: https://github.com/huggingface/accelerate/pull/3223/
+        if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
+            raise ValueError(
+                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+            )
+
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
@@ -422,15 +429,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_pipeline_device_mapped:
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
-            )
-
-        pipeline_has_bnb = any(
-            (_check_bnb_status(module)[1] or _check_bnb_status(module)[-1]) for _, module in self.components.items()
-        )
-        # PR: https://github.com/huggingface/accelerate/pull/3223/
-        if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
-            raise ValueError(
-                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)

@@ -17,17 +17,18 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    is_accelerate_version,
     is_bitsandbytes_available,
     is_torch_available,
     is_transformers_available,
     load_pt,
     numpy_cosine_similarity_distance,
     require_accelerate,
-    require_accelerate_version_greater,
     require_bitsandbytes_version_greater,
     require_torch,
     require_torch_gpu,
@@ -434,7 +435,11 @@ class SlowBnb8bitTests(Base8bitTests):
             output_type="np",
         ).images
 
-    @require_accelerate_version_greater("1.0.0")
+    @pytest.mark.xfail(
+        condtion=is_accelerate_version("<=", "1.1.1"),
+        reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
+        strict=True,
+    )
     def test_pipeline_cuda_placement_works_with_mixed_int8(self):
         transformer_8bit_config = BitsAndBytesConfig(load_in_8bit=True)
         transformer_8bit = SD3Transformer2DModel.from_pretrained(
