@@ -442,7 +442,7 @@ class LTXTransformer3DModel(ModelMixin, ConfigMixin):
 
 def apply_rotary_emb(x, freqs):
     cos, sin = freqs
-    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, D // 2, 2]
+    x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, H, D // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
     out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
     return out
