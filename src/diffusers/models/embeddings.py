@@ -1901,8 +1901,8 @@ class INSTDIFFTextBoundingboxProjection(nn.Module):
         # replace padding with learnable null embedding
         positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
 
-        zeros = torch.zeros_like(masks).to(masks.device)
-        zeros_ = torch.zeros(masks.shape[0]).to(masks.device).view(-1, 1, 1)
+        zeros = torch.zeros_like(masks).to(masks.device, dtype=masks.dtype)
+        zeros_ = torch.zeros(masks.shape[0]).to(masks.device, dtype=masks.dtype).view(-1, 1, 1)
         masks = masks.detach().clone()
 
         xyxy_embedding = xyxy_embedding * masks + (1 - masks) * xyxy_null
