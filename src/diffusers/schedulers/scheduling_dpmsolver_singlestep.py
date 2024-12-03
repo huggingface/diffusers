@@ -928,7 +928,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                     (sigma_t / sigma_s2 * torch.exp(-h)) * sample
                     + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
                     + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
-                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h) + (-2.0 * h)) / (-2.0 * h)**2 - 0.5)) * D2
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h) + (-2.0 * h)) / (-2.0 * h) ** 2 - 0.5)) * D2
                     + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
                 )
         return x_t
