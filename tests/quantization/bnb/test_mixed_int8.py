@@ -20,9 +20,9 @@ import numpy as np
 import pytest
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel, logging
+from diffusers.utils import is_accelerate_version
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    is_accelerate_version,
     is_bitsandbytes_available,
     is_torch_available,
     is_transformers_available,
