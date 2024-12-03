@@ -259,7 +259,7 @@ class EfficientViTBlock(nn.Module):
         return x
 
 
-def get_block_from_block_type(
+def get_block(
     block_type: str,
     in_channels: int,
     out_channels: int,
@@ -399,7 +399,7 @@ class Encoder(nn.Module):
             stage = []
 
             for _ in range(depth):
-                block = get_block_from_block_type(
+                block = get_block(
                     block_type[stage_id],
                     width,
                     width,
@@ -485,7 +485,7 @@ class Decoder(nn.Module):
                 stage.append(upsample_block)
 
             for _ in range(depth):
-                block = get_block_from_block_type(
+                block = get_block(
                     block_type[stage_id],
                     width,
                     width,
