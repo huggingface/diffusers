@@ -132,7 +132,7 @@ You can also save the serialized 8-bit models locally with [`~ModelMixin.save_pr
 
 Quantizing a model in 4-bit reduces your memory-usage by 4x.
 
-bitsandbytes` is supported in both Transformers and Diffusers, so you can can quantize both the
+bitsandbytes is supported in both Transformers and Diffusers, so you can can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
 ```py
