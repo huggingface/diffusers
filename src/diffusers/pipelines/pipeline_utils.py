@@ -102,16 +102,6 @@ SUPPORTED_DEVICE_MAP = ["balanced"]
 
 logger = logging.get_logger(__name__)
 
-class NotTQDMNoOp:
-    def __init__(*args, **kwargs):
-        return
-    def __enter__(self, *args, **kwargs):
-        return self
-    def __exit__(*args, **kwargs):
-        return
-    def update(*args, **kwargs):
-        return
-
 
 @dataclass
 class ImagePipelineOutput(BaseOutput):
@@ -1562,6 +1552,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         return numpy_to_pil(images)
 
+    @torch.compiler.disable
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
