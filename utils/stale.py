@@ -24,6 +24,7 @@ from github import Github
 
 
 LABELS_TO_EXEMPT = [
+    "close-to-merge",
     "good first issue",
     "good second issue",
     "good difficult issue",
