@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import PIL
 import numpy as np
 import torch
 from transformers import LlamaTokenizer
@@ -146,7 +147,7 @@ class OmniGenPipeline(
 
     model_cpu_offload_seq = "transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "condition_tokens"]
 
     def __init__(
         self,
@@ -361,7 +362,7 @@ class OmniGenPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        input_images: Optional[Union[List[str], List[List[str]]]] = None,
+        input_images: Optional[Union[List[str], List[PIL.Image.Image], List[List[str]], List[List[PIL.Image.Image]]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -526,11 +527,6 @@ class OmniGenPipeline(
             generator,
             latents,
         )
-
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        latents = torch.randn(1, 4, height//8, width//8, device=device, generator=generator).to(self.transformer.dtype)
-        # latents = torch.cat([latents]*(1+num_cfg), 0).to(dtype)
 
         # 7. Prepare OmniGenCache
         num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.transformer.patch_size ** 2)
