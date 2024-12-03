@@ -62,7 +62,14 @@ CHECKPOINT_KEY_NAMES = {
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
     "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
-    "controlnet": "control_model.time_embed.0.weight",
+    "controlnet": [
+        "control_model.time_embed.0.weight",
+        "controlnet_cond_embedding.conv_in.weight",
+    ],
+    # TODO: find non-Diffusers keys for controlnet_xl
+    "controlnet_xl": "add_embedding.linear_1.weight",
+    "controlnet_xl_large": "down_blocks.1.attentions.0.transformer_blocks.0.attn1.to_k.weight",
+    "controlnet_xl_mid": "down_blocks.1.attentions.0.norm.weight",
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_embedding.weight",
@@ -96,6 +103,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "inpainting": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-inpainting"},
     "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
+    "controlnet_xl_large": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0"},
+    "controlnet_xl_mid": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-mid"},
+    "controlnet_xl_small": {"pretrained_model_name_or_path": "diffusers/controlnet-canny-sdxl-1.0-small"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
     "v1": {"pretrained_model_name_or_path": "stable-diffusion-v1-5/stable-diffusion-v1-5"},
     "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
@@ -116,6 +126,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     },
     "sd35_large": {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large",
+    },
+    "sd35_medium": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-medium",
     },
     "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
     "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
@@ -481,8 +494,16 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
         model_type = "upscale"
 
-    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_type = "controlnet"
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["controlnet"]):
+        if CHECKPOINT_KEY_NAMES["controlnet_xl"] in checkpoint:
+            if CHECKPOINT_KEY_NAMES["controlnet_xl_large"] in checkpoint:
+                model_type = "controlnet_xl_large"
+            elif CHECKPOINT_KEY_NAMES["controlnet_xl_mid"] in checkpoint:
+                model_type = "controlnet_xl_mid"
+            else:
+                model_type = "controlnet_xl_small"
+        else:
+            model_type = "controlnet"
 
     elif (
         CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
@@ -509,7 +530,10 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "stable_cascade_stage_b"
 
     elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["sd3"]].shape[-1] == 9216:
-        model_type = "sd3"
+        if checkpoint["model.diffusion_model.pos_embed"].shape[1] == 36864:
+            model_type = "sd3"
+        elif checkpoint["model.diffusion_model.pos_embed"].shape[1] == 147456:
+            model_type = "sd35_medium"
 
     elif CHECKPOINT_KEY_NAMES["sd35_large"] in checkpoint:
         model_type = "sd35_large"
@@ -1072,6 +1096,9 @@ def convert_controlnet_checkpoint(
     config,
     **kwargs,
 ):
+    # Return checkpoint if it's already been converted
+    if "time_embedding.linear_1.weight" in checkpoint:
+        return checkpoint
     # Some controlnet ckpt files are distributed independently from the rest of the
     # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
     if "time_embed.0.weight" in checkpoint:
