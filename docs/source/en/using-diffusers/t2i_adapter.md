@@ -73,7 +73,7 @@ from diffusers import StableDiffusionAdapterPipeline, T2IAdapter
 
 adapter = T2IAdapter.from_pretrained("TencentARC/t2iadapter_canny_sd15v2", torch_dtype=torch.float16)
 pipeline = StableDiffusionAdapterPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "stable-diffusion-v1-5/stable-diffusion-v1-5",
     adapter=adapter,
     torch_dtype=torch.float16,
 )

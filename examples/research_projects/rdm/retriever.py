@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from datasets import Dataset, load_dataset
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
+from transformers import CLIPImageProcessor, CLIPModel, PretrainedConfig
 
 from diffusers import logging
 
@@ -20,7 +20,7 @@ def normalize_images(images: List[Image.Image]):
     return images
 
 
-def preprocess_images(images: List[np.array], feature_extractor: CLIPFeatureExtractor) -> torch.Tensor:
+def preprocess_images(images: List[np.array], feature_extractor: CLIPImageProcessor) -> torch.Tensor:
     """
     Preprocesses a list of images into a batch of tensors.
 
@@ -95,14 +95,12 @@ class Index:
     def build_index(
         self,
         model=None,
-        feature_extractor: CLIPFeatureExtractor = None,
+        feature_extractor: CLIPImageProcessor = None,
         torch_dtype=torch.float32,
     ):
         if not self.index_initialized:
             model = model or CLIPModel.from_pretrained(self.config.clip_name_or_path).to(dtype=torch_dtype)
-            feature_extractor = feature_extractor or CLIPFeatureExtractor.from_pretrained(
-                self.config.clip_name_or_path
-            )
+            feature_extractor = feature_extractor or CLIPImageProcessor.from_pretrained(self.config.clip_name_or_path)
             self.dataset = get_dataset_with_emb_from_clip_model(
                 self.dataset,
                 model,
@@ -136,7 +134,7 @@ class Retriever:
         index: Index = None,
         dataset: Dataset = None,
         model=None,
-        feature_extractor: CLIPFeatureExtractor = None,
+        feature_extractor: CLIPImageProcessor = None,
     ):
         self.config = config
         self.index = index or self._build_index(config, dataset, model=model, feature_extractor=feature_extractor)
@@ -148,7 +146,7 @@ class Retriever:
         index: Index = None,
         dataset: Dataset = None,
         model=None,
-        feature_extractor: CLIPFeatureExtractor = None,
+        feature_extractor: CLIPImageProcessor = None,
         **kwargs,
     ):
         config = kwargs.pop("config", None) or IndexConfig.from_pretrained(retriever_name_or_path, **kwargs)
@@ -156,7 +154,7 @@ class Retriever:
 
     @staticmethod
     def _build_index(
-        config: IndexConfig, dataset: Dataset = None, model=None, feature_extractor: CLIPFeatureExtractor = None
+        config: IndexConfig, dataset: Dataset = None, model=None, feature_extractor: CLIPImageProcessor = None
     ):
         dataset = dataset or load_dataset(config.dataset_name)
         dataset = dataset[config.dataset_set]

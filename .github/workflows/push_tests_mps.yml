@@ -13,6 +13,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
@@ -69,7 +70,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_torch_mps_test_reports
         path: reports

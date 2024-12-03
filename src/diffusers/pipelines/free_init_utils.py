@@ -180,6 +180,8 @@ class FreeInitMixin:
             num_inference_steps = max(
                 1, int(num_inference_steps / self._free_init_num_iters * (free_init_iteration + 1))
             )
+
+        if num_inference_steps > 0:
             self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         return latents, self.scheduler.timesteps

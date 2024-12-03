@@ -33,7 +33,7 @@ from diffusers import DiffusionPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
-    LoraLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
@@ -300,7 +300,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class StableDiffusionXLControlNetAdapterInpaintPipeline(
-    DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin, LoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin, StableDiffusionLoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion augmented with T2I-Adapter
@@ -332,7 +332,7 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         requires_aesthetics_score (`bool`, *optional*, defaults to `"False"`):
             Whether the `unet` requires a aesthetic_score condition to be passed during inference. Also see the config

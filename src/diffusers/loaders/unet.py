@@ -11,13 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import inspect
 import os
 from collections import defaultdict
 from contextlib import nullcontext
-from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Union
 
 import safetensors
 import torch
@@ -38,18 +36,15 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_unet_state_dict_to_peft,
-    delete_adapter_layers,
+    deprecate,
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
     is_peft_version,
     is_torch_version,
     logging,
-    set_adapter_layers,
-    set_weights_and_activate_adapters,
 )
-from .lora import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
-from .unet_loader_utils import _maybe_expand_lora_scales
+from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .utils import AttnProcsLayers
 
 
@@ -97,9 +92,7 @@ class UNet2DConditionLoadersMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            resume_download:
-                Deprecated and ignored. All downloads are now resumed by default when possible. Will be removed in v1
-                of Diffusers.
+
             proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
@@ -123,6 +116,9 @@ class UNet2DConditionLoadersMixin:
                 `default_{i}` where i is the total number of adapters being loaded.
             weight_name (`str`, *optional*, defaults to None):
                 Name of the serialized state dict file.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
 
         Example:
 
@@ -140,7 +136,6 @@ class UNet2DConditionLoadersMixin:
         """
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -151,7 +146,13 @@ class UNet2DConditionLoadersMixin:
         adapter_name = kwargs.pop("adapter_name", None)
         _pipeline = kwargs.pop("_pipeline", None)
         network_alphas = kwargs.pop("network_alphas", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         allow_pickle = False
+
+        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         if use_safetensors is None:
             use_safetensors = True
@@ -174,7 +175,6 @@ class UNet2DConditionLoadersMixin:
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
                         cache_dir=cache_dir,
                         force_download=force_download,
-                        resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
                         token=token,
@@ -194,7 +194,6 @@ class UNet2DConditionLoadersMixin:
                     weights_name=weight_name or LORA_WEIGHT_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
-                    resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
                     token=token,
@@ -211,6 +210,10 @@ class UNet2DConditionLoadersMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
+        if is_lora:
+            deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
+            deprecate("load_attn_procs", "0.40.0", deprecation_message)
+
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
         elif is_lora:
@@ -220,6 +223,7 @@ class UNet2DConditionLoadersMixin:
                 network_alphas=network_alphas,
                 adapter_name=adapter_name,
                 _pipeline=_pipeline,
+                low_cpu_mem_usage=low_cpu_mem_usage,
             )
         else:
             raise ValueError(
@@ -279,7 +283,9 @@ class UNet2DConditionLoadersMixin:
 
         return attn_processors
 
-    def _process_lora(self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline):
+    def _process_lora(
+        self, state_dict, unet_identifier_key, network_alphas, adapter_name, _pipeline, low_cpu_mem_usage
+    ):
         # This method does the following things:
         # 1. Filters the `state_dict` with keys matching  `unet_identifier_key` when using the non-legacy
         #    format. For legacy format no filtering is applied.
@@ -346,23 +352,42 @@ class UNet2DConditionLoadersMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            peft_kwargs = {}
+            if is_peft_version(">=", "0.13.1"):
+                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
+            warn_msg = ""
             if incompatible_keys is not None:
-                # check only for unexpected keys
+                # Check only for unexpected keys.
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
                 if unexpected_keys:
-                    logger.warning(
-                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {unexpected_keys}. "
-                    )
+                    lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+                    if lora_unexpected_keys:
+                        warn_msg = (
+                            f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
+                            f" {', '.join(lora_unexpected_keys)}. "
+                        )
+
+                # Filter missing keys specific to the current adapter.
+                missing_keys = getattr(incompatible_keys, "missing_keys", None)
+                if missing_keys:
+                    lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+                    if lora_missing_keys:
+                        warn_msg += (
+                            f"Loading adapter weights from state_dict led to missing keys in the model:"
+                            f" {', '.join(lora_missing_keys)}."
+                        )
+
+            if warn_msg:
+                logger.warning(warn_msg)
 
         return is_model_cpu_offload, is_sequential_cpu_offload
 
     @classmethod
-    # Copied from diffusers.loaders.lora.LoraLoaderMixin._optionally_disable_offloading
+    # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
         """
         Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
@@ -457,6 +482,15 @@ class UNet2DConditionLoadersMixin:
         )
         if is_custom_diffusion:
             state_dict = self._get_custom_diffusion_state_dict()
+            if save_function is None and safe_serialization:
+                # safetensors does not support saving dicts with non-tensor values
+                empty_state_dict = {k: v for k, v in state_dict.items() if not isinstance(v, torch.Tensor)}
+                if len(empty_state_dict) > 0:
+                    logger.warning(
+                        f"Safetensors does not support saving dicts with non-tensor values. "
+                        f"The following keys will be ignored: {empty_state_dict.keys()}"
+                    )
+                state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
@@ -514,194 +548,6 @@ class UNet2DConditionLoadersMixin:
                 state_dict[name] = {}
 
         return state_dict
-
-    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `fuse_lora()`.")
-
-        self.lora_scale = lora_scale
-        self._safe_fusing = safe_fusing
-        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
-
-    def _fuse_lora_apply(self, module, adapter_names=None):
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        merge_kwargs = {"safe_merge": self._safe_fusing}
-
-        if isinstance(module, BaseTunerLayer):
-            if self.lora_scale != 1.0:
-                module.scale_layer(self.lora_scale)
-
-            # For BC with prevous PEFT versions, we need to check the signature
-            # of the `merge` method to see if it supports the `adapter_names` argument.
-            supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
-            if "adapter_names" in supported_merge_kwargs:
-                merge_kwargs["adapter_names"] = adapter_names
-            elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
-                raise ValueError(
-                    "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
-                    " to the latest version of PEFT. `pip install -U peft`"
-                )
-
-            module.merge(**merge_kwargs)
-
-    def unfuse_lora(self):
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `unfuse_lora()`.")
-        self.apply(self._unfuse_lora_apply)
-
-    def _unfuse_lora_apply(self, module):
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        if isinstance(module, BaseTunerLayer):
-            module.unmerge()
-
-    def unload_lora(self):
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `unload_lora()`.")
-
-        from ..utils import recurse_remove_peft_layers
-
-        recurse_remove_peft_layers(self)
-        if hasattr(self, "peft_config"):
-            del self.peft_config
-
-    def set_adapters(
-        self,
-        adapter_names: Union[List[str], str],
-        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
-    ):
-        """
-        Set the currently active adapters for use in the UNet.
-
-        Args:
-            adapter_names (`List[str]` or `str`):
-                The names of the adapters to use.
-            adapter_weights (`Union[List[float], float]`, *optional*):
-                The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
-                adapters.
-
-        Example:
-
-        ```py
-        from diffusers import AutoPipelineForText2Image
-        import torch
-
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights(
-            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
-        )
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
-        ```
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for `set_adapters()`.")
-
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
-
-        # Expand weights into a list, one entry per adapter
-        # examples for e.g. 2 adapters:  [{...}, 7] -> [7,7] ; None -> [None, None]
-        if not isinstance(weights, list):
-            weights = [weights] * len(adapter_names)
-
-        if len(adapter_names) != len(weights):
-            raise ValueError(
-                f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
-            )
-
-        # Set None values to default of 1.0
-        # e.g. [{...}, 7] -> [{...}, 7] ; [None, None] -> [1.0, 1.0]
-        weights = [w if w is not None else 1.0 for w in weights]
-
-        # e.g. [{...}, 7] -> [{expanded dict...}, 7]
-        weights = _maybe_expand_lora_scales(self, weights)
-
-        set_weights_and_activate_adapters(self, adapter_names, weights)
-
-    def disable_lora(self):
-        """
-        Disable the UNet's active LoRA layers.
-
-        Example:
-
-        ```py
-        from diffusers import AutoPipelineForText2Image
-        import torch
-
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights(
-            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
-        )
-        pipeline.disable_lora()
-        ```
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-        set_adapter_layers(self, enabled=False)
-
-    def enable_lora(self):
-        """
-        Enable the UNet's active LoRA layers.
-
-        Example:
-
-        ```py
-        from diffusers import AutoPipelineForText2Image
-        import torch
-
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights(
-            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
-        )
-        pipeline.enable_lora()
-        ```
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-        set_adapter_layers(self, enabled=True)
-
-    def delete_adapters(self, adapter_names: Union[List[str], str]):
-        """
-        Delete an adapter's LoRA layers from the UNet.
-
-        Args:
-            adapter_names (`Union[List[str], str]`):
-                The names (single string or list of strings) of the adapter to delete.
-
-        Example:
-
-        ```py
-        from diffusers import AutoPipelineForText2Image
-        import torch
-
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights(
-            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
-        )
-        pipeline.delete_adapters("cinematic")
-        ```
-        """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        if isinstance(adapter_names, str):
-            adapter_names = [adapter_names]
-
-        for adapter_name in adapter_names:
-            delete_adapter_layers(self, adapter_name)
-
-            # Pop also the corresponding adapter from the config
-            if hasattr(self, "peft_config"):
-                self.peft_config.pop(adapter_name, None)
 
     def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict, low_cpu_mem_usage=False):
         if low_cpu_mem_usage:
@@ -922,10 +768,9 @@ class UNet2DConditionLoadersMixin:
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
+            IPAdapterXFormersAttnProcessor,
         )
 
         if low_cpu_mem_usage:
@@ -963,15 +808,17 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
 
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
+                attn_processor_class = self.attn_processors[name].__class__
                 attn_procs[name] = attn_processor_class()
-
             else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
+                if "XFormers" in str(self.attn_processors[name].__class__):
+                    attn_processor_class = IPAdapterXFormersAttnProcessor
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:
@@ -1017,6 +864,15 @@ class UNet2DConditionLoadersMixin:
     def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
+
+        # Kolors Unet already has a `encoder_hid_proj`
+        if (
+            self.encoder_hid_proj is not None
+            and self.config.encoder_hid_dim_type == "text_proj"
+            and not hasattr(self, "text_encoder_hid_proj")
+        ):
+            self.text_encoder_hid_proj = self.encoder_hid_proj
+
         # Set encoder_hid_proj after loading ip_adapter weights,
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None

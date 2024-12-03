@@ -51,6 +51,7 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 - [`AutoencoderKL`]
 - [`ControlNetModel`]
 - [`SD3Transformer2DModel`]
+- [`FluxTransformer2DModel`]
 
 ## FromSingleFileMixin
 

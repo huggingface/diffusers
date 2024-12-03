@@ -39,7 +39,7 @@ members/contributors who may be interested in your PR.
 Core library:
 
 - Schedulers: @yiyixuxu
-- Pipelines:  @sayakpaul @yiyixuxu @DN6
+- Pipelines and pipeline callbacks: @yiyixuxu and @asomoza
 - Training examples: @sayakpaul
 - Docs: @stevhliu and @sayakpaul
 - JAX and MPS: @pcuenca
@@ -48,7 +48,8 @@ Core library:
 
 Integrations:
 
-- deepspeed: HF Trainer/Accelerate: @pacman100
+- deepspeed: HF Trainer/Accelerate: @SunMarc
+- PEFT: @sayakpaul @BenjaminBossan
 
 HF projects:
 

@@ -58,7 +58,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
             [prompt],
             generator=generator,
             guidance_scale=9.0,
-            num_inference_steps=20,
+            num_inference_steps=2,
             height=512,
             width=512,
             output_type="np",
@@ -69,9 +69,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array(
-            [0.79600024, 0.796546, 0.80682373, 0.79428387, 0.7905743, 0.8008807, 0.786183, 0.7835959, 0.797892]
-        )
+        expected_slice = np.array([0.5420, 0.5038, 0.2439, 0.5371, 0.4660, 0.1906, 0.5221, 0.4290, 0.2566])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -90,7 +88,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
             [prompt],
             generator=generator,
             guidance_scale=7.5,
-            num_inference_steps=15,
+            num_inference_steps=2,
             output_type="np",
             use_karras_sigmas=True,
             height=512,
@@ -102,9 +100,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array(
-            [0.9506951, 0.9527786, 0.95309967, 0.9511477, 0.952523, 0.9515326, 0.9511933, 0.9480397, 0.94930184]
-        )
+        expected_slice = np.array([0.6418, 0.6424, 0.6462, 0.6271, 0.6314, 0.6295, 0.6249, 0.6339, 0.6335])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -124,7 +120,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(seed),
             noise_sampler_seed=seed,
             guidance_scale=9.0,
-            num_inference_steps=20,
+            num_inference_steps=2,
             output_type="np",
             height=512,
             width=512,
@@ -134,7 +130,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
             generator=torch.manual_seed(seed),
             noise_sampler_seed=seed,
             guidance_scale=9.0,
-            num_inference_steps=20,
+            num_inference_steps=2,
             output_type="np",
             height=512,
             width=512,

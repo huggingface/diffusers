@@ -202,7 +202,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
         steps_offset: int = 0,
-        rescale_betas_zero_snr: int = False,
+        rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -500,7 +500,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
-            return (pred_prev_sample,)
+            return (
+                pred_prev_sample,
+                pred_original_sample,
+            )
 
         return DDPMParallelSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 

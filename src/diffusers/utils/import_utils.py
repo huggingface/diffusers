@@ -294,6 +294,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+_sentencepiece_available = importlib.util.find_spec("sentencepiece") is not None
+try:
+    _sentencepiece_version = importlib_metadata.version("sentencepiece")
+    logger.info(f"Successfully imported sentencepiece version {_sentencepiece_version}")
+except importlib_metadata.PackageNotFoundError:
+    _sentencepiece_available = False
+
 _matplotlib_available = importlib.util.find_spec("matplotlib") is not None
 try:
     _matplotlib_version = importlib_metadata.version("matplotlib")
@@ -321,18 +328,16 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bitsandbytes_available = False
 
-# Taken from `huggingface_hub`.
-_is_notebook = False
-try:
-    shell_class = get_ipython().__class__  # type: ignore # noqa: F821
-    for parent_class in shell_class.__mro__:  # e.g. "is subclass of"
-        if parent_class.__name__ == "ZMQInteractiveShell":
-            _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
-            break
-except NameError:
-    pass  # Probably standard Python interpreter
+_is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
-_is_google_colab = "google.colab" in sys.modules
+_imageio_available = importlib.util.find_spec("imageio") is not None
+if _imageio_available:
+    try:
+        _imageio_version = importlib_metadata.version("imageio")
+        logger.debug(f"Successfully imported imageio version {_imageio_version}")
+
+    except importlib_metadata.PackageNotFoundError:
+        _imageio_available = False
 
 
 def is_torch_available():
@@ -443,12 +448,16 @@ def is_bitsandbytes_available():
     return _bitsandbytes_available
 
 
-def is_notebook():
-    return _is_notebook
-
-
 def is_google_colab():
     return _is_google_colab
+
+
+def is_sentencepiece_available():
+    return _sentencepiece_available
+
+
+def is_imageio_available():
+    return _imageio_available
 
 
 # docstyle-ignore
@@ -569,8 +578,19 @@ SAFETENSORS_IMPORT_ERROR = """
 """
 
 # docstyle-ignore
+SENTENCEPIECE_IMPORT_ERROR = """
+{0} requires the sentencepiece library but it was not found in your environment. You can install it with pip: `pip install sentencepiece`
+"""
+
+
+# docstyle-ignore
 BITSANDBYTES_IMPORT_ERROR = """
 {0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
+"""
+
+# docstyle-ignore
+IMAGEIO_IMPORT_ERROR = """
+{0} requires the imageio library and ffmpeg but it was not found in your environment. You can install it with pip: `pip install imageio imageio-ffmpeg`
 """
 
 BACKENDS_MAPPING = OrderedDict(
@@ -596,6 +616,8 @@ BACKENDS_MAPPING = OrderedDict(
         ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
         ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
+        ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
+        ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
     ]
 )
 
@@ -646,8 +668,9 @@ class DummyObject(type):
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
 def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
     """
-    Args:
     Compares a library version to some requirement using a given operation.
+
+    Args:
         library_or_version (`str` or `packaging.version.Version`):
             A library name or a version to check.
         operation (`str`):
@@ -666,8 +689,9 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
 def is_torch_version(operation: str, version: str):
     """
-    Args:
     Compares the current PyTorch version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -678,8 +702,9 @@ def is_torch_version(operation: str, version: str):
 
 def is_transformers_version(operation: str, version: str):
     """
-    Args:
     Compares the current Transformers version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -692,8 +717,9 @@ def is_transformers_version(operation: str, version: str):
 
 def is_accelerate_version(operation: str, version: str):
     """
-    Args:
     Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -706,8 +732,9 @@ def is_accelerate_version(operation: str, version: str):
 
 def is_peft_version(operation: str, version: str):
     """
-    Args:
     Compares the current PEFT version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -718,10 +745,25 @@ def is_peft_version(operation: str, version: str):
     return compare_versions(parse(_peft_version), operation, version)
 
 
-def is_k_diffusion_version(operation: str, version: str):
+def is_bitsandbytes_version(operation: str, version: str):
     """
     Args:
+    Compares the current bitsandbytes version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _bitsandbytes_version:
+        return False
+    return compare_versions(parse(_bitsandbytes_version), operation, version)
+
+
+def is_k_diffusion_version(operation: str, version: str):
+    """
     Compares the current k-diffusion version to a given reference with an operation.
+
+    Args:
         operation (`str`):
             A string representation of an operator, such as `">"` or `"<="`
         version (`str`):
@@ -734,8 +776,9 @@ def is_k_diffusion_version(operation: str, version: str):
 
 def get_objects_from_module(module):
     """
-    Args:
     Returns a dict of object names and values in a module, while skipping private/internal objects
+
+    Args:
         module (ModuleType):
             Module to extract the objects from.
 
@@ -753,7 +796,9 @@ def get_objects_from_module(module):
 
 
 class OptionalDependencyNotAvailable(BaseException):
-    """An error indicating that an optional dependency of Diffusers was not found in the environment."""
+    """
+    An error indicating that an optional dependency of Diffusers was not found in the environment.
+    """
 
 
 class _LazyModule(ModuleType):

@@ -36,7 +36,7 @@ specific language governing permissions and limitations under the License.
 
 [cloneofsimo](https://github.com/cloneofsimo)는 인기 있는 [lora](https://github.com/cloneofsimo/lora) GitHub 리포지토리에서 Stable Diffusion을 위한 LoRA 학습을 최초로 시도했습니다. 🧨 Diffusers는 [text-to-image 생성](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) 및 [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora)을 지원합니다. 이 가이드는 두 가지를 모두 수행하는 방법을 보여줍니다.
 
-모델을 저장하거나 커뮤니티와 공유하려면 Hugging Face 계정에 로그인하세요(아직 계정이 없는 경우 [생성](hf.co/join)하세요):
+모델을 저장하거나 커뮤니티와 공유하려면 Hugging Face 계정에 로그인하세요(아직 계정이 없는 경우 [생성](https://huggingface.co/join)하세요):
 
 ```bash
 huggingface-cli login
@@ -49,12 +49,12 @@ huggingface-cli login
 
 ### 학습[[dreambooth-training]]
 
-[Naruto BLIP 캡션](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 데이터셋으로 [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)를 파인튜닝해 나만의 포켓몬을 생성해 보겠습니다.
+[Naruto BLIP 캡션](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 데이터셋으로 [`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)를 파인튜닝해 나만의 포켓몬을 생성해 보겠습니다.
 
 시작하려면 `MODEL_NAME` 및 `DATASET_NAME` 환경 변수가 설정되어 있는지 확인하십시오. `OUTPUT_DIR` 및 `HUB_MODEL_ID` 변수는 선택 사항이며 허브에서 모델을 저장할 위치를 지정합니다.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="/sddata/finetune/lora/naruto"
 export HUB_MODEL_ID="naruto-lora"
 export DATASET_NAME="lambdalabs/naruto-blip-captions"
@@ -97,7 +97,7 @@ accelerate launch train_dreambooth_lora.py \
 >>> import torch
 >>> from diffusers import StableDiffusionPipeline
 
->>> model_base = "runwayml/stable-diffusion-v1-5"
+>>> model_base = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 >>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
 ```

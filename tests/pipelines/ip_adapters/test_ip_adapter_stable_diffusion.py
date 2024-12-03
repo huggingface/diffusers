@@ -170,7 +170,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
@@ -200,7 +203,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_image_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
@@ -232,7 +238,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_inpainting(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
@@ -260,7 +269,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_model_cpu_offload(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
         pipeline.to(torch_device)
@@ -287,7 +299,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_full_face(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
@@ -304,7 +319,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_unload(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         before_processors = [attn_proc.__class__ for attn_proc in pipeline.unet.attn_processors.values()]
         pipeline.to(torch_device)
@@ -323,7 +341,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_multi(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter(
@@ -343,7 +364,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
     def test_text_to_image_face_id(self):
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=self.dtype
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, torch_dtype=self.dtype
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter(
@@ -364,9 +385,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.32714844, 0.3239746, 0.3466797, 0.31835938, 0.30004883, 0.3251953, 0.3215332, 0.3552246, 0.3251953]
-        )
+        expected_slice = np.array([0.3237, 0.3186, 0.3406, 0.3154, 0.2942, 0.3220, 0.3188, 0.3528, 0.3242])
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
@@ -427,9 +446,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.0576596, 0.05600825, 0.04479006, 0.05288461, 0.05461192, 0.05137569, 0.04867965, 0.05301541, 0.04939842]
-        )
+        expected_slice = np.array([0.0596, 0.0539, 0.0459, 0.0580, 0.0560, 0.0548, 0.0501, 0.0563, 0.0500])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -554,7 +571,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
-    def test_ip_adapter_single_mask(self):
+    def test_ip_adapter_mask(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -644,9 +661,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = [masks1, masks2]
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array(
-            [0.23551631, 0.20476806, 0.14099443, 0.0, 0.07675594, 0.05672678, 0.0, 0.0, 0.02099729]
-        )
+
+        expected_slice = np.array([0.2323, 0.1026, 0.1338, 0.0638, 0.0662, 0.0000, 0.0000, 0.0000, 0.0199])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4

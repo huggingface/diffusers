@@ -18,12 +18,14 @@ import unittest
 
 import numpy as np
 import torch
+from datasets import load_dataset
 from parameterized import parameterized
 
 from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
     AutoencoderKLTemporalDecoder,
+    AutoencoderOobleck,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
     StableDiffusionPipeline,
@@ -34,10 +36,11 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
+    is_peft_available,
     load_hf_numpy,
+    require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -47,6 +50,10 @@ from diffusers.utils.testing_utils import (
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 enable_full_determinism()
@@ -128,6 +135,18 @@ def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
     }
 
 
+def get_autoencoder_oobleck_config(block_out_channels=None):
+    init_dict = {
+        "encoder_hidden_size": 12,
+        "decoder_channels": 12,
+        "decoder_input_channels": 6,
+        "audio_channels": 2,
+        "downsampling_ratios": [2, 4],
+        "channel_multiples": [1, 2],
+    }
+    return init_dict
+
+
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
@@ -156,52 +175,17 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_training(self):
         pass
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Decoder", "Encoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
@@ -285,6 +269,38 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
+    @require_peft_backend
+    def test_lora_adapter(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        vae = self.model_class(**init_dict)
+
+        target_modules_vae = [
+            "conv1",
+            "conv2",
+            "conv_in",
+            "conv_shortcut",
+            "conv",
+            "conv_out",
+            "skip_conv_1",
+            "skip_conv_2",
+            "skip_conv_3",
+            "skip_conv_4",
+            "to_k",
+            "to_q",
+            "to_v",
+            "to_out.0",
+        ]
+        vae_lora_config = LoraConfig(
+            r=16,
+            init_lora_weights="gaussian",
+            target_modules=target_modules_vae,
+        )
+
+        vae.add_adapter(vae_lora_config, adapter_name="vae_lora")
+        active_lora = vae.active_adapters()
+        self.assertTrue(len(active_lora) == 1)
+        self.assertTrue(active_lora[0] == "vae_lora")
+
 
 class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AsymmetricAutoencoderKL
@@ -315,9 +331,11 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_forward_with_norm_groups(self):
         pass
 
@@ -350,7 +368,18 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_outputs_equivalence(self):
+        pass
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"DecoderTiny", "EncoderTiny"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @unittest.skip(
+        "Gradient checkpointing is supported but this test doesn't apply to this class because it's forward is a bit different from the rest."
+    )
+    def test_effective_gradient_checkpointing(self):
         pass
 
 
@@ -361,9 +390,10 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     forward_requires_fresh_args = True
 
     def inputs_dict(self, seed=None):
-        generator = torch.Generator("cpu")
-        if seed is not None:
-            generator.manual_seed(0)
+        if seed is None:
+            generator = torch.Generator("cpu").manual_seed(0)
+        else:
+            generator = torch.Generator("cpu").manual_seed(seed)
         image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
 
         return {"sample": image, "generator": generator}
@@ -428,55 +458,58 @@ class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase)
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skip("Not tested.")
     def test_forward_signature(self):
         pass
 
+    @unittest.skip("Not tested.")
     def test_training(self):
         pass
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"Encoder", "TemporalDecoder"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-        assert not model.is_gradient_checkpointing and model.training
 
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
+class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+    model_class = AutoencoderOobleck
+    main_input_name = "sample"
+    base_precision = 1e-2
 
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 2
+        seq_len = 24
 
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
+        waveform = floats_tensor((batch_size, num_channels, seq_len)).to(torch_device)
 
-        assert model_2.is_gradient_checkpointing and model_2.training
+        return {"sample": waveform, "sample_posterior": False}
 
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
+    @property
+    def input_shape(self):
+        return (2, 24)
 
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            if "post_quant_conv" in name:
-                continue
+    @property
+    def output_shape(self):
+        return (2, 24)
 
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = get_autoencoder_oobleck_config()
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    @unittest.skip("Not tested.")
+    def test_forward_signature(self):
+        pass
+
+    @unittest.skip("Not tested.")
+    def test_forward_with_norm_groups(self):
+        pass
+
+    @unittest.skip("No attention module used in this model")
+    def test_set_attn_processor_for_determinism(self):
+        return
 
 
 @slow
@@ -597,12 +630,12 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+                [-0.1556, 0.9848, -0.0410, -0.0642, -0.2685, 0.8381, -0.2004, -0.0700],
                 [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
             ],
             [
                 47,
-                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+                [-0.2376, 0.1200, 0.1337, -0.4830, -0.2504, -0.0759, -0.0486, -0.4077],
                 [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
             ],
             # fmt: on
@@ -832,7 +865,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: off
             [
                 33,
-                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
+                [-0.0336, 0.3011, 0.1764, 0.0087, -0.3401, 0.3645, -0.1247, 0.1205],
                 [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
             ],
             [
@@ -982,9 +1015,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         ).resize((256, 256))
-        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
-            None, :, :, :
-        ].cuda()
+        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :].to(
+            torch_device
+        )
 
         latent = vae.encode(image).latent_dist.mean
 
@@ -997,7 +1030,9 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_sd(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None
+        )
         pipe.to(torch_device)
 
         out = pipe(
@@ -1025,7 +1060,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         image = (
             torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
             .half()
-            .cuda()
+            .to(torch_device)
         )
 
         latent = vae.encode(image).latent_dist.mean
@@ -1045,7 +1080,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
             torch_dtype=torch.float16,
             vae=vae,
             safety_checker=None,
@@ -1070,7 +1105,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
     def test_vae_tiling(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=torch.float16)
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=vae, safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1099,3 +1134,116 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             for shape in shapes:
                 image = torch.zeros(shape, device=torch_device, dtype=pipe.vae.dtype)
                 pipe.vae.decode(image)
+
+
+@slow
+class AutoencoderOobleckIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def _load_datasamples(self, num_samples):
+        ds = load_dataset(
+            "hf-internal-testing/librispeech_asr_dummy", "clean", split="validation", trust_remote_code=True
+        )
+        # automatic decoding with librispeech
+        speech_samples = ds.sort("id").select(range(num_samples))[:num_samples]["audio"]
+
+        return torch.nn.utils.rnn.pad_sequence(
+            [torch.from_numpy(x["array"]) for x in speech_samples], batch_first=True
+        )
+
+    def get_audio(self, audio_sample_size=2097152, fp16=False):
+        dtype = torch.float16 if fp16 else torch.float32
+        audio = self._load_datasamples(2).to(torch_device).to(dtype)
+
+        # pad / crop to audio_sample_size
+        audio = torch.nn.functional.pad(audio[:, :audio_sample_size], pad=(0, audio_sample_size - audio.shape[-1]))
+
+        # todo channel
+        audio = audio.unsqueeze(1).repeat(1, 2, 1).to(torch_device)
+
+        return audio
+
+    def get_oobleck_vae_model(self, model_id="stabilityai/stable-audio-open-1.0", fp16=False):
+        torch_dtype = torch.float16 if fp16 else torch.float32
+
+        model = AutoencoderOobleck.from_pretrained(
+            model_id,
+            subfolder="vae",
+            torch_dtype=torch_dtype,
+        )
+        model.to(torch_device)
+
+        return model
+
+    def get_generator(self, seed=0):
+        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        if torch_device != "mps":
+            return torch.Generator(device=generator_device).manual_seed(seed)
+        return torch.manual_seed(seed)
+
+    @parameterized.expand(
+        [
+            # fmt: off
+            [33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192],
+            [44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196],
+            # fmt: on
+        ]
+    )
+    def test_stable_diffusion(self, seed, expected_slice, expected_mean_absolute_diff):
+        model = self.get_oobleck_vae_model()
+        audio = self.get_audio()
+        generator = self.get_generator(seed)
+
+        with torch.no_grad():
+            sample = model(audio, generator=generator, sample_posterior=True).sample
+
+        assert sample.shape == audio.shape
+        assert ((sample - audio).abs().mean() - expected_mean_absolute_diff).abs() <= 1e-6
+
+        output_slice = sample[-1, 1, 5:10].cpu()
+        expected_output_slice = torch.tensor(expected_slice)
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-5)
+
+    def test_stable_diffusion_mode(self):
+        model = self.get_oobleck_vae_model()
+        audio = self.get_audio()
+
+        with torch.no_grad():
+            sample = model(audio, sample_posterior=False).sample
+
+        assert sample.shape == audio.shape
+
+    @parameterized.expand(
+        [
+            # fmt: off
+            [33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192],
+            [44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196],
+            # fmt: on
+        ]
+    )
+    def test_stable_diffusion_encode_decode(self, seed, expected_slice, expected_mean_absolute_diff):
+        model = self.get_oobleck_vae_model()
+        audio = self.get_audio()
+        generator = self.get_generator(seed)
+
+        with torch.no_grad():
+            x = audio
+            posterior = model.encode(x).latent_dist
+            z = posterior.sample(generator=generator)
+            sample = model.decode(z).sample
+
+        # (batch_size, latent_dim, sequence_length)
+        assert posterior.mean.shape == (audio.shape[0], model.config.decoder_input_channels, 1024)
+
+        assert sample.shape == audio.shape
+        assert ((sample - audio).abs().mean() - expected_mean_absolute_diff).abs() <= 1e-6
+
+        output_slice = sample[-1, 1, 5:10].cpu()
+        expected_output_slice = torch.tensor(expected_slice)
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-5)

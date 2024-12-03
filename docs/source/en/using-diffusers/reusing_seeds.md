@@ -121,7 +121,7 @@ Now when you run the same pipeline twice, you'll get identical results.
 import torch
 from diffusers import DDIMScheduler, StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True).to("cuda")
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 g = torch.Generator(device="cuda")
 
@@ -141,7 +141,7 @@ print("L_inf dist =", abs(result1 - result2).max())
 
 A practical application of creating reproducible pipelines is *deterministic batch generation*. You generate a batch of images and select one image to improve with a more detailed prompt. The main idea is to pass a list of [Generator's](https://pytorch.org/docs/stable/generated/torch.Generator.html) to the pipeline and tie each `Generator` to a seed so you can reuse it.
 
-Let's use the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint and generate a batch of images.
+Let's use the [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint and generate a batch of images.
 
 ```py
 import torch
@@ -149,7 +149,7 @@ from diffusers import DiffusionPipeline
 from diffusers.utils import make_image_grid
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 )
 pipeline = pipeline.to("cuda")
 ```

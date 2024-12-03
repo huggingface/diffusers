@@ -22,12 +22,12 @@ specific language governing permissions and limitations under the License.
 本教程将指导您如何通过 [`DiffusionPipeline`]  更快、更好地生成图像。
 
 
-首先，加载 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 模型:
+首先，加载 [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 模型:
 
 ```python
 from diffusers import DiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 

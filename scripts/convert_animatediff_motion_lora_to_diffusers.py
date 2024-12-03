@@ -1,6 +1,8 @@
 import argparse
+import os
 
 import torch
+from huggingface_hub import create_repo, upload_folder
 from safetensors.torch import load_file, save_file
 
 
@@ -25,8 +27,14 @@ def convert_motion_module(original_state_dict):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt_path", type=str, required=True)
-    parser.add_argument("--output_path", type=str, required=True)
+    parser.add_argument("--ckpt_path", type=str, required=True, help="Path to checkpoint")
+    parser.add_argument("--output_path", type=str, required=True, help="Path to output directory")
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        default=False,
+        help="Whether to push the converted model to the HF or not",
+    )
 
     return parser.parse_args()
 
@@ -51,4 +59,11 @@ if __name__ == "__main__":
             continue
         output_dict.update({f"unet.{module_name}": params})
 
-    save_file(output_dict, f"{args.output_path}/diffusion_pytorch_model.safetensors")
+    os.makedirs(args.output_path, exist_ok=True)
+
+    filepath = os.path.join(args.output_path, "diffusion_pytorch_model.safetensors")
+    save_file(output_dict, filepath)
+
+    if args.push_to_hub:
+        repo_id = create_repo(args.output_path, exist_ok=True).repo_id
+        upload_folder(repo_id=repo_id, folder_path=args.output_path, repo_type="model")

@@ -35,9 +35,10 @@ from diffusers import (
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    is_torch_compile,
     load_image,
     load_numpy,
-    require_python39_or_higher,
+    require_accelerator,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -306,7 +307,7 @@ class ControlNetXSPipelineFastTests(
 
             assert out_vae_np.shape == out_np.shape
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -322,14 +323,14 @@ class ControlNetXSPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
 
 @slow
@@ -392,7 +393,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         expected_image = np.array([0.4844, 0.4937, 0.4956, 0.4663, 0.5039, 0.5044, 0.4565, 0.4883, 0.4941])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
-    @require_python39_or_higher
+    @is_torch_compile
     @require_torch_2
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)

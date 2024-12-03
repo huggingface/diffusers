@@ -12,7 +12,7 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import (
     FromSingleFileMixin,
-    LoraLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
@@ -89,7 +89,11 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class DemoFusionSDXLPipeline(
-    DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    FromSingleFileMixin,
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -231,7 +235,7 @@ class DemoFusionSDXLPipeline(
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -1339,7 +1343,7 @@ class DemoFusionSDXLPipeline(
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -1368,7 +1372,7 @@ class DemoFusionSDXLPipeline(
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,

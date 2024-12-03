@@ -5,6 +5,7 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download, snapshot_download
 
+from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
@@ -98,8 +99,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -138,8 +139,8 @@ class SDSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -155,14 +156,14 @@ class SDSingleFileTesterMixin:
     def test_single_file_format_inference_is_same_as_pretrained(self, expected_max_diff=1e-4):
         sf_pipe = self.pipeline_class.from_single_file(self.ckpt_path, safety_checker=None)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
-        sf_pipe.enable_model_cpu_offload()
+        sf_pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image_single_file = sf_pipe(**inputs).images[0]
 
         pipe = self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]
@@ -191,8 +192,8 @@ class SDSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -200,6 +201,20 @@ class SDSingleFileTesterMixin:
             )
 
         self._compare_component_configs(pipe, single_file_pipe)
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(
+        self,
+        single_file_pipe=None,
+    ):
+        single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
+            self.ckpt_path, torch_dtype=torch.float16
+        )
+
+        for component_name, component in single_file_pipe.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            assert component.dtype == torch.float16
 
 
 class SDXLSingleFileTesterMixin:
@@ -272,8 +287,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
                 local_ckpt_path, safety_checker=None, local_files_only=True
@@ -313,8 +328,8 @@ class SDXLSingleFileTesterMixin:
         upcast_attention = pipe.unet.config.upcast_attention
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_original_config = download_original_config(self.original_config, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -350,8 +365,8 @@ class SDXLSingleFileTesterMixin:
         pipe = pipe or self.pipeline_class.from_pretrained(self.repo_id, safety_checker=None)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            ckpt_filename = self.ckpt_path.split("/")[-1]
-            local_ckpt_path = download_single_file_checkpoint(self.repo_id, ckpt_filename, tmpdir)
+            repo_id, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+            local_ckpt_path = download_single_file_checkpoint(repo_id, weight_name, tmpdir)
             local_diffusers_config = download_diffusers_config(self.repo_id, tmpdir)
 
             single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
@@ -378,3 +393,17 @@ class SDXLSingleFileTesterMixin:
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < expected_max_diff
+
+    def test_single_file_setting_pipeline_dtype_to_fp16(
+        self,
+        single_file_pipe=None,
+    ):
+        single_file_pipe = single_file_pipe or self.pipeline_class.from_single_file(
+            self.ckpt_path, torch_dtype=torch.float16
+        )
+
+        for component_name, component in single_file_pipe.components.items():
+            if not isinstance(component, torch.nn.Module):
+                continue
+
+            assert component.dtype == torch.float16
