@@ -3,25 +3,17 @@
 The [auto_diffusers](https://github.com/suzukimain/auto_diffusers) library provides additional functionalities to Diffusers such as searching for models on Civitai and the Hugging Face Hub.
 Please refer to the original library [here](https://pypi.org/project/auto-diffusers/)
 
-## Installing the dependencies
+## Installation
 
 Before running the scripts, make sure to install the library's training dependencies:
 
-**Important**
+> [!IMPORTANT]
+> To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the installation up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment.
 
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
-```
-
-Then cd in the example folder and run:
-```bash
-pip install -r requirements.txt
-```
-
-
 ##  Example<a name = "Example"></a>
 ```bash
 !wget https://raw.githubusercontent.com/suzukimain/diffusers/refs/heads/ModelSearch/examples/model_search/search_for_civitai_and_HF.py
