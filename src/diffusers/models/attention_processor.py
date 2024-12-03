@@ -278,21 +278,33 @@ class Attention(nn.Module):
         # We use the AttnProcessor2_0 by default when torch 2.x is used which uses
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
-        # If torch_xla is available with the correct version, we use pallas flash attention kernel to improve 
-        # the performance.
         if processor is None:
-            if hasattr(F, "scaled_dot_product_attention") and self.scale_qk:
-                if (
-                    is_torch_xla_available
-                    and is_torch_xla_version('>', '2.2')
-                    and (not is_spmd() or is_torch_xla_version('>', '2.3'))
-                ):
-                    processor = XLAFlashAttnProcessor2_0()
-                else:
-                    processor = AttnProcessor2_0()
-            else:
-                processor = AttnProcessor()
+            processor = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+            )
+        self.set_processor(processor)
 
+    def set_use_xla_flash_attention(self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None) -> None:
+        r"""
+        Set whether to use xla flash attention from `torch_xla` or not.
+
+        Args:
+            use_xla_flash_attention (`bool`):
+                Whether to use pallas flash attention kernel from `torch_xla` or not.
+            partition_spec (`Tuple[]`, *optional*):
+                Specify the partition specification if using SPMD. Otherwise None.
+        """
+        if (
+            use_xla_flash_attention
+            and is_torch_xla_available
+            and is_torch_xla_version('>', '2.2')
+            and (not is_spmd() or is_torch_xla_version('>', '2.3'))
+        ):
+            processor = XLAFlashAttnProcessor2_0(partition_spec)
+        else:
+            processor = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+            )
         self.set_processor(processor)
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
@@ -2772,16 +2784,17 @@ class AttnProcessor2_0:
 
 class XLAFlashAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using torch_xla).
+    Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
     """
 
-    def __init__(self):
+    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         if is_torch_xla_version("<", "2.3"):
             raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
         if is_spmd() and is_torch_xla_version("<", "2.4"):
             raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
+        self.partition_spec=partition_spec
 
     def __call__(
         self,
@@ -2854,7 +2867,7 @@ class XLAFlashAttnProcessor2_0:
                 # Apply attention mask to key
                 key = key + attention_mask
             query /= math.sqrt(query.shape[3])
-            partition_spec = ("data", None, None, None) if is_spmd() else None
+            partition_spec = self.partition_spec if is_spmd() else None
             hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
         else:
             hidden_states = F.scaled_dot_product_attention(
@@ -5201,6 +5214,7 @@ AttentionProcessor = Union[
     FusedCogVideoXAttnProcessor2_0,
     XFormersAttnAddedKVProcessor,
     XFormersAttnProcessor,
+    XLAFlashAttnProcessor2_0,
     AttnProcessorNPU,
     AttnProcessor2_0,
     MochiVaeAttnProcessor2_0,
