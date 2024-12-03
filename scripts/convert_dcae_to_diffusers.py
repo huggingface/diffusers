@@ -97,7 +97,7 @@ def convert_ae(ckpt_path: str, dtype: torch.dtype):
         decoder_layers_per_block=(3, 3, 3, 3, 3, 3),
         encoder_qkv_multiscales=((), (), (), (5,), (5,), (5,)),
         decoder_qkv_multiscales=((), (), (), (5,), (5,), (5,)),
-        downsample_block_type="Conv",
+        downsample_block_type="conv",
         upsample_block_type="interpolate",
         decoder_norm_types="rms_norm",
         decoder_act_fns="silu",
@@ -131,7 +131,7 @@ def get_ae_config(name: str):
             "decoder_qkv_multiscales": ((), (), (), (5,), (5,), (5,)),
             "encoder_layers_per_block": (2, 2, 2, 3, 3, 3),
             "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
-            "downsample_block_type": "Conv",
+            "downsample_block_type": "conv",
             "upsample_block_type": "interpolate",
             "scaling_factor": 0.41407,
         }
