@@ -63,7 +63,6 @@ pipe = StableDIffusionPipeline.from_single_file(model_path).to("cuda")
 
   
 > Arguments of `HFSearchPipeline.for_HF`
-> 
 | Name             | Type    | Default       | Description                                                   |
 |:----------------:|:-------:|:-------------:|:-------------------------------------------------------------:|
 | search_word      | string  | ー            | The search query string.                                      |
