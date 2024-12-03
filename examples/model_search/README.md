@@ -77,8 +77,7 @@ pipe = StableDIffusionPipeline.from_single_file(model_path).to("cuda")
 
 
 
-> Arguments of `CivitaiSearchPipeline.for_civitai`
-> 
+### CivitaiSearchPipeline.for_civitai parameters
 | Name             | Type    | Default       | Description                                                   |
 |:----------------:|:-------:|:-------------:|:-------------------------------------------------------------:|
 | search_word      | string  | ー            | The search query string.                                      |
