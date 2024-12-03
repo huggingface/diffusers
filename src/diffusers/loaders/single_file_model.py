@@ -269,6 +269,7 @@ class FromOriginalModelMixin:
                 pretrained_model_name_or_path=default_pretrained_model_config_name,
                 subfolder=subfolder,
                 local_files_only=local_files_only,
+                token=token,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
