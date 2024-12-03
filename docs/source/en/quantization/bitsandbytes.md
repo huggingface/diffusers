@@ -21,9 +21,9 @@ fp16. This reduces the degradative effect outlier values have on a model's perfo
 4-bit quantization compresses a model even further, and it is commonly used with
 [QLoRA](https://hf.co/papers/2305.14314) to finetune quantized LLMs.
 
-We'll work with the
-[FLUX.1-dev model](https://huggingface.co/black-forest-labs/FLUX.1-dev),
-demonstrating how quantization can help you run it on less than 16GB of VRAM—even on a free Google
+This guide demonstrates how quantization can enable running
+[FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev)
+on less than 16GB of VRAM and even on a free Google
 Colab instance.
 
 ![comparison image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/comparison.png)
@@ -41,10 +41,10 @@ This works for any model in any modality, as long as it supports loading with
 <hfoptions id="bnb">
 <hfoption id="8-bit">
 
-Quantizing a model in 8-bit halves the memory-usage:
+Quantizing a model in 8-bit halves the memory-usage.
 
-As `bitsandbytes` is supported in both `transformers` and `diffusers` we can quantize both the
-`FluxTransformer2DModel` and `T5EncoderModel`.
+bitsandbytes is supported in both Transformers and Diffusers, so you can quantize both the
+[`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -58,7 +58,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_8bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
@@ -77,7 +77,7 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 ```
 
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`.
-You can change the data type of these modules with the `torch_dtype` parameter if you want:
+You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -91,7 +91,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_8bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float32,
@@ -113,7 +113,7 @@ Let's generate an image using our quantized models.
 
 ```py
 pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     transformer=transformer_8bit,
     text_encoder_2=text_encoder_2_8bit,
     torch_dtype=torch.float16,
@@ -137,7 +137,9 @@ image = pipe(
 image.resize((224, 224))
 ```
 
-![8 bit image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/8bit.png)
+<div class="flex justify-center">
+   <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/8bit.png"/>
+</div>
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method.
 The quantization `config.json` file is pushed first, followed by the quantized model weights.
@@ -146,10 +148,10 @@ You can also save the serialized 8-bit models locally with [`~ModelMixin.save_pr
 </hfoption>
 <hfoption id="4-bit">
 
-Quantizing a model in 4-bit reduces your memory-usage by 4x:
+Quantizing a model in 4-bit reduces your memory-usage by 4x.
 
-As `bitsandbytes` is supported in both `transformers` and `diffusers` we can quantize both the
-`FluxTransformer2DModel` and `T5EncoderModel`.
+bitsandbytes` is supported in both Transformers and Diffusers, so you can can quantize both the
+[`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -163,7 +165,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
@@ -182,7 +184,7 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 ```
 
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`.
-You can change the data type of these modules with the `torch_dtype` parameter if you want:
+You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -218,7 +220,7 @@ Let's generate an image using our quantized models.
 
 ```py
 pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     transformer=transformer_4bit,
     text_encoder_2=text_encoder_2_4bit,
     torch_dtype=torch.float16,
@@ -242,7 +244,9 @@ image = pipe(
 image.resize((224, 224))
 ```
 
-![4 bit image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/4bit.png)
+<div class="flex justify-center">
+   <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/4bit.png"/>
+</div>
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method.
 The quantization `config.json` file is pushed first, followed by the quantized model weights.
@@ -376,7 +380,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
@@ -418,7 +422,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
@@ -439,8 +443,8 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 
 ## Dequantizing `bitsandbytes` models
 
-Once quantized, you can dequantize the model to the original precision but this might result in a
-small quality loss of the model. Make sure you have enough GPU RAM to fit the dequantized model. 
+Once quantized, you can dequantize a model to its original precision, but this might result in a
+small loss of quality. Make sure you have enough GPU RAM to fit the dequantized model. 
 
 ```python
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -455,7 +459,7 @@ quant_config = TransformersBitsAndBytesConfig(
 )
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
+    "black-forest-labs/FLUX.1-dev",
     subfolder="text_encoder_2",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
