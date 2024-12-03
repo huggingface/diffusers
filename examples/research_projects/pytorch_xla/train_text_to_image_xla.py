@@ -520,7 +520,7 @@ def main(args):
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
 
     unet = apply_xla_patch_to_nn_linear(unet, xs.xla_patched_nn_linear_forward)
-    unet.enable_use_xla_flash_attention(partition_spec=("data", None, None, None))
+    unet.enable_xla_flash_attention(partition_spec=("data", None, None, None))
 
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
