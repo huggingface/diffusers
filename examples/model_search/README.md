@@ -1,4 +1,6 @@
-# Searching Models on Civitai and Hugging Face
+# Search models on Civitai and Hugging Face
+
+The [auto_diffusers](https://github.com/suzukimain/auto_diffusers) library provides additional functionalities to Diffusers such as searching for models on Civitai and the Hugging Face Hub.
 Please refer to the original library [here](https://pypi.org/project/auto-diffusers/)
 
 ## Installing the dependencies
