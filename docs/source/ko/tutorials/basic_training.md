@@ -76,7 +76,7 @@ huggingface-cli login
 ...     output_dir = "ddpm-butterflies-128"  # 로컬 및 HF Hub에 저장되는 모델명
 
 ...     push_to_hub = True  # 저장된 모델을 HF Hub에 업로드할지 여부
-...     hub_private_repo = False
+...     hub_private_repo = None
 ...     overwrite_output_dir = True  # 노트북을 다시 실행할 때 이전 모델에 덮어씌울지
 ...     seed = 0
 
