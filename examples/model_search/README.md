@@ -61,8 +61,6 @@ model_path = HFSearchPipeline.for_HF(
 pipe = StableDIffusionPipeline.from_single_file(model_path).to("cuda")
 ```
 
-<a id="Details"></a>
-<details close>
   
 > Arguments of `HFSearchPipeline.for_HF`
 > 
