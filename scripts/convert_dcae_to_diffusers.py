@@ -21,7 +21,7 @@ def remap_qkv_(key: str, state_dict: Dict[str, Any]):
     state_dict[key.replace("qkv.conv", "to_qkv")] = state_dict.pop(key)
 
 
-VAE_KEYS_RENAME_DICT = {
+AE_KEYS_RENAME_DICT = {
     # common
     "main.": "",
     "op_list.": "",
@@ -51,7 +51,7 @@ VAE_KEYS_RENAME_DICT = {
     "decoder.project_out.2.conv": "decoder.conv_out",
 }
 
-VAE_SPECIAL_KEYS_REMAP = {
+AE_SPECIAL_KEYS_REMAP = {
     "qkv.conv.weight": remap_qkv_,
 }
 
@@ -71,9 +71,9 @@ def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def convert_vae(ckpt_path: str, dtype: torch.dtype):
+def convert_ae(ckpt_path: str, dtype: torch.dtype):
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    vae = AutoencoderDC(
+    ae = AutoencoderDC(
         in_channels=3,
         latent_channels=32,
         encoder_block_types=(
@@ -106,21 +106,21 @@ def convert_vae(ckpt_path: str, dtype: torch.dtype):
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
-        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+        for replace_key, rename_key in AE_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         update_state_dict_(original_state_dict, key, new_key)
 
     for key in list(original_state_dict.keys()):
-        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+        for special_key, handler_fn_inplace in AE_SPECIAL_KEYS_REMAP.items():
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
 
-    vae.load_state_dict(original_state_dict, strict=True)
-    return vae
+    ae.load_state_dict(original_state_dict, strict=True)
+    return ae
 
 
-def get_vae_config(name: str):
+def get_ae_config(name: str):
     if name in ["dc-ae-f32c32-sana-1.0"]:
         config = {
             "latent_channels": 32,
@@ -245,7 +245,7 @@ def get_vae_config(name: str):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original vae checkpoint")
+    parser.add_argument("--ae_ckpt_path", type=str, default=None, help="Path to original ae checkpoint")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="fp32", help="Torch dtype to save the model in.")
     return parser.parse_args()
@@ -270,6 +270,6 @@ if __name__ == "__main__":
     dtype = DTYPE_MAPPING[args.dtype]
     variant = VARIANT_MAPPING[args.dtype]
 
-    if args.vae_ckpt_path is not None:
-        vae = convert_vae(args.vae_ckpt_path, dtype)
-        vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant)
+    if args.ae_ckpt_path is not None:
+        ae = convert_ae(args.ae_ckpt_path, dtype)
+        ae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant)
