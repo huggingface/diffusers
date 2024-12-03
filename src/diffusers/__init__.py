@@ -346,6 +346,7 @@ else:
             "StableDiffusion3InpaintPipeline",
             "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3PAGPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3Pipeline",
             "StableDiffusionAdapterPipeline",
             "StableDiffusionAttendAndExcitePipeline",
