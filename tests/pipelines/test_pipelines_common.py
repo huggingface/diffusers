@@ -1718,6 +1718,47 @@ class PipelineTesterMixin:
 
         assert out_cfg.shape == out_no_cfg.shape
 
+    def test_skip_guidance_layers(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "skip_guidance_layers" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
+        if "num_images_per_prompt" not in sig.parameters:
+            return
+
+        inputs["num_images_per_prompt"] = 2
+        output_full = pipe(**inputs)[0]
+
+        inputs_with_skip = inputs.copy()
+        inputs_with_skip["skip_guidance_layers"] = [0]
+        output_skip = pipe(**inputs_with_skip)[0]
+
+        self.assertFalse(
+            np.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
+        )
+
+        self.assertEqual(output_full.shape, output_skip.shape, "Outputs should have the same shape")
+
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
         has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
