@@ -19,7 +19,6 @@ import random
 import shutil
 from pathlib import Path
 
-import accelerate
 import datasets
 import numpy as np
 import torch
@@ -32,16 +31,16 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from modeling_efficient_net_encoder import EfficientNetEncoder
-from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPTextModel, PreTrainedTokenizerFast
 from transformers.utils import ContextManagers
 
-from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
+from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler, WuerstchenPriorPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
-from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
@@ -51,7 +50,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.31.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -83,11 +82,12 @@ tags:
 - text-to-image
 - diffusers
 - diffusers-training
+- lora
 inference: true
 ---
     """
     model_card = f"""
-# Finetuning - {repo_id}
+# LoRA Finetuning - {repo_id}
 
 This pipeline was finetuned from **{args.pretrained_prior_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
 {img_str}
@@ -100,11 +100,13 @@ You can use the pipeline like so:
 from diffusers import DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype={args.weight_dtype})
-pipe_t2i = DiffusionPipeline.from_pretrained("{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype})
-prompt = "{args.validation_prompts[0]}"
-(image_embeds,) = pipe_prior(prompt).to_tuple()
-image = pipe_t2i(image_embeddings=image_embeds, prompt=prompt).images[0]
+pipeline = AutoPipelineForText2Image.from_pretrained(
+                "{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype}
+            )
+# load lora weights from folder:
+pipeline.prior_pipe.load_lora_weights("{repo_id}", torch_dtype={args.weight_dtype})
+
+image = pipeline(prompt=prompt).images[0]
 image.save("my_image.png")
 ```
 
@@ -112,6 +114,7 @@ image.save("my_image.png")
 
 These are the key hyperparameters used during training:
 
+* LoRA rank: {args.rank}
 * Epochs: {args.num_train_epochs}
 * Learning rate: {args.learning_rate}
 * Batch size: {args.train_batch_size}
@@ -142,7 +145,7 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
 
     pipeline = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_decoder_model_name_or_path,
-        prior_prior=accelerator.unwrap_model(prior),
+        prior=accelerator.unwrap_model(prior),
         prior_text_encoder=accelerator.unwrap_model(text_encoder),
         prior_tokenizer=tokenizer,
         torch_dtype=weight_dtype,
@@ -157,7 +160,7 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
 
     images = []
     for i in range(len(args.validation_prompts)):
-        with torch.autocast("cuda"):
+        with torch.cuda.amp.autocast():
             image = pipeline(
                 args.validation_prompts[i],
                 prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
@@ -165,7 +168,6 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
                 height=args.resolution,
                 width=args.resolution,
             ).images[0]
-
         images.append(image)
 
     for tracker in accelerator.trackers:
@@ -192,6 +194,12 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of finetuning Würstchen Prior.")
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
     parser.add_argument(
         "--pretrained_decoder_model_name_or_path",
         type=str,
@@ -260,7 +268,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="wuerstchen-model-finetuned",
+        default="wuerstchen-model-finetuned-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -296,11 +304,6 @@ def parse_args():
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
-        "--gradient_checkpointing",
-        action="store_true",
-        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
-    )
-    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-4,
@@ -329,7 +332,6 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
@@ -524,55 +526,69 @@ def main():
             args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
         ).eval()
 
-    # Freeze text_encoder and image_encoder
+    # Freeze text_encoder, cast to weight_dtype and image_encoder and move to device
     text_encoder.requires_grad_(False)
     image_encoder.requires_grad_(False)
+    image_encoder.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
-    # load prior model
+    # load prior model, cast to weight_dtype and move to device
     prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
+    prior.to(accelerator.device, dtype=weight_dtype)
 
-    # Create EMA for the prior
-    if args.use_ema:
-        ema_prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
-        ema_prior = EMAModel(ema_prior.parameters(), model_cls=WuerstchenPrior, model_config=ema_prior.config)
-        ema_prior.to(accelerator.device)
+    # lora attn processor
+    prior_lora_config = LoraConfig(
+        r=args.rank,
+        lora_alpha=args.rank,
+        target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"],
+    )
+    # Add adapter and make sure the trainable params are in float32.
+    prior.add_adapter(prior_lora_config)
+    if args.mixed_precision == "fp16":
+        for param in prior.parameters():
+            # only upcast trainable parameters (LoRA) into fp32
+            if param.requires_grad:
+                param.data = param.to(torch.float32)
 
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_prior.save_pretrained(os.path.join(output_dir, "prior_ema"))
+    # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+    def save_model_hook(models, weights, output_dir):
+        if accelerator.is_main_process:
+            prior_lora_layers_to_save = None
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "prior"))
+            for model in models:
+                if isinstance(model, type(accelerator.unwrap_model(prior))):
+                    prior_lora_layers_to_save = get_peft_model_state_dict(model)
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-        def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "prior_ema"), WuerstchenPrior)
-                ema_prior.load_state_dict(load_model.state_dict())
-                ema_prior.to(accelerator.device)
-                del load_model
+            WuerstchenPriorPipeline.save_lora_weights(
+                output_dir,
+                unet_lora_layers=prior_lora_layers_to_save,
+            )
 
-            for i in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
+    def load_model_hook(models, input_dir):
+        prior_ = None
 
-                # load diffusers style into model
-                load_model = WuerstchenPrior.from_pretrained(input_dir, subfolder="prior")
-                model.register_to_config(**load_model.config)
+        while len(models) > 0:
+            model = models.pop()
 
-                model.load_state_dict(load_model.state_dict())
-                del load_model
+            if isinstance(model, type(accelerator.unwrap_model(prior))):
+                prior_ = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
 
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
+        lora_state_dict, network_alphas = WuerstchenPriorPipeline.lora_state_dict(input_dir)
+        WuerstchenPriorPipeline.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=prior_)
+        WuerstchenPriorPipeline.load_lora_into_text_encoder(
+            lora_state_dict,
+            network_alphas=network_alphas,
+        )
 
-    if args.gradient_checkpointing:
-        prior.enable_gradient_checkpointing()
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -588,8 +604,9 @@ def main():
         optimizer_cls = bnb.optim.AdamW8bit
     else:
         optimizer_cls = torch.optim.AdamW
+    params_to_optimize = list(filter(lambda p: p.requires_grad, prior.parameters()))
     optimizer = optimizer_cls(
-        prior.parameters(),
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -718,8 +735,6 @@ def main():
     prior, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         prior, optimizer, train_dataloader, lr_scheduler
     )
-    image_encoder.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -825,15 +840,13 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(prior.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_prior.step(prior.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -873,35 +886,35 @@ def main():
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_prior.store(prior.parameters())
-                    ema_prior.copy_to(prior.parameters())
                 log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, global_step)
-                if args.use_ema:
-                    # Switch back to the original UNet parameters.
-                    ema_prior.restore(prior.parameters())
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         prior = accelerator.unwrap_model(prior)
-        if args.use_ema:
-            ema_prior.copy_to(prior.parameters())
+        prior = prior.to(torch.float32)
 
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            args.pretrained_decoder_model_name_or_path,
-            prior_prior=prior,
-            prior_text_encoder=accelerator.unwrap_model(text_encoder),
-            prior_tokenizer=tokenizer,
+        prior_lora_state_dict = get_peft_model_state_dict(prior)
+
+        WuerstchenPriorPipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=prior_lora_state_dict,
         )
-        pipeline.prior_pipe.save_pretrained(os.path.join(args.output_dir, "prior_pipeline"))
 
         # Run a final round of inference.
         images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device, torch_dtype=weight_dtype)
+            pipeline = AutoPipelineForText2Image.from_pretrained(
+                args.pretrained_decoder_model_name_or_path,
+                prior_text_encoder=accelerator.unwrap_model(text_encoder),
+                prior_tokenizer=tokenizer,
+                torch_dtype=weight_dtype,
+            )
+            pipeline = pipeline.to(accelerator.device)
+
+            # load lora weights
+            pipeline.prior_pipe.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
             pipeline.set_progress_bar_config(disable=True)
 
             if args.seed is None:
@@ -910,7 +923,7 @@ def main():
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
             for i in range(len(args.validation_prompts)):
-                with torch.autocast("cuda"):
+                with torch.cuda.amp.autocast():
                     image = pipeline(
                         args.validation_prompts[i],
                         prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
