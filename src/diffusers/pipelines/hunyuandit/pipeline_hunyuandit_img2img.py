@@ -111,9 +111,7 @@ SUPPORTED_SHAPE = [
 def map_to_standard_shapes(target_width, target_height):
     target_ratio = target_width / target_height
     closest_ratio_idx = np.argmin(np.abs(STANDARD_RATIO - target_ratio))
-    closest_area_idx = np.argmin(
-        np.abs(STANDARD_AREA[closest_ratio_idx] - target_width * target_height)
-    )
+    closest_area_idx = np.argmin(np.abs(STANDARD_AREA[closest_ratio_idx] - target_width * target_height))
     width, height = STANDARD_SHAPE[closest_ratio_idx][closest_area_idx]
     return width, height
 
@@ -144,16 +142,12 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
     Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
     """
-    std_text = noise_pred_text.std(
-        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
-    )
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
     # rescale the results from guidance (fixes overexposure)
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = (
-        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    )
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
     return noise_cfg
 
 
@@ -206,13 +200,9 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
-        raise ValueError(
-            "Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values"
-        )
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -222,9 +212,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(
-            inspect.signature(scheduler.set_timesteps).parameters.keys()
-        )
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -330,9 +318,7 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             )
 
         self.vae_scale_factor = (
-            2 ** (len(self.vae.config.block_out_channels) - 1)
-            if hasattr(self, "vae") and self.vae is not None
-            else 8
+            2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
@@ -433,16 +419,12 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
-                removed_text = tokenizer.batch_decode(
-                    untruncated_ids[:, tokenizer.model_max_length - 1 : -1]
-                )
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
                     f" {tokenizer.model_max_length} tokens: {removed_text}"
@@ -454,18 +436,14 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 attention_mask=prompt_attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-            prompt_attention_mask = prompt_attention_mask.repeat(
-                num_images_per_prompt, 1
-            )
+            prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -503,24 +481,16 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 attention_mask=negative_prompt_attention_mask,
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(
-                num_images_per_prompt, 1
-            )
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=dtype, device=device
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return (
             prompt_embeds,
@@ -535,14 +505,10 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         else:
             if torch.is_tensor(image):
-                feature_extractor_input = self.image_processor.postprocess(
-                    image, output_type="pil"
-                )
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
-            safety_checker_input = self.feature_extractor(
-                feature_extractor_input, return_tensors="pt"
-            ).to(device)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
@@ -555,17 +521,13 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -587,12 +549,9 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(
-                f"`height` and `width` have to be divisible by 8 but are {height} and {width}."
-            )
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs
-            for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -611,22 +570,14 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds_2`. Cannot leave both `prompt` and `prompt_embeds_2` undefined."
             )
-        elif prompt is not None and (
-            not isinstance(prompt, str) and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` or `list` but is {type(prompt)}"
-            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if prompt_embeds is not None and prompt_attention_mask is None:
-            raise ValueError(
-                "Must provide `prompt_attention_mask` when specifying `prompt_embeds`."
-            )
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
 
         if prompt_embeds_2 is not None and prompt_attention_mask_2 is None:
-            raise ValueError(
-                "Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`."
-            )
+            raise ValueError("Must provide `prompt_attention_mask_2` when specifying `prompt_embeds_2`.")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -634,18 +585,10 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
-        if (
-            negative_prompt_embeds is not None
-            and negative_prompt_attention_mask is None
-        ):
-            raise ValueError(
-                "Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`."
-            )
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
-        if (
-            negative_prompt_embeds_2 is not None
-            and negative_prompt_attention_mask_2 is None
-        ):
+        if negative_prompt_embeds_2 is not None and negative_prompt_attention_mask_2 is None:
             raise ValueError(
                 "Must provide `negative_prompt_attention_mask_2` when specifying `negative_prompt_embeds_2`."
             )
@@ -715,23 +658,16 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                     )
 
                 init_latents = [
-                    retrieve_latents(
-                        self.vae.encode(image[i : i + 1]), generator=generator[i]
-                    )
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                     for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = retrieve_latents(
-                    self.vae.encode(image), generator=generator
-                )
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             init_latents = self.vae.config.scaling_factor * init_latents
 
-        if (
-            batch_size > init_latents.shape[0]
-            and batch_size % init_latents.shape[0] == 0
-        ):
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
             deprecation_message = (
                 f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
@@ -746,13 +682,8 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 standard_warn=False,
             )
             additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat(
-                [init_latents] * additional_image_per_prompt, dim=0
-            )
-        elif (
-            batch_size > init_latents.shape[0]
-            and batch_size % init_latents.shape[0] != 0
-        ):
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
@@ -947,10 +878,9 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
             width, height = map_to_standard_shapes(width, height)
             height = int(height)
             width = int(width)
-            logger.warning(
-                f"Reshaped to (height, width)=({height}, {width}), Supported shapes are {SUPPORTED_SHAPE}"
-            )
-
+            logger.warning(f"Reshaped to (height, width)=({height}, {width}), Supported shapes are {SUPPORTED_SHAPE}")
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -1029,9 +959,7 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
-        timesteps, num_inference_steps = self.get_timesteps(
-            num_inference_steps, strength, device
-        )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         # 6. Prepare latent variables
         latents = self.prepare_latents(
@@ -1051,9 +979,7 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         grid_height = height // 8 // self.transformer.config.patch_size
         grid_width = width // 8 // self.transformer.config.patch_size
         base_size = 512 // 8 // self.transformer.config.patch_size
-        grid_crops_coords = get_resize_crop_region_for_grid(
-            (grid_height, grid_width), base_size
-        )
+        grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size)
         image_rotary_emb = get_2d_rotary_pos_embed(
             self.transformer.inner_dim // self.transformer.num_heads,
             grid_crops_coords,
@@ -1068,13 +994,9 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            prompt_attention_mask = torch.cat(
-                [negative_prompt_attention_mask, prompt_attention_mask]
-            )
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask])
             prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
-            prompt_attention_mask_2 = torch.cat(
-                [negative_prompt_attention_mask_2, prompt_attention_mask_2]
-            )
+            prompt_attention_mask_2 = torch.cat([negative_prompt_attention_mask_2, prompt_attention_mask_2])
             add_time_ids = torch.cat([add_time_ids] * 2, dim=0)
             style = torch.cat([style] * 2, dim=0)
 
@@ -1095,19 +1017,13 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance
-                    else latents
-                )
-                latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # expand scalar t to 1-D tensor to match the 1st dim of latent_model_input
-                t_expand = torch.tensor(
-                    [t] * latent_model_input.shape[0], device=device
-                ).to(dtype=latent_model_input.dtype)
+                t_expand = torch.tensor([t] * latent_model_input.shape[0], device=device).to(
+                    dtype=latent_model_input.dtype
+                )
 
                 # predict the noise residual
                 noise_pred = self.transformer(
@@ -1128,20 +1044,14 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (
-                        noise_pred_text - noise_pred_uncond
-                    )
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(
-                        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-                    )
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1151,31 +1061,21 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop(
-                        "negative_prompt_embeds", negative_prompt_embeds
-                    )
-                    prompt_embeds_2 = callback_outputs.pop(
-                        "prompt_embeds_2", prompt_embeds_2
-                    )
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    prompt_embeds_2 = callback_outputs.pop("prompt_embeds_2", prompt_embeds_2)
                     negative_prompt_embeds_2 = callback_outputs.pop(
                         "negative_prompt_embeds_2", negative_prompt_embeds_2
                     )
 
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False
-            )[0]
-            image, has_nsfw_concept = self.run_safety_checker(
-                image, device, prompt_embeds.dtype
-            )
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
             has_nsfw_concept = None
@@ -1185,9 +1085,7 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(
-            image, output_type=output_type, do_denormalize=do_denormalize
-        )
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -1195,6 +1093,4 @@ class HunyuanDiTImg2ImgPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(
-            images=image, nsfw_content_detected=has_nsfw_concept
-        )
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
