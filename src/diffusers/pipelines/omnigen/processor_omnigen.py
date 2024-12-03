@@ -117,8 +117,6 @@ class OmniGenMultiModalProcessor:
                  use_input_image_size_as_output: bool = False,
                  ) -> Dict:
 
-        if input_images is None:
-            use_img_cfg = False
         if isinstance(instructions, str):
             instructions = [instructions]
             input_images = [input_images]

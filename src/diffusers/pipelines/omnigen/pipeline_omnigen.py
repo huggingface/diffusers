@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as np
 import torch
 from transformers import LlamaTokenizer
 
@@ -179,6 +180,7 @@ class OmniGenPipeline(
             self,
             input_pixel_values: List[torch.Tensor],
             device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
     ):
         """
         get the continues embedding of input images by VAE
@@ -188,7 +190,7 @@ class OmniGenPipeline(
         Returns: torch.Tensor
         """
         device = device or self._execution_device
-        dtype = self.vae.dtype
+        dtype = dtype or self.vae.dtype
 
         input_img_latents = []
         for img in input_pixel_values:
@@ -215,13 +217,15 @@ class OmniGenPipeline(
         """
         device = device or self._execution_device
 
+        input_img_latents = [x.to(self.transformer.dtype) for x in input_img_latents] 
+
         condition_tokens = None
         if input_ids is not None:
-            condition_tokens = self.transformer.llm.embed_tokens(input_ids.to(device))
+            condition_tokens = self.transformer.llm.embed_tokens(input_ids.to(device)).clone()
             input_img_inx = 0
             if input_img_latents is not None:
                 input_image_tokens = self.transformer.patch_embedding(input_img_latents,
-                                                                      is_input_images=True)
+                                                                      is_input_image=True)
 
                 for b_inx in input_image_sizes.keys():
                     for start_inx, end_inx in input_image_sizes[b_inx]:
@@ -248,10 +252,11 @@ class OmniGenPipeline(
                     f"The number of prompts: {len(prompt)} does not match the number of input images: {len(input_images)}."
                 )
             for i in range(len(input_images)):
-                if not all(f"<img><|image_{k}|></img>" in prompt[i] for k in range(len(input_images[i]))):
-                    raise ValueError(
-                        f"prompt `{prompt[i]}` doesn't have enough placeholders for the input images `{input_images[i]}`"
-                    )
+                if input_images[i] is not None:
+                    if not all(f"<img><|image_{k+1}|></img>" in prompt[i] for k in range(len(input_images[i]))):
+                        raise ValueError(
+                            f"prompt `{prompt[i]}` doesn't have enough placeholders for the input images `{input_images[i]}`"
+                        )
 
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
@@ -278,30 +283,6 @@ class OmniGenPipeline(
         )
 
         return latent_image_ids.to(device=device, dtype=dtype)
-
-    @staticmethod
-    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-        latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
-
-        return latents
-
-    @staticmethod
-    def _unpack_latents(latents, height, width, vae_scale_factor):
-        batch_size, num_patches, channels = latents.shape
-
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (vae_scale_factor * 2))
-        width = 2 * (int(width) // (vae_scale_factor * 2))
-
-        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
-        latents = latents.permute(0, 3, 1, 4, 2, 5)
-
-        latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
-
-        return latents
 
     def enable_vae_slicing(self):
         r"""
@@ -343,16 +324,15 @@ class OmniGenPipeline(
         generator,
         latents=None,
     ):
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-
-        shape = (batch_size, num_channels_latents, height, width)
-
         if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+            return latents.to(device=device, dtype=dtype)
+
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -361,11 +341,8 @@ class OmniGenPipeline(
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-
-        return latents, latent_image_ids
+        return latents
 
     @property
     def guidance_scale(self):
@@ -482,9 +459,14 @@ class OmniGenPipeline(
 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
+        num_cfg = 2 if input_images is not None else 1
+        use_img_cfg = True if input_images is not None else False 
         if isinstance(prompt, str):
             prompt = [prompt]
             input_images = [input_images]
+        
+        # using Float32 for the VAE doesn't take up much memory but can prevent potential black image outputs.
+        self.vae.to(torch.float32)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -506,12 +488,15 @@ class OmniGenPipeline(
 
         # 3. process multi-modal instructions
         if max_input_image_size != self.multimodal_processor.max_image_size:
-            self.processor = OmniGenMultiModalProcessor(self.text_tokenizer, max_image_size=max_input_image_size)
-        processed_data = self.processor(prompt,
-                                        input_images,
-                                        height=height,
-                                        width=width,
-                                        use_input_image_size_as_output=use_input_image_size_as_output)
+            self.multimodal_processor = OmniGenMultiModalProcessor(self.text_tokenizer, max_image_size=max_input_image_size)
+        processed_data = self.multimodal_processor(prompt,
+                                                    input_images,
+                                                    height=height,
+                                                    width=width,
+                                                    use_img_cfg=use_img_cfg,
+                                                    use_input_image_size_as_output=use_input_image_size_as_output)
+        processed_data['attention_mask'] = processed_data['attention_mask'].to(device)
+        processed_data['position_ids'] = processed_data['position_ids'].to(device)
 
         # 4. Encode input images and obtain multi-modal conditional embeddings
         input_img_latents = self.encod_input_iamges(processed_data['input_pixel_values'], device=device)
@@ -522,14 +507,14 @@ class OmniGenPipeline(
                                                           )
 
         # 5. Prepare timesteps
+        sigmas = np.linspace(1, 0, num_inference_steps+1)[:num_inference_steps]
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps,
+            self.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas
         )
 
         # 6. Prepare latents.
         if use_input_image_size_as_output:
             height, width = processed_data['input_pixel_values'][0].shape[-2:]
-        num_cfg = 2 if input_images is not None else 1
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -542,10 +527,15 @@ class OmniGenPipeline(
             latents,
         )
 
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        latents = torch.randn(1, 4, height//8, width//8, device=device, generator=generator).to(self.transformer.dtype)
+        # latents = torch.cat([latents]*(1+num_cfg), 0).to(dtype)
+
         # 7. Prepare OmniGenCache
-        num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.patch_size ** 2)
+        num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.transformer.patch_size ** 2)
         cache = OmniGenCache(num_tokens_for_output_img, offload_kv_cache) if use_kv_cache else None
-        self.transformer.llm.use_cache = use_kv_cache
+        self.transformer.llm.config.use_cache = use_kv_cache
 
         # 8. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -565,18 +555,18 @@ class OmniGenPipeline(
                     attention_kwargs=attention_kwargs,
                     past_key_values=cache,
                     offload_transformer_block=offload_transformer_block,
-                    return_past_key_values=True,
                     return_dict=False,
                 )
-
+                
+                # if use kv cache, don't need attention mask and position ids of condition tokens for next step
                 if use_kv_cache:
                     if condition_tokens is not None:
                         condition_tokens = None
-                        processed_data['attention_mask'] = processed_data['attention_mask'][..., -(num_tokens_for_output_img+1):, :]
+                        processed_data['attention_mask'] = processed_data['attention_mask'][..., -(num_tokens_for_output_img + 1):, :] # +1 is for the timestep token
                         processed_data['position_ids'] = processed_data['position_ids'][:, -(num_tokens_for_output_img + 1):]
 
                 if num_cfg == 2:
-                    cond, uncond, img_cond = torch.split(noise_pred, len(model_out) // 3, dim=0)
+                    cond, uncond, img_cond = torch.split(noise_pred, len(noise_pred) // 3, dim=0)
                     noise_pred = uncond + img_guidance_scale * (img_cond - uncond) + guidance_scale * (cond - img_cond)
                 else:
                     cond, uncond = torch.split(noise_pred, len(noise_pred) // 2, dim=0)
@@ -584,7 +574,6 @@ class OmniGenPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                noise_pred = -noise_pred  # OmniGen uses standard rectified flow instead of denoise, different from FLUX and SD3
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
@@ -595,6 +584,7 @@ class OmniGenPipeline(
                 progress_bar.update()
 
         if not output_type == "latent":
+            latents = latents.to(self.vae.dtype)
             latents = latents / self.vae.config.scaling_factor
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)

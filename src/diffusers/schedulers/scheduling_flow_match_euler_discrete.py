@@ -212,7 +212,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
-        self.timesteps = timesteps.to(device=device)
+        self.timesteps = timesteps.to(device=device) 
         self.sigmas = sigmas
         self._step_index = None
         self._begin_index = None
@@ -300,7 +300,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
         sigma_next = self.sigmas[self.step_index + 1]
-
+        
         prev_sample = sample + (sigma_next - sigma) * model_output
 
         # Cast sample back to model compatible dtype

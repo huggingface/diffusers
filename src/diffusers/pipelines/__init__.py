@@ -254,6 +254,7 @@ else:
     )
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
+    _import_structure["omnigen"] = ["OmniGenPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
@@ -584,6 +585,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
+        from .omnigen import OmniGenPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,

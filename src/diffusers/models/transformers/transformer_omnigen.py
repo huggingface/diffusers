@@ -125,7 +125,7 @@ class OmniGenBaseTransformer(Phi3Model):
                 )
                 use_cache = False
 
-        # kept for BC (non `Cache` `past_key_values` inputs)
+        # kept for BC (non `Cache` `past_key_values` inputs) 
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):
             return_legacy_cache = True
@@ -240,7 +240,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     @register_to_config
     def __init__(
             self,
-            transformer_config: Phi3Config,
+            transformer_config: Dict,
             patch_size=2,
             in_channels=4,
             pos_embed_max_size: int = 192,
@@ -251,6 +251,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.patch_size = patch_size
         self.pos_embed_max_size = pos_embed_max_size
 
+        transformer_config = Phi3Config(**transformer_config)
         hidden_size = transformer_config.hidden_size
 
         self.patch_embedding = OmniGenPatchEmbed(patch_size=patch_size,
@@ -386,7 +387,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        height, width = hidden_states.size(-2)
+        height, width = hidden_states.size()[-2:]
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
 
@@ -405,7 +406,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         image_embedding = output[:, -num_tokens_for_output_image:]
         time_emb = self.t_embedder(timestep, dtype=hidden_states.dtype)
-        x = self.final_layer(image_embedding, time_emb)
+        x = self.proj_out(self.norm_out(image_embedding, temb=time_emb))
         output = self.unpatchify(x, height, width)
 
         if not return_dict:

@@ -381,9 +381,9 @@ class OmniGenPatchEmbed(nn.Module):
             height, width = latent.shape[-2:]
             pos_embed = self.cropped_pos_embed(height, width)
             latent = self.patch_embeddings(latent, is_input_image)
-            latent = latent + pos_embed
+            patched_latents = latent + pos_embed
 
-        return latent
+        return patched_latents
 
 
 class LuminaPatchEmbed(nn.Module):
