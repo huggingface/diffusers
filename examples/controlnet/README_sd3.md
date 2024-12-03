@@ -104,7 +104,7 @@ from diffusers.utils import load_image
 import torch
 
 base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
-controlnet_path = "sd3-controlnet-out/checkpoint-6500/controlnet"
+controlnet_path = "DavyMorgan/sd3-controlnet-out"
 
 controlnet = SD3ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
 pipe = StableDiffusion3ControlNetPipeline.from_pretrained(

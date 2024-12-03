@@ -341,7 +341,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states[:, text_seq_length:]
 
         for index_block, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):

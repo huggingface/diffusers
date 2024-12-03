@@ -19,10 +19,10 @@ import torch
 import torch.utils.checkpoint
 from torch import Tensor, nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, is_torch_version, logging
-from ..utils.torch_utils import apply_freeu
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import BaseOutput, is_torch_version, logging
+from ...utils.torch_utils import apply_freeu
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     Attention,
@@ -31,10 +31,9 @@ from .attention_processor import (
     AttnProcessor,
     FusedAttnProcessor2_0,
 )
-from .controlnet import ControlNetConditioningEmbedding
-from .embeddings import TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
-from .unets.unet_2d_blocks import (
+from ..embeddings import TimestepEmbedding, Timesteps
+from ..modeling_utils import ModelMixin
+from ..unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     Downsample2D,
@@ -43,7 +42,8 @@ from .unets.unet_2d_blocks import (
     UNetMidBlock2DCrossAttn,
     Upsample2D,
 )
-from .unets.unet_2d_condition import UNet2DConditionModel
+from ..unets.unet_2d_condition import UNet2DConditionModel
+from .controlnet import ControlNetConditioningEmbedding
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -1062,7 +1062,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             added_cond_kwargs (`dict`):
                 Additional conditions for the Stable Diffusion XL UNet.
             return_dict (`bool`, defaults to `True`):
-                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.controlnets.controlnet.ControlNetOutput`] instead of a plain
+                tuple.
             apply_control (`bool`, defaults to `True`):
                 If `False`, the input is run only through the base model.
 
@@ -1465,7 +1466,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                 h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
             # apply base subblock
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 h_base = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(b_res),
@@ -1488,7 +1489,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
             # apply ctrl subblock
             if apply_control:
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
                     ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                     h_ctrl = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(c_res),
@@ -1897,7 +1898,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             hidden_states, res_h_base = maybe_apply_freeu_to_subblock(hidden_states, res_h_base)
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
