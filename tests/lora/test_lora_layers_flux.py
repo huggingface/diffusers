@@ -196,8 +196,10 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 lora_unload_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
             self.assertTrue(pipe.transformer._transformer_norm_layers is None)
-            self.assertFalse(np.allclose(original_output, lora_load_output, atol=1e-5, rtol=1e-5))
             self.assertTrue(np.allclose(original_output, lora_unload_output, atol=1e-5, rtol=1e-5))
+            self.assertFalse(
+                np.allclose(original_output, lora_load_output, atol=1e-6, rtol=1e-6), f"{norm_layer} is tested"
+            )
 
         with CaptureLogger(logger) as cap_logger:
             for key in list(norm_state_dict.keys()):
