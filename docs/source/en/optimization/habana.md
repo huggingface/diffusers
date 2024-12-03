@@ -61,7 +61,7 @@ For more information, check out 🤗 Optimum Habana's [documentation](https://hu
 
 We benchmarked Habana's first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) and [Habana/stable-diffusion-2](https://huggingface.co/Habana/stable-diffusion-2) Gaudi configurations (mixed precision bf16/fp32) to demonstrate their performance.
 
-For [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) on 512x512 images:
+For [Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) on 512x512 images:
 
 |                        | Latency (batch size = 1) | Throughput  |
 | ---------------------- |:------------------------:|:---------------------------:|

@@ -55,8 +55,10 @@
 - sections:
   - local: using-diffusers/overview_techniques
     title: Overview
+  - local: using-diffusers/create_a_server
+    title: Create a server
   - local: training/distributed_inference
-    title: Distributed inference with multiple GPUs
+    title: Distributed inference
   - local: using-diffusers/merge_loras
     title: Merge LoRAs
   - local: using-diffusers/scheduler_features
@@ -75,6 +77,8 @@
     title: Outpainting
   title: Advanced inference
 - sections:
+  - local: using-diffusers/cogvideox
+    title: CogVideoX
   - local: using-diffusers/sdxl
     title: Stable Diffusion XL
   - local: using-diffusers/sdxl_turbo
@@ -129,6 +133,8 @@
       title: T2I-Adapters
     - local: training/instructpix2pix
       title: InstructPix2Pix
+    - local: training/cogvideox
+      title: CogVideoX
     title: Models
   - isExpanded: false
     sections:
@@ -147,6 +153,12 @@
     title: Methods
   title: Training
 - sections:
+  - local: quantization/overview
+    title: Getting Started
+  - local: quantization/bitsandbytes
+    title: bitsandbytes
+  title: Quantization Methods
+- sections:
   - local: optimization/fp16
     title: Speed up inference
   - local: optimization/memory
@@ -161,6 +173,8 @@
     title: DeepCache
   - local: optimization/tgate
     title: TGATE
+  - local: optimization/xdit
+    title: xDiT
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax
@@ -176,6 +190,8 @@
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
+    - local: optimization/neuron
+      title: AWS Neuron
     title: Optimized hardware
   title: Accelerate inference and reduce memory
 - sections:
@@ -203,6 +219,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/quantization
+      title: Quantization
     title: Main Classes
   - isExpanded: false
     sections:
@@ -223,69 +241,95 @@
     sections:
     - local: api/models/overview
       title: Overview
-    - local: api/models/unet
-      title: UNet1DModel
-    - local: api/models/unet2d
-      title: UNet2DModel
-    - local: api/models/unet2d-cond
-      title: UNet2DConditionModel
-    - local: api/models/unet3d-cond
-      title: UNet3DConditionModel
-    - local: api/models/unet-motion
-      title: UNetMotionModel
-    - local: api/models/uvit2d
-      title: UViT2DModel
-    - local: api/models/vq
-      title: VQModel
-    - local: api/models/autoencoderkl
-      title: AutoencoderKL
-    - local: api/models/asymmetricautoencoderkl
-      title: AsymmetricAutoencoderKL
-    - local: api/models/stable_cascade_unet
-      title: StableCascadeUNet
-    - local: api/models/autoencoder_tiny
-      title: Tiny AutoEncoder
-    - local: api/models/autoencoder_oobleck
-      title: Oobleck AutoEncoder
-    - local: api/models/consistency_decoder_vae
-      title: ConsistencyDecoderVAE
-    - local: api/models/transformer2d
-      title: Transformer2DModel
-    - local: api/models/pixart_transformer2d
-      title: PixArtTransformer2DModel
-    - local: api/models/dit_transformer2d
-      title: DiTTransformer2DModel
-    - local: api/models/hunyuan_transformer2d
-      title: HunyuanDiT2DModel
-    - local: api/models/aura_flow_transformer2d
-      title: AuraFlowTransformer2DModel
-    - local: api/models/flux_transformer
-      title: FluxTransformer2DModel
-    - local: api/models/latte_transformer3d
-      title: LatteTransformer3DModel
-    - local: api/models/lumina_nextdit2d
-      title: LuminaNextDiT2DModel
-    - local: api/models/transformer_temporal
-      title: TransformerTemporalModel
-    - local: api/models/sd3_transformer2d
-      title: SD3Transformer2DModel
-    - local: api/models/stable_audio_transformer
-      title: StableAudioDiTModel
-    - local: api/models/prior_transformer
-      title: PriorTransformer
-    - local: api/models/controlnet
-      title: ControlNetModel
-    - local: api/models/controlnet_hunyuandit
-      title: HunyuanDiT2DControlNetModel
-    - local: api/models/controlnet_sd3
-      title: SD3ControlNetModel
-    - local: api/models/controlnet_sparsectrl
-      title: SparseControlNetModel
+    - sections:
+      - local: api/models/controlnet
+        title: ControlNetModel
+      - local: api/models/controlnet_flux
+        title: FluxControlNetModel
+      - local: api/models/controlnet_hunyuandit
+        title: HunyuanDiT2DControlNetModel
+      - local: api/models/controlnet_sd3
+        title: SD3ControlNetModel
+      - local: api/models/controlnet_sparsectrl
+        title: SparseControlNetModel
+      title: ControlNets
+    - sections:
+      - local: api/models/allegro_transformer3d
+        title: AllegroTransformer3DModel
+      - local: api/models/aura_flow_transformer2d
+        title: AuraFlowTransformer2DModel
+      - local: api/models/cogvideox_transformer3d
+        title: CogVideoXTransformer3DModel
+      - local: api/models/cogview3plus_transformer2d
+        title: CogView3PlusTransformer2DModel
+      - local: api/models/dit_transformer2d
+        title: DiTTransformer2DModel
+      - local: api/models/flux_transformer
+        title: FluxTransformer2DModel
+      - local: api/models/hunyuan_transformer2d
+        title: HunyuanDiT2DModel
+      - local: api/models/latte_transformer3d
+        title: LatteTransformer3DModel
+      - local: api/models/lumina_nextdit2d
+        title: LuminaNextDiT2DModel
+      - local: api/models/mochi_transformer3d
+        title: MochiTransformer3DModel
+      - local: api/models/pixart_transformer2d
+        title: PixArtTransformer2DModel
+      - local: api/models/prior_transformer
+        title: PriorTransformer
+      - local: api/models/sd3_transformer2d
+        title: SD3Transformer2DModel
+      - local: api/models/stable_audio_transformer
+        title: StableAudioDiTModel
+      - local: api/models/transformer2d
+        title: Transformer2DModel
+      - local: api/models/transformer_temporal
+        title: TransformerTemporalModel
+      title: Transformers
+    - sections:
+      - local: api/models/stable_cascade_unet
+        title: StableCascadeUNet
+      - local: api/models/unet
+        title: UNet1DModel
+      - local: api/models/unet2d
+        title: UNet2DModel
+      - local: api/models/unet2d-cond
+        title: UNet2DConditionModel
+      - local: api/models/unet3d-cond
+        title: UNet3DConditionModel
+      - local: api/models/unet-motion
+        title: UNetMotionModel
+      - local: api/models/uvit2d
+        title: UViT2DModel
+      title: UNets
+    - sections:
+      - local: api/models/autoencoderkl
+        title: AutoencoderKL
+      - local: api/models/autoencoderkl_allegro
+        title: AutoencoderKLAllegro
+      - local: api/models/autoencoderkl_cogvideox
+        title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_mochi
+        title: AutoencoderKLMochi
+      - local: api/models/asymmetricautoencoderkl
+        title: AsymmetricAutoencoderKL
+      - local: api/models/consistency_decoder_vae
+        title: ConsistencyDecoderVAE
+      - local: api/models/autoencoder_oobleck
+        title: Oobleck AutoEncoder
+      - local: api/models/autoencoder_tiny
+        title: Tiny AutoEncoder
+      - local: api/models/vq
+        title: VQModel
+      title: VAEs
     title: Models
   - isExpanded: false
     sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/allegro
+      title: Allegro
     - local: api/pipelines/amused
       title: aMUSEd
     - local: api/pipelines/animatediff
@@ -302,10 +346,16 @@
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
       title: BLIP-Diffusion
+    - local: api/pipelines/cogvideox
+      title: CogVideoX
+    - local: api/pipelines/cogview3
+      title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_flux
+      title: ControlNet with Flux.1
     - local: api/pipelines/controlnet_hunyuandit
       title: ControlNet with Hunyuan-DiT
     - local: api/pipelines/controlnet_sd3
@@ -356,6 +406,8 @@
       title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
+    - local: api/pipelines/mochi
+      title: Mochi
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm

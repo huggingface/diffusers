@@ -1,12 +1,13 @@
 import os
 import tempfile
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
+from urllib.parse import unquote, urlparse
 
 import PIL.Image
 import PIL.ImageOps
 import requests
 
-from .import_utils import BACKENDS_MAPPING, is_opencv_available
+from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
 def load_image(
@@ -80,11 +81,22 @@ def load_video(
         )
 
     if is_url:
-        video_data = requests.get(video, stream=True).raw
-        video_path = tempfile.NamedTemporaryFile(suffix=os.path.splitext(video)[1], delete=False).name
+        response = requests.get(video, stream=True)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to download video. Status code: {response.status_code}")
+
+        parsed_url = urlparse(video)
+        file_name = os.path.basename(unquote(parsed_url.path))
+
+        suffix = os.path.splitext(file_name)[1] or ".mp4"
+        video_path = tempfile.NamedTemporaryFile(suffix=suffix, delete=False).name
+
         was_tempfile_created = True
+
+        video_data = response.iter_content(chunk_size=8192)
         with open(video_path, "wb") as f:
-            f.write(video_data.read())
+            for chunk in video_data:
+                f.write(chunk)
 
         video = video_path
 
@@ -99,19 +111,22 @@ def load_video(
             pass
 
     else:
-        if is_opencv_available():
-            import cv2
+        if is_imageio_available():
+            import imageio
         else:
-            raise ImportError(BACKENDS_MAPPING["opencv"][1].format("load_video"))
+            raise ImportError(BACKENDS_MAPPING["imageio"][1].format("load_video"))
 
-        video_capture = cv2.VideoCapture(video)
-        success, frame = video_capture.read()
-        while success:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_images.append(PIL.Image.fromarray(frame))
-            success, frame = video_capture.read()
+        try:
+            imageio.plugins.ffmpeg.get_exe()
+        except AttributeError:
+            raise AttributeError(
+                "`Unable to find an ffmpeg installation on your machine. Please install via `pip install imageio-ffmpeg"
+            )
 
-        video_capture.release()
+        with imageio.get_reader(video) as reader:
+            # Read all frames
+            for frame in reader:
+                pil_images.append(PIL.Image.fromarray(frame))
 
     if was_tempfile_created:
         os.remove(video_path)
@@ -120,3 +135,16 @@ def load_video(
         pil_images = convert_method(pil_images)
 
     return pil_images
+
+
+# Taken from `transformers`.
+def get_module_from_name(module, tensor_name: str) -> Tuple[Any, str]:
+    if "." in tensor_name:
+        splits = tensor_name.split(".")
+        for split in splits[:-1]:
+            new_module = getattr(module, split)
+            if new_module is None:
+                raise ValueError(f"{module} has no attribute {split}.")
+            module = new_module
+        tensor_name = splits[-1]
+    return module, tensor_name

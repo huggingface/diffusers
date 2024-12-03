@@ -51,7 +51,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
 
         noise = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 16)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size * num_frames, 4, 16)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
@@ -161,27 +161,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
         ), "xformers is not enabled"
 
     def test_gradient_checkpointing_is_applied(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
-        model = model_class_copy(**init_dict)
-        model.enable_gradient_checkpointing()
-
-        EXPECTED_SET = {
+        expected_set = {
             "CrossAttnUpBlockMotion",
             "CrossAttnDownBlockMotion",
             "UNetMidBlockCrossAttnMotion",
@@ -189,9 +169,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
             "Transformer2DModel",
             "DownBlockMotion",
         }
-
-        assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
-        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_feed_forward_chunking(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

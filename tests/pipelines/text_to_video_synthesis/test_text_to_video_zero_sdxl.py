@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import gc
 import inspect
-import io
-import re
 import tempfile
 import unittest
 
@@ -26,8 +23,14 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
-from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    nightly,
+    require_accelerate_version_greater,
+    require_accelerator,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineTesterMixin
@@ -216,7 +219,8 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -258,10 +262,8 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
+    @require_accelerator
+    @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -271,7 +273,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         inputs = self.get_dummy_inputs(self.generator_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(self.generator_device)
         output_with_offload = pipe(**inputs)[0]
 
@@ -282,29 +284,8 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_pipeline_call_signature(self):
         pass
 
-    def test_progress_bar(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-
-        inputs = self.get_dummy_inputs(self.generator_device)
-        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
-            _ = pipe(**inputs)
-            stderr = stderr.getvalue()
-            # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
-            # so we just match "5" in "#####| 1/5 [00:01<00:00]"
-            max_steps = re.search("/(.*?) ", stderr).group(1)
-            self.assertTrue(max_steps is not None and len(max_steps) > 0)
-            self.assertTrue(
-                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
-            )
-
-        pipe.set_progress_bar_config(disable=True)
-        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
-            _ = pipe(**inputs)
-            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
-
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -356,7 +337,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -369,12 +350,12 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipe
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     @unittest.skip(
         reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."

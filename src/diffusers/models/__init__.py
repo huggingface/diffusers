@@ -28,19 +28,28 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
+    _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
+    _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
-    _import_structure["controlnet"] = ["ControlNetModel"]
-    _import_structure["controlnet_hunyuan"] = ["HunyuanDiT2DControlNetModel", "HunyuanDiT2DMultiControlNetModel"]
-    _import_structure["controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
-    _import_structure["controlnet_sparsectrl"] = ["SparseControlNetModel"]
-    _import_structure["controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
+    _import_structure["controlnets.controlnet_hunyuan"] = [
+        "HunyuanDiT2DControlNetModel",
+        "HunyuanDiT2DMultiControlNetModel",
+    ]
+    _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
+    _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
+    _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
+    _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
@@ -51,7 +60,10 @@ if is_torch_available():
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
+    _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
+    _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
@@ -66,7 +78,7 @@ if is_torch_available():
     _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
 
 if is_flax_available():
-    _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
+    _import_structure["controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
@@ -77,27 +89,42 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .autoencoders import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLAllegro,
+            AutoencoderKLCogVideoX,
+            AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
             AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             VQModel,
         )
-        from .controlnet import ControlNetModel
-        from .controlnet_hunyuan import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
-        from .controlnet_sd3 import SD3ControlNetModel, SD3MultiControlNetModel
-        from .controlnet_sparsectrl import SparseControlNetModel
-        from .controlnet_xs import ControlNetXSAdapter, UNetControlNetXSModel
+        from .controlnets import (
+            ControlNetModel,
+            ControlNetXSAdapter,
+            FluxControlNetModel,
+            FluxMultiControlNetModel,
+            HunyuanDiT2DControlNetModel,
+            HunyuanDiT2DMultiControlNetModel,
+            MultiControlNetModel,
+            SD3ControlNetModel,
+            SD3MultiControlNetModel,
+            SparseControlNetModel,
+            UNetControlNetXSModel,
+        )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
+            CogVideoXTransformer3DModel,
+            CogView3PlusTransformer2DModel,
             DiTTransformer2DModel,
             DualTransformer2DModel,
             FluxTransformer2DModel,
             HunyuanDiT2DModel,
             LatteTransformer3DModel,
             LuminaNextDiT2DModel,
+            MochiTransformer3DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             SD3Transformer2DModel,
@@ -121,7 +148,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     if is_flax_available():
-        from .controlnet_flax import FlaxControlNetModel
+        from .controlnets import FlaxControlNetModel
         from .unets import FlaxUNet2DConditionModel
         from .vae_flax import FlaxAutoencoderKL
 

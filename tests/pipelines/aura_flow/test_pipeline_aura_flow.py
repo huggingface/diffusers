@@ -163,3 +163,7 @@ class AuraFlowPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         assert np.allclose(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
+
+    @unittest.skip("xformers attention processor does not exist for AuraFlow")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass

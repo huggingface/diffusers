@@ -37,7 +37,7 @@ pip install --upgrade torch diffusers
     import torch
     from diffusers import DiffusionPipeline
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+    pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
     pipe = pipe.to("cuda")
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -51,7 +51,7 @@ pip install --upgrade torch diffusers
     from diffusers import DiffusionPipeline
     + from diffusers.models.attention_processor import AttnProcessor2_0
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+    pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     + pipe.unet.set_attn_processor(AttnProcessor2_0())
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -67,7 +67,7 @@ pip install --upgrade torch diffusers
     from diffusers import DiffusionPipeline
     from diffusers.models.attention_processor import AttnProcessor
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+    pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
     pipe.unet.set_default_attn_processor()
 
     prompt = "a photo of an astronaut riding a horse on mars"
@@ -100,7 +100,7 @@ PyTorch 2.0의 효율적인 어텐션 구현과 `torch.compile`을 사용하여 
 from diffusers import DiffusionPipeline
 import torch
 
-path = "runwayml/stable-diffusion-v1-5"
+path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
 
@@ -133,7 +133,7 @@ response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((512, 512))
 
-path = "runwayml/stable-diffusion-v1-5"
+path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
 
@@ -206,7 +206,7 @@ response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((512, 512))
 
-path = "runwayml/stable-diffusion-v1-5"
+path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 run_compile = True  # Set True / False
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)

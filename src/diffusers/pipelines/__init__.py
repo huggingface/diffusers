@@ -116,6 +116,7 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
@@ -123,8 +124,21 @@ else:
         "AnimateDiffSDXLPipeline",
         "AnimateDiffSparseControlNetPipeline",
         "AnimateDiffVideoToVideoPipeline",
+        "AnimateDiffVideoToVideoControlNetPipeline",
     ]
-    _import_structure["flux"] = ["FluxPipeline"]
+    _import_structure["flux"] = [
+        "FluxControlPipeline",
+        "FluxControlImg2ImgPipeline",
+        "FluxControlNetPipeline",
+        "FluxControlNetImg2ImgPipeline",
+        "FluxControlNetInpaintPipeline",
+        "FluxImg2ImgPipeline",
+        "FluxInpaintPipeline",
+        "FluxPipeline",
+        "FluxFillPipeline",
+        "FluxPriorReduxPipeline",
+        "ReduxImageEncoder",
+    ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -132,6 +146,13 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["cogvideo"] = [
+        "CogVideoXPipeline",
+        "CogVideoXImageToVideoPipeline",
+        "CogVideoXVideoToVideoPipeline",
+        "CogVideoXFunControlPipeline",
+    ]
+    _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -145,13 +166,18 @@ else:
     )
     _import_structure["pag"].extend(
         [
+            "StableDiffusionControlNetPAGInpaintPipeline",
             "AnimateDiffPAGPipeline",
+            "KolorsPAGPipeline",
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusionPAGPipeline",
+            "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLControlNetPAGPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
             "PixArtSigmaPAGPipeline",
@@ -171,6 +197,7 @@ else:
     _import_structure["controlnet_sd3"].extend(
         [
             "StableDiffusion3ControlNetPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -226,6 +253,7 @@ else:
             "MarigoldNormalsPipeline",
         ]
     )
+    _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -434,12 +462,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .allegro import AllegroPipeline
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import (
             AnimateDiffControlNetPipeline,
             AnimateDiffPipeline,
             AnimateDiffSDXLPipeline,
             AnimateDiffSparseControlNetPipeline,
+            AnimateDiffVideoToVideoControlNetPipeline,
             AnimateDiffVideoToVideoPipeline,
         )
         from .audioldm import AudioLDMPipeline
@@ -450,6 +480,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .cogvideo import (
+            CogVideoXFunControlPipeline,
+            CogVideoXImageToVideoPipeline,
+            CogVideoXPipeline,
+            CogVideoXVideoToVideoPipeline,
+        )
+        from .cogview3 import CogView3PlusPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -462,9 +499,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
         )
-        from .controlnet_sd3 import (
-            StableDiffusion3ControlNetPipeline,
-        )
+        from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
         from .controlnet_xs import (
             StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
@@ -491,7 +526,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
-        from .flux import FluxPipeline
+        from .flux import (
+            FluxControlImg2ImgPipeline,
+            FluxControlNetImg2ImgPipeline,
+            FluxControlNetInpaintPipeline,
+            FluxControlNetPipeline,
+            FluxControlPipeline,
+            FluxFillPipeline,
+            FluxImg2ImgPipeline,
+            FluxInpaintPipeline,
+            FluxPipeline,
+            FluxPriorReduxPipeline,
+            ReduxImageEncoder,
+        )
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -536,14 +583,20 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldDepthPipeline,
             MarigoldNormalsPipeline,
         )
+        from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
+            KolorsPAGPipeline,
             PixArtSigmaPAGPipeline,
+            StableDiffusion3PAGImg2ImgPipeline,
             StableDiffusion3PAGPipeline,
+            StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
+            StableDiffusionPAGImg2ImgPipeline,
             StableDiffusionPAGPipeline,
+            StableDiffusionXLControlNetPAGImg2ImgPipeline,
             StableDiffusionXLControlNetPAGPipeline,
             StableDiffusionXLPAGImg2ImgPipeline,
             StableDiffusionXLPAGInpaintPipeline,

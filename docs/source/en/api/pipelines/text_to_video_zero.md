@@ -40,8 +40,9 @@ To generate a video from prompt, run the following Python code:
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
+import imageio
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A panda is playing guitar on times square"
@@ -63,7 +64,7 @@ import torch
 from diffusers import TextToVideoZeroPipeline
 import numpy as np
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 seed = 0
 video_length = 24  #24 ÷ 4fps = 6 seconds
@@ -137,7 +138,7 @@ To generate a video from prompt with additional pose control
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
 
-    model_id = "runwayml/stable-diffusion-v1-5"
+    model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
     controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
         model_id, controlnet=controlnet, torch_dtype=torch.float16
