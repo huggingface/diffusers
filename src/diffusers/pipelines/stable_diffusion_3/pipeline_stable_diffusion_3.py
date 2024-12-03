@@ -77,7 +77,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -643,6 +643,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         return self._guidance_scale
 
     @property
+    def skip_guidance_layers(self):
+        return self._skip_guidance_layers
+
+    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -694,6 +698,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        skip_guidance_layers: List[int] = None,
+        skip_layer_guidance_scale: int = 2.8,
+        skip_layer_guidance_stop: int = 0.2,
+        skip_layer_guidance_start: int = 0.01,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -762,8 +770,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] instead of
+                a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -778,6 +786,22 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            skip_guidance_layers (`List[int]`, *optional*):
+                A list of integers that specify layers to skip during guidance. If not provided, all layers will be
+                used for guidance. If provided, the guidance will only be applied to the layers specified in the list.
+                Recommended value by StabiltyAI for Stable Diffusion 3.5 Medium is [7, 8, 9].
+            skip_layer_guidance_scale (`int`, *optional*): The scale of the guidance for the layers specified in
+                `skip_guidance_layers`. The guidance will be applied to the layers specified in `skip_guidance_layers`
+                with a scale of `skip_layer_guidance_scale`. The guidance will be applied to the rest of the layers
+                with a scale of `1`.
+            skip_layer_guidance_stop (`int`, *optional*): The step at which the guidance for the layers specified in
+                `skip_guidance_layers` will stop. The guidance will be applied to the layers specified in
+                `skip_guidance_layers` until the fraction specified in `skip_layer_guidance_stop`. Recommended value by
+                StabiltyAI for Stable Diffusion 3.5 Medium is 0.2.
+            skip_layer_guidance_start (`int`, *optional*): The step at which the guidance for the layers specified in
+                `skip_guidance_layers` will start. The guidance will be applied to the layers specified in
+                `skip_guidance_layers` from the fraction specified in `skip_layer_guidance_start`. Recommended value by
+                StabiltyAI for Stable Diffusion 3.5 Medium is 0.01.
 
         Examples:
 
@@ -809,6 +833,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         self._guidance_scale = guidance_scale
+        self._skip_layer_guidance_scale = skip_layer_guidance_scale
         self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
@@ -851,6 +876,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         if self.do_classifier_free_guidance:
+            if skip_guidance_layers is not None:
+                original_prompt_embeds = prompt_embeds
+                original_pooled_prompt_embeds = pooled_prompt_embeds
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
@@ -896,6 +924,27 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    should_skip_layers = (
+                        True
+                        if i > num_inference_steps * skip_layer_guidance_start
+                        and i < num_inference_steps * skip_layer_guidance_stop
+                        else False
+                    )
+                    if skip_guidance_layers is not None and should_skip_layers:
+                        timestep = t.expand(latents.shape[0])
+                        latent_model_input = latents
+                        noise_pred_skip_layers = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=original_prompt_embeds,
+                            pooled_projections=original_pooled_prompt_embeds,
+                            joint_attention_kwargs=self.joint_attention_kwargs,
+                            return_dict=False,
+                            skip_layers=skip_guidance_layers,
+                        )[0]
+                        noise_pred = (
+                            noise_pred + (noise_pred_text - noise_pred_skip_layers) * self._skip_layer_guidance_scale
+                        )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

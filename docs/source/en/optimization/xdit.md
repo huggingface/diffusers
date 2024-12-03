@@ -9,7 +9,7 @@ Optimization orthogonal to parallelization focuses on accelerating single GPU pe
 The overview of xDiT is shown as follows.
 
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/methods/xdit_overview.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/methods/xdit_overview.png">
 </div>
 You can install xDiT using the following command:
 
@@ -78,37 +78,36 @@ A subset of Diffusers models are supported in xDiT, such as Flux.1, Stable Diffu
 ## Benchmark
 We tested different models on various machines, and here is some of the benchmark data.
 
-
 ### Flux.1-schnell
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/flux/Flux-2k-L40.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/flux/Flux-2k-L40.png">
 </div>
 
 
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/flux/Flux-2K-A100.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/flux/Flux-2K-A100.png">
 </div>
 
 ### Stable Diffusion 3
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/sd3/L40-SD3.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/sd3/L40-SD3.png">
 </div>
 
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/sd3/A100-SD3.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/sd3/A100-SD3.png">
 </div>
 
 ### HunyuanDiT
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/L40-HunyuanDiT.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/hunuyuandit/L40-HunyuanDiT.png">
 </div>
 
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/A100-HunyuanDiT.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/hunuyuandit/V100-HunyuanDiT.png">
 </div>
 
 <div class="flex justify-center">
-    <img src="https://github.com/xdit-project/xDiT/raw/main/assets/performance/hunuyuandit/T4-HunyuanDiT.png">
+    <img src="https://huggingface.co/datasets/xDiT/documentation-images/resolve/main/performance/hunuyuandit/T4-HunyuanDiT.png">
 </div>
 
 More detailed performance metric can be found on our [github page](https://github.com/xdit-project/xDiT?tab=readme-ov-file#perf).
