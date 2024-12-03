@@ -392,6 +392,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation.
+                **experimental feature**: to use this feature, make sure to explicitly load text encoders to
+                the pipeline. Prompts will be ignored if text encoders are not loaded.
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
@@ -459,6 +461,11 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 lora_scale=None,
             )
         else:
+            if prompt is not None:
+                logger.warning(
+                    "prompt input is ignored when text encoders are not loaded to the pipeline. "
+                    "Make sure to explicitly load the text encoders to enable prompt input. "
+                )
             # max_sequence_length is 512, t5 encoder hidden size is 4096
             prompt_embeds = torch.zeros((batch_size, 512, 4096), device=device, dtype=image_embeds.dtype)
             # pooled_prompt_embeds is 768, clip text encoder hidden size
