@@ -338,13 +338,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         if device is None:
             device = self._execution_device
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
         # See Section 3.1. of the paper.
         max_length = max_sequence_length
 
