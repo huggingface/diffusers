@@ -206,7 +206,7 @@ class MochiDownBlock3D(nn.Module):
         for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -311,7 +311,7 @@ class MochiMidBlock3D(nn.Module):
         for i, (resnet, norm, attn) in enumerate(zip(self.resnets, self.norms, self.attentions)):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -392,7 +392,7 @@ class MochiUpBlock3D(nn.Module):
         for i, resnet in enumerate(self.resnets):
             conv_cache_key = f"resnet_{i}"
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def create_forward(*inputs):
@@ -437,7 +437,8 @@ class FourierFeatures(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         r"""Forward method of the `FourierFeatures` class."""
-
+        original_dtype = inputs.dtype
+        inputs = inputs.to(torch.float32)
         num_channels = inputs.shape[1]
         num_freqs = (self.stop - self.start) // self.step
 
@@ -450,7 +451,7 @@ class FourierFeatures(nn.Module):
         # Scale channels by frequency.
         h = w * h
 
-        return torch.cat([inputs, torch.sin(h), torch.cos(h)], dim=1)
+        return torch.cat([inputs, torch.sin(h), torch.cos(h)], dim=1).to(original_dtype)
 
 
 class MochiEncoder3D(nn.Module):
@@ -529,7 +530,7 @@ class MochiEncoder3D(nn.Module):
         hidden_states = self.proj_in(hidden_states)
         hidden_states = hidden_states.permute(0, 4, 1, 2, 3)
 
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def create_forward(*inputs):
@@ -646,7 +647,7 @@ class MochiDecoder3D(nn.Module):
         hidden_states = self.conv_in(hidden_states)
 
         # 1. Mid
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def create_forward(*inputs):
