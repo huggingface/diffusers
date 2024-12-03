@@ -205,6 +205,17 @@ class FluxPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
 
+    def test_sigmas(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_without_sigmas = pipe(**inputs).images[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["sigmas"] = [0.25]
+        output_with_sigmas = pipe(**inputs).images[0]
+        max_diff = np.abs(output_without_sigmas - output_with_sigmas).max()
+        assert max_diff > 1e-4
+
 
 @slow
 @require_big_gpu_with_torch_cuda
