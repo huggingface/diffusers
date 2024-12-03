@@ -1561,8 +1561,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
-        if self._progress_bar_config.get('disable', False) == True:
-            return NotTQDMNoOp()
         if iterable is not None:
             return tqdm(iterable, **self._progress_bar_config)
         elif total is not None:
