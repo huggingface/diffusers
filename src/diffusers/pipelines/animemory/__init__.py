@@ -22,9 +22,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_animemory"] = ["AniMemoryPipeline"]
-    _import_structure["modeling_text_encoder"] = ["AniMemoryT5", "AniMemoryAltCLip"]
     _import_structure["modeling_movq"] = ["MoVQ"]
+    _import_structure["modeling_text_encoder"] = ["AniMemoryAltCLip", "AniMemoryT5"]
+    _import_structure["pipeline_animemory"] = ["AniMemoryPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
