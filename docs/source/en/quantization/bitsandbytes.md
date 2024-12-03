@@ -80,27 +80,6 @@ By default, all the other modules such as `torch.nn.LayerNorm` are converted to 
 You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```py
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
-from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
-
-from diffusers import FluxTransformer2DModel
-from transformers import T5EncoderModel
-
-quant_config = TransformersBitsAndBytesConfig(
-    load_in_8bit=True,
-)
-
-text_encoder_2_8bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    subfolder="text_encoder_2",
-    quantization_config=quant_config,
-    torch_dtype=torch.float32,
-)
-
-quant_config = DiffusersBitsAndBytesConfig(
-    load_in_8bit=True,
-)
-
 transformer_8bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
@@ -110,6 +89,9 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 ```
 
 Let's generate an image using our quantized models.
+
+Setting `device_map="auto"` automatically fills all available space on the GPU(s) first, then the
+CPU, and finally, the hard drive (the absolute slowest option) if there is still not enough memory.
 
 ```py
 pipe = FluxPipeline.from_pretrained(
@@ -187,27 +169,6 @@ By default, all the other modules such as `torch.nn.LayerNorm` are converted to 
 You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```py
-from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
-from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
-
-from diffusers import FluxTransformer2DModel
-from transformers import T5EncoderModel
-
-quant_config = TransformersBitsAndBytesConfig(
-    load_in_4bit=True,
-)
-
-text_encoder_2_4bit = T5EncoderModel.from_pretrained(
-    "black-forest-labs/FLUX.1-dev,
-    subfolder="text_encoder_2",
-    quantization_config=quant_config,
-    torch_dtype=torch.float32,
-)
-
-quant_config = DiffusersBitsAndBytesConfig(
-    load_in_4bit=True,
-)
-
 transformer_4bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
@@ -217,6 +178,9 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 ```
 
 Let's generate an image using our quantized models.
+
+Setting `device_map="auto"` automatically fills all available space on the GPU(s) first, then the
+CPU, and finally, the hard drive (the absolute slowest option) if there is still not enough memory.
 
 ```py
 pipe = FluxPipeline.from_pretrained(
