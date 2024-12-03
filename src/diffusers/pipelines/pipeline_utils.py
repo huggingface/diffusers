@@ -102,6 +102,16 @@ SUPPORTED_DEVICE_MAP = ["balanced"]
 
 logger = logging.get_logger(__name__)
 
+class NotTQDMNoOp:
+    def __init__(*args, **kwargs):
+        return
+    def __enter__(self, *args, **kwargs):
+        return self
+    def __exit__(*args, **kwargs):
+        return
+    def update(*args, **kwargs):
+        return
+
 
 @dataclass
 class ImagePipelineOutput(BaseOutput):
@@ -1560,6 +1570,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
+        if self._progress_bar_config.get('disable', False) == True:
+            return NotTQDMNoOp()
         if iterable is not None:
             return tqdm(iterable, **self._progress_bar_config)
         elif total is not None:
