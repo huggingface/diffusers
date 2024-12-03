@@ -162,6 +162,10 @@ def get_ae_config(name: str):
             "decoder_norm_types": ["batch_norm", "batch_norm", "batch_norm", "rms_norm", "rms_norm", "rms_norm"],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu"],
         }
+        if name == "dc-ae-f32c32-in-1.0":
+            config["scaling_factor"] = 0.3189
+        elif name == "dc-ae-f32c32-mix-1.0":
+            config["scaling_factor"] = 0.4552
     elif name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
         config = {
             "latent_channels": 512,
@@ -202,6 +206,10 @@ def get_ae_config(name: str):
             ],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
         }
+        if name == "dc-ae-f128c512-in-1.0":
+            config["scaling_factor"] = 0.4883
+        elif name == "dc-ae-f128c512-mix-1.0":
+            config["scaling_factor"] = 0.3620
     elif name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
         config = {
             "latent_channels": 128,
@@ -239,6 +247,10 @@ def get_ae_config(name: str):
             ],
             "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
         }
+        if name == "dc-ae-f64c128-in-1.0":
+            config["scaling_factor"] = 0.2889
+        elif name == "dc-ae-f64c128-mix-1.0":
+            config["scaling_factor"] = 0.4538
 
     return config
 
