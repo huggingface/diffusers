@@ -14,7 +14,7 @@ Before running the scripts, make sure to install the library's training dependen
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
-##  Example<a name = "Example"></a>
+##  Search for models
 ```bash
 !wget https://raw.githubusercontent.com/suzukimain/diffusers/refs/heads/ModelSearch/examples/model_search/search_for_civitai_and_HF.py
 ```
