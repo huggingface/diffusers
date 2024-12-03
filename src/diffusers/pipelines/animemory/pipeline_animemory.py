@@ -71,19 +71,18 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AniMemoryPipeline
 
-        >>> pipe = AniMemoryPipeline.from_pretrained(
-        ...     "animEEEmpire/AniMemory-alpha", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = AniMemoryPipeline.from_pretrained("animEEEmpire/AniMemory-alpha", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = '一只凶恶的狼，猩红的眼神，在午夜咆哮，月光皎洁'
-        >>> negative_prompt = 'nsfw, worst quality, low quality, normal quality, low resolution, monochrome, blurry, wrong, Mutated hands and fingers, text, ugly faces, twisted, jpeg artifacts, watermark, low contrast, realistic'
+        >>> prompt = "一只凶恶的狼，猩红的眼神，在午夜咆哮，月光皎洁"
+        >>> negative_prompt = "nsfw, worst quality, low quality, normal quality, low resolution, monochrome, blurry, wrong, Mutated hands and fingers, text, ugly faces, twisted, jpeg artifacts, watermark, low contrast, realistic"
         >>> image = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     num_inference_steps=40,
-        ...     height=1024, width=1024,
-        ...     guidance_scale=6.0
+        ...     height=1024,
+        ...     width=1024,
+        ...     guidance_scale=6.0,
         ... ).images[0]
         >>> image.save("output.png")
         ```
@@ -359,11 +358,14 @@ class AniMemoryPipeline(
 
     Args:
         vae ([`MoVQ`]):
-            Variational Auto-Encoder (VAE) Model. AniMemory uses [MoVQ](https://github.com/ai-forever/Kandinsky-3/blob/main/kandinsky3/movq.py)
+            Variational Auto-Encoder (VAE) Model. AniMemory uses
+            [MoVQ](https://github.com/ai-forever/Kandinsky-3/blob/main/kandinsky3/movq.py)
         text_encoder ([`AniMemoryT5`]):
-            Frozen text-encoder. AniMemory builds based on [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel).
+            Frozen text-encoder. AniMemory builds based on
+            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel).
         text_encoder_2 ([`AniMemoryAltCLip`]):
-            Second frozen text-encoder. AniMemory builds based on [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
+            Second frozen text-encoder. AniMemory builds based on
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
         tokenizer (`XLMRobertaTokenizerFast`):
             Tokenizer of class
             [XLMRobertaTokenizerFast](https://huggingface.co/docs/transformers/v4.46.3/en/model_doc/xlm-roberta#transformers.XLMRobertaTokenizerFast).

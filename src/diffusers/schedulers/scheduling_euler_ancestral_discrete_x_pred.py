@@ -31,8 +31,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
     """
-    Ancestral sampling with Euler method steps. This model inherits from [`EulerAncestralDiscreteScheduler`]. Check the superclass
-    documentation for the args and returns.
+    Ancestral sampling with Euler method steps. This model inherits from [`EulerAncestralDiscreteScheduler`]. Check the
+    superclass documentation for the args and returns.
 
     For more details, see the original paper: https://arxiv.org/abs/2403.08381
     """
