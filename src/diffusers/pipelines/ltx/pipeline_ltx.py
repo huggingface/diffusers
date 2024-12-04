@@ -197,10 +197,6 @@ class LTXPipeline(DiffusionPipeline):
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 128
         )
 
-        self.default_height = 512
-        self.default_width = 704
-        self.default_frames = 121
-
     # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->128
     def _get_t5_prompt_embeds(
         self,
@@ -389,6 +385,10 @@ class LTXPipeline(DiffusionPipeline):
 
     @staticmethod
     def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
+        # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape [B, C, F // p_t, p_t, H // p, p, W // p, p].
+        # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
+        # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
+        # dim=0 is the batch size, dim=1 is the effective video sequence length, dim=2 is the effective number of input features
         batch_size, num_channels, num_frames, height, width = latents.shape
         post_patch_num_frames = num_frames // patch_size_t
         post_patch_height = height // patch_size
@@ -410,7 +410,10 @@ class LTXPipeline(DiffusionPipeline):
     def _unpack_latents(
         latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
     ) -> torch.Tensor:
-        batch_size, num_channels, video_sequence_length = latents.shape
+        # Packed latents of shape [B, S, D] (S is the effective video sequence length, D is the effective feature dimensions)
+        # are unpacked and reshaped into a video tensor of shape [B, C, F, H, W]. This is the inverse operation of
+        # what happens in the `_pack_latents` method.
+        batch_size = latents.size(0)
         latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
         latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
         return latents
@@ -419,6 +422,7 @@ class LTXPipeline(DiffusionPipeline):
     def _normalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
     ) -> torch.Tensor:
+        # Normalize latents across the channel dimension [B, C, F, H, W]
         latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
         latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
         latents = (latents - latents_mean) * scaling_factor / latents_std
@@ -428,6 +432,7 @@ class LTXPipeline(DiffusionPipeline):
     def _denormalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
     ) -> torch.Tensor:
+        # Denormalize latents across the channel dimension [B, C, F, H, W]
         latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
         latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
         latents = latents * latents_std / scaling_factor + latents_mean
@@ -488,9 +493,9 @@ class LTXPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_frames: int = 81,
+        height: int = 512,
+        width: int = 704,
+        num_frames: int = 161,
         frame_rate: int = 25,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -515,11 +520,11 @@ class LTXPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to `self.default_height`):
+            height (`int`, defaults to `512`):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
-            width (`int`, *optional*, defaults to `self.default_width`):
+            width (`int`, defaults to `704`):
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
-            num_frames (`int`, defaults to `81 `):
+            num_frames (`int`, defaults to `161`):
                 The number of video frames to generate
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -580,10 +585,6 @@ class LTXPipeline(DiffusionPipeline):
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
-
-        height = height or self.default_height
-        width = width or self.default_width
-        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -671,6 +672,7 @@ class LTXPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
+        latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
         rope_interpolation_scale = (
             1 / latent_frame_rate,
             self.vae_spatial_compression_ratio,
