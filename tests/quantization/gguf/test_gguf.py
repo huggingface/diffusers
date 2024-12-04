@@ -4,16 +4,24 @@ import unittest
 import torch
 
 from diffusers import FluxTransformer2DModel, GGUFQuantizationConfig
-from diffusers.quantizers.gguf.utils import GGUFParameter
 from diffusers.utils.testing_utils import (
+    is_gguf_available,
     nightly,
+    require_accelerate,
     require_big_gpu_with_torch_cuda,
+    require_gguf_version_greater_or_equal,
     torch_device,
 )
 
 
+if is_gguf_available():
+    from diffusers.quantizers.gguf.utils import GGUFParameter
+
+
 @nightly
 @require_big_gpu_with_torch_cuda
+@require_accelerate
+@require_gguf_version_greater_or_equal("0.10.0")
 class GGUFSingleFileTests(unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
     torch_dtype = torch.bfloat16

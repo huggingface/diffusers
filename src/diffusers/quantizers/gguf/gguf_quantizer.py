@@ -49,6 +49,7 @@ class GGUFQuantizer(DiffusersQuantizer):
                 "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf>=0.10.0`"
             )
 
+    # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
     def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
