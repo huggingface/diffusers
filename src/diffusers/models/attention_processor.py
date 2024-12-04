@@ -822,18 +822,26 @@ class SanaMultiscaleLinearAttention(nn.Module):
         self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
         self.norm_out = get_normalization(norm_type, num_features=out_channels)
 
-        self.processor = SanaMultiscaleLinearAttnProcessor2_0()
-        self.processor_quadratic = SanaMultiscaleQuadraticAttnProcessor2_0()
+        self.processor = SanaMultiscaleAttnProcessor2_0()
+
+    def apply_linear_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)  # Adds padding
+        scores = torch.matmul(value, key.transpose(-1, -2))
+        hidden_states = torch.matmul(scores, query)
+
+        hidden_states = hidden_states.to(dtype=torch.float32)
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
+        return hidden_states
+
+    def apply_quadratic_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        scores = torch.matmul(key.transpose(-1, -2), query)
+        scores = scores.to(dtype=torch.float32)
+        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
+        hidden_states = torch.matmul(value, scores)
+        return hidden_states
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        height, width = hidden_states.shape[-2:]
-
-        if height * width > self.attention_head_dim:
-            hidden_states = self.processor(self, hidden_states)
-        else:
-            hidden_states = self.processor_quadratic(self, hidden_states)
-
-        return hidden_states
+        return self.processor(self, hidden_states)
 
 
 class AttnProcessor:
@@ -5089,65 +5097,18 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
         return hidden_states
 
 
-class SanaMultiscaleLinearAttnProcessor2_0:
-    r"""
-    Processor for implementing multiscale linear attention.
-    """
-
-    def __call__(self, attn: SanaMultiscaleLinearAttention, hidden_states: torch.Tensor) -> torch.Tensor:
-        residual = hidden_states
-
-        batch_size, _, height, width = hidden_states.shape
-        original_dtype = hidden_states.dtype
-
-        hidden_states = hidden_states.movedim(1, -1)
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-        hidden_states = torch.cat([query, key, value], dim=3)
-        hidden_states = hidden_states.movedim(-1, 1)
-
-        multiscale_hidden_states = [hidden_states]
-        for block in attn.to_qkv_multiscale:
-            multiscale_hidden_states.append(block(hidden_states))
-
-        hidden_states = torch.cat(multiscale_hidden_states, dim=1)
-
-        hidden_states = hidden_states.to(dtype=torch.float32)
-        hidden_states = hidden_states.reshape(batch_size, -1, 3 * attn.attention_head_dim, height * width)
-
-        query, key, value = hidden_states.chunk(3, dim=2)
-        query = attn.nonlinearity(query)
-        key = attn.nonlinearity(key)
-        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)
-
-        scores = torch.matmul(value, key.transpose(-1, -2))
-        hidden_states = torch.matmul(scores, query)
-
-        hidden_states = hidden_states.to(dtype=torch.float32)
-        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + attn.eps)
-        hidden_states = hidden_states.to(dtype=original_dtype)
-
-        hidden_states = torch.reshape(hidden_states, (batch_size, -1, height, width))
-        hidden_states = attn.to_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
-
-        if attn.norm_type == "rms_norm":
-            hidden_states = attn.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
-        else:
-            hidden_states = attn.norm_out(hidden_states)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        return hidden_states
-
-
-class SanaMultiscaleQuadraticAttnProcessor2_0:
+class SanaMultiscaleAttnProcessor2_0:
     r"""
     Processor for implementing multiscale quadratic attention.
     """
 
     def __call__(self, attn: SanaMultiscaleLinearAttention, hidden_states: torch.Tensor) -> torch.Tensor:
+        height, width = hidden_states.shape[-2:]
+        if height * width > attn.attention_head_dim:
+            use_linear_attention = True
+        else:
+            use_linear_attention = False
+
         residual = hidden_states
 
         batch_size, _, height, width = list(hidden_states.size())
@@ -5166,17 +5127,21 @@ class SanaMultiscaleQuadraticAttnProcessor2_0:
 
         hidden_states = torch.cat(multi_scale_qkv, dim=1)
 
+        if use_linear_attention:
+            # for linear attention upcast hidden_states to float32
+            hidden_states = hidden_states.to(dtype=torch.float32)
+
         hidden_states = hidden_states.reshape(batch_size, -1, 3 * attn.attention_head_dim, height * width)
 
         query, key, value = hidden_states.chunk(3, dim=2)
         query = attn.nonlinearity(query)
         key = attn.nonlinearity(key)
 
-        scores = torch.matmul(key.transpose(-1, -2), query)
-        scores = scores.to(dtype=torch.float32)
-        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + attn.eps)
-        scores = scores.to(dtype=original_dtype)
-        hidden_states = torch.matmul(value, scores)
+        if use_linear_attention:
+            hidden_states = attn.apply_linear_attention(query, key, value)
+            hidden_states = hidden_states.to(dtype=original_dtype)
+        else:
+            hidden_states = attn.apply_quadratic_attention(query, key, value)
 
         hidden_states = torch.reshape(hidden_states, (batch_size, -1, height, width))
         hidden_states = attn.to_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
