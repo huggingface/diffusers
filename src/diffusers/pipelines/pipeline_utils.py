@@ -391,6 +391,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         device = device or device_arg
+        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -414,9 +415,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
         if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            raise ValueError(
-                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-            )
+            if not pipeline_has_bnb:
+                raise ValueError(
+                    "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+                )
+            # PR: https://github.com/huggingface/accelerate/pull/3223/
+            elif pipeline_has_bnb and is_accelerate_version("<", "1.1.0.dev0"):
+                raise ValueError(
+                    "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+                )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
@@ -429,19 +436,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
             logger.warning(
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
-            )
-
-        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
-        # PR: https://github.com/huggingface/accelerate/pull/3223/
-        if (
-            not pipeline_is_offloaded
-            and not pipeline_is_sequentially_offloaded
-            and pipeline_has_bnb
-            and torch.device(device).type == "cuda"
-            and is_accelerate_version("<", "1.1.0.dev0")
-        ):
-            raise ValueError(
-                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
             )
 
         module_names, _ = self._get_signature_keys(self)
