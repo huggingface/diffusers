@@ -1010,14 +1010,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     dtype_present_in_args = True
                     break
 
-        # Checks if the model has been loaded in 4-bit or 8-bit with BNB
-        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+        if getattr(self, "is_quantized", False):
             if dtype_present_in_args:
                 raise ValueError(
-                    "You cannot cast a bitsandbytes model in a new `dtype`. Make sure to load the model using `from_pretrained` using the"
-                    " desired `dtype` by passing the correct `torch_dtype` argument."
+                    "Casting a quantized model to a new `dtype` is unsupported. To set the dtype of unquantized layers, please "
+                    "use the `torch_dtype` argument when loading the model using `from_pretrained` or `from_single_file`"
                 )
 
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             if getattr(self, "is_loaded_in_8bit", False):
                 raise ValueError(
                     "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
