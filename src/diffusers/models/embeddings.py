@@ -959,7 +959,12 @@ class FluxPosEmbed(nn.Module):
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i], pos[:, i], repeat_interleave_real=True, use_real=True, freqs_dtype=freqs_dtype
+                self.axes_dim[i],
+                pos[:, i],
+                self.theta,
+                repeat_interleave_real=True,
+                use_real=True,
+                freqs_dtype=freqs_dtype,
             )
             cos_out.append(cos)
             sin_out.append(sin)
