@@ -226,13 +226,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 fn_recursive_set_flash_attention(module)
 
     def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
-        r""" 
+        r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
         self.set_use_xla_flash_attention(True, partition_spec)
 
     def disable_xla_flash_attention(self):
-        r""" 
+        r"""
         Disable the flash attention pallals kernel for torch_xla.
         """
         self.set_use_xla_flash_attention(False)

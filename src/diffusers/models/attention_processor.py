@@ -21,7 +21,7 @@ from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
-from ..utils.import_utils import is_torch_npu_available, is_xformers_available, is_torch_xla_version
+from ..utils.import_utils import is_torch_npu_available, is_torch_xla_version, is_xformers_available
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
 
 
@@ -39,8 +39,8 @@ else:
 if is_torch_xla_available():
     # flash attention pallas kernel is introduced in the torch_xla 2.3 release.
     if is_torch_xla_version(">", "2.2"):
-        from torch_xla.runtime import is_spmd
         from torch_xla.experimental.custom_kernel import flash_attention
+        from torch_xla.runtime import is_spmd
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
