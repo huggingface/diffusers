@@ -90,7 +90,11 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
+class StableDiffusionINSTDIFFPipeline(
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    StableDiffusionLoraLoaderMixin,
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with InstanceDiffusion.
 
@@ -658,13 +662,15 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
             )
             instdiff_phrases = instdiff_phrases[:max_objs]
             instdiff_boxes = instdiff_boxes[:max_objs]
-        # prepare batched input to the INSTDIFFTextBoundingboxProjection (boxes, phrases, mask)
-        # Get tokens for phrases from pre-trained CLIPTokenizer
-        tokenizer_inputs = self.tokenizer(instdiff_phrases, padding=True, return_tensors="pt").to(device)
-        # For the token, we use the same pre-trained text encoder
-        # to obtain its text feature
-        _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
+
         n_objs = len(instdiff_boxes)
+        if n_objs > 0:
+            # prepare batched input to the INSTDIFFTextBoundingboxProjection (boxes, phrases, mask)
+            # Get tokens for phrases from pre-trained CLIPTokenizer
+            tokenizer_inputs = self.tokenizer(instdiff_phrases, padding=True, return_tensors="pt").to(device)
+            # For the token, we use the same pre-trained text encoder
+            # to obtain its text feature
+            _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
 
         # 3. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -673,7 +679,7 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
             num_channels_latents,
             height,
             width,
-            _text_embeddings.dtype,
+            self.text_encoder.dtype,
             device,
             generator,
             latents,
@@ -728,7 +734,7 @@ class StableDiffusionINSTDIFFPipeline(DiffusionPipeline, StableDiffusionMixin):
                     boxes[:1] = torch.tensor(instdiff_boxes[j : j + 1])
                     text_embeddings[:1] = _text_embeddings[j : j + 1]
                     masks[:1] = 1
-                else:
+                elif n_objs > 0:
                     boxes[:n_objs] = torch.tensor(instdiff_boxes)
                     text_embeddings[:n_objs] = _text_embeddings
                     masks[:n_objs] = 1
