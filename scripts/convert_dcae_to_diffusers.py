@@ -8,10 +8,6 @@ from safetensors.torch import load_file
 from diffusers import AutoencoderDC
 
 
-def remove_keys_(key: str, state_dict: Dict[str, Any]):
-    state_dict.pop(key)
-
-
 def remap_qkv_(key: str, state_dict: Dict[str, Any]):
     qkv = state_dict.pop(key)
     q, k, v = torch.chunk(qkv, 3, dim=0)

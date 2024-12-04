@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ..activations import get_activation
 from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
@@ -394,7 +395,7 @@ class Decoder(nn.Module):
         return hidden_states
 
 
-class AutoencoderDC(ModelMixin, ConfigMixin):
+class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     An Autoencoder model introduced in [DCAE](https://arxiv.org/abs/2410.10733) and used in
     [SANA](https://arxiv.org/abs/2410.10629).
