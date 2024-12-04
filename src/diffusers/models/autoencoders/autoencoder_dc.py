@@ -53,6 +53,7 @@ class GLUMBConv(nn.Module):
         hidden_states = hidden_states * self.nonlinearity(gate)
 
         hidden_states = self.conv_point(hidden_states)
+        # move channel to the last dimension so we apply RMSnorm across channel dimension
         hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
 
         return hidden_states + residual
@@ -82,6 +83,7 @@ class ResBlock(nn.Module):
         hidden_states = self.conv2(hidden_states)
 
         if self.norm_type == "rms_norm":
+            # move channel to the last dimension so we apply RMSnorm across channel dimension
             hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
         else:
             hidden_states = self.norm(hidden_states)
