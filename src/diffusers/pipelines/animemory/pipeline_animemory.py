@@ -18,8 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from transformers import (
     CLIPImageProcessor,
-    XLMRobertaTokenizerFast,
     CLIPVisionModelWithProjection,
+    XLMRobertaTokenizerFast,
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -49,10 +49,9 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
-from .pipeline_output import AniMemoryPipelineOutput
-
-from .modeling_text_encoder import AniMemoryT5, AniMemoryAltCLip
 from .modeling_movq import MoVQ
+from .modeling_text_encoder import AniMemoryAltCLip, AniMemoryT5
+from .pipeline_output import AniMemoryPipelineOutput
 
 
 if is_torch_xla_available():
@@ -72,19 +71,18 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AniMemoryPipeline
 
-        >>> pipe = AniMemoryPipeline.from_pretrained(
-        ...     "animEEEmpire/AniMemory-alpha", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = AniMemoryPipeline.from_pretrained("animEEEmpire/AniMemory-alpha", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = '一只凶恶的狼，猩红的眼神，在午夜咆哮，月光皎洁'
-        >>> negative_prompt = 'nsfw, worst quality, low quality, normal quality, low resolution, monochrome, blurry, wrong, Mutated hands and fingers, text, ugly faces, twisted, jpeg artifacts, watermark, low contrast, realistic'
+        >>> prompt = "一只凶恶的狼，猩红的眼神，在午夜咆哮，月光皎洁"
+        >>> negative_prompt = "nsfw, worst quality, low quality, normal quality, low resolution, monochrome, blurry, wrong, Mutated hands and fingers, text, ugly faces, twisted, jpeg artifacts, watermark, low contrast, realistic"
         >>> image = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     num_inference_steps=40,
-        ...     height=1024, width=1024,
-        ...     guidance_scale=6.0
+        ...     height=1024,
+        ...     width=1024,
+        ...     guidance_scale=6.0,
         ... ).images[0]
         >>> image.save("output.png")
         ```
@@ -178,74 +176,59 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-def split_input_ids(
-    input_ids,
-    attention_mask,
-    start,
-    model_max_length,
-    bos_token_id,
-    eos_token_id,
-    pad_token_id
-):
+def split_input_ids(input_ids, attention_mask, start, model_max_length, bos_token_id, eos_token_id, pad_token_id):
     iids_list = []
     mask_list = []
     if start > 0:
-        cur_input_ids = input_ids[start-1:]
+        cur_input_ids = input_ids[start - 1 :]
         cur_input_ids[0] = bos_token_id
-        if not attention_mask is None:
-            cur_attention_mask = attention_mask[start-1:]
+        if attention_mask is not None:
+            cur_attention_mask = attention_mask[start - 1 :]
             cur_attention_mask[0] = 1
     else:
         cur_input_ids = input_ids
-        if not attention_mask is None:
+        if attention_mask is not None:
             cur_attention_mask = attention_mask
     n = len(cur_input_ids)
 
     for i in range(1, n - model_max_length + 2, model_max_length - 2):
         ids_chunk = (
             cur_input_ids[0].unsqueeze(0),
-            cur_input_ids[i: i + model_max_length - 2],
+            cur_input_ids[i : i + model_max_length - 2],
             cur_input_ids[-1].unsqueeze(0),
         )
         ids_chunk = torch.cat(ids_chunk)
-        if not attention_mask is None:
+        if attention_mask is not None:
             mask_chunk = (
                 cur_attention_mask[0].unsqueeze(0),
-                cur_attention_mask[i: i + model_max_length - 2],
+                cur_attention_mask[i : i + model_max_length - 2],
                 cur_attention_mask[-1].unsqueeze(0),
             )
             mask_chunk = torch.cat(mask_chunk)
 
         if ids_chunk[-2] != eos_token_id and ids_chunk[-2] != pad_token_id:
             ids_chunk[-1] = eos_token_id
-            if not attention_mask is None:
+            if attention_mask is not None:
                 mask_chunk[-1] = 1
         if ids_chunk[1] == pad_token_id:
             ids_chunk[1] = eos_token_id
-            if not attention_mask is None:
+            if attention_mask is not None:
                 mask_chunk[1] = 1
 
         iids_list.append(ids_chunk)
-        if not attention_mask is None:
+        if attention_mask is not None:
             mask_list.append(mask_chunk)
 
     return iids_list, mask_list if len(mask_list) > 0 else None
 
 
 # Modified from [library.train_util.get_input_ids](https://github.com/kohya-ss/sd-scripts/blob/e5ac09574928ec02fba5fe78267764d26bb7faa6/library/train_util.py#L795)
-def get_input_ids(
-    caption,
-    tokenizer,
-    tokenizer_max_length,
-    dense_caption_split_method,
-    chunk,
-    punctuation_ids
-):
-
-    prompt_tokens = tokenizer(caption, max_length=tokenizer_max_length,
-        padding="max_length", truncation=True, return_tensors="pt")
-    input_ids= prompt_tokens['input_ids'].squeeze(0)
-    attention_mask= prompt_tokens['attention_mask'].squeeze(0)
+def get_input_ids(caption, tokenizer, tokenizer_max_length, dense_caption_split_method, chunk, punctuation_ids):
+    prompt_tokens = tokenizer(
+        caption, max_length=tokenizer_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    input_ids = prompt_tokens["input_ids"].squeeze(0)
+    attention_mask = prompt_tokens["attention_mask"].squeeze(0)
 
     if not chunk:
         return input_ids[None, ...], attention_mask[None, ...]
@@ -253,14 +236,21 @@ def get_input_ids(
     iids_list = []
     mask_list = []
 
-    if dense_caption_split_method == 'length_split':
-        iids_list, mask_list = split_input_ids(input_ids, attention_mask, 0,
-            tokenizer.model_max_length, tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id)
-    elif dense_caption_split_method == 'punctuation_split':
+    if dense_caption_split_method == "length_split":
+        iids_list, mask_list = split_input_ids(
+            input_ids,
+            attention_mask,
+            0,
+            tokenizer.model_max_length,
+            tokenizer.bos_token_id,
+            tokenizer.eos_token_id,
+            tokenizer.pad_token_id,
+        )
+    elif dense_caption_split_method == "punctuation_split":
         can_split_tensor = torch.zeros_like(input_ids)
         for punctuation_id in punctuation_ids:
-            can_split_tensor = torch.logical_or(can_split_tensor,input_ids==punctuation_id)
-        can_split_index = [0] + [i[0] for i in torch.nonzero(can_split_tensor).tolist()] + [len(input_ids)-1]
+            can_split_tensor = torch.logical_or(can_split_tensor, input_ids == punctuation_id)
+        can_split_index = [0] + [i[0] for i in torch.nonzero(can_split_tensor).tolist()] + [len(input_ids) - 1]
         start = 1
         end = 1
 
@@ -282,36 +272,57 @@ def get_input_ids(
                     end = start + (tokenizer.model_max_length - 2)
                 ids_chunk = torch.tensor([tokenizer.pad_token_id] * tokenizer.model_max_length, dtype=torch.int64)
                 ids_chunk[0] = tokenizer.bos_token_id
-                ids_chunk[1:1+end-start] = input_ids[start:end]
-                ids_chunk[1+end-start] = input_ids[-1]
+                ids_chunk[1 : 1 + end - start] = input_ids[start:end]
+                ids_chunk[1 + end - start] = input_ids[-1]
                 mask_chunk = torch.zeros(tokenizer.model_max_length).to(torch.int64)
                 mask_chunk[0] = 1
-                mask_chunk[1:1+end-start] = attention_mask[start:end]
+                mask_chunk[1 : 1 + end - start] = attention_mask[start:end]
                 mask_chunk[1 + end - start] = attention_mask[-1]
                 if ids_chunk[1] == tokenizer.pad_token_id:
                     ids_chunk[1] = tokenizer.eos_token_id
                     mask_chunk[1] = 1
                 if tokenizer.eos_token_id not in ids_chunk:
-                    ids_chunk[1+end-start] = tokenizer.eos_token_id
+                    ids_chunk[1 + end - start] = tokenizer.eos_token_id
                     mask_chunk[1 + end - start] = 1
                 iids_list.append(ids_chunk)
                 mask_list.append(mask_chunk)
-                if len(iids_list) ==3:
+                if len(iids_list) == 3:
                     break
                 start = end
             end = i + 1
 
         if len(iids_list) == 0:
-            iids_list, mask_list = split_input_ids(input_ids, attention_mask, 0,
-                tokenizer.model_max_length, tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id)
+            iids_list, mask_list = split_input_ids(
+                input_ids,
+                attention_mask,
+                0,
+                tokenizer.model_max_length,
+                tokenizer.bos_token_id,
+                tokenizer.eos_token_id,
+                tokenizer.pad_token_id,
+            )
         elif len(iids_list) == 1:
-            iids_list1, mask_list1 = split_input_ids(input_ids, attention_mask, start,
-                tokenizer.model_max_length, tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id)
+            iids_list1, mask_list1 = split_input_ids(
+                input_ids,
+                attention_mask,
+                start,
+                tokenizer.model_max_length,
+                tokenizer.bos_token_id,
+                tokenizer.eos_token_id,
+                tokenizer.pad_token_id,
+            )
             iids_list = (iids_list + iids_list1)[:3]
             mask_list = (mask_list + mask_list1)[:3]
         elif len(iids_list) == 2:
-            iids_list1, mask_list1 = split_input_ids(input_ids, attention_mask, start,
-                tokenizer.model_max_length, tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id)
+            iids_list1, mask_list1 = split_input_ids(
+                input_ids,
+                attention_mask,
+                start,
+                tokenizer.model_max_length,
+                tokenizer.bos_token_id,
+                tokenizer.eos_token_id,
+                tokenizer.pad_token_id,
+            )
             iids_list = (iids_list + iids_list1)[:3]
             mask_list = (mask_list + mask_list1)[:3]
     else:
@@ -347,11 +358,14 @@ class AniMemoryPipeline(
 
     Args:
         vae ([`MoVQ`]):
-            Variational Auto-Encoder (VAE) Model. AniMemory uses [MoVQ](https://github.com/ai-forever/Kandinsky-3/blob/main/kandinsky3/movq.py)
+            Variational Auto-Encoder (VAE) Model. AniMemory uses
+            [MoVQ](https://github.com/ai-forever/Kandinsky-3/blob/main/kandinsky3/movq.py)
         text_encoder ([`AniMemoryT5`]):
-            Frozen text-encoder. AniMemory builds based on [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel).
+            Frozen text-encoder. AniMemory builds based on
+            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel).
         text_encoder_2 ([`AniMemoryAltCLip`]):
-            Second frozen text-encoder. AniMemory builds based on [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
+            Second frozen text-encoder. AniMemory builds based on
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection).
         tokenizer (`XLMRobertaTokenizerFast`):
             Tokenizer of class
             [XLMRobertaTokenizerFast](https://huggingface.co/docs/transformers/v4.46.3/en/model_doc/xlm-roberta#transformers.XLMRobertaTokenizerFast).
@@ -420,10 +434,9 @@ class AniMemoryPipeline(
         self.unet.time_proj.downscale_freq_shift = 1
 
         self.scheduler.config.clip_sample = False
-        self.scheduler.config.timestep_spacing = 'linspace'
-        self.scheduler.config.prediction_type = 'sample'
+        self.scheduler.config.timestep_spacing = "linspace"
+        self.scheduler.config.prediction_type = "sample"
         self.scheduler.rescale_betas_zero_snr()
-
 
     def encode_prompt(
         self,
@@ -517,8 +530,10 @@ class AniMemoryPipeline(
             [self.text_encoder, self.text_encoder_2] if self.text_encoder is not None else [self.text_encoder_2]
         )
 
-        punctuation_ids = [[5, 4, 74, 32, 38, 4730, 30, 4, 74, 32, 38, 4730],
-                           [5, 4, 74, 32, 38, 4730, 30, 4, 74, 32, 38, 4730]]
+        punctuation_ids = [
+            [5, 4, 74, 32, 38, 4730, 30, 4, 74, 32, 38, 4730],
+            [5, 4, 74, 32, 38, 4730, 30, 4, 74, 32, 38, 4730],
+        ]
         max_token_length = 227
 
         if prompt_embeds is None:
@@ -530,14 +545,13 @@ class AniMemoryPipeline(
             prompts = [prompt, prompt_2]
             text_encoder_idx = 0
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
-
                 text_input_ids, attention_mask = get_input_ids(
                     prompt,
                     tokenizers[text_encoder_idx],
                     max_token_length,
                     "punctuation_split",
                     False if text_encoder_idx == 0 else True,
-                    punctuation_ids[text_encoder_idx]
+                    punctuation_ids[text_encoder_idx],
                 )
 
                 tk_len = text_input_ids.shape[-1]
@@ -549,11 +563,13 @@ class AniMemoryPipeline(
                 if text_encoder_idx == 1:
                     tmp_ids = text_input_ids.reshape(-1, 3, text_input_ids.shape[-1])
                     _, n2, tk_len2 = tmp_ids.size()
-                    prompt_embeds = prompt_embeds.reshape((-1, n2*tk_len2, prompt_embeds.shape[-1]))
+                    prompt_embeds = prompt_embeds.reshape((-1, n2 * tk_len2, prompt_embeds.shape[-1]))
                     if n2 > 1:
                         states_list = [prompt_embeds[:, 0].unsqueeze(1)]
                         for i in range(1, max_token_length, tokenizers[text_encoder_idx].model_max_length):
-                            states_list.append(prompt_embeds[:, i: i + tokenizers[text_encoder_idx].model_max_length - 2])
+                            states_list.append(
+                                prompt_embeds[:, i : i + tokenizers[text_encoder_idx].model_max_length - 2]
+                            )
                         states_list.append(prompt_embeds[:, -1].unsqueeze(1))
                         prompt_embeds = torch.cat(states_list, dim=1)
 
@@ -605,7 +621,7 @@ class AniMemoryPipeline(
                     max_token_length,
                     "punctuation_split",
                     False if text_encoder_idx == 0 else True,
-                    punctuation_ids[text_encoder_idx]
+                    punctuation_ids[text_encoder_idx],
                 )
 
                 tk_len = negative_text_input_ids.shape[-1]
@@ -620,12 +636,15 @@ class AniMemoryPipeline(
                 if text_encoder_idx == 1:
                     negative_tmp_ids = negative_text_input_ids.reshape(-1, 3, negative_text_input_ids.shape[-1])
                     _, n2, tk_len2 = negative_tmp_ids.size()
-                    negative_prompt_embeds = negative_prompt_embeds.reshape((-1, n2*tk_len2, negative_prompt_embeds.shape[-1]))
+                    negative_prompt_embeds = negative_prompt_embeds.reshape(
+                        (-1, n2 * tk_len2, negative_prompt_embeds.shape[-1])
+                    )
                     if n2 > 1:
                         states_list = [negative_prompt_embeds[:, 0].unsqueeze(1)]
                         for i in range(1, max_token_length, tokenizers[text_encoder_idx].model_max_length):
-                            states_list.append(negative_prompt_embeds[:,
-                                               i: i + tokenizers[text_encoder_idx].model_max_length - 2])
+                            states_list.append(
+                                negative_prompt_embeds[:, i : i + tokenizers[text_encoder_idx].model_max_length - 2]
+                            )
                         states_list.append(negative_prompt_embeds[:, -1].unsqueeze(1))
                         negative_prompt_embeds = torch.cat(states_list, dim=1)
                         negative_pooled_prompt_embeds = negative_pooled_ouput[::n2]

@@ -31,8 +31,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
     """
-    Ancestral sampling with Euler method steps. This model inherits from [`EulerAncestralDiscreteScheduler`]. Check the superclass 
-    documentation for the args and returns. 
+    Ancestral sampling with Euler method steps. This model inherits from [`EulerAncestralDiscreteScheduler`]. Check the
+    superclass documentation for the args and returns.
 
     For more details, see the original paper: https://arxiv.org/abs/2403.08381
     """
@@ -46,8 +46,8 @@ class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
-        steps_offset: int = 0
-        ):
+        steps_offset: int = 0,
+    ):
         super(EulerAncestralDiscreteXPredScheduler, self).__init__(
             num_train_timesteps,
             beta_start,
@@ -56,17 +56,17 @@ class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
             trained_betas,
             prediction_type,
             timestep_spacing,
-            steps_offset
-            )
+            steps_offset,
+        )
 
-        sigmas = np.array(((1 - self.alphas_cumprod)) ** 0.5, dtype=np.float32)
+        sigmas = np.array((1 - self.alphas_cumprod) ** 0.5, dtype=np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
     def rescale_betas_zero_snr(self):
         self.betas = rescale_zero_terminal_snr(self.betas)
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        sigmas = np.array(((1 - self.alphas_cumprod)) ** 0.5)
+        sigmas = np.array((1 - self.alphas_cumprod) ** 0.5)
         self.sigmas = torch.from_numpy(sigmas)
 
     @property
@@ -114,7 +114,7 @@ class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
                 f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
             )
 
-        sigmas = np.array(((1 - self.alphas_cumprod)) ** 0.5)
+        sigmas = np.array((1 - self.alphas_cumprod) ** 0.5)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
@@ -179,11 +179,11 @@ class EulerAncestralDiscreteXPredScheduler(EulerAncestralDiscreteScheduler):
 
         sigma_t = self.sigmas[step_index]
         sigma_s = self.sigmas[step_index + 1]
-        alpha_t = (1 - sigma_t**2)**0.5
-        alpha_s = (1 - sigma_s**2)**0.5
+        alpha_t = (1 - sigma_t**2) ** 0.5
+        alpha_s = (1 - sigma_s**2) ** 0.5
 
-        coef_sample = (sigma_s / sigma_t)**2 * alpha_t / alpha_s
-        coef_noise = (sigma_s / sigma_t) * (1 - (alpha_t / alpha_s)**2)**0.5
+        coef_sample = (sigma_s / sigma_t) ** 2 * alpha_t / alpha_s
+        coef_noise = (sigma_s / sigma_t) * (1 - (alpha_t / alpha_s) ** 2) ** 0.5
         coef_x = alpha_s * (1 - alpha_t**2 / alpha_s**2) / sigma_t**2
 
         device = model_output.device
