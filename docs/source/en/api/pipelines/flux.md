@@ -148,7 +148,7 @@ image.save("output.png")
 **Note:** `black-forest-labs/Flux.1-Depth-dev` is _not_ a ControlNet model. [`ControlNetModel`] models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Depth Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
 
 ```python
-# !pip install git+https://github.com/asomoza/image_gen_aux.git
+# !pip install git+https://github.com/huggingface/image_gen_aux
 import torch
 from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image

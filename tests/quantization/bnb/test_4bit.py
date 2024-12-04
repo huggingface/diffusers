@@ -432,7 +432,6 @@ class SlowBnb4BitTests(Base4bitTests):
         expected_slice = np.array([0.1123, 0.1296, 0.1609, 0.1042, 0.1230, 0.1274, 0.0928, 0.1165, 0.1216])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        print(f"{max_diff=}")
         self.assertTrue(max_diff < 1e-2)
 
     def test_generate_quality_dequantize(self):
