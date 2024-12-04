@@ -557,7 +557,6 @@ class LoraBaseMixin:
         # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
-            print(f"{component=}, {adapter_weights=}")
             model = getattr(self, component)
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
