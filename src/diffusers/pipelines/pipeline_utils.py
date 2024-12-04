@@ -307,7 +307,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 import zipfile
 
                 def zipdir(dir_to_archive, zipf):
-                    "zip a directory"
+                    """Archive a directory"""
                     for root, dirs, files in os.walk(dir_to_archive):
                         for file in files:
                             file_path = os.path.join(root, file)
