@@ -229,6 +229,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             sigmas = timesteps / self.config.num_train_timesteps
         else:
+            sigmas = np.array(sigmas).astype(np.float32)
             num_inference_steps = len(sigmas)
         self.num_inference_steps = num_inference_steps
 
