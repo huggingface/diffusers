@@ -13,13 +13,13 @@ def remove_keys_(key: str, state_dict: Dict[str, Any]):
 
 
 def remap_qkv_(key: str, state_dict: Dict[str, Any]):
-    # qkv = state_dict.pop(key)
-    # q, k, v = torch.chunk(qkv, 3, dim=0)
-    # parent_module, _, _ = key.rpartition(".qkv.conv.weight")
-    # state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
-    # state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
-    # state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
-    state_dict[key.replace("qkv.conv", "to_qkv")] = state_dict.pop(key)
+    qkv = state_dict.pop(key)
+    q, k, v = torch.chunk(qkv, 3, dim=0)
+    parent_module, _, _ = key.rpartition(".qkv.conv.weight")
+    state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
+    state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
+    state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
+    # state_dict[key.replace("qkv.conv", "to_qkv")] = state_dict.pop(key)
 
 
 AE_KEYS_RENAME_DICT = {

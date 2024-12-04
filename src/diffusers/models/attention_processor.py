@@ -752,6 +752,161 @@ class Attention(nn.Module):
         self.fused_projections = fuse
 
 
+class MultiscaleAttentionProjection(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        num_attention_heads: int,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+
+        self.proj_in = nn.Conv2d(
+            3 * in_channels,
+            3 * in_channels,
+            kernel_size,
+            padding=kernel_size // 2,
+            groups=3 * in_channels,
+            bias=False,
+        )
+        self.proj_out = nn.Conv2d(
+            3 * in_channels, 3 * in_channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False
+        )
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states
+
+
+class MultiscaleLinearAttention(nn.Module):
+    r"""Lightweight multi-scale linear attention"""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_attention_heads: Optional[int] = None,
+        heads_ratio: float = 1.0,
+        attention_head_dim: int = 8,
+        norm_type: str = "batch_norm",
+        kernel_sizes: Tuple[int, ...] = (5,),
+        eps: float = 1e-15,
+    ):
+        super().__init__()
+
+        # To prevent circular import
+        from .normalization import get_normalization
+
+        self.eps = eps
+        self.attention_head_dim = attention_head_dim
+        self.norm_type = norm_type
+
+        num_attention_heads = (
+            int(in_channels // attention_head_dim * heads_ratio)
+            if num_attention_heads is None
+            else num_attention_heads
+        )
+        inner_dim = num_attention_heads * attention_head_dim
+
+        # self.to_qkv = nn.Conv2d(in_channels, 3 * inner_dim, 1, 1, 0, bias=False)
+        self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
+
+        self.to_qkv_multiscale = nn.ModuleList()
+        for kernel_size in kernel_sizes:
+            self.to_qkv_multiscale.append(MultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size))
+
+        self.kernel_nonlinearity = nn.ReLU()
+        self.proj_out = nn.Conv2d(inner_dim * (1 + len(kernel_sizes)), out_channels, 1, 1, 0, bias=False)
+        self.norm_out = get_normalization(norm_type, num_features=out_channels)
+
+    def linear_attention(self, qkv: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = qkv.shape
+
+        qkv = qkv.float()
+        qkv = torch.reshape(qkv, (batch_size, -1, 3 * self.attention_head_dim, height * width))
+
+        query, key, value = (
+            qkv[:, :, 0 : self.attention_head_dim],
+            qkv[:, :, self.attention_head_dim : 2 * self.attention_head_dim],
+            qkv[:, :, 2 * self.attention_head_dim :],
+        )
+
+        # lightweight linear attention
+        query = self.kernel_nonlinearity(query)
+        key = self.kernel_nonlinearity(key)
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)
+
+        key_T = key.transpose(-1, -2)
+        scores = torch.matmul(value, key_T)
+        output = torch.matmul(scores, query)
+
+        output = output.float()
+        output = output[:, :, :-1] / (output[:, :, -1:] + self.eps)
+        output = torch.reshape(output, (batch_size, -1, height, width))
+
+        return output
+
+    def quadratic_attention(self, qkv: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = list(qkv.size())
+
+        qkv = torch.reshape(qkv, (batch_size, -1, 3 * self.attention_head_dim, height * width))
+        query, key, value = (
+            qkv[:, :, 0 : self.attention_head_dim],
+            qkv[:, :, self.attention_head_dim : 2 * self.attention_head_dim],
+            qkv[:, :, 2 * self.attention_head_dim :],
+        )
+
+        query = self.kernel_nonlinearity(query)
+        key = self.kernel_nonlinearity(key)
+
+        scores = torch.matmul(key.transpose(-1, -2), query)
+
+        original_dtype = scores.dtype
+        scores = scores.float()
+        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
+        scores = scores.to(original_dtype)
+
+        output = torch.matmul(value, scores)
+        output = torch.reshape(output, (batch_size, -1, height, width))
+
+        return output
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        residual = hidden_states
+
+        # qkv = self.to_qkv(hidden_states)
+        hidden_states = hidden_states.movedim(1, 3)
+        query = self.to_q(hidden_states)
+        key = self.to_k(hidden_states)
+        value = self.to_v(hidden_states)
+        qkv = torch.cat([query, key, value], dim=3)
+        qkv = qkv.movedim(3, 1)
+
+        multi_scale_qkv = [qkv]
+        for block in self.to_qkv_multiscale:
+            multi_scale_qkv.append(block(qkv))
+
+        qkv = torch.cat(multi_scale_qkv, dim=1)
+
+        height, width = qkv.shape[-2:]
+        if height * width > self.attention_head_dim:
+            hidden_states = self.linear_attention(qkv).to(qkv.dtype)
+        else:
+            hidden_states = self.quadratic_attention(qkv)
+
+        hidden_states = self.proj_out(hidden_states)
+
+        if self.norm_type == "rms_norm":
+            hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        else:
+            hidden_states = self.norm_out(hidden_states)
+
+        return hidden_states + residual
+
+
 class AttnProcessor:
     r"""
     Default processor for performing attention-related computations.
