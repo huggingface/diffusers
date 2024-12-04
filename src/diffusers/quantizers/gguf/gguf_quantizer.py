@@ -37,7 +37,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         super().__init__(quantization_config, **kwargs)
 
         self.compute_dtype = quantization_config.compute_dtype
-        self.pre_quantized = True
+        self.pre_quantized = quantization_config.pre_quantized
 
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):

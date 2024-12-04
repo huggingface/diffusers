@@ -397,6 +397,7 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
         self.quant_storage = quant_storage
+        self.pre_quantized = True
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
