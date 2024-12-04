@@ -436,7 +436,7 @@ class SlowBnb8bitTests(Base8bitTests):
         ).images
 
     @pytest.mark.xfail(
-        condtion=is_accelerate_version("<=", "1.1.1"),
+        condition=is_accelerate_version("<=", "1.1.1"),
         reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
         strict=True,
     )

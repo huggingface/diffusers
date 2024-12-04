@@ -486,7 +486,7 @@ class SlowBnb4BitTests(Base4bitTests):
         assert "Pipelines loaded with `dtype=torch.float16`" in cap_logger.out
 
     @pytest.mark.xfail(
-        condtion=is_accelerate_version("<=", "1.1.1"),
+        condition=is_accelerate_version("<=", "1.1.1"),
         reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
         strict=True,
     )
