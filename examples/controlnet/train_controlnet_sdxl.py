@@ -598,9 +598,6 @@ def parse_args(input_args=None):
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
 
-    if args.dataset_name is not None and args.train_data_dir is not None:
-        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
-
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
@@ -642,6 +639,7 @@ def get_train_dataset(args, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            data_dir=args.train_data_dir,
         )
     else:
         if args.train_data_dir is not None:
