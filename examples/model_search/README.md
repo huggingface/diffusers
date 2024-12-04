@@ -77,7 +77,7 @@ pipeline = EasyPipelineForInpainting.from_huggingface(
 ```
 
 
-### Application Examples
+## Search Civitai and Hugging Face
 
 ```python
 from pipeline_easy import (
