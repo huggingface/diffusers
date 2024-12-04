@@ -94,6 +94,16 @@ def _maybe_adjust_config(config):
                 if mod != ambiguous_key and mod not in config["rank_pattern"]:
                     config["rank_pattern"][mod] = original_r
 
+    # handle alphas to deal with cases like
+    # https://github.com/huggingface/diffusers/pull/9999#issuecomment-2516180777
+    has_different_ranks = len(config["rank_pattern"]) > 1 and list(config["rank_pattern"])[0] != config["r"]
+    if has_different_ranks:
+        config["lora_alpha"] = config["r"]
+        alpha_pattern = {}
+        for module_name, rank in config["rank_pattern"].items():
+            alpha_pattern[module_name] = rank
+        config["alpha_pattern"] = alpha_pattern
+
     return config
 
 
@@ -290,7 +300,6 @@ class PeftAdapterMixin:
                         lora_config_kwargs.pop("lora_bias")
 
             lora_config = LoraConfig(**lora_config_kwargs)
-
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
