@@ -155,6 +155,8 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_attn_proc.png" />
 </div>
 
+Save an adapter with [`~PeftAdapterMixin.save_lora_adapter`].
+
 To unload the LoRA weights, use the [`~loaders.StableDiffusionLoraLoaderMixin.unload_lora_weights`] method to discard the LoRA weights and restore the model to its original weights:
 
 ```py
