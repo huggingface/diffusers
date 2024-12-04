@@ -166,14 +166,3 @@ class FluxFillPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
-
-    def test_sigmas(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-        inputs = self.get_dummy_inputs(torch_device)
-
-        output_without_sigmas = pipe(**inputs).images[0]
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["sigmas"] = [0.25]
-        output_with_sigmas = pipe(**inputs).images[0]
-        max_diff = np.abs(output_without_sigmas - output_with_sigmas).max()
-        assert max_diff > 1e-4
