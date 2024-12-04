@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -21,11 +21,12 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
+from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm, get_normalization
-from .vae import DecoderOutput
+from .vae import DecoderOutput, EncoderOutput
 
 
 class GLUMBConv(nn.Module):
@@ -484,13 +485,148 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.spatial_compression_ratio = 2 ** (len(encoder_block_out_channels) - 1)
         self.temporal_compression_ratio = 1
 
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.encoder(x)
-        return x
+        # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
+        # to perform decoding of a single video latent at a time.
+        self.use_slicing = False
 
-    def decode(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.decoder(x)
-        return x
+        # When decoding spatially large video latents, the memory requirement is very high. By breaking the video latent
+        # frames spatially into smaller tiles and performing multiple forward passes for decoding, and then blending the
+        # intermediate tiles together, the memory requirement can be lowered.
+        self.use_tiling = False
+
+        # The minimal tile height and width for spatial tiling to be used
+        self.tile_sample_min_height = 512
+        self.tile_sample_min_width = 512
+
+        # The minimal distance between two spatial tiles
+        self.tile_sample_stride_height = 448
+        self.tile_sample_stride_width = 448
+
+    def enable_tiling(
+        self,
+        tile_sample_min_height: Optional[int] = None,
+        tile_sample_min_width: Optional[int] = None,
+        tile_sample_stride_height: Optional[float] = None,
+        tile_sample_stride_width: Optional[float] = None,
+    ) -> None:
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+
+        Args:
+            tile_sample_min_height (`int`, *optional*):
+                The minimum height required for a sample to be separated into tiles across the height dimension.
+            tile_sample_min_width (`int`, *optional*):
+                The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_sample_stride_height (`int`, *optional*):
+                The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
+                no tiling artifacts produced across the height dimension.
+            tile_sample_stride_width (`int`, *optional*):
+                The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling
+                artifacts produced across the width dimension.
+        """
+        self.use_tiling = True
+        self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
+        self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
+
+    def disable_tiling(self) -> None:
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_tiling = False
+
+    def enable_slicing(self) -> None:
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.use_slicing = True
+
+    def disable_slicing(self) -> None:
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_slicing = False
+
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, height, width = x.shape
+
+        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+            return self.tiled_encode(x, return_dict=False)[0]
+
+        encoded = self.encoder(x)
+
+        return encoded
+
+    @apply_forward_hook
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+        r"""
+        Encode a batch of images into latents.
+
+        Args:
+            x (`torch.Tensor`): Input batch of images.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+
+        Returns:
+                The latent representations of the encoded videos. If `return_dict` is True, a
+                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+        """
+        if self.use_slicing and x.shape[0] > 1:
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
+            encoded = torch.cat(encoded_slices)
+        else:
+            encoded = self._encode(x)
+
+        if not return_dict:
+            return (encoded,)
+        return EncoderOutput(latent=encoded)
+
+    def _decode(self, z: torch.Tensor) -> torch.Tensor:
+        batch_size, num_channels, height, width = z.shape
+
+        if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
+            return self.tiled_decode(z, return_dict=False)[0]
+
+        decoded = self.decoder(z)
+
+        return decoded
+
+    @apply_forward_hook
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+        r"""
+        Decode a batch of images.
+
+        Args:
+            z (`torch.Tensor`): Input batch of latent vectors.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        if self.use_slicing and z.size(0) > 1:
+            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = self._decode(z)
+
+        if not return_dict:
+            return (decoded,)
+        return DecoderOutput(sample=decoded)
+
+    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+        raise NotImplementedError("`tiled_encode` has not been implemented for AutoencoderDC.")
+
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        raise NotImplementedError("`tiled_decode` has not been implemented for AutoencoderDC.")
 
     def forward(self, sample: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
         z = self.encode(sample)

@@ -2208,7 +2208,6 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 def create_autoencoder_dc_config_from_original(original_config, checkpoint, **kwargs):
     model_name = original_config.get("model_name", "dc-ae-f32c32-sana-1.0")
-    print("trying:", model_name)
 
     if model_name in ["dc-ae-f32c32-sana-1.0"]:
         config = {
