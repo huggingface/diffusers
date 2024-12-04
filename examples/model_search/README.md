@@ -14,6 +14,8 @@ Before running the scripts, make sure to install the library's training dependen
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
+```
+Set up the pipeline. You can also cd to this folder and run it.
 ```bash
 !wget https://raw.githubusercontent.com/suzukimain/auto_diffusers/refs/heads/master/src/auto_diffusers/pipeline_easy.py
 ```
