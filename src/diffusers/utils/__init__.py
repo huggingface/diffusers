@@ -35,6 +35,7 @@ from .constants import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
+from .dduf import DDUFReader
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module

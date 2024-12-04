@@ -50,6 +50,7 @@ from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
+    DDUFReader,
     PushToHubMixin,
     is_accelerate_available,
     is_accelerate_version,
@@ -343,7 +344,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         # Takes care of including the "model_index.json" inside the ZIP.
-        # TODO: Include a DDUF a metadata file. 
+        # TODO: Include a DDUF a metadata file.
         if dduf_filename:
             import zipfile
 
@@ -811,30 +812,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             logger.warning(warn_msg)
 
+        dduf_reader = None
         if dduf:
-            import zipfile
-
             zip_file_path = os.path.join(cached_folder, dduf)
-            extract_to = os.path.join(cached_folder, f"{dduf}_extracted")
-            # if zip file, we need to extract the zipfile and remove it
-            if os.path.isfile(zip_file_path):
-                if zipfile.is_zipfile(zip_file_path):
-                    # with zipfile.ZipFile(zip_file_path, "r") as zipf:
-                    #     zipf.extractall(extract_to)
-                    with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-                        file_list = zip_ref.infolist()
-                        for file_info in tqdm(file_list, desc="Extracting files"):
-                            zip_ref.extract(file_info, extract_to)
-                    # remove zip archive to free memory
-                    os.remove(zip_file_path)
-                    # rename folder to match the name of the dduf archive
-                    os.rename(extract_to, zip_file_path)
-                else:
-                    raise RuntimeError("The dduf path passed is not a zip archive")
-            # udapte cached folder location as the dduf content is in a seperate folder
-            cached_folder = zip_file_path
+            dduf_reader = DDUFReader(zip_file_path)
+            # The reader contains already all the files needed, no need to check it again
+            cached_folder = ""
 
-        config_dict = cls.load_config(cached_folder)
+        config_dict = cls.load_config(cached_folder, dduf_reader=dduf_reader)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -991,6 +976,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
+                    dduf_reader=dduf_reader,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
