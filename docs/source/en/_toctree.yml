@@ -334,6 +334,8 @@
       title: aMUSEd
     - local: api/pipelines/animatediff
       title: AnimateDiff
+    - local: api/pipelines/animemory
+      title: AniMemory-alpha
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
     - local: api/pipelines/audioldm
@@ -517,6 +519,8 @@
       title: EDMEulerScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
+    - local: api/schedulers/euler_ancestral_x_pred
+      title: EulerAncestralDiscreteXPredScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
     - local: api/schedulers/flow_match_euler_discrete
