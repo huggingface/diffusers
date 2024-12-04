@@ -159,6 +159,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         )
         self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
 
+    # flux control lora specific
     def test_with_norm_in_state_dict(self):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
@@ -210,6 +211,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             cap_logger.out.startswith("Unsupported keys found in state dict when trying to load normalization layers")
         )
 
+    # flux control lora specific
     def test_lora_parameter_expanded_shapes(self):
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
@@ -254,6 +256,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         with self.assertRaises(NotImplementedError):
             pipe.load_lora_weights(lora_state_dict, "adapter-1")
 
+    # flux control lora specific
     @require_peft_version_greater("0.13.2")
     def test_lora_B_bias(self):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
@@ -275,11 +278,52 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         denoiser_lora_config.lora_bias = True
         pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
-        lora_bias_true_output = pipe(**inputs)[0]
+        lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         self.assertFalse(np.allclose(original_output, lora_bias_false_output, atol=1e-3, rtol=1e-3))
         self.assertFalse(np.allclose(original_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
         self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+
+    # for now this is flux control lora specific but can be generalized later and added to ./utils.py
+    def test_correct_lora_configs_with_different_ranks(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.transformer.delete_adapters("adapter-1")
+
+        # change the rank_pattern
+        updated_rank = denoiser_lora_config.r * 2
+        denoiser_lora_config.rank_pattern = {"single_transformer_blocks.0.attn.to_k": updated_rank}
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        assert pipe.transformer.peft_config["adapter-1"].rank_pattern == {
+            "single_transformer_blocks.0.attn.to_k": updated_rank
+        }
+
+        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        pipe.transformer.delete_adapters("adapter-1")
+
+        # similarly change the alpha_pattern
+        updated_alpha = denoiser_lora_config.lora_alpha * 2
+        denoiser_lora_config.alpha_pattern = {"single_transformer_blocks.0.attn.to_k": updated_alpha}
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        assert pipe.transformer.peft_config["adapter-1"].alpha_pattern == {
+            "single_transformer_blocks.0.attn.to_k": updated_alpha
+        }
+
+        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
