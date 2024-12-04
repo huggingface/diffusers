@@ -1952,12 +1952,15 @@ class PeftLoraLoaderMixinTests:
                 )
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-                pipe.unload_lora_weights()
+                pipe = self.pipeline_class(**components)
+                pipe = pipe.to(torch_device)
+                pipe.set_progress_bar_config(disable=None)
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
 
+                print(f"{attention_kwargs=}")
                 output_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
                 self.assertTrue(
                     not np.allclose(output_no_lora, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
