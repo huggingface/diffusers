@@ -68,6 +68,7 @@ from .import_utils import (
     is_flax_available,
     is_ftfy_available,
     is_gguf_available,
+    is_gguf_version,
     is_google_colab,
     is_inflect_available,
     is_invisible_watermark_available,

@@ -13,9 +13,17 @@
 # # limitations under the License.
 
 
+from contextlib import nullcontext
+
 import gguf
 import torch
 import torch.nn as nn
+
+from ...utils import is_accelerate_available
+
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
 
 
 def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix=""):
@@ -32,12 +40,14 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix=""):
         _replace_with_gguf_linear(module, compute_dtype, state_dict, module_prefix)
 
         if isinstance(module, nn.Linear) and _should_convert_to_gguf(module, state_dict, module_prefix):
-            model._modules[name] = GGUFLinear(
-                module.in_features,
-                module.out_features,
-                module.bias is not None,
-                compute_dtype=compute_dtype,
-            )
+            ctx = init_empty_weights if is_accelerate_available() else nullcontext
+            with ctx():
+                model._modules[name] = GGUFLinear(
+                    module.in_features,
+                    module.out_features,
+                    module.bias is not None,
+                    compute_dtype=compute_dtype,
+                )
             model._modules[name].source_cls = type(module)
             # Force requires grad to False to avoid unexpected errors
             model._modules[name].requires_grad_(False)
@@ -296,6 +306,7 @@ dequantize_functions = {
     gguf.GGMLQuantizationType.Q3_K: dequantize_blocks_Q3_K,
     gguf.GGMLQuantizationType.Q2_K: dequantize_blocks_Q2_K,
 }
+SUPPORTED_GGUF_QUANT_TYPES = list(dequantize_functions.keys())
 
 
 def _quant_shape_from_byte_shape(shape, type_size, block_size):
@@ -323,7 +334,7 @@ def dequantize_gguf_tensor(tensor):
     return dequant.as_tensor()
 
 
-class GGUFParameter(torch.Tensor):
+class GGUFParameter(torch.nn.Parameter):
     def __new__(cls, data, requires_grad=False, quant_type=None):
         data = data if data is not None else torch.empty(0)
         self = torch.Tensor._make_subclass(cls, data, requires_grad)

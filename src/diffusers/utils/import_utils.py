@@ -777,6 +777,21 @@ def is_bitsandbytes_version(operation: str, version: str):
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 
 
+def is_gguf_version(operation: str, version: str):
+    """
+    Compares the current Accelerate version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _is_gguf_available:
+        return False
+    return compare_versions(parse(_gguf_version), operation, version)
+
+
 def is_k_diffusion_version(operation: str, version: str):
     """
     Compares the current k-diffusion version to a given reference with an operation.

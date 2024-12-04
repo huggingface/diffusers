@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ..base import DiffusersQuantizer
 
@@ -12,6 +12,7 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_gguf_available,
+    is_gguf_version,
     is_torch_available,
     logging,
 )
@@ -21,7 +22,11 @@ if is_torch_available() and is_gguf_available():
     import gguf
     import torch
 
-    from .utils import GGUFParameter, _quant_shape_from_byte_shape, _replace_with_gguf_linear
+    from .utils import (
+        GGUFParameter,
+        _quant_shape_from_byte_shape,
+        _replace_with_gguf_linear,
+    )
 
 
 logger = logging.get_logger(__name__)
@@ -39,10 +44,25 @@ class GGUFQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading GGUF Parameters requires `accelerate` installed in your enviroment: `pip install 'accelerate>=0.26.0'`"
             )
-        if not is_gguf_available():
+        if not is_gguf_available() or is_gguf_version("<", "0.10.0"):
             raise ImportError(
-                "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf`"
+                "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf>=0.10.0`"
             )
+
+    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+        # need more space for buffers that are created during quantization
+        max_memory = {key: val * 0.90 for key, val in max_memory.items()}
+        return max_memory
+
+    def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
+        if target_dtype != torch.uint8:
+            logger.info(f"target_dtype {target_dtype} is replaced by `torch.uint8` for GGUF quantization")
+        return torch.uint8
+
+    def update_torch_dtype(self, torch_dtype: "torch.dtype") -> "torch.dtype":
+        if torch_dtype is None:
+            torch_dtype = self.compute_dtype
+        return torch_dtype
 
     def check_quantized_param_shape(self, param_name, current_param, loaded_param):
         loaded_param_shape = loaded_param.shape
@@ -62,7 +82,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: "torch.Tensor",
+        param_value: Union["GGUFParameter", "torch.Tensor"],
         param_name: str,
         state_dict: Dict[str, Any],
         **kwargs,
@@ -82,10 +102,13 @@ class GGUFQuantizer(DiffusersQuantizer):
         unexpected_keys: Optional[List[str]] = None,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
-        if tensor_name not in module._parameters:
+        if tensor_name not in module._parameters and tensor_name not in module._buffers:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
 
-        module._parameters[tensor_name] = param_value
+        if tensor_name in module._parameters:
+            module._parameters[tensor_name] = param_value.to(target_device)
+        if tensor_name in module._buffers:
+            module._buffers[tensor_name] = param_value.to(target_device)
 
     def _process_model_before_weight_loading(
         self,

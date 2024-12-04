@@ -449,7 +449,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         import gguf
         from gguf import GGUFReader
 
-        from ..quantizers.gguf.utils import GGUFParameter
+        from ..quantizers.gguf.utils import SUPPORTED_GGUF_QUANT_TYPES, GGUFParameter
     else:
         logger.error(
             "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
@@ -458,8 +458,6 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
 
     reader = GGUFReader(gguf_checkpoint_path)
-    fields = reader.fields
-    reader_keys = list(fields.keys())
 
     parsed_parameters = {}
     for tensor in tqdm(reader.tensors, desc="Loading GGUF Parameters: "):
@@ -468,10 +466,16 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
 
         # if the tensor is a torch supported dtype do not use GGUFParameter
         is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
+        if is_gguf_quant and quant_type not in SUPPORTED_GGUF_QUANT_TYPES:
+            raise ValueError(
+                (
+                    f"{name} has a quantization type: {quant_type} which is unsupported."
+                    f" Currently the following quantization types are supported: {SUPPORTED_GGUF_QUANT_TYPES}"
+                    "To request support for this quantization type please open an issue here: https://github.com/huggingface/diffusers"
+                )
+            )
+
         weights = torch.from_numpy(tensor.data.copy())
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
-
-    if len(reader_keys) > 0:
-        logger.info(f"Some keys of the GGUF file were not considered: {reader_keys}")
 
     return parsed_parameters
