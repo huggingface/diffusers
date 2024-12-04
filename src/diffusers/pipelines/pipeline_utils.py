@@ -410,8 +410,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            if not pipeline_has_bnb:
+        if device and torch.device(device).type == "cuda":
+            if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
                 raise ValueError(
                     "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
                 )
