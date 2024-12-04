@@ -19,7 +19,11 @@ def remap_qkv_(key: str, state_dict: Dict[str, Any]):
     state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
     state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
     state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
-    # state_dict[key.replace("qkv.conv", "to_qkv")] = state_dict.pop(key)
+
+
+def remap_proj_conv_(key: str, state_dict: Dict[str, Any]):
+    parent_module, _, _ = key.rpartition(".proj.conv.weight")
+    state_dict[f"{parent_module}.to_out.weight"] = state_dict.pop(key).squeeze()
 
 
 AE_KEYS_RENAME_DICT = {
@@ -40,7 +44,6 @@ AE_KEYS_RENAME_DICT = {
     "conv1.conv": "conv1",
     "conv2.conv": "conv2",
     "conv2.norm": "norm",
-    "proj.conv": "proj_out",
     "proj.norm": "norm_out",
     # encoder
     "encoder.project_in.conv": "encoder.conv_in",
@@ -76,6 +79,7 @@ AE_F128C512_KEYS = {
 
 AE_SPECIAL_KEYS_REMAP = {
     "qkv.conv.weight": remap_qkv_,
+    "proj.conv.weight": remap_proj_conv_,
 }
 
 

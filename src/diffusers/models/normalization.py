@@ -574,7 +574,13 @@ class LpNorm(nn.Module):
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
 
 
-def get_normalization(norm_type: str = "batch_norm", num_features: Optional[int] = None, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True) -> nn.Module:
+def get_normalization(
+    norm_type: str = "batch_norm",
+    num_features: Optional[int] = None,
+    eps: float = 1e-5,
+    elementwise_affine: bool = True,
+    bias: bool = True,
+) -> nn.Module:
     if norm_type == "rms_norm":
         norm = RMSNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
     elif norm_type == "layer_norm":

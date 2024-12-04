@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..activations import get_activation
-from ..attention_processor import MultiscaleLinearAttention
+from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm, get_normalization
 
@@ -82,7 +82,7 @@ class ResBlock(nn.Module):
             hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
         else:
             hidden_states = self.norm(hidden_states)
-        
+
         return hidden_states + residual
 
 
@@ -97,13 +97,14 @@ class EfficientViTBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.attn = MultiscaleLinearAttention(
+        self.attn = SanaMultiscaleLinearAttention(
             in_channels=in_channels,
             out_channels=in_channels,
             heads_ratio=heads_ratio,
             attention_head_dim=dim,
             norm_type=norm_type,
             kernel_sizes=qkv_multiscales,
+            residual_connection=True,
         )
 
         self.conv_out = GLUMBConv(
