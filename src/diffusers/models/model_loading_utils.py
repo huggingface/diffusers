@@ -467,11 +467,13 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         # if the tensor is a torch supported dtype do not use GGUFParameter
         is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
         if is_gguf_quant and quant_type not in SUPPORTED_GGUF_QUANT_TYPES:
+            _supported_quants_str = "\n".join([str(type) for type in SUPPORTED_GGUF_QUANT_TYPES])
             raise ValueError(
                 (
-                    f"{name} has a quantization type: {quant_type} which is unsupported."
-                    f" Currently the following quantization types are supported: {SUPPORTED_GGUF_QUANT_TYPES}"
-                    "To request support for this quantization type please open an issue here: https://github.com/huggingface/diffusers"
+                    f"{name} has a quantization type: {str(quant_type)} which is unsupported."
+                    "\n\nCurrently the following quantization types are supported: \n\n"
+                    f"{_supported_quants_str}"
+                    "\n\nTo request support for this quantization type please open an issue here: https://github.com/huggingface/diffusers"
                 )
             )
 
