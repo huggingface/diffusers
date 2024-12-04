@@ -79,7 +79,7 @@ pipeline = EasyPipelineForInpainting.from_huggingface(
 ```
 
 
-## Search Civitai and Hugging Face
+## Search Civitai and Huggingface
 
 ```python
 from pipeline_easy import (
@@ -109,10 +109,12 @@ TextualInversion = search_civitai(
 pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 ```
 
+## Search Civitai
+
 > [!TIP]
 > **If an error occurs, insert the `token` and run again.**
 
-### `EasyPipeline.from_civitai` parameters
+#### `EasyPipeline.from_civitai` parameters
 
 | Name            | Type                   | Default       | Description                                                                    |
 |:---------------:|:----------------------:|:-------------:|:-----------------------------------------------------------------------------------:|
@@ -126,7 +128,7 @@ pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 | token           | string | None          | API token for Civitai authentication. |
 
 
-### `search_civitai` parameters
+#### `search_civitai` parameters
 
 | Name            | Type           | Default       | Description                                                                    |
 |:---------------:|:--------------:|:-------------:|:-----------------------------------------------------------------------------------:|
@@ -141,8 +143,12 @@ pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 | include_params  | bool           | False         | Whether to include parameters in the returned data.           |
 | skip_error      | bool           | False         | Whether to skip errors and return None.                                             |
 
+## Search Huggingface
 
-### `EasyPipeline.from_huggingface` parameters
+> [!TIP]
+> **If an error occurs, insert the `token` and run again.**
+
+#### `EasyPipeline.from_huggingface` parameters
 
 | Name                  | Type                | Default        | Description                                                      |
 |:---------------------:|:-------------------:|:--------------:|:----------------------------------------------------------------:|
@@ -154,7 +160,7 @@ pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 | token                 | string, bool        | None           | The token to use as HTTP bearer authorization for remote files.  |
 
 
-### `search_huggingface` parameters
+#### `search_huggingface` parameters
 
 | Name                  | Type                | Default        | Description                                                      |
 |:---------------------:|:-------------------:|:--------------:|:----------------------------------------------------------------:|
