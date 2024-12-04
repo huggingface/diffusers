@@ -1,5 +1,5 @@
-# import os
-# os.environ['HF_HUB_CACHE'] = '/share/shitao/downloaded_models2'
+import os
+os.environ['HF_HUB_CACHE'] = '/share/shitao/downloaded_models2'
 
 # from huggingface_hub import snapshot_download
 
@@ -47,10 +47,13 @@
 # model.load_state_dict(new_ckpt)
 
 
+from tests.pipelines.omnigen.test_pipeline_omnigen import OmniGenPipelineFastTests, OmniGenPipelineSlowTests
 
+test1 = OmniGenPipelineFastTests()
+test1.test_inference()
 
-
-
+test2 = OmniGenPipelineSlowTests()
+test2.test_omnigen_inference()
 
 
 

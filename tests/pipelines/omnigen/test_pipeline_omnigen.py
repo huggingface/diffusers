@@ -169,10 +169,20 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
 
 
         torch.manual_seed(0)
-        vae = AutoencoderKL()
+        vae = AutoencoderKL(
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=(4, 4, 4, 4),
+            layers_per_block=1,
+            latent_channels=4,
+            norm_num_groups=1,
+            up_block_types = ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+        )
 
         scheduler = FlowMatchEulerDiscreteScheduler()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+        # tokenizer = AutoTokenizer.from_pretrained("Shitao/OmniGen-v1")
 
         components = {
             "transformer": transformer.eval(),
@@ -192,10 +202,12 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 3.0,
             "output_type": "np",
             "height": 16,
             "width": 16,
+            "use_kv_cache": False,
+            "offload_kv_cache": False,
         }
         return inputs
 
@@ -205,7 +217,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         inputs = self.get_dummy_inputs(torch_device)
         generated_image = pipe(**inputs).images[0]
 
-        self.assertEqual(generated_image.shape, (1, 3, 16, 16))
+        self.assertEqual(generated_image.shape, (16, 16, 3))
 
 
 
@@ -235,7 +247,7 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
         return {
             "prompt": "A photo of a cat",
             "num_inference_steps": 2,
-            "guidance_scale": 5.0,
+            "guidance_scale": 2.5,
             "output_type": "np",
             "generator": generator,
         }
@@ -248,19 +260,18 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
 
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
+
         expected_slice = np.array(
-            [
-                [0.17773438, 0.18554688, 0.22070312],
-                [0.046875, 0.06640625, 0.10351562],
-                [0.0, 0.0, 0.02148438],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-            ],
+            [[0.25806782, 0.28012177, 0.27807158],
+            [0.25740036, 0.2677201,  0.26857468],
+            [0.258638,   0.27035138, 0.26633185],
+            [0.2541029,  0.2636156,  0.26373306],
+            [0.24975497, 0.2608987,  0.2617477 ],
+            [0.25102,    0.26192215, 0.262023  ],
+            [0.24452701, 0.25664824, 0.259144  ],
+            [0.2419573,  0.2574909,  0.25996095],
+            [0.23953134, 0.25292695, 0.25652167],
+            [0.23523712, 0.24710432, 0.25460982]],
             dtype=np.float32,
         )
 

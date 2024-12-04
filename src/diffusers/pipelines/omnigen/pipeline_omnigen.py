@@ -147,7 +147,7 @@ class OmniGenPipeline(
 
     model_cpu_offload_seq = "transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "condition_tokens"]
+    _callback_tensor_inputs = ["latents", "input_images_latents"]
 
     def __init__(
         self,
@@ -199,43 +199,6 @@ class OmniGenPipeline(
             input_img_latents.append(img)
         return input_img_latents
 
-    def get_multimodal_embeddings(self,
-                                  input_ids: torch.Tensor,
-                                  input_img_latents: List[torch.Tensor],
-                                  input_image_sizes: Dict,
-                                  device: Optional[torch.device] = None,
-                                  ):
-        """
-        get the multi-modal conditional embeddings
-        Args:
-            input_ids: a sequence of text id
-            input_img_latents: continues embedding of input images
-            input_image_sizes: the index of the input image in the input_ids sequence.
-            device:
-
-        Returns: torch.Tensor
-
-        """
-        device = device or self._execution_device
-
-        input_img_latents = [x.to(self.transformer.dtype) for x in input_img_latents] 
-
-        condition_tokens = None
-        if input_ids is not None:
-            condition_tokens = self.transformer.llm.embed_tokens(input_ids.to(device)).clone()
-            input_img_inx = 0
-            if input_img_latents is not None:
-                input_image_tokens = self.transformer.patch_embedding(input_img_latents,
-                                                                      is_input_image=True)
-
-                for b_inx in input_image_sizes.keys():
-                    for start_inx, end_inx in input_image_sizes[b_inx]:
-                        # replace the placeholder in text tokens with the image embedding.
-                        condition_tokens[b_inx, start_inx: end_inx] = input_image_tokens[input_img_inx].to(
-                            condition_tokens.dtype)
-                        input_img_inx += 1
-
-        return condition_tokens
 
     def check_inputs(
         self,
@@ -243,6 +206,8 @@ class OmniGenPipeline(
         input_images,
         height,
         width,
+        use_kv_cache,
+        offload_kv_cache,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -262,6 +227,12 @@ class OmniGenPipeline(
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+            )
+        
+        if use_kv_cache and offload_kv_cache:
+            if not torch.cuda.is_available():
+                raise ValueError(
+                f"Don't fine avaliable GPUs. `offload_kv_cache` can't be used when there is no GPU. please set it to False: `use_kv_cache=False, offload_kv_cache=False`"
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -475,6 +446,8 @@ class OmniGenPipeline(
             input_images,
             height,
             width,
+            use_kv_cache,
+            offload_kv_cache,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
@@ -496,16 +469,12 @@ class OmniGenPipeline(
                                                     width=width,
                                                     use_img_cfg=use_img_cfg,
                                                     use_input_image_size_as_output=use_input_image_size_as_output)
+        processed_data['input_ids'] = processed_data['input_ids'].to(device)
         processed_data['attention_mask'] = processed_data['attention_mask'].to(device)
         processed_data['position_ids'] = processed_data['position_ids'].to(device)
 
-        # 4. Encode input images and obtain multi-modal conditional embeddings
+        # 4. Encode input images
         input_img_latents = self.encod_input_iamges(processed_data['input_pixel_values'], device=device)
-        condition_tokens = self.get_multimodal_embeddings(input_ids=processed_data['input_ids'],
-                                                          input_img_latents=input_img_latents,
-                                                          input_image_sizes=processed_data['input_image_sizes'],
-                                                          device=device,
-                                                          )
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1, 0, num_inference_steps+1)[:num_inference_steps]
@@ -522,7 +491,7 @@ class OmniGenPipeline(
             latent_channels,
             height,
             width,
-            condition_tokens.dtype,
+            self.transformer.dtype,
             device,
             generator,
             latents,
@@ -545,7 +514,9 @@ class OmniGenPipeline(
                 noise_pred, cache = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
-                    condition_tokens=condition_tokens,
+                    input_ids=processed_data['input_ids'],
+                    input_img_latents=input_img_latents,
+                    input_image_sizes=processed_data['input_image_sizes'],
                     attention_mask=processed_data['attention_mask'],
                     position_ids=processed_data['position_ids'],
                     attention_kwargs=attention_kwargs,
@@ -556,8 +527,8 @@ class OmniGenPipeline(
                 
                 # if use kv cache, don't need attention mask and position ids of condition tokens for next step
                 if use_kv_cache:
-                    if condition_tokens is not None:
-                        condition_tokens = None
+                    if processed_data['input_ids'] is not None:
+                        processed_data['input_ids'] = None
                         processed_data['attention_mask'] = processed_data['attention_mask'][..., -(num_tokens_for_output_img + 1):, :] # +1 is for the timestep token
                         processed_data['position_ids'] = processed_data['position_ids'][:, -(num_tokens_for_output_img + 1):]
 

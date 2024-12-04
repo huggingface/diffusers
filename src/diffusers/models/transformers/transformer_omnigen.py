@@ -281,20 +281,6 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         imgs = x.reshape(shape=(x.shape[0], c, h, w))
         return imgs
 
-    def prepare_condition_embeddings(self, input_ids, input_img_latents, input_image_sizes):
-        condition_embeds = None
-        if input_img_latents is not None:
-            input_latents = self.patch_embedding(input_img_latents, is_input_images=True)
-        if input_ids is not None:
-            condition_embeds = self.llm.embed_tokens(input_ids).clone()
-            input_img_inx = 0
-            for b_inx in input_image_sizes.keys():
-                for start_inx, end_inx in input_image_sizes[b_inx]:
-                    condition_embeds[b_inx, start_inx: end_inx] = input_latents[input_img_inx]
-                    input_img_inx += 1
-            if input_img_latents is not None:
-                assert input_img_inx == len(input_latents)
-        return condition_embeds
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -359,11 +345,46 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+    
+    def get_multimodal_embeddings(self, 
+                                input_ids: torch.Tensor,
+                                input_img_latents: List[torch.Tensor],
+                                input_image_sizes: Dict,
+                                ):
+        """
+        get the multi-modal conditional embeddings
+        Args:
+            input_ids: a sequence of text id
+            input_img_latents: continues embedding of input images
+            input_image_sizes: the index of the input image in the input_ids sequence.
+
+        Returns: torch.Tensor
+
+        """
+        input_img_latents = [x.to(self.dtype) for x in input_img_latents] 
+        condition_tokens = None
+        if input_ids is not None:
+            condition_tokens = self.llm.embed_tokens(input_ids)
+            input_img_inx = 0
+            if input_img_latents is not None:
+                input_image_tokens = self.patch_embedding(input_img_latents,
+                                                                      is_input_image=True)
+
+                for b_inx in input_image_sizes.keys():
+                    for start_inx, end_inx in input_image_sizes[b_inx]:
+                        # replace the placeholder in text tokens with the image embedding.
+                        condition_tokens[b_inx, start_inx: end_inx] = input_image_tokens[input_img_inx].to(
+                            condition_tokens.dtype)
+                        input_img_inx += 1
+
+        return condition_tokens
 
     def forward(self,
                 hidden_states: torch.Tensor,
                 timestep: Union[int, float, torch.LongTensor],
-                condition_tokens: torch.Tensor,
+                input_ids: torch.Tensor,
+                input_img_latents: List[torch.Tensor],
+                input_image_sizes: Dict[int, List[int]],
                 attention_mask: torch.Tensor,
                 position_ids: torch.Tensor,
                 past_key_values: DynamicCache = None,
@@ -386,13 +407,16 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
         height, width = hidden_states.size()[-2:]
         hidden_states = self.patch_embedding(hidden_states, is_input_image=False)
         num_tokens_for_output_image = hidden_states.size(1)
 
         time_token = self.time_token(timestep, dtype=hidden_states.dtype).unsqueeze(1)
 
+        condition_tokens = self.get_multimodal_embeddings(input_ids=input_ids,
+                                                          input_img_latents=input_img_latents,
+                                                          input_image_sizes=input_image_sizes,
+                                                          )
         if condition_tokens is not None:
             input_emb = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
         else:
