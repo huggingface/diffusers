@@ -572,28 +572,3 @@ class LpNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
-
-
-class RMSNormNd(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        eps: float,
-        elementwise_affine: bool = True,
-        bias: bool = False,
-        channel_dim: int = -1,
-    ) -> None:
-        super().__init__()
-
-        self.norm = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
-        self.channel_dim = channel_dim
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.channel_dim != -1:
-            hidden_states = hidden_states.movedim(self.channel_dim, -1)
-            hidden_states = self.norm(hidden_states)
-            hidden_states = hidden_states.movedim(-1, self.channel_dim)
-        else:
-            hidden_states = self.norm(hidden_states)
-
-        return hidden_states

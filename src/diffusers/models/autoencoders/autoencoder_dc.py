@@ -22,14 +22,14 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..activations import get_activation
 from ..modeling_utils import ModelMixin
-from ..normalization import RMSNormNd
+from ..normalization import RMSNorm
 
 
 def get_norm_layer(name: Optional[str] = "batch_norm", num_features: Optional[int] = None) -> Optional[nn.Module]:
     if name is None:
         norm = None
     elif name == "rms_norm":
-        norm = RMSNormNd(num_features, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+        norm = RMSNorm(num_features, eps=1e-5, elementwise_affine=True, bias=True)
     elif name == "batch_norm":
         norm = nn.BatchNorm2d(num_features=num_features)
     else:
@@ -48,7 +48,7 @@ class GLUMBConv(nn.Module):
         self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
         self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
         self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
-        self.norm = RMSNormNd(out_channels, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+        self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
@@ -61,7 +61,7 @@ class GLUMBConv(nn.Module):
         hidden_states = hidden_states * self.nonlinearity(gate)
 
         hidden_states = self.conv_point(hidden_states)
-        hidden_states = self.norm(hidden_states)
+        hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
 
         return hidden_states + residual
 
@@ -76,6 +76,8 @@ class ResBlock(nn.Module):
     ) -> None:
         super().__init__()
 
+        self.norm_type = norm_type
+
         self.nonlinearity = get_activation(act_fn) if act_fn is not None else nn.Identity()
         self.conv1 = nn.Conv2d(in_channels, in_channels, 3, 1, 1)
         self.conv2 = nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False)
@@ -86,7 +88,11 @@ class ResBlock(nn.Module):
         hidden_states = self.conv1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv2(hidden_states)
-        hidden_states = self.norm(hidden_states)
+        
+        if self.norm_type == "rms_norm":
+            hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        else:
+            hidden_states = self.norm(hidden_states)
         return hidden_states + residual
 
 
@@ -135,6 +141,7 @@ class LiteMLA(nn.Module):
 
         self.eps = eps
         self.attention_head_dim = attention_head_dim
+        self.norm_type = norm_type
 
         num_attention_heads = (
             int(in_channels // attention_head_dim * heads_ratio)
@@ -223,7 +230,11 @@ class LiteMLA(nn.Module):
             hidden_states = self.quadratic_attention(qkv)
 
         hidden_states = self.proj_out(hidden_states)
-        hidden_states = self.norm_out(hidden_states)
+        
+        if self.norm_type == "rms_norm":
+            hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        else:
+            hidden_states = self.norm_out(hidden_states)
 
         return hidden_states + residual
 
@@ -373,10 +384,10 @@ class Encoder(nn.Module):
     ):
         super().__init__()
 
-        num_stages = len(block_out_channels)
+        num_blocks = len(block_out_channels)
 
         if isinstance(block_type, str):
-            block_type = (block_type,) * num_stages
+            block_type = (block_type,) * num_blocks
 
         if layers_per_block[0] > 0:
             self.conv_in = nn.Conv2d(
@@ -394,33 +405,33 @@ class Encoder(nn.Module):
                 shortcut=False,
             )
 
-        stages = []
-        for stage_id, (width, depth) in enumerate(zip(block_out_channels, layers_per_block)):
-            stage = []
+        down_blocks = []
+        for i, (out_channel, num_layers) in enumerate(zip(block_out_channels, layers_per_block)):
+            down_block_list = []
 
-            for _ in range(depth):
+            for _ in range(num_layers):
                 block = get_block(
-                    block_type[stage_id],
-                    width,
-                    width,
+                    block_type[i],
+                    out_channel,
+                    out_channel,
                     norm_type="rms_norm",
                     act_fn="silu",
-                    qkv_mutliscales=qkv_multiscales[stage_id],
+                    qkv_mutliscales=qkv_multiscales[i],
                 )
-                stage.append(block)
+                down_block_list.append(block)
 
-            if stage_id < num_stages - 1 and depth > 0:
+            if i < num_blocks - 1 and num_layers > 0:
                 downsample_block = DCDownBlock2d(
-                    in_channels=width,
-                    out_channels=block_out_channels[stage_id + 1],
+                    in_channels=out_channel,
+                    out_channels=block_out_channels[i + 1],
                     downsample=downsample_block_type == "pixel_unshuffle",
                     shortcut=True,
                 )
-                stage.append(downsample_block)
+                down_block_list.append(downsample_block)
 
-            stages.append(nn.Sequential(*stage))
+            down_blocks.append(nn.Sequential(*down_block_list))
 
-        self.stages = nn.ModuleList(stages)
+        self.down_blocks = nn.ModuleList(down_blocks)
 
         self.conv_out = nn.Conv2d(block_out_channels[-1], latent_channels, 3, 1, 1)
         self.norm_factor = 1
@@ -430,8 +441,8 @@ class Encoder(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.conv_in(hidden_states)
-        for stage in self.stages:
-            hidden_states = stage(hidden_states)
+        for down_block in self.down_blocks:
+            hidden_states = down_block(hidden_states)
 
         x = F.pixel_unshuffle(hidden_states, self.norm_factor)
         x = x.unflatten(1, (-1, self.norm_group_size))
@@ -457,51 +468,51 @@ class Decoder(nn.Module):
     ):
         super().__init__()
 
-        num_stages = len(block_out_channels)
+        num_blocks = len(block_out_channels)
 
         if isinstance(block_type, str):
-            block_type = (block_type,) * num_stages
+            block_type = (block_type,) * num_blocks
         if isinstance(norm_type, str):
-            norm_type = (norm_type,) * num_stages
+            norm_type = (norm_type,) * num_blocks
         if isinstance(act_fn, str):
-            act_fn = (act_fn,) * num_stages
+            act_fn = (act_fn,) * num_blocks
 
         self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], 3, 1, 1)
 
         self.norm_factor = 1
         self.norm_repeats = block_out_channels[-1] * self.norm_factor**2 // latent_channels
 
-        stages = []
-        for stage_id, (width, depth) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
-            stage = []
+        up_blocks = []
+        for i, (out_channel, num_layers) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
+            up_block_list = []
 
-            if stage_id < num_stages - 1 and depth > 0:
+            if i < num_blocks - 1 and num_layers > 0:
                 upsample_block = DCUpBlock2d(
-                    block_out_channels[stage_id + 1],
-                    width,
+                    block_out_channels[i + 1],
+                    out_channel,
                     interpolate=upsample_block_type == "interpolate",
                     shortcut=upsample_shortcut,
                 )
-                stage.append(upsample_block)
+                up_block_list.append(upsample_block)
 
-            for _ in range(depth):
+            for _ in range(num_layers):
                 block = get_block(
-                    block_type[stage_id],
-                    width,
-                    width,
-                    norm_type=norm_type[stage_id],
-                    act_fn=act_fn[stage_id],
-                    qkv_mutliscales=qkv_multiscales[stage_id],
+                    block_type[i],
+                    out_channel,
+                    out_channel,
+                    norm_type=norm_type[i],
+                    act_fn=act_fn[i],
+                    qkv_mutliscales=qkv_multiscales[i],
                 )
-                stage.append(block)
+                up_block_list.append(block)
 
-            stages.insert(0, nn.Sequential(*stage))
+            up_blocks.insert(0, nn.Sequential(*up_block_list))
 
-        self.stages = nn.ModuleList(stages)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
         channels = block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1]
 
-        self.norm_out = RMSNormNd(channels, eps=1e-5, elementwise_affine=True, bias=True, channel_dim=1)
+        self.norm_out = RMSNorm(channels, 1e-5, elementwise_affine=True, bias=True)
         self.conv_act = nn.ReLU()
         self.conv_out = None
 
@@ -518,10 +529,10 @@ class Decoder(nn.Module):
 
         hidden_states = self.conv_in(hidden_states) + x
 
-        for stage in reversed(self.stages):
-            hidden_states = stage(hidden_states)
+        for up_block in reversed(self.up_blocks):
+            hidden_states = up_block(hidden_states)
 
-        hidden_states = self.norm_out(hidden_states)
+        hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states)
         return hidden_states
@@ -575,7 +586,8 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         latent_channels: int = 32,
         encoder_block_types: Union[str, Tuple[str]] = "ResBlock",
         decoder_block_types: Union[str, Tuple[str]] = "ResBlock",
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
         encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
         decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
         encoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
@@ -592,7 +604,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
             in_channels=in_channels,
             latent_channels=latent_channels,
             block_type=encoder_block_types,
-            block_out_channels=block_out_channels,
+            block_out_channels=encoder_block_out_channels,
             layers_per_block=encoder_layers_per_block,
             qkv_multiscales=encoder_qkv_multiscales,
             downsample_block_type=downsample_block_type,
@@ -601,7 +613,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
             in_channels=in_channels,
             latent_channels=latent_channels,
             block_type=decoder_block_types,
-            block_out_channels=block_out_channels,
+            block_out_channels=decoder_block_out_channels,
             layers_per_block=decoder_layers_per_block,
             qkv_multiscales=decoder_qkv_multiscales,
             norm_type=decoder_norm_types,
@@ -609,7 +621,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
             upsample_block_type=upsample_block_type,
         )
 
-        self.spatial_compression_ratio = 2 ** (len(block_out_channels) - 1)
+        self.spatial_compression_ratio = 2 ** (len(encoder_block_out_channels) - 1)
         self.temporal_compression_ratio = 1
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
