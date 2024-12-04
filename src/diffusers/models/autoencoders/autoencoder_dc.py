@@ -88,7 +88,7 @@ class ResBlock(nn.Module):
         hidden_states = self.conv1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv2(hidden_states)
-        
+
         if self.norm_type == "rms_norm":
             hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
         else:
@@ -230,7 +230,7 @@ class LiteMLA(nn.Module):
             hidden_states = self.quadratic_attention(qkv)
 
         hidden_states = self.proj_out(hidden_states)
-        
+
         if self.norm_type == "rms_norm":
             hidden_states = self.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
         else:

@@ -99,7 +99,7 @@ def convert_ae(config_name: str, dtype: torch.dtype):
     hub_id = f"mit-han-lab/{config_name}"
     ckpt_path = hf_hub_download(hub_id, "model.safetensors")
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    
+
     ae = AutoencoderDC(**config).to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
@@ -122,8 +122,22 @@ def get_ae_config(name: str):
     if name in ["dc-ae-f32c32-sana-1.0"]:
         config = {
             "latent_channels": 32,
-            "encoder_block_types": ("ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"),
-            "decoder_block_types": ("ResBlock", "ResBlock", "ResBlock", "EfficientViTBlock", "EfficientViTBlock", "EfficientViTBlock"),
+            "encoder_block_types": (
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ),
+            "decoder_block_types": (
+                "ResBlock",
+                "ResBlock",
+                "ResBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+                "EfficientViTBlock",
+            ),
             "encoder_block_out_channels": (128, 256, 512, 512, 1024, 1024),
             "decoder_block_out_channels": (128, 256, 512, 512, 1024, 1024),
             "encoder_qkv_multiscales": ((), (), (), (5,), (5,), (5,)),
