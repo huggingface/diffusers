@@ -392,13 +392,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device = device or device_arg
 
-        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
-        # PR: https://github.com/huggingface/accelerate/pull/3223/
-        if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
-            raise ValueError(
-                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
-            )
-
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
@@ -438,6 +431,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
+        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
+        # PR: https://github.com/huggingface/accelerate/pull/3223/
+        if (
+            not pipeline_is_offloaded
+            and not pipeline_is_sequentially_offloaded
+            and pipeline_has_bnb
+            and torch.device(device).type == "cuda"
+            and is_accelerate_version("<", "1.1.0.dev0")
+        ):
+            raise ValueError(
+                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+            )
+
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
@@ -451,7 +457,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {'4bit' if is_loaded_in_4bit_bnb else '8bit'} and conversion to {dtype} is not supported. Module is still in {'4bit' if is_loaded_in_4bit_bnb else '8bit'} precision."
                 )
 
-            if is_loaded_in_8bit_bnb and device is not None:
+            if is_loaded_in_8bit_bnb and not is_offloaded and device is not None:
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
                 )
