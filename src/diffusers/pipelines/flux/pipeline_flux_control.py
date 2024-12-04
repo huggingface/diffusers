@@ -763,7 +763,7 @@ class FluxControlPipeline(
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 8
-        
+
         control_image = self.prepare_image(
             image=control_image,
             width=width,
