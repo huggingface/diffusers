@@ -47,7 +47,7 @@ pipeline = EasyPipelineForInpainting.from_civitai(
 ).to("cuda")
 ```
 
-### Search for Hugging Face
+## Load from Hugging Face
 ```python
 from pipeline_easy import (
     EasyPipelineForText2Image,
