@@ -374,9 +374,6 @@ class ConfigMixin:
                 raise ValueError(
                     f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, cls.config_name)} in the archive. We only have the following files {dduf_reader.files}"
                 )
-            print(f"File found: {config_file}")
-        elif not dduf_reader:
-            print("not dduf")
         elif os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
