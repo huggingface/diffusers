@@ -342,6 +342,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # finally save the config
         self.save_config(save_directory)
 
+        # Takes care of including the "model_index.json" inside the ZIP.
+        # TODO: Include a DDUF a metadata file. 
         if dduf_filename:
             import zipfile
 
