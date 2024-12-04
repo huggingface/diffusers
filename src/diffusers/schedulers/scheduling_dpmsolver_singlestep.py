@@ -264,6 +264,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 orders = [1, 2] * (steps // 2)
             elif order == 1:
                 orders = [1] * steps
+
+        if self.config.final_sigmas_type == "zero":
+            orders[-1] = 1
+
         return orders
 
     @property
@@ -812,6 +816,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         model_output_list: List[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -909,6 +914,23 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                     - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                     - (sigma_t * ((torch.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
                 )
+        elif self.config.algorithm_type == "sde-dpmsolver++":
+            assert noise is not None
+            if self.config.solver_type == "midpoint":
+                x_t = (
+                    (sigma_t / sigma_s2 * torch.exp(-h)) * sample
+                    + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1_1
+                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+                )
+            elif self.config.solver_type == "heun":
+                x_t = (
+                    (sigma_t / sigma_s2 * torch.exp(-h)) * sample
+                    + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h) + (-2.0 * h)) / (-2.0 * h) ** 2 - 0.5)) * D2
+                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+                )
         return x_t
 
     def singlestep_dpm_solver_update(
@@ -970,7 +992,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         elif order == 2:
             return self.singlestep_dpm_solver_second_order_update(model_output_list, sample=sample, noise=noise)
         elif order == 3:
-            return self.singlestep_dpm_solver_third_order_update(model_output_list, sample=sample)
+            return self.singlestep_dpm_solver_third_order_update(model_output_list, sample=sample, noise=noise)
         else:
             raise ValueError(f"Order must be 1, 2, 3, got {order}")
 
