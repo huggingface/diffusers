@@ -18,7 +18,7 @@ pip install .
 !wget https://raw.githubusercontent.com/suzukimain/auto_diffusers/refs/heads/master/src/auto_diffusers/pipeline_easy.py
 ```
 
-### Search for Civitai
+## Load from Civitai
 ```python
 from pipeline_easy import (
     EasyPipelineForText2Image,
