@@ -682,7 +682,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     encoder_attention_mask,
                     timestep,
                     cross_attention_kwargs,
-                    HW=(height, width),
+                    None,
+                    added_cond_kwargs,
+                    (height, width),
                     **ckpt_kwargs,
                 )
             else:
