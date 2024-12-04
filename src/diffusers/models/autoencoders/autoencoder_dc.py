@@ -24,6 +24,7 @@ from ..activations import get_activation
 from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm, get_normalization
+from .vae import DecoderOutput
 
 
 class GLUMBConv(nn.Module):
@@ -90,8 +91,8 @@ class EfficientViTBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        heads_ratio: float = 1.0,
-        dim: int = 32,
+        mult: float = 1.0,
+        attention_head_dim: int = 32,
         qkv_multiscales: Tuple[int, ...] = (5,),
         norm_type: str = "batch_norm",
     ) -> None:
@@ -100,8 +101,8 @@ class EfficientViTBlock(nn.Module):
         self.attn = SanaMultiscaleLinearAttention(
             in_channels=in_channels,
             out_channels=in_channels,
-            heads_ratio=heads_ratio,
-            attention_head_dim=dim,
+            mult=mult,
+            attention_head_dim=attention_head_dim,
             norm_type=norm_type,
             kernel_sizes=qkv_multiscales,
             residual_connection=True,
@@ -122,6 +123,7 @@ def get_block(
     block_type: str,
     in_channels: int,
     out_channels: int,
+    attention_head_dim: int,
     norm_type: str,
     act_fn: str,
     qkv_mutliscales: Tuple[int] = (),
@@ -130,7 +132,9 @@ def get_block(
         block = ResBlock(in_channels, out_channels, norm_type, act_fn)
 
     elif block_type == "EfficientViTBlock":
-        block = EfficientViTBlock(in_channels, norm_type=norm_type, qkv_multiscales=qkv_mutliscales)
+        block = EfficientViTBlock(
+            in_channels, attention_head_dim=attention_head_dim, norm_type=norm_type, qkv_multiscales=qkv_mutliscales
+        )
 
     else:
         raise ValueError(f"Block with {block_type=} is not supported.")
@@ -224,6 +228,7 @@ class Encoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
+        attention_head_dim: int = 32,
         block_type: Union[str, Tuple[str]] = "ResBlock",
         block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
         layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
@@ -262,6 +267,7 @@ class Encoder(nn.Module):
                     block_type[i],
                     out_channel,
                     out_channel,
+                    attention_head_dim=attention_head_dim,
                     norm_type="rms_norm",
                     act_fn="silu",
                     qkv_mutliscales=qkv_multiscales[i],
@@ -305,6 +311,7 @@ class Decoder(nn.Module):
         self,
         in_channels: int,
         latent_channels: int,
+        attention_head_dim: int = 32,
         block_type: Union[str, Tuple[str]] = "ResBlock",
         block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
         layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
@@ -348,6 +355,7 @@ class Decoder(nn.Module):
                     block_type[i],
                     out_channel,
                     out_channel,
+                    attention_head_dim=attention_head_dim,
                     norm_type=norm_type[i],
                     act_fn=act_fn[i],
                     qkv_mutliscales=qkv_multiscales[i],
@@ -425,13 +433,14 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
             A scaling factor applied during model operations.
     """
 
-    _supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = False
 
     @register_to_config
     def __init__(
         self,
         in_channels: int = 3,
         latent_channels: int = 32,
+        attention_head_dim: int = 32,
         encoder_block_types: Union[str, Tuple[str]] = "ResBlock",
         decoder_block_types: Union[str, Tuple[str]] = "ResBlock",
         encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
@@ -451,6 +460,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         self.encoder = Encoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
+            attention_head_dim=attention_head_dim,
             block_type=encoder_block_types,
             block_out_channels=encoder_block_out_channels,
             layers_per_block=encoder_layers_per_block,
@@ -460,6 +470,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         self.decoder = Decoder(
             in_channels=in_channels,
             latent_channels=latent_channels,
+            attention_head_dim=attention_head_dim,
             block_type=decoder_block_types,
             block_out_channels=decoder_block_out_channels,
             layers_per_block=decoder_layers_per_block,
@@ -480,7 +491,9 @@ class AutoencoderDC(ModelMixin, ConfigMixin):
         x = self.decoder(x)
         return x
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+        z = self.encode(sample)
+        dec = self.decode(z)
+        if not return_dict:
+            return (dec,)
+        return DecoderOutput(sample=dec)

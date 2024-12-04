@@ -767,7 +767,7 @@ class SanaMultiscaleAttentionProjection(nn.Module):
             channels,
             kernel_size,
             padding=kernel_size // 2,
-            groups=3 * in_channels,
+            groups=channels,
             bias=False,
         )
         self.proj_out = nn.Conv2d(channels, channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
@@ -786,7 +786,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         in_channels: int,
         out_channels: int,
         num_attention_heads: Optional[int] = None,
-        heads_ratio: float = 1.0,
+        mult: float = 1.0,
         attention_head_dim: int = 8,
         norm_type: str = "batch_norm",
         kernel_sizes: Tuple[int, ...] = (5,),
@@ -804,9 +804,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         self.residual_connection = residual_connection
 
         num_attention_heads = (
-            int(in_channels // attention_head_dim * heads_ratio)
-            if num_attention_heads is None
-            else num_attention_heads
+            int(in_channels // attention_head_dim * mult) if num_attention_heads is None else num_attention_heads
         )
         inner_dim = num_attention_heads * attention_head_dim
 
