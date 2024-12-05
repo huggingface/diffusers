@@ -53,7 +53,7 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modul
                     compute_dtype=compute_dtype,
                 )
             model._modules[name].source_cls = type(module)
-            # Force requires grad to False to avoid unexpected errors
+            # Force requires_grad to False to avoid unexpected errors
             model._modules[name].requires_grad_(False)
 
     return model
