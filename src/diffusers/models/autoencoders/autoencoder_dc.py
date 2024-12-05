@@ -565,7 +565,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return encoded
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, Tuple[torch.Tensor]]:
         r"""
         Encode a batch of images into latents.
 
