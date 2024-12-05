@@ -690,8 +690,8 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             controlnet_cond (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
                 The conditional input tensors.
             control_type (`torch.Tensor`):
-                A tensor of shape `(batch, num_control_type)` with values `0` or `1` depending on whether the
-                control type is used.
+                A tensor of shape `(batch, num_control_type)` with values `0` or `1` depending on whether the control
+                type is used.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):

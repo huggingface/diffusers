@@ -835,11 +835,9 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         if image_batch_size == 1:
             repeat_by = batch_size
-        elif image_batch_size == batch_size:
+        else:
             # image batch size is the same as prompt batch size
             repeat_by = num_images_per_prompt
-        else:
-            raise ValueError(f"Expected image batch size == 1 or `batch_size`, got {image_batch_size}.")
 
         image = image.repeat_interleave(repeat_by, dim=0)
 
@@ -1028,8 +1026,8 @@ class StableDiffusionXLControlNetUnionPipeline(
                 used in both text-encoders.
             image (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
                 In turn this supports (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
-                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]`
-                    or `List[List[PIL.Image.Image]]`):
+                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`,
+                    `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
                 as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or

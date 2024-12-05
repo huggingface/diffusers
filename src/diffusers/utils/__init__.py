@@ -95,7 +95,6 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .inputs import BaseInput
 from .loading_utils import get_module_from_name, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput

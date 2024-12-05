@@ -1099,8 +1099,8 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
                 image latents as `image`, if passing latents directly, it will not be encoded again.
             control_image_list (`Union[ControlNetUnionInput, ControlNetUnionInputProMax]`):
                 In turn this supports (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`,
-                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]`
-                    or `List[List[PIL.Image.Image]]`)::
+                    `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[List[torch.FloatTensor]]`,
+                    `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`)::
                 The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet. If
                 the type is specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also
                 be accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
