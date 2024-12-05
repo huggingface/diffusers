@@ -105,7 +105,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         param_value: Union["GGUFParameter", "torch.Tensor"],
         param_name: str,
         target_device: "torch.device",
-        state_dict: Dict[str, Any],
+        state_dict: Optional[Dict[str, Any]] = None,
         unexpected_keys: Optional[List[str]] = None,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
