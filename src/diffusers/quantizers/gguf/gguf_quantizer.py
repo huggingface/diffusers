@@ -19,10 +19,10 @@ from ...utils import (
 
 
 if is_torch_available() and is_gguf_available():
-    import gguf
     import torch
 
     from .utils import (
+        GGML_QUANT_SIZES,
         GGUFParameter,
         _quant_shape_from_byte_shape,
         _replace_with_gguf_linear,
@@ -33,11 +33,17 @@ logger = logging.get_logger(__name__)
 
 
 class GGUFQuantizer(DiffusersQuantizer):
+    use_keep_in_fp32_modules = True
+
     def __init__(self, quantization_config, **kwargs):
         super().__init__(quantization_config, **kwargs)
 
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = quantization_config.pre_quantized
+        self.modules_to_not_convert = quantization_config.modules_to_not_convert
+
+        if not isinstance(self.modules_to_not_convert, list):
+            self.modules_to_not_convert = [self.modules_to_not_convert]
 
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
@@ -70,7 +76,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         current_param_shape = current_param.shape
         quant_type = loaded_param.quant_type
 
-        block_size, type_size = gguf.GGML_QUANT_SIZES[quant_type]
+        block_size, type_size = GGML_QUANT_SIZES[quant_type]
 
         inferred_shape = _quant_shape_from_byte_shape(loaded_param_shape, type_size, block_size)
         if inferred_shape != current_param_shape:
@@ -96,7 +102,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def create_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: "torch.Tensor",
+        param_value: Union["GGUFParameter", "torch.Tensor"],
         param_name: str,
         target_device: "torch.device",
         state_dict: Dict[str, Any],
@@ -119,7 +125,13 @@ class GGUFQuantizer(DiffusersQuantizer):
         **kwargs,
     ):
         state_dict = kwargs.get("state_dict", None)
-        _replace_with_gguf_linear(model, self.compute_dtype, state_dict)
+
+        self.modules_to_not_convert.extend(keep_in_fp32_modules)
+        self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
+
+        _replace_with_gguf_linear(
+            model, self.compute_dtype, state_dict, modules_to_not_convert=self.modules_to_not_convert
+        )
 
     def _process_model_after_weight_loading(self, model: "ModelMixin", **kwargs):
         return model

@@ -393,11 +393,12 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
 
 
 class GGUFQuantizationConfig(QuantizationConfigMixin):
-    def __init__(self, compute_dtype=None, quant_storage=None):
+    def __init__(self, compute_dtype=None, quant_storage=None, modules_to_not_convert=None):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
         self.quant_storage = quant_storage
         self.pre_quantized = True
+        self.modules_to_not_convert = modules_to_not_convert
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
