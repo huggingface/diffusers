@@ -317,6 +317,15 @@ if _timm_available:
         _timm_available = False
 
 
+_huggingface_hub_available = importlib.util.find_spec("huggingface_hub") is not None
+if _huggingface_hub_available:
+    try:
+        _huggingface_hub_version = importlib_metadata.version("huggingface_hub")
+        logger.info(f"huggingface_hub version {_huggingface_hub_version} available.")
+    except importlib_metadata.PackageNotFoundError:
+        _huggingface_hub_available = False
+
+
 def is_timm_available():
     return _timm_available
 
@@ -772,6 +781,21 @@ def is_k_diffusion_version(operation: str, version: str):
     if not _k_diffusion_available:
         return False
     return compare_versions(parse(_k_diffusion_version), operation, version)
+
+
+def is_huggingface_hub_version(operation: str, version: str):
+    """
+    Compares the current huggingface_hub version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _huggingface_hub_available:
+        return False
+    return compare_versions(parse(_huggingface_hub_version), operation, version)
 
 
 def get_objects_from_module(module):

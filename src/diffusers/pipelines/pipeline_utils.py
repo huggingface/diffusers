@@ -50,10 +50,10 @@ from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     BaseOutput,
-    DDUFReader,
     PushToHubMixin,
     is_accelerate_available,
     is_accelerate_version,
+    is_huggingface_hub_version,
     is_torch_npu_available,
     is_torch_version,
     is_transformers_version,
@@ -820,14 +820,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
             logger.warning(warn_msg)
 
-        dduf_reader = None
+        dduf_entries = None
         if dduf_file:
-            zip_file_path = os.path.join(cached_folder, dduf_file)
-            dduf_reader = DDUFReader(zip_file_path)
+            if not is_huggingface_hub_version(">", "0.26.3"):
+                (">=", "0.17.0.dev0")
+                raise RuntimeError(
+                    "In order to load a dduf file, you need to install huggingface_hub>0.26.3"
+                    "You can install it with the following: `pip install --upgrade huggingface_hub"
+                )
+
+            from huggingface_hub import read_dduf_file
+
+            dduf_file_path = os.path.join(cached_folder, dduf_file)
+            dduf_entries = read_dduf_file(dduf_file_path)
             # The reader contains already all the files needed, no need to check it again
             cached_folder = ""
 
-        config_dict = cls.load_config(cached_folder, dduf_reader=dduf_reader)
+        config_dict = cls.load_config(cached_folder, dduf_entries=dduf_entries)
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -984,7 +993,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
-                    dduf_reader=dduf_reader,
+                    dduf_entries=dduf_entries,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."

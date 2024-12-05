@@ -347,7 +347,7 @@ class ConfigMixin:
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
         user_agent = kwargs.pop("user_agent", {})
-        dduf_reader = kwargs.pop("dduf_reader", None)
+        dduf_entries = kwargs.pop("dduf_entries", None)
 
         user_agent = {**user_agent, "file_type": "config"}
         user_agent = http_user_agent(user_agent)
@@ -360,19 +360,19 @@ class ConfigMixin:
                 "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
             )
         # Custom path for now
-        if dduf_reader:
+        if dduf_entries:
             if subfolder is not None:
-                if dduf_reader.has_file(os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)):
+                if os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name) in dduf_entries:
                     config_file = os.path.join(subfolder, cls.config_name)
                 else:
                     raise ValueError(
-                        f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)} in the archive. We only have the following files {dduf_reader.files}"
+                        f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)} in the dduf file. We only have the following files {dduf_entries.keys()}"
                     )
-            elif dduf_reader.has_file(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+            elif os.path.join(pretrained_model_name_or_path, cls.config_name) in dduf_entries:
                 config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
             else:
                 raise ValueError(
-                    f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, cls.config_name)} in the archive. We only have the following files {dduf_reader.files}"
+                    f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, cls.config_name)} in the dduf file. We only have the following files {dduf_entries.keys()}"
                 )
         elif os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
@@ -442,7 +442,7 @@ class ConfigMixin:
                     f"containing a {cls.config_name} file"
                 )
         try:
-            config_dict = cls._dict_from_json_file(config_file, dduf_reader=dduf_reader)
+            config_dict = cls._dict_from_json_file(config_file, dduf_entries=dduf_entries)
 
             commit_hash = extract_commit_hash(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -565,9 +565,9 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(cls, json_file: Union[str, os.PathLike], dduf_reader=None):
-        if dduf_reader:
-            text = dduf_reader.read_file(json_file, encoding="utf-8")
+    def _dict_from_json_file(cls, json_file: Union[str, os.PathLike], dduf_entries=None):
+        if dduf_entries:
+            text = dduf_entries[json_file].read_text()
         else:
             with open(json_file, "r", encoding="utf-8") as reader:
                 text = reader.read()

@@ -128,7 +128,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_reader=None):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_entries=None):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
@@ -138,12 +138,11 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         return checkpoint_file
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
-        if dduf_reader:
-            checkpoint_file = dduf_reader.read_file(checkpoint_file)
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            if dduf_reader:
+            if dduf_entries:
                 # tensors are loaded on cpu
-                return safetensors.torch.load(checkpoint_file)
+                with dduf_entries[checkpoint_file].as_mmap() as mm:
+                    return safetensors.torch.load(mm)
             else:
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
 
@@ -281,7 +280,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_reader=None,
+    dduf_entries=None,
 ):
     if is_local:
         index_file = Path(
@@ -307,7 +306,7 @@ def _fetch_index_file(
                 subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
-                dduf_reader=dduf_reader,
+                dduf_entries=dduf_entries,
             )
             index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):

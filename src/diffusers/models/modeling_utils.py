@@ -557,7 +557,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_reader = kwargs.pop("dduf_reader", None)
+        dduf_entries = kwargs.pop("dduf_entries", None)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -650,7 +650,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
-            dduf_reader=dduf_reader,
+            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -726,7 +726,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
-            "dduf_reader": dduf_reader,
+            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
@@ -763,7 +763,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
             # in the case it is sharded, we have already the index
-            if is_sharded and not dduf_reader:
+            if is_sharded and not dduf_entries:
                 sharded_ckpt_cached_folder, sharded_metadata = _get_checkpoint_shard_files(
                     pretrained_model_name_or_path,
                     index_file,
@@ -794,7 +794,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
-                        dduf_reader=dduf_reader,
+                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -818,7 +818,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
-                    dduf_reader=dduf_reader,
+                    dduf_entries=dduf_entries,
                 )
 
             if low_cpu_mem_usage:
@@ -843,7 +843,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     elif is_quant_method_bnb:
                         param_device = torch.device(torch.cuda.current_device())
-                    state_dict = load_state_dict(model_file, variant=variant, dduf_reader=dduf_reader)
+                    state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
                     model._convert_deprecated_attention_blocks(state_dict)
 
                     # move the params from meta device to cpu
@@ -943,7 +943,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 model = cls.from_config(config, **unused_kwargs)
 
-                state_dict = load_state_dict(model_file, variant=variant, dduf_reader=dduf_reader)
+                state_dict = load_state_dict(model_file, variant=variant, dduf_entries=dduf_entries)
                 model._convert_deprecated_attention_blocks(state_dict)
 
                 model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(

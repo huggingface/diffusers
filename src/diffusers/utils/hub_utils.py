@@ -291,19 +291,20 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
-    dduf_reader=None,
+    dduf_entries=None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
-    if dduf_reader:
-        if dduf_reader.has_file(os.path.join(pretrained_model_name_or_path, weights_name)):
+    if dduf_entries:
+        if os.path.join(pretrained_model_name_or_path, weights_name) in dduf_entries:
             return os.path.join(pretrained_model_name_or_path, weights_name)
-        elif subfolder is not None and os.path.isfile(
-            os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+        elif (
+            subfolder is not None
+            and os.path.join(pretrained_model_name_or_path, subfolder, weights_name) in dduf_entries
         ):
             return os.path.join(pretrained_model_name_or_path, weights_name)
         else:
-            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_reader.files}.")
+            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
     elif os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):

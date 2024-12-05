@@ -627,7 +627,7 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
-    dduf_reader,
+    dduf_entries,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 
@@ -722,8 +722,8 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = False
 
     # check if the module is in a subdirectory
-    if dduf_reader:
-        loading_kwargs["dduf_reader"] = dduf_reader
+    if dduf_entries:
+        loading_kwargs["dduf_entries"] = dduf_entries
         loaded_sub_model = load_method(name, **loading_kwargs)
     elif os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
