@@ -1652,6 +1652,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     _lora_loadable_modules = ["transformer", "text_encoder"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
+    _control_lora_supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
 
     @classmethod
     @validate_hf_hub_args
@@ -1835,8 +1836,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         has_lora_keys = any("lora" in key for key in state_dict.keys())
 
         # Flux Control LoRAs also have norm keys
-        supported_norm_keys = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
-        has_norm_keys = any(norm_key in key for key in state_dict.keys() for norm_key in supported_norm_keys)
+        has_norm_keys = any(
+            norm_key in key for key in state_dict.keys() for norm_key in self._control_lora_supported_norm_keys
+        )
 
         if not (has_lora_keys or has_norm_keys):
             raise ValueError("Invalid LoRA checkpoint.")
@@ -1847,7 +1849,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer_norm_state_dict = {
             k: state_dict.pop(k)
             for k in list(state_dict.keys())
-            if "transformer." in k and any(norm_key in k for norm_key in supported_norm_keys)
+            if "transformer." in k and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
         }
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
@@ -1977,7 +1979,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         )
 
         # We can't load with strict=True because the current state_dict does not contain all the transformer keys
-        transformer.load_state_dict(state_dict, strict=False)
+        incompatible_keys = transformer.load_state_dict(state_dict, strict=False)
+        unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+
+        # We shouldn't expect to see the supported norm keys here being present in the unexpected keys.
+        if unexpected_keys:
+            if any(norm_key in k for k in unexpected_keys for norm_key in cls._control_lora_supported_norm_keys):
+                raise ValueError(
+                    f"Found {unexpected_keys} as unexpected keys while trying to load norm layers into the transformer."
+                )
 
         return overwritten_layers_state_dict
 
