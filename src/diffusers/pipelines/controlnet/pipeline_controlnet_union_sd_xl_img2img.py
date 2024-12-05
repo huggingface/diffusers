@@ -68,74 +68,99 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # pip install accelerate transformers safetensors diffusers
-
-        >>> import torch
-        >>> import numpy as np
-        >>> from PIL import Image
-
-        >>> from transformers import DPTImageProcessor, DPTForDepthEstimation
-        >>> from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
-        >>> from diffusers.utils import load_image
-
-
-        >>> depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
-        >>> feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
-        >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-depth-sdxl-1.0-small",
-        ...     variant="fp16",
-        ...     use_safetensors=True,
-        ...     torch_dtype=torch.float16,
+        # !pip install controlnet_aux
+        >>> from diffusers import (
+        ...     StableDiffusionXLControlNetUnionImg2ImgPipeline,
+        ...     ControlNetUnionModel,
+        ...     AutoencoderKL,
         ... )
-        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+        >>> from diffusers.models.controlnets import ControlNetUnionInputProMax
+        >>> from diffusers.utils import load_image
+        >>> import torch
+        >>> from PIL import Image
+        >>> import numpy as np
+        >>> prompt = "A cat"
+        >>> # download an image
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
+        ... )
+        >>> # initialize the models and pipeline
+        >>> controlnet = ControlNetUnionModel.from_pretrained(
+        ...     "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+        ... )
+        >>> vae = AutoencoderKL.from_pretrained(
+        ...     "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
+        ... )
+        >>> pipe = StableDiffusionXLControlNetUnionImg2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
-        ...     variant="fp16",
-        ...     use_safetensors=True,
         ...     torch_dtype=torch.float16,
-        ... )
-        >>> pipe.enable_model_cpu_offload()
-
-
-        >>> def get_depth_map(image):
-        ...     image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
-        ...     with torch.no_grad(), torch.autocast("cuda"):
-        ...         depth_map = depth_estimator(image).predicted_depth
-
-        ...     depth_map = torch.nn.functional.interpolate(
-        ...         depth_map.unsqueeze(1),
-        ...         size=(1024, 1024),
-        ...         mode="bicubic",
-        ...         align_corners=False,
+        ... ).to("cuda")
+        >>> # `enable_model_cpu_offload` is not recommended due to multiple generations
+        >>> height = image.height
+        >>> width = image.width
+        >>> ratio = np.sqrt(1024.0 * 1024.0 / (width * height))
+        >>> # 3 * 3 upscale correspond to 16 * 3 multiply, 2 * 2 correspond to 16 * 2 multiply and so on.
+        >>> scale_image_factor = 3
+        >>> base_factor = 16
+        >>> factor = scale_image_factor * base_factor
+        >>> W, H = int(width * ratio) // factor * factor, int(height * ratio) // factor * factor
+        >>> image = image.resize((W, H))
+        >>> target_width = W // scale_image_factor
+        >>> target_height = H // scale_image_factor
+        >>> images = []
+        >>> crops_coords_list = [
+        ...     (0, 0),
+        ...     (0, width // 2),
+        ...     (height // 2, 0),
+        ...     (width // 2, height // 2),
+        ...     0,
+        ...     0,
+        ...     0,
+        ...     0,
+        ...     0,
+        ... ]
+        >>> for i in range(scale_image_factor):
+        ...     for j in range(scale_image_factor):
+        ...         left = j * target_width
+        ...         top = i * target_height
+        ...         right = left + target_width
+        ...         bottom = top + target_height
+        ...         cropped_image = image.crop((left, top, right, bottom))
+        ...         cropped_image = cropped_image.resize((W, H))
+        ...         images.append(cropped_image)
+        >>> # set ControlNetUnion input
+        >>> result_images = []
+        >>> for sub_img, crops_coords in zip(images, crops_coords_list):
+        ...     union_input = ControlNetUnionInputProMax(
+        ...         tile=sub_img,
         ...     )
-        ...     depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
-        ...     depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
-        ...     depth_map = (depth_map - depth_min) / (depth_max - depth_min)
-        ...     image = torch.cat([depth_map] * 3, dim=1)
-        ...     image = image.permute(0, 2, 3, 1).cpu().numpy()[0]
-        ...     image = Image.fromarray((image * 255.0).clip(0, 255).astype(np.uint8))
-        ...     return image
-
-
-        >>> prompt = "A robot, 4k photo"
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
-        ... ).resize((1024, 1024))
-        >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
-        >>> depth_image = get_depth_map(image)
-
-        >>> images = pipe(
-        ...     prompt,
-        ...     image=image,
-        ...     control_image=depth_image,
-        ...     strength=0.99,
-        ...     num_inference_steps=50,
-        ...     controlnet_conditioning_scale=controlnet_conditioning_scale,
-        ... ).images
-        >>> images[0].save(f"robot_cat.png")
+        ...     new_width, new_height = W, H
+        ...     out = pipe(
+        ...         prompt=[prompt] * 1,
+        ...         image=sub_img,
+        ...         control_image_list=union_input,
+        ...         width=new_width,
+        ...         height=new_height,
+        ...         num_inference_steps=30,
+        ...         crops_coords_top_left=(W, H),
+        ...         target_size=(W, H),
+        ...         original_size=(W * 2, H * 2),
+        ...     )
+        ...     result_images.append(out.images[0])
+        >>> new_im = Image.new(
+        ...     "RGB", (new_width * scale_image_factor, new_height * scale_image_factor)
+        ... )
+        >>> new_im.paste(result_images[0], (0, 0))
+        >>> new_im.paste(result_images[1], (new_width, 0))
+        >>> new_im.paste(result_images[2], (new_width * 2, 0))
+        >>> new_im.paste(result_images[3], (0, new_height))
+        >>> new_im.paste(result_images[4], (new_width, new_height))
+        >>> new_im.paste(result_images[5], (new_width * 2, new_height))
+        >>> new_im.paste(result_images[6], (0, new_height * 2))
+        >>> new_im.paste(result_images[7], (new_width, new_height * 2))
+        >>> new_im.paste(result_images[8], (new_width * 2, new_height * 2))
         ```
 """
 
