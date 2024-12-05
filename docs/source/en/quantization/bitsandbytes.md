@@ -124,11 +124,10 @@ Quantizing a model in 4-bit reduces your memory-usage by 4x:
 bitsandbytes is supported in both Transformers and Diffusers, so you can can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
-> [!Note]
-> Depending on the GPU, set your `torch_dtype`. For Ada and higher series GPUs support `torch.bfloat16` and we suggest using it when applicable.
+For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bfloat16`.
 
-> [!Note]
-> We do not qunatize the `CLIPTextModel` and the `AutoencoderKL` due to their small size, and also for the fact that `AutoencoderKL` has very few `torch.nn.Linear` layers.
+> [!TIP]
+> The [`CLIPTextModel`] and [`AutoencoderKL`] aren't quantized because they're already small in size and because [`AutoencoderKL`] only has a few `torch.nn.Linear` layers.
 
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
@@ -196,9 +195,7 @@ image = pipe(**pipe_kwargs, generator=torch.manual_seed(0),).images[0]
    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/4bit.png"/>
 </div>
 
-> [!Note]
-> When memory permits, one can directly mode the pipeline (`pipe` here) to the GPU using the `.to("cuda")` API.
-> One can also use the `enable_model_cpu_offload()` to optimize GPU VRAM usage.
+When there is enough memory, you can also directly move the pipeline to the GPU with `.to("cuda") and apply [`~DiffusionPipeline.enable_model_cpu_offload`] to optimize GPU memory usage.
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 4-bit models locally with [`~ModelMixin.save_pretrained`].
 
