@@ -441,10 +441,10 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         decoder_act_fns (`Union[str, Tuple[str]]`, defaults to `"silu"`):
             The activation function(s) to use in the decoder.
         scaling_factor (`float`, defaults to `1.0`):
-            The multiplicative inverse of the root mean square of the latent features. This is used to scale the
-            latent space to have unit variance when training the diffusion model. The latents are scaled with the
-            formula `z = z * scaling_factor` before being passed to the diffusion model. When decoding, the latents
-            are scaled back to the original scale with the formula: `z = 1 / scaling_factor * z`.
+            The multiplicative inverse of the root mean square of the latent features. This is used to scale the latent
+            space to have unit variance when training the diffusion model. The latents are scaled with the formula `z =
+            z * scaling_factor` before being passed to the diffusion model. When decoding, the latents are scaled back
+            to the original scale with the formula: `z = 1 / scaling_factor * z`.
     """
 
     _supports_gradient_checkpointing = False
@@ -522,8 +522,8 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         tile_sample_stride_width: Optional[float] = None,
     ) -> None:
         r"""
-        Enable tiled AE decoding. When this option is enabled, the AE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        Enable tiled AE decoding. When this option is enabled, the AE will split the input tensor into tiles to compute
+        decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
 
         Args:
@@ -553,8 +553,8 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def enable_slicing(self) -> None:
         r"""
-        Enable sliced AE decoding. When this option is enabled, the AE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        Enable sliced AE decoding. When this option is enabled, the AE will split the input tensor in slices to compute
+        decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.use_slicing = True
 
