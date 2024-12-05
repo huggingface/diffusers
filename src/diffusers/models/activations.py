@@ -79,7 +79,7 @@ class GELU(nn.Module):
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
+        return F.gelu(gate, approximate=self.approximate)
 
     def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
@@ -102,7 +102,7 @@ class GEGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
+        return F.gelu(gate)
 
     def forward(self, hidden_states, *args, **kwargs):
         if len(args) > 0 or kwargs.get("scale", None) is not None:
