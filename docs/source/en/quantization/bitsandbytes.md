@@ -112,7 +112,7 @@ image = pipe(**pipe_kwargs, generator=torch.manual_seed(0),).images[0]
    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/8bit.png"/>
 </div>
 
-When there is enough memory, you can also directly move the pipeline to the GPU with `.to("cuda") and apply [`~DiffusionPipeline.enable_model_cpu_offload`] to optimize GPU memory usage.
+When there is enough memory, you can also directly move the pipeline to the GPU with `.to("cuda")` and apply [`~DiffusionPipeline.enable_model_cpu_offload`] to optimize GPU memory usage.
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 8-bit models locally with [`~ModelMixin.save_pretrained`].
 
@@ -195,7 +195,7 @@ image = pipe(**pipe_kwargs, generator=torch.manual_seed(0),).images[0]
    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/4bit.png"/>
 </div>
 
-When there is enough memory, you can also directly move the pipeline to the GPU with `.to("cuda") and apply [`~DiffusionPipeline.enable_model_cpu_offload`] to optimize GPU memory usage.
+When there is enough memory, you can also directly move the pipeline to the GPU with `.to("cuda")` and apply [`~DiffusionPipeline.enable_model_cpu_offload`] to optimize GPU memory usage.
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 4-bit models locally with [`~ModelMixin.save_pretrained`].
 
