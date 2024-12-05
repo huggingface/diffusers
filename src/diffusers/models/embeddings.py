@@ -961,7 +961,7 @@ class FluxPosEmbed(nn.Module):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
                 pos[:, i],
-                self.theta,
+                theta=self.theta,
                 repeat_interleave_real=True,
                 use_real=True,
                 freqs_dtype=freqs_dtype,
