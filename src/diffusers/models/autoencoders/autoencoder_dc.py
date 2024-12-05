@@ -238,6 +238,7 @@ class Encoder(nn.Module):
         layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
         qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         downsample_block_type: str = "pixel_unshuffle",
+        out_shortcut: bool = True,
     ):
         super().__init__()
 
@@ -292,21 +293,23 @@ class Encoder(nn.Module):
         self.down_blocks = nn.ModuleList(down_blocks)
 
         self.conv_out = nn.Conv2d(block_out_channels[-1], latent_channels, 3, 1, 1)
-        self.norm_factor = 1
-        norm_in_channels = block_out_channels[-1]
-        norm_out_channels = latent_channels
-        self.norm_group_size = norm_in_channels * self.norm_factor**2 // norm_out_channels
+
+        self.out_shortcut = out_shortcut
+        if out_shortcut:
+            self.out_shortcut_average_group_size = block_out_channels[-1] // latent_channels
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.conv_in(hidden_states)
         for down_block in self.down_blocks:
             hidden_states = down_block(hidden_states)
 
-        x = F.pixel_unshuffle(hidden_states, self.norm_factor)
-        x = x.unflatten(1, (-1, self.norm_group_size))
-        x = x.mean(dim=2)
+        if self.out_shortcut:
+            x = hidden_states.unflatten(1, (-1, self.out_shortcut_average_group_size))
+            x = x.mean(dim=2)
+            hidden_states = self.conv_out(hidden_states) + x
+        else:
+            hidden_states = self.conv_out(hidden_states)
 
-        hidden_states = self.conv_out(hidden_states) + x
         return hidden_states
 
 
@@ -323,6 +326,7 @@ class Decoder(nn.Module):
         norm_type: Union[str, Tuple[str]] = "rms_norm",
         act_fn: Union[str, Tuple[str]] = "silu",
         upsample_block_type: str = "pixel_shuffle",
+        in_shortcut: bool = True,
     ):
         super().__init__()
 
@@ -337,8 +341,9 @@ class Decoder(nn.Module):
 
         self.conv_in = nn.Conv2d(latent_channels, block_out_channels[-1], 3, 1, 1)
 
-        self.norm_factor = 1
-        self.norm_repeats = block_out_channels[-1] * self.norm_factor**2 // latent_channels
+        self.in_shortcut = in_shortcut
+        if in_shortcut:
+            self.in_shortcut_repeats = block_out_channels[-1] // latent_channels
 
         up_blocks = []
         for i, (out_channel, num_layers) in reversed(list(enumerate(zip(block_out_channels, layers_per_block)))):
@@ -383,10 +388,11 @@ class Decoder(nn.Module):
             )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        x = hidden_states.repeat_interleave(self.norm_repeats, dim=1)
-        x = F.pixel_shuffle(x, self.norm_factor)
-
-        hidden_states = self.conv_in(hidden_states) + x
+        if self.in_shortcut:
+            x = hidden_states.repeat_interleave(self.in_shortcut_repeats, dim=1)
+            hidden_states = self.conv_in(hidden_states) + x
+        else:
+            hidden_states = self.conv_in(hidden_states)
 
         for up_block in reversed(self.up_blocks):
             hidden_states = up_block(hidden_states)
@@ -511,7 +517,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         tile_sample_stride_width: Optional[float] = None,
     ) -> None:
         r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        Enable tiled AE decoding. When this option is enabled, the AE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
 
@@ -535,21 +541,21 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def disable_tiling(self) -> None:
         r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        Disable tiled AE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
         decoding in one step.
         """
         self.use_tiling = False
 
     def enable_slicing(self) -> None:
         r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        Enable sliced AE decoding. When this option is enabled, the AE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.use_slicing = True
 
     def disable_slicing(self) -> None:
         r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        Disable sliced AE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
         decoding in one step.
         """
         self.use_slicing = False
@@ -572,11 +578,11 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         Args:
             x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, defaults to `True`):
-                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+                Whether to return a [`~models.vae.EncoderOutput`] instead of a plain tuple.
 
         Returns:
                 The latent representations of the encoded videos. If `return_dict` is True, a
-                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+                [`~models.vae.EncoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         if self.use_slicing and x.shape[0] > 1:
             encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
@@ -599,7 +605,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return decoded
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         r"""
         Decode a batch of images.
 
