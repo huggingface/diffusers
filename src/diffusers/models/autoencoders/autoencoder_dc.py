@@ -420,8 +420,10 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             The type(s) of block to use in the encoder.
         decoder_block_types (`Union[str, Tuple[str]]`, defaults to `"ResBlock"`):
             The type(s) of block to use in the decoder.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
-            The number of output channels for each block in the encoder/decoder.
+        encoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
+            The number of output channels for each block in the encoder.
+        decoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
+            The number of output channels for each block in the decoder.
         encoder_layers_per_block (`Tuple[int]`, defaults to `(2, 2, 2, 3, 3, 3)`):
             The number of layers per block in the encoder.
         decoder_layers_per_block (`Tuple[int]`, defaults to `(3, 3, 3, 3, 3, 3)`):
@@ -439,7 +441,10 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         decoder_act_fns (`Union[str, Tuple[str]]`, defaults to `"silu"`):
             The activation function(s) to use in the decoder.
         scaling_factor (`float`, defaults to `1.0`):
-            A scaling factor applied during model operations.
+            The multiplicative inverse of the root mean square of the latent features. This is used to scale the
+            latent space to have unit variance when training the diffusion model. The latents are scaled with the
+            formula `z = z * scaling_factor` before being passed to the diffusion model. When decoding, the latents
+            are scaled back to the original scale with the formula: `z = 1 / scaling_factor * z`.
     """
 
     _supports_gradient_checkpointing = False
