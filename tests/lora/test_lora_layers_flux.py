@@ -24,12 +24,15 @@ import torch
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxPipeline, FluxTransformer2DModel
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     floats_tensor,
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
+    require_peft_version_greater,
     require_torch_gpu,
     slow,
     torch_device,
@@ -155,6 +158,172 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "Loading from saved checkpoints should give same results.",
         )
         self.assertFalse(np.allclose(images_lora_with_alpha, images_lora, atol=1e-3, rtol=1e-3))
+
+    # flux control lora specific
+    def test_with_norm_in_state_dict(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.INFO)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        for norm_layer in ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]:
+            norm_state_dict = {}
+            for name, module in pipe.transformer.named_modules():
+                if norm_layer not in name or not hasattr(module, "weight") or module.weight is None:
+                    continue
+                norm_state_dict[f"transformer.{name}.weight"] = torch.randn(
+                    module.weight.shape, device=module.weight.device, dtype=module.weight.dtype
+                )
+
+                with CaptureLogger(logger) as cap_logger:
+                    pipe.load_lora_weights(norm_state_dict)
+                    lora_load_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+                self.assertTrue(
+                    cap_logger.out.startswith(
+                        "The provided state dict contains normalization layers in addition to LoRA layers"
+                    )
+                )
+                self.assertTrue(len(pipe.transformer._transformer_norm_layers) > 0)
+
+                pipe.unload_lora_weights()
+                lora_unload_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+            self.assertTrue(pipe.transformer._transformer_norm_layers is None)
+            self.assertTrue(np.allclose(original_output, lora_unload_output, atol=1e-5, rtol=1e-5))
+            self.assertFalse(
+                np.allclose(original_output, lora_load_output, atol=1e-6, rtol=1e-6), f"{norm_layer} is tested"
+            )
+
+        with CaptureLogger(logger) as cap_logger:
+            for key in list(norm_state_dict.keys()):
+                norm_state_dict[key.replace("norm", "norm_k_something_random")] = norm_state_dict.pop(key)
+            pipe.load_lora_weights(norm_state_dict)
+
+        self.assertTrue(
+            cap_logger.out.startswith("Unsupported keys found in state dict when trying to load normalization layers")
+        )
+
+    # flux control lora specific
+    def test_lora_parameter_expanded_shapes(self):
+        components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.DEBUG)
+
+        out_features, in_features = pipe.transformer.x_embedder.weight.shape
+        rank = 4
+
+        dummy_lora_A = torch.nn.Linear(2 * in_features, rank, bias=False)
+        dummy_lora_B = torch.nn.Linear(rank, out_features, bias=False)
+        lora_state_dict = {
+            "transformer.x_embedder.lora_A.weight": dummy_lora_A.weight,
+            "transformer.x_embedder.lora_B.weight": dummy_lora_B.weight,
+        }
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(lora_state_dict, "adapter-1")
+
+        self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == 2 * in_features)
+        self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
+
+        pipe.delete_adapters("adapter-1")
+        self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
+
+        components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        dummy_lora_A = torch.nn.Linear(1, rank, bias=False)
+        dummy_lora_B = torch.nn.Linear(rank, out_features, bias=False)
+        lora_state_dict = {
+            "transformer.x_embedder.lora_A.weight": dummy_lora_A.weight,
+            "transformer.x_embedder.lora_B.weight": dummy_lora_B.weight,
+        }
+        # We should error out because lora input features is less than original. We only
+        # support expanding the module, not shrinking it
+        with self.assertRaises(NotImplementedError):
+            pipe.load_lora_weights(lora_state_dict, "adapter-1")
+
+    # flux control lora specific
+    @require_peft_version_greater("0.13.2")
+    def test_lora_B_bias(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.INFO)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        denoiser_lora_config.lora_bias = False
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_false_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.delete_adapters("adapter-1")
+
+        denoiser_lora_config.lora_bias = True
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(np.allclose(original_output, lora_bias_false_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(original_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+        self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
+
+    # for now this is flux control lora specific but can be generalized later and added to ./utils.py
+    def test_correct_lora_configs_with_different_ranks(self):
+        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.transformer.delete_adapters("adapter-1")
+
+        # change the rank_pattern
+        updated_rank = denoiser_lora_config.r * 2
+        denoiser_lora_config.rank_pattern = {"single_transformer_blocks.0.attn.to_k": updated_rank}
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        assert pipe.transformer.peft_config["adapter-1"].rank_pattern == {
+            "single_transformer_blocks.0.attn.to_k": updated_rank
+        }
+
+        lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertTrue(not np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3))
+        pipe.transformer.delete_adapters("adapter-1")
+
+        # similarly change the alpha_pattern
+        updated_alpha = denoiser_lora_config.lora_alpha * 2
+        denoiser_lora_config.alpha_pattern = {"single_transformer_blocks.0.attn.to_k": updated_alpha}
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        assert pipe.transformer.peft_config["adapter-1"].alpha_pattern == {
+            "single_transformer_blocks.0.attn.to_k": updated_alpha
+        }
+
+        lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
+        self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
     @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
