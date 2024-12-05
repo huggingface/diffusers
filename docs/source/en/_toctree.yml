@@ -252,6 +252,8 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -362,6 +364,8 @@
       title: ControlNet with Stable Diffusion 3
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
+    - local: api/pipelines/controlnet_union
+      title: ControlNetUnion
     - local: api/pipelines/controlnetxs
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
