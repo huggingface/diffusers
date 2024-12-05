@@ -109,7 +109,7 @@ TextualInversion = search_civitai(
 pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 ```
 
-## Search Civitai
+### Search Civitai
 
 > [!TIP]
 > **If an error occurs, insert the `token` and run again.**
@@ -143,7 +143,7 @@ pipeline.load_textual_inversion(TextualInversion, token="EasyNegative")
 | include_params  | bool           | False         | Whether to include parameters in the returned data.           |
 | skip_error      | bool           | False         | Whether to skip errors and return None.                                             |
 
-## Search Huggingface
+### Search Huggingface
 
 > [!TIP]
 > **If an error occurs, insert the `token` and run again.**
