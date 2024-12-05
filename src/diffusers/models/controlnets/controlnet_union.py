@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from transformers.activations import QuickGELUActivation as QuickGELU
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...image_processor import PipelineImageInput
@@ -112,6 +111,15 @@ class ControlNetUnionInputProMax:
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class QuickGELU(nn.Module):
+    """
+    Applies GELU approximation that is fast but somewhat inaccurate. See: https://github.com/hendrycks/GELUs
+    """
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return input * torch.sigmoid(1.702 * input)
 
 
 class ResidualAttentionMlp(nn.Module):
