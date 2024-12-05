@@ -266,7 +266,7 @@ class Decoder(nn.Module):
                 resnet_groups=norm_num_groups,
                 attention_head_dim=output_channel,
                 temb_channels=temb_channels,
-                resnet_time_scale_shift=norm_type,
+                resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -510,7 +510,7 @@ class MaskConditionDecoder(nn.Module):
                 resnet_groups=norm_num_groups,
                 attention_head_dim=output_channel,
                 temb_channels=temb_channels,
-                resnet_time_scale_shift=norm_type,
+                resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
