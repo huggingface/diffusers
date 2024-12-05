@@ -73,6 +73,7 @@ class ControlNetUnionInput:
     def __setitem__(self, key, value):
         setattr(self, key, value)
 
+
 @dataclass
 class ControlNetUnionInputProMax:
     """
@@ -108,6 +109,7 @@ class ControlNetUnionInputProMax:
 
     def __setitem__(self, key, value):
         setattr(self, key, value)
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
