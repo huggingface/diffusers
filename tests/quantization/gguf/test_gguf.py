@@ -82,6 +82,7 @@ class GGUFSingleFileTests(unittest.TestCase):
             self.ckpt_path, quantization_config=quantization_config, torch_dtype=self.torch_dtype
         )
         model.to("cuda")
+        assert (model.get_memory_footprint() / 1024**3) < 5
         inputs = self.get_dummy_inputs()
 
         torch.cuda.reset_peak_memory_stats()
