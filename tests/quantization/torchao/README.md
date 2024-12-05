@@ -1,6 +1,6 @@
 The tests here are adapted from [`transformers` tests](https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac174797063e0/tests/quantization/torchao_integration/).
 
-They were conducted on a single H100. Below is `nvidia-smi`:
+The benchmarks were run on a single H100. Below is `nvidia-smi`:
 
 ```bash
 +---------------------------------------------------------------------------------------+
@@ -25,6 +25,12 @@ They were conducted on a single H100. Below is `nvidia-smi`:
 ```
 
 The benchmark results for Flux and CogVideoX can be found in [this](https://github.com/huggingface/diffusers/pull/10009) PR.
+
+The tests, and the expected slices, were obtained from the `aws-g6e-xlarge-plus` GPU test runners. To run the slow tests, use the following command or an equivalent:
+
+```bash
+HF_HUB_ENABLE_HF_TRANSFER=1 RUN_SLOW=1 pytest -s tests/quantization/torchao/test_torchao.py::SlowTorchAoTests
+```
 
 `diffusers-cli`:
 
