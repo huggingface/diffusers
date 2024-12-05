@@ -74,6 +74,7 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.dtypes.affine_quantized_tensor import TensorCoreTiledLayoutType
+    from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
 
 
 @require_torch
@@ -494,6 +495,11 @@ class TorchAoSerializationTest(unittest.TestCase):
         output = loaded_quantized_model(**inputs)[0]
 
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
+        self.assertTrue(
+            isinstance(
+                loaded_quantized_model.proj_out.weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)
+            )
+        )
         self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_serialization_expected_slice(self):
