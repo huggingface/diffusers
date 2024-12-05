@@ -41,6 +41,22 @@ if is_torchao_available():
 
 logger = logging.get_logger(__name__)
 
+SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION = (
+    # At the moment, only int8 is supported for integer quantization dtypes.
+    # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
+    # to support more quantization methods, such as intx_weight_only.
+    torch.int8,
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+    torch.uint1,
+    torch.uint2,
+    torch.uint3,
+    torch.uint4,
+    torch.uint5,
+    torch.uint6,
+    torch.uint7,
+)
+
 
 def _quantization_type(weight):
     from torchao.dtypes import AffineQuantizedTensor
@@ -123,22 +139,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        supported_dtypes = (
-            # At the moment, only int8 is supported for integer quantization dtypes.
-            # In Torch 2.6, int1-int7 will be introduced, so this can be visited in the future
-            # to support more quantization methods, such as intx_weight_only.
-            torch.int8,
-            torch.float8_e4m3fn,
-            torch.float8_e5m2,
-            torch.uint1,
-            torch.uint2,
-            torch.uint3,
-            torch.uint4,
-            torch.uint5,
-            torch.uint6,
-            torch.uint7,
-        )
-        if isinstance(target_dtype, supported_dtypes):
+        if isinstance(target_dtype, SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION):
             return target_dtype
 
         # We need one of the supported dtypes to be selected in order for accelerate to determine
@@ -146,7 +147,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         # called when device_map is not "auto".
         raise ValueError(
             f"You are using `device_map='auto'` on a TorchAO quantized model but a suitable target dtype "
-            f"could not be inferred. The supported target_dtypes are: {supported_dtypes}. If you think the "
+            f"could not be inferred. The supported target_dtypes are: {SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION}. If you think the "
             f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
         )
 
@@ -190,10 +191,13 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         module, tensor_name = get_module_from_name(model, param_name)
 
         if self.pre_quantized:
+            # If we're loading pre-quantized weights, replace the repr of linear layers for pretty printing info
+            # about AffineQuantizedTensor
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
             if isinstance(module, nn.Linear):
                 module.extra_repr = types.MethodType(_linear_extra_repr, module)
         else:
+            # As we perform quantization here, the repr of linear layers is that of AQT, so we don't have to do it ourselves
             module._parameters[tensor_name] = torch.nn.Parameter(param_value).to(device=target_device)
             quantize_(module, self.quantization_config.get_apply_tensor_subclass())
 

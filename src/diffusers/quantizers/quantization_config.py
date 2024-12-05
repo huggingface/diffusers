@@ -436,14 +436,14 @@ class TorchAoConfig(QuantizationConfigMixin):
         else:
             self.quant_type_kwargs = kwargs
 
-        _STR_TO_METHOD = self._get_torchao_quant_type_to_method()
-        if self.quant_type not in _STR_TO_METHOD.keys():
+        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+        if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
             raise ValueError(
                 f"Requested quantization type: {self.quant_type} is not supported yet or is incorrect. If you think the "
                 f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
             )
 
-        method = _STR_TO_METHOD[self.quant_type]
+        method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
         signature = inspect.signature(method)
         all_kwargs = {
             param.name
@@ -481,24 +481,6 @@ class TorchAoConfig(QuantizationConfigMixin):
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
 
-            INT4_QUANTIZATION_TYPES = {
-                # int4 weight + bfloat16/float16 activation
-                "int4wo": int4_weight_only,
-                "int4_weight_only": int4_weight_only,
-                # int4 weight + int8 activation
-                "int4dq": int8_dynamic_activation_int4_weight,
-                "int8_dynamic_activation_int4_weight": int8_dynamic_activation_int4_weight,
-            }
-
-            INT8_QUANTIZATION_TYPES = {
-                # int8 weight + bfloat16/float16 activation
-                "int8wo": int8_weight_only,
-                "int8_weight_only": int8_weight_only,
-                # int8 weight + int8 activation
-                "int8dq": int8_dynamic_activation_int8_weight,
-                "int8_dynamic_activation_int8_weight": int8_dynamic_activation_int8_weight,
-            }
-
             def generate_float8dq_types(dtype: torch.dtype):
                 name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
                 types = {}
@@ -529,6 +511,41 @@ class TorchAoConfig(QuantizationConfigMixin):
 
                 return types
 
+            def generate_uintx_quantization_types(bits: int):
+                UINTX_TO_DTYPE = {
+                    1: torch.uint1,
+                    2: torch.uint2,
+                    3: torch.uint3,
+                    4: torch.uint4,
+                    5: torch.uint5,
+                    6: torch.uint6,
+                    7: torch.uint7,
+                    # 8: torch.uint8,  # uint8 quantization is not supported
+                }
+
+                types = {}
+                types[f"uint{bits}"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
+                types[f"uint{bits}wo"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
+                return types
+
+            INT4_QUANTIZATION_TYPES = {
+                # int4 weight + bfloat16/float16 activation
+                "int4wo": int4_weight_only,
+                "int4_weight_only": int4_weight_only,
+                # int4 weight + int8 activation
+                "int4dq": int8_dynamic_activation_int4_weight,
+                "int8_dynamic_activation_int4_weight": int8_dynamic_activation_int4_weight,
+            }
+
+            INT8_QUANTIZATION_TYPES = {
+                # int8 weight + bfloat16/float16 activation
+                "int8wo": int8_weight_only,
+                "int8_weight_only": int8_weight_only,
+                # int8 weight + int8 activation
+                "int8dq": int8_dynamic_activation_int8_weight,
+                "int8_dynamic_activation_int8_weight": int8_dynamic_activation_int8_weight,
+            }
+
             # TODO(aryan): handle torch 2.2/2.3
             FLOATX_QUANTIZATION_TYPES = {
                 # float8_e5m2 weight + bfloat16/float16 activation
@@ -540,7 +557,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 # float8_e5m2 weight + float8 activation (dynamic)
                 "float8dq": float8_dynamic_activation_float8_weight,
                 "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
-                # ===== Matrix multiplication is not supported in float8_e5m2 so the following error out.
+                # ===== Matrix multiplication is not supported in float8_e5m2 so the following errors out.
                 # However, changing activation_dtype=torch.float8_e4m3 might work here =====
                 # "float8dq_e5m2": partial(
                 #     float8_dynamic_activation_float8_weight,
@@ -566,26 +583,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_fpx_quantization_types(5),
                 **generate_fpx_quantization_types(6),
                 **generate_fpx_quantization_types(7),
-                # ===== Errors out with "torch.cat(): expected a non-empty list of Tensors" =====
-                # **generate_fpx_quantization_types(8),
             }
-
-            UINTX_TO_DTYPE = {
-                1: torch.uint1,
-                2: torch.uint2,
-                3: torch.uint3,
-                4: torch.uint4,
-                5: torch.uint5,
-                6: torch.uint6,
-                7: torch.uint7,
-                # 8: torch.uint8,  # uint8 quantization is not supported
-            }
-
-            def generate_uintx_quantization_types(bits: int):
-                types = {}
-                types[f"uint{bits}"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
-                types[f"uint{bits}wo"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
-                return types
 
             UINTX_QUANTIZATION_DTYPES = {
                 "uintx": uintx_weight_only,
@@ -614,6 +612,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "uint_a16w7": partial(uintx_weight_only, dtype=torch.uint7),
                 # "uint_a16w8": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
             }
+
             SHORTHAND_FLOAT_QUANTIZATION_TYPES = {
                 "float_e5m2_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
                 "float_e4m3_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
@@ -645,8 +644,6 @@ class TorchAoConfig(QuantizationConfigMixin):
     @staticmethod
     def _is_cuda_capability_atleast_8_9() -> bool:
         if not torch.cuda.is_available():
-            if torch.mps.is_available():
-                return False
             raise RuntimeError("TorchAO requires a CUDA compatible GPU and installation of PyTorch.")
 
         major, minor = torch.cuda.get_device_capability()
@@ -655,9 +652,23 @@ class TorchAoConfig(QuantizationConfigMixin):
         return major >= 9
 
     def get_apply_tensor_subclass(self):
-        _STR_TO_METHOD = self._get_torchao_quant_type_to_method()
-        return _STR_TO_METHOD[self.quant_type](**self.quant_type_kwargs)
+        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+        return TORCHAO_QUANT_TYPE_METHODS[self.quant_type](**self.quant_type_kwargs)
 
     def __repr__(self):
+        r"""
+        Example of how this looks for `TorchAoConfig("uint_a16w4", group_size=32)`:
+
+        ```
+        TorchAoConfig {
+            "modules_to_not_convert": null,
+            "quant_method": "torchao",
+            "quant_type": "uint_a16w4",
+            "quant_type_kwargs": {
+                "group_size": 32
+            }
+        }
+        ```
+        """
         config_dict = self.to_dict()
         return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"

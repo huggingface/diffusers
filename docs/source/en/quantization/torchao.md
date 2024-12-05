@@ -48,6 +48,8 @@ image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
 image.save("output.png")
 ```
 
+Additionally, TorchAO supports an automatic quantization API exposed with [`autoquant`](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. This can directly be used with the underlying modeling components at the moment, but Diffusers will also expose an autoquant configuration option in the future.
+
 ## Resources
 
 - [TorchAO Quantization API](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md)
