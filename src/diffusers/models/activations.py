@@ -79,9 +79,6 @@ class GELU(nn.Module):
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate, approximate=self.approximate)
-        # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
 
     def forward(self, hidden_states):
@@ -105,9 +102,6 @@ class GEGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate)
-        # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states, *args, **kwargs):
