@@ -69,98 +69,95 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         # !pip install controlnet_aux
-        >>> from diffusers import (
-        ...     StableDiffusionXLControlNetUnionImg2ImgPipeline,
-        ...     ControlNetUnionModel,
-        ...     AutoencoderKL,
-        ... )
-        >>> from diffusers.models.controlnets import ControlNetUnionInputProMax
-        >>> from diffusers.utils import load_image
-        >>> import torch
-        >>> from PIL import Image
-        >>> import numpy as np
-        >>> prompt = "A cat"
-        >>> # download an image
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
-        ... )
-        >>> # initialize the models and pipeline
-        >>> controlnet = ControlNetUnionModel.from_pretrained(
-        ...     "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
-        ... )
-        >>> vae = AutoencoderKL.from_pretrained(
-        ...     "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
-        ... )
-        >>> pipe = StableDiffusionXLControlNetUnionImg2ImgPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0",
-        ...     controlnet=controlnet,
-        ...     vae=vae,
-        ...     torch_dtype=torch.float16,
-        ... ).to("cuda")
-        >>> # `enable_model_cpu_offload` is not recommended due to multiple generations
-        >>> height = image.height
-        >>> width = image.width
-        >>> ratio = np.sqrt(1024.0 * 1024.0 / (width * height))
-        >>> # 3 * 3 upscale correspond to 16 * 3 multiply, 2 * 2 correspond to 16 * 2 multiply and so on.
-        >>> scale_image_factor = 3
-        >>> base_factor = 16
-        >>> factor = scale_image_factor * base_factor
-        >>> W, H = int(width * ratio) // factor * factor, int(height * ratio) // factor * factor
-        >>> image = image.resize((W, H))
-        >>> target_width = W // scale_image_factor
-        >>> target_height = H // scale_image_factor
-        >>> images = []
-        >>> crops_coords_list = [
-        ...     (0, 0),
-        ...     (0, width // 2),
-        ...     (height // 2, 0),
-        ...     (width // 2, height // 2),
-        ...     0,
-        ...     0,
-        ...     0,
-        ...     0,
-        ...     0,
-        ... ]
-        >>> for i in range(scale_image_factor):
-        ...     for j in range(scale_image_factor):
-        ...         left = j * target_width
-        ...         top = i * target_height
-        ...         right = left + target_width
-        ...         bottom = top + target_height
-        ...         cropped_image = image.crop((left, top, right, bottom))
-        ...         cropped_image = cropped_image.resize((W, H))
-        ...         images.append(cropped_image)
-        >>> # set ControlNetUnion input
-        >>> result_images = []
-        >>> for sub_img, crops_coords in zip(images, crops_coords_list):
-        ...     union_input = ControlNetUnionInputProMax(
-        ...         tile=sub_img,
-        ...     )
-        ...     new_width, new_height = W, H
-        ...     out = pipe(
-        ...         prompt=[prompt] * 1,
-        ...         image=sub_img,
-        ...         control_image_list=union_input,
-        ...         width=new_width,
-        ...         height=new_height,
-        ...         num_inference_steps=30,
-        ...         crops_coords_top_left=(W, H),
-        ...         target_size=(W, H),
-        ...         original_size=(W * 2, H * 2),
-        ...     )
-        ...     result_images.append(out.images[0])
-        >>> new_im = Image.new(
-        ...     "RGB", (new_width * scale_image_factor, new_height * scale_image_factor)
-        ... )
-        >>> new_im.paste(result_images[0], (0, 0))
-        >>> new_im.paste(result_images[1], (new_width, 0))
-        >>> new_im.paste(result_images[2], (new_width * 2, 0))
-        >>> new_im.paste(result_images[3], (0, new_height))
-        >>> new_im.paste(result_images[4], (new_width, new_height))
-        >>> new_im.paste(result_images[5], (new_width * 2, new_height))
-        >>> new_im.paste(result_images[6], (0, new_height * 2))
-        >>> new_im.paste(result_images[7], (new_width, new_height * 2))
-        >>> new_im.paste(result_images[8], (new_width * 2, new_height * 2))
+        from diffusers import (
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            ControlNetUnionModel,
+            AutoencoderKL,
+        )
+        from diffusers.models.controlnets import ControlNetUnionInputProMax
+        from diffusers.utils import load_image
+        import torch
+        from PIL import Image
+        import numpy as np
+
+        prompt = "A cat"
+        # download an image
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
+        )
+        # initialize the models and pipeline
+        controlnet = ControlNetUnionModel.from_pretrained(
+            "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+        )
+        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        pipe = StableDiffusionXLControlNetUnionImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            controlnet=controlnet,
+            vae=vae,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        # `enable_model_cpu_offload` is not recommended due to multiple generations
+        height = image.height
+        width = image.width
+        ratio = np.sqrt(1024.0 * 1024.0 / (width * height))
+        # 3 * 3 upscale correspond to 16 * 3 multiply, 2 * 2 correspond to 16 * 2 multiply and so on.
+        scale_image_factor = 3
+        base_factor = 16
+        factor = scale_image_factor * base_factor
+        W, H = int(width * ratio) // factor * factor, int(height * ratio) // factor * factor
+        image = image.resize((W, H))
+        target_width = W // scale_image_factor
+        target_height = H // scale_image_factor
+        images = []
+        crops_coords_list = [
+            (0, 0),
+            (0, width // 2),
+            (height // 2, 0),
+            (width // 2, height // 2),
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]
+        for i in range(scale_image_factor):
+            for j in range(scale_image_factor):
+                left = j * target_width
+                top = i * target_height
+                right = left + target_width
+                bottom = top + target_height
+                cropped_image = image.crop((left, top, right, bottom))
+                cropped_image = cropped_image.resize((W, H))
+                images.append(cropped_image)
+        # set ControlNetUnion input
+        result_images = []
+        for sub_img, crops_coords in zip(images, crops_coords_list):
+            union_input = ControlNetUnionInputProMax(
+                tile=sub_img,
+            )
+            new_width, new_height = W, H
+            out = pipe(
+                prompt=[prompt] * 1,
+                image=sub_img,
+                control_image_list=union_input,
+                width=new_width,
+                height=new_height,
+                num_inference_steps=30,
+                crops_coords_top_left=(W, H),
+                target_size=(W, H),
+                original_size=(W * 2, H * 2),
+            )
+            result_images.append(out.images[0])
+        new_im = Image.new("RGB", (new_width * scale_image_factor, new_height * scale_image_factor))
+        new_im.paste(result_images[0], (0, 0))
+        new_im.paste(result_images[1], (new_width, 0))
+        new_im.paste(result_images[2], (new_width * 2, 0))
+        new_im.paste(result_images[3], (0, new_height))
+        new_im.paste(result_images[4], (new_width, new_height))
+        new_im.paste(result_images[5], (new_width * 2, new_height))
+        new_im.paste(result_images[6], (0, new_height * 2))
+        new_im.paste(result_images[7], (new_width, new_height * 2))
+        new_im.paste(result_images[8], (new_width * 2, new_height * 2))
         ```
 """
 
