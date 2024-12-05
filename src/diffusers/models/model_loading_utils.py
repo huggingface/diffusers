@@ -25,7 +25,6 @@ from typing import List, Optional, Union
 import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
-from tqdm import tqdm
 
 from ..utils import (
     GGUF_FILE_EXTENSION,
@@ -458,7 +457,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
     reader = GGUFReader(gguf_checkpoint_path)
 
     parsed_parameters = {}
-    for tensor in tqdm(reader.tensors, desc="Loading GGUF Parameters: "):
+    for tensor in reader.tensors:
         name = tensor.name
         quant_type = tensor.tensor_type
 
