@@ -631,8 +631,8 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         raise NotImplementedError("`tiled_decode` has not been implemented for AutoencoderDC.")
 
     def forward(self, sample: torch.Tensor, return_dict: bool = True) -> torch.Tensor:
-        z = self.encode(sample, return_dict=False)[0]
-        decoded = self.decode(z, return_dict=False)[0]
+        encoded = self.encode(sample, return_dict=False)[0]
+        decoded = self.decode(encoded, return_dict=False)[0]
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)
