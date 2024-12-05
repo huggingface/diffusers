@@ -1,7 +1,7 @@
 import gc
 import unittest
-import pytest
 
+import pytest
 import torch
 
 from diffusers import (
