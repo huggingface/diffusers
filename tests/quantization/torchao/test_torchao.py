@@ -154,7 +154,7 @@ class TorchAoTest(unittest.TestCase):
 
         return inputs
 
-    def get_dummy_tensor_inputs(self, device=None):
+    def get_dummy_tensor_inputs(self, device=None, seed: int = 0):
         batch_size = 1
         num_latent_channels = 4
         num_image_channels = 3
@@ -162,13 +162,23 @@ class TorchAoTest(unittest.TestCase):
         sequence_length = 48
         embedding_dim = 32
 
+        torch.manual_seed(seed)
         hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(device, dtype=torch.bfloat16)
+
+        torch.manual_seed(seed)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(
             device, dtype=torch.bfloat16
         )
+
+        torch.manual_seed(seed)
         pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(device, dtype=torch.bfloat16)
+
+        torch.manual_seed(seed)
         text_ids = torch.randn((sequence_length, num_image_channels)).to(device, dtype=torch.bfloat16)
+
+        torch.manual_seed(seed)
         image_ids = torch.randn((height * width, num_image_channels)).to(device, dtype=torch.bfloat16)
+
         timestep = torch.tensor([1.0]).to(device, dtype=torch.bfloat16).expand(batch_size)
 
         return {
@@ -321,6 +331,22 @@ class TorchAoTest(unittest.TestCase):
             if isinstance(module, LoRALayer):
                 self.assertTrue(module.adapter[1].weight.grad is not None)
                 self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
+
+    def test_torch_compile(self):
+        quantization_config = TorchAoConfig("int8_weight_only")
+        components = self.get_dummy_components(quantization_config)
+        pipe = FluxPipeline(**components)
+        pipe.to(device=torch_device, dtype=torch.bfloat16)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        normal_output = pipe(**inputs)[0].flatten()[-32:]
+
+        pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True, dynamic=False)
+        inputs = self.get_dummy_inputs(torch_device)
+        compile_output = pipe(**inputs)[0].flatten()[-32:]
+
+        # Note: Seems to require higher tolerance
+        self.assertTrue(np.allclose(normal_output, compile_output, atol=1e-2, rtol=1e-3))
 
 
 @require_torch
