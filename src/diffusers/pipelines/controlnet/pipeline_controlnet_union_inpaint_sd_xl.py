@@ -81,56 +81,46 @@ def retrieve_latents(
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> # !pip install transformers accelerate
-        >>> from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
-        >>> from diffusers.utils import load_image
-        >>> from PIL import Image
-        >>> import numpy as np
-        >>> import torch
-
-        >>> init_image = load_image(
-        ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy.png"
-        ... )
-        >>> init_image = init_image.resize((1024, 1024))
-
-        >>> generator = torch.Generator(device="cpu").manual_seed(1)
-
-        >>> mask_image = load_image(
-        ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
-        ... )
-        >>> mask_image = mask_image.resize((1024, 1024))
-
-
-        >>> def make_canny_condition(image):
-        ...     image = np.array(image)
-        ...     image = cv2.Canny(image, 100, 200)
-        ...     image = image[:, :, None]
-        ...     image = np.concatenate([image, image, image], axis=2)
-        ...     image = Image.fromarray(image)
-        ...     return image
-
-
-        >>> control_image = make_canny_condition(init_image)
-
-        >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
-        ... )
-        >>> pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
-
-        >>> pipe.enable_model_cpu_offload()
-
-        >>> # generate image
-        >>> image = pipe(
-        ...     "a handsome man with ray-ban sunglasses",
-        ...     num_inference_steps=20,
-        ...     generator=generator,
-        ...     eta=1.0,
-        ...     image=init_image,
-        ...     mask_image=mask_image,
-        ...     control_image=control_image,
-        ... ).images[0]
+        from diffusers import StableDiffusionXLControlNetUnionInpaintPipeline, ControlNetUnionModel, AutoencoderKL
+        from diffusers.models.controlnets import ControlNetUnionInputProMax
+        from diffusers.utils import load_image
+        import torch
+        import numpy as np
+        from PIL import Image
+        prompt = "A cat"
+        # download an image
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint/overture-creations-5sI6fQgYIuo.png"
+        ).resize((1024, 1024))
+        mask = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        ).resize((1024, 1024))
+        # initialize the models and pipeline
+        controlnet = ControlNetUnionModel.from_pretrained(
+            "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
+        )
+        vae = AutoencoderKL.from_pretrained(
+            "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
+        )
+        pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            controlnet=controlnet,
+            vae=vae,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.enable_model_cpu_offload()
+        controlnet_img = image.copy()
+        controlnet_img_np = np.array(controlnet_img)
+        mask_np = np.array(mask)
+        controlnet_img_np[mask_np > 0] = 0
+        controlnet_img = Image.fromarray(controlnet_img_np)
+        union_input = ControlNetUnionInputProMax(
+            repaint=controlnet_img,
+        )
+        # generate image
+        image = pipe(prompt, image=image, mask_image=mask, control_image_list=union_input).images[0]
+        image.save("inpaint.png")
         ```
 """
 
