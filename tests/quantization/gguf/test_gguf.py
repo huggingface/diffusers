@@ -75,7 +75,7 @@ class GGUFSingleFileTests(unittest.TestCase):
             if isinstance(module, torch.nn.Linear) and hasattr(module.weight, "quant_type"):
                 assert module.weight.dtype == torch.uint8
 
-    def test_gguf_memory(self):
+    def test_gguf_memory_usage(self):
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
 
         model = FluxTransformer2DModel.from_single_file(

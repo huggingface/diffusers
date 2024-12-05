@@ -356,6 +356,8 @@ jobs:
         config:
           - backend: "bitsandbytes"
             test_location: "bnb"
+          - backend: "gguf"
+            test_location: "gguf"
     runs-on:
       group: aws-g6e-xlarge-plus
     container:
