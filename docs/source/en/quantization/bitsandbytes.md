@@ -40,6 +40,12 @@ Quantizing a model in 8-bit halves the memory-usage:
 bitsandbytes is supported in both Transformers and Diffusers, so you can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
+> [!Note]
+> Depending on the GPU, set your `torch_dtype`. For Ada and higher series GPUs support `torch.bfloat16` and we suggest using it when applicable.
+
+> [!Note]
+> We do not qunatize the `CLIPTextModel` and the `AutoencoderKL` due to their small size, and also for the fact that `AutoencoderKL` has very few `torch.nn.Linear` layers.
+
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
@@ -47,9 +53,7 @@ from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 from diffusers import FluxTransformer2DModel
 from transformers import T5EncoderModel
 
-quant_config = TransformersBitsAndBytesConfig(
-    load_in_8bit=True,
-)
+quant_config = TransformersBitsAndBytesConfig(load_in_8bit=True,)
 
 text_encoder_2_8bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -58,9 +62,7 @@ text_encoder_2_8bit = T5EncoderModel.from_pretrained(
     torch_dtype=torch.float16,
 )
 
-quant_config = DiffusersBitsAndBytesConfig(
-    load_in_8bit=True,
-)
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True,)
 
 transformer_8bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -72,12 +74,12 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
-```py
+```diff
 transformer_8bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float32,
++   torch_dtype=torch.float32,
 )
 ```
 
@@ -104,17 +106,16 @@ pipe_kwargs = {
     "max_sequence_length": 512,
 }
 
-image = pipe(
-    generator=torch.Generator("cpu").manual_seed(0),
-    **pipe_kwargs,
-).images[0]
-
-image.resize((224, 224))
+image = pipe(**pipe_kwargs, generator=torch.manual_seed(0),).images[0]
 ```
 
 <div class="flex justify-center">
    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/8bit.png"/>
 </div>
+
+> [!Note]
+> When memory permits, one can directly mode the pipeline (`pipe` here) to the GPU using the `.to("cuda")` API.
+> One can also use the `enable_model_cpu_offload()` to optimize GPU VRAM usage.
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 8-bit models locally with [`~ModelMixin.save_pretrained`].
 
@@ -126,6 +127,12 @@ Quantizing a model in 4-bit reduces your memory-usage by 4x:
 bitsandbytes is supported in both Transformers and Diffusers, so you can can quantize both the
 [`FluxTransformer2DModel`] and [`~transformers.T5EncoderModel`].
 
+> [!Note]
+> Depending on the GPU, set your `torch_dtype`. For Ada and higher series GPUs support `torch.bfloat16` and we suggest using it when applicable.
+
+> [!Note]
+> We do not qunatize the `CLIPTextModel` and the `AutoencoderKL` due to their small size, and also for the fact that `AutoencoderKL` has very few `torch.nn.Linear` layers.
+
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
@@ -133,9 +140,7 @@ from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 from diffusers import FluxTransformer2DModel
 from transformers import T5EncoderModel
 
-quant_config = TransformersBitsAndBytesConfig(
-    load_in_4bit=True,
-)
+quant_config = TransformersBitsAndBytesConfig(load_in_4bit=True,)
 
 text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -144,9 +149,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
     torch_dtype=torch.float16,
 )
 
-quant_config = DiffusersBitsAndBytesConfig(
-    load_in_4bit=True,
-)
+quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True,)
 
 transformer_4bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -158,12 +161,12 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
-```py
+```diff
 transformer_4bit = FluxTransformer2DModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float32,
++   torch_dtype=torch.float32,
 )
 ```
 
@@ -189,17 +192,16 @@ pipe_kwargs = {
     "max_sequence_length": 512,
 }
 
-image = pipe(
-    generator=torch.Generator("cpu").manual_seed(0),
-    **pipe_kwargs,
-).images[0]
-
-image.resize((224, 224))
+image = pipe(**pipe_kwargs, generator=torch.manual_seed(0),).images[0]
 ```
 
 <div class="flex justify-center">
    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/quant-bnb/4bit.png"/>
 </div>
+
+> [!Note]
+> When memory permits, one can directly mode the pipeline (`pipe` here) to the GPU using the `.to("cuda")` API.
+> One can also use the `enable_model_cpu_offload()` to optimize GPU VRAM usage.
 
 Once a model is quantized, you can push the model to the Hub with the [`~ModelMixin.push_to_hub`] method. The quantization `config.json` file is pushed first, followed by the quantized model weights. You can also save the serialized 4-bit models locally with [`~ModelMixin.save_pretrained`].
 
