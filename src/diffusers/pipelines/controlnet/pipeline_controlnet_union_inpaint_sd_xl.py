@@ -87,6 +87,7 @@ EXAMPLE_DOC_STRING = """
         import torch
         import numpy as np
         from PIL import Image
+
         prompt = "A cat"
         # download an image
         image = load_image(
@@ -99,9 +100,7 @@ EXAMPLE_DOC_STRING = """
         controlnet = ControlNetUnionModel.from_pretrained(
             "brad-twinkl/controlnet-union-sdxl-1.0-promax", torch_dtype=torch.float16
         )
-        vae = AutoencoderKL.from_pretrained(
-            "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
-        )
+        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             controlnet=controlnet,
