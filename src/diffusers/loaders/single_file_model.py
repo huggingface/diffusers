@@ -205,6 +205,7 @@ class FromOriginalModelMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         quantization_config = kwargs.pop("quantization_config", None)
+        device = kwargs.pop("device", None)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -326,10 +327,12 @@ class FromOriginalModelMixin:
             )
 
         if is_accelerate_available():
+            param_device = torch.device(device) if device else torch.device("cpu")
             unexpected_keys = load_model_dict_into_meta(
                 model,
                 diffusers_format_checkpoint,
                 dtype=torch_dtype,
+                device=param_device,
                 hf_quantizer=hf_quantizer,
                 keep_in_fp32_modules=keep_in_fp32_modules,
             )

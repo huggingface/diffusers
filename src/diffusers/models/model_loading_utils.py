@@ -184,7 +184,8 @@ def load_model_dict_into_meta(
 ) -> List[str]:
     if device is not None and not isinstance(device, (str, torch.device)):
         raise ValueError(f"Expected device to have type `str` or `torch.device`, but got {type(device)=}.")
-    device = device or torch.device("cpu")
+    if hf_quantizer is None:
+        device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
 
