@@ -338,7 +338,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -836,7 +836,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         param_device = "cpu"
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
                     elif is_quant_method_bnb:
-                        param_device = torch.cuda.current_device()
+                        param_device = torch.device(torch.cuda.current_device())
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
 

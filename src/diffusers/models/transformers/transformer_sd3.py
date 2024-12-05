@@ -13,7 +13,6 @@
 # limitations under the License.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -422,8 +421,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             # controlnet residual
             if block_controlnet_hidden_states is not None and block.context_pre_only is False:
                 interval_control = len(self.transformer_blocks) / len(block_controlnet_hidden_states)
-                interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + block_controlnet_hidden_states[index_block // interval_control]
+                hidden_states = hidden_states + block_controlnet_hidden_states[int(index_block / interval_control)]
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
