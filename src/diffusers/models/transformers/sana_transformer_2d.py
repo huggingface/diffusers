@@ -26,7 +26,7 @@ from ..attention_processor import (
     FusedAttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
 )
-from ..autoencoders.dc_ae import GLUMBConv
+from ..autoencoders.autoencoder_dc import GLUMBConv
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin

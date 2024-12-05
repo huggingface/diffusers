@@ -22,7 +22,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import DCAE, SanaTransformer2DModel
+from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -157,7 +157,7 @@ class SanaPipeline(DiffusionPipeline):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: AutoModelForCausalLM,
-        vae: DCAE,
+        vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
     ):
