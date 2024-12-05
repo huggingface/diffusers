@@ -27,7 +27,7 @@ if is_accelerate_available():
 
 
 def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modules_to_not_convert=[]):
-    def _should_convert_to_gguf(module, state_dict, prefix):
+    def _should_convert_to_gguf(state_dict, prefix):
         weight_key = prefix + "weight"
         return weight_key in state_dict and isinstance(state_dict[weight_key], GGUFParameter)
 
@@ -41,7 +41,7 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modul
 
         if (
             isinstance(module, nn.Linear)
-            and _should_convert_to_gguf(module, state_dict, module_prefix)
+            and _should_convert_to_gguf(state_dict, module_prefix)
             and name not in modules_to_not_convert
         ):
             ctx = init_empty_weights if is_accelerate_available() else nullcontext
