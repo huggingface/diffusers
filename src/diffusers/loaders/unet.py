@@ -492,6 +492,9 @@ class UNet2DConditionLoadersMixin:
                     )
                 state_dict = {k: v for k, v in state_dict.items() if isinstance(v, torch.Tensor)}
         else:
+            deprecation_message = "Using the `save_attn_procs()` method has been deprecated and will be removed in a future version. Please use `save_lora_adapter()`."
+            deprecate("save_attn_procs", "0.40.0", deprecation_message)
+
             if not USE_PEFT_BACKEND:
                 raise ValueError("PEFT backend is required for saving LoRAs using the `save_attn_procs()` method.")
 
