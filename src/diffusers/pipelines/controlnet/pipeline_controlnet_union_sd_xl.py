@@ -73,6 +73,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.models.controlnets import ControlNetUnionInput
         >>> from diffusers.utils import load_image
         >>> import torch
+
         >>> prompt = "A cat"
         >>> # download an image
         >>> image = load_image(
@@ -82,9 +83,7 @@ EXAMPLE_DOC_STRING = """
         >>> controlnet = ControlNetUnionModel.from_pretrained(
         ...     "xinsir/controlnet-union-sdxl-1.0", torch_dtype=torch.float16
         ... )
-        >>> vae = AutoencoderKL.from_pretrained(
-        ...     "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
-        ... )
+        >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
