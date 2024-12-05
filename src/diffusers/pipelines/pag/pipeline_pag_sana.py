@@ -22,7 +22,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...image_processor import PixArtImageProcessor
-from ...models import DCAE, SanaTransformer2DModel
+from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
@@ -161,7 +161,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: AutoModelForCausalLM,
-        vae: DCAE,
+        vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
         pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block

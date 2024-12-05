@@ -11,7 +11,7 @@ from termcolor import colored
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import (
-    DCAE,
+    AutoencoderDC,
     DPMSolverMultistepScheduler,
     FlowMatchEulerDiscreteScheduler,
     SanaPipeline,
@@ -187,7 +187,7 @@ def main(args):
     else:
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        dc_ae = DCAE.from_pretrained(
+        ae = AutoencoderDC.from_pretrained(
             "Efficient-Large-Model/dc_ae_f32c32_sana_1.0_diffusers",
             torch_dtype=torch.float32,
         ).to(device)
@@ -221,7 +221,7 @@ def main(args):
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             transformer=transformer,
-            vae=dc_ae,
+            vae=ae,
             scheduler=scheduler,
         )
 

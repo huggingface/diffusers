@@ -130,7 +130,6 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
-            "DCAE",
         ]
     )
     _import_structure["optimization"] = [
@@ -575,7 +574,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
         from .models import (
-            DCAE,
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AuraFlowTransformer2DModel,
