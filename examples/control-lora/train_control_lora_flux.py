@@ -817,12 +817,16 @@ def main(args):
         new_linear.weight[:, :initial_input_channels].copy_(flux_transformer.x_embedder.weight)
         new_linear.bias.copy_(flux_transformer.x_embedder.bias)
         flux_transformer.x_embedder = new_linear
-    flux_transformer.register_config(in_channels=initial_input_channels * 2)
+    flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
 
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+        # add the input layer to the mix.
+        if "x_embedder" not in target_modules:
+            target_modules.append("x_embedder")
     else:
         target_modules = [
+            "x_embedder",
             "attn.to_k",
             "attn.to_q",
             "attn.to_v",
