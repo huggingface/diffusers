@@ -27,6 +27,8 @@ from .single_file_utils import (
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_ltx_transformer_checkpoint_to_diffusers,
+    convert_ltx_vae_checkpoint_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
@@ -81,6 +83,14 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "FluxTransformer2DModel": {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "LTXTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
+        "config_mapping_fn": lambda *_, **__: {},
+    },
+    "AutoencoderKLLTX": {
+        "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
+        "config_mapping_fn": lambda *_, **__: {},
     },
 }
 
@@ -219,7 +229,7 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if original_config:
+        if original_config is not None:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
             else:

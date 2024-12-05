@@ -92,6 +92,9 @@ CHECKPOINT_KEY_NAMES = {
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
+    "ltx-video": [
+        ("patchify_proj.weight", "transformer_blocks.27.scale_shift_table"),
+    ],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -138,6 +141,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
+    "ltx-video": {"pretrained_model_name_or_path": "Lightricks/LTX-Video"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -564,6 +568,10 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "flux-dev"
         else:
             model_type = "flux-schnell"
+
+    elif any(all(key in checkpoint for key in key_list) for key_list in CHECKPOINT_KEY_NAMES["ltx-video"]):
+        model_type = "ltx-video"
+
     else:
         model_type = "v1"
 
@@ -2196,5 +2204,90 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
         checkpoint.pop("final_layer.adaLN_modulation.1.bias")
     )
+
+    return converted_state_dict
+
+
+def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    TRANSFORMER_KEYS_RENAME_DICT = {
+        "patchify_proj": "proj_in",
+        "adaln_single": "time_embed",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
+    VAE_KEYS_RENAME_DICT = {
+        # decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0",
+        "up_blocks.2": "up_blocks.1.upsamplers.0",
+        "up_blocks.3": "up_blocks.1",
+        "up_blocks.4": "up_blocks.2.conv_in",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.conv_in",
+        "up_blocks.8": "up_blocks.3.upsamplers.0",
+        "up_blocks.9": "up_blocks.3",
+        # encoder
+        "down_blocks.0": "down_blocks.0",
+        "down_blocks.1": "down_blocks.0.downsamplers.0",
+        "down_blocks.2": "down_blocks.0.conv_out",
+        "down_blocks.3": "down_blocks.1",
+        "down_blocks.4": "down_blocks.1.downsamplers.0",
+        "down_blocks.5": "down_blocks.1.conv_out",
+        "down_blocks.6": "down_blocks.2",
+        "down_blocks.7": "down_blocks.2.downsamplers.0",
+        "down_blocks.8": "down_blocks.3",
+        "down_blocks.9": "mid_block",
+        # common
+        "conv_shortcut": "conv_shortcut.conv",
+        "res_blocks": "resnets",
+        "norm3.norm": "norm3",
+        "per_channel_statistics.mean-of-means": "latents_mean",
+        "per_channel_statistics.std-of-means": "latents_std",
+    }
+
+    VAE_SPECIAL_KEYS_REMAP = {
+        "per_channel_statistics.channel": remove_keys_,
+        "per_channel_statistics.mean-of-means": remove_keys_,
+        "per_channel_statistics.mean-of-stds": remove_keys_,
+    }
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
