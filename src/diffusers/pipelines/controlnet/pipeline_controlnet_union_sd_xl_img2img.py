@@ -43,7 +43,7 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from ...models.controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax
+from ...models.controlnets import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (

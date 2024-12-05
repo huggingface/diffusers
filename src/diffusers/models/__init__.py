@@ -101,6 +101,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .controlnets import (
             ControlNetModel,
+            ControlNetUnionModel,
             ControlNetXSAdapter,
             FluxControlNetModel,
             FluxMultiControlNetModel,

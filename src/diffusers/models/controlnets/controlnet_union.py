@@ -18,31 +18,31 @@ import torch
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..image_processor import PipelineImageInput
-from ..loaders.single_file_model import FromOriginalModelMixin
-from ..utils import BaseInput, logging
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...image_processor import PipelineImageInput
+from ...loaders.single_file_model import FromOriginalModelMixin
+from ...utils import logging
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .controlnet import ControlNetConditioningEmbedding, ControlNetOutput, zero_module
-from .embeddings import TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
-from .unets.unet_2d_blocks import (
+from ..embeddings import TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
+from ..modeling_utils import ModelMixin
+from ..unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     DownBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
-from .unets.unet_2d_condition import UNet2DConditionModel
+from ..unets.unet_2d_condition import UNet2DConditionModel
+from .controlnet import ControlNetConditioningEmbedding, ControlNetOutput, zero_module
 
 
 @dataclass
-class ControlNetUnionInput(BaseInput):
+class ControlNetUnionInput:
     """
     The image input of [`ControlNetUnionModel`]:
 
@@ -54,18 +54,27 @@ class ControlNetUnionInput(BaseInput):
     - 5: segment
     """
 
-    openpose: PipelineImageInput = None
-    depth: PipelineImageInput = None
-    hed: PipelineImageInput = None
-    canny: PipelineImageInput = None
-    normal: PipelineImageInput = None
-    segment: PipelineImageInput = None
+    openpose: Optional[PipelineImageInput] = None
+    depth: Optional[PipelineImageInput] = None
+    hed: Optional[PipelineImageInput] = None
+    canny: Optional[PipelineImageInput] = None
+    normal: Optional[PipelineImageInput] = None
+    segment: Optional[PipelineImageInput] = None
+
+    def __len__(self) -> int:
+        return len(vars(self))
+
+    def __iter__(self):
+        return iter(vars(self))
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 @dataclass
-class ControlNetUnionInputProMax(BaseInput):
+class ControlNetUnionInputProMax:
     """
-    The image input of [`ControlNetUnionModel`] for ProMax variants:
+    The image input of [`ControlNetUnionModel`]:
 
     - 0: openpose
     - 1: depth
@@ -77,14 +86,23 @@ class ControlNetUnionInputProMax(BaseInput):
     - 7: repaint
     """
 
-    openpose: PipelineImageInput = None
-    depth: PipelineImageInput = None
-    hed: PipelineImageInput = None
-    canny: PipelineImageInput = None
-    normal: PipelineImageInput = None
-    segment: PipelineImageInput = None
-    tile: PipelineImageInput = None
-    repaint: PipelineImageInput = None
+    openpose: Optional[PipelineImageInput] = None
+    depth: Optional[PipelineImageInput] = None
+    hed: Optional[PipelineImageInput] = None
+    canny: Optional[PipelineImageInput] = None
+    normal: Optional[PipelineImageInput] = None
+    segment: Optional[PipelineImageInput] = None
+    tile: Optional[PipelineImageInput] = None
+    repaint: Optional[PipelineImageInput] = None
+
+    def __len__(self) -> int:
+        return len(vars(self))
+
+    def __iter__(self):
+        return iter(vars(self))
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

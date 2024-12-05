@@ -40,7 +40,7 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from ...models.controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax
+from ...models.controlnets import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -605,6 +605,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
@@ -826,6 +827,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_control_image(
         self,
         image,
@@ -860,6 +862,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         return image
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint_sd_xl.StableDiffusionXLControlNetInpaintPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -927,6 +930,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         return outputs
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint_sd_xl.StableDiffusionXLControlNetInpaintPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         dtype = image.dtype
         if self.vae.config.force_upcast:
@@ -950,6 +954,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         return image_latents
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint_sd_xl.StableDiffusionXLControlNetInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -1560,7 +1565,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
             latents, noise = latents_outputs
 
         # 7. Prepare mask latent variables
-        mask, masked_image_latents = self.prepare_mask_latents(
+        mask, _ = self.prepare_mask_latents(
             mask,
             masked_image,
             batch_size * num_images_per_prompt,
@@ -1573,19 +1578,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         )
 
         # 8. Check that sizes of mask, masked image and latents match
-        if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
-            num_channels_mask = mask.shape[1]
-            num_channels_masked_image = masked_image_latents.shape[1]
-            if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
-                raise ValueError(
-                    f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                    f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                    f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                    f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                    " `pipeline.unet` or your `mask_image` or `image` input."
-                )
-        elif num_channels_unet != 4:
+        if num_channels_unet != 4:
             raise ValueError(
                 f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
             )
@@ -1673,7 +1666,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
-                # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 added_cond_kwargs = {
@@ -1730,9 +1722,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
 
-                if num_channels_unet == 9:
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
@@ -1757,20 +1746,19 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if num_channels_unet == 4:
-                    init_latents_proper = image_latents
-                    if self.do_classifier_free_guidance:
-                        init_mask, _ = mask.chunk(2)
-                    else:
-                        init_mask = mask
+                init_latents_proper = image_latents
+                if self.do_classifier_free_guidance:
+                    init_mask, _ = mask.chunk(2)
+                else:
+                    init_mask = mask
 
-                    if i < len(timesteps) - 1:
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.add_noise(
-                            init_latents_proper, noise, torch.tensor([noise_timestep])
-                        )
+                if i < len(timesteps) - 1:
+                    noise_timestep = timesteps[i + 1]
+                    init_latents_proper = self.scheduler.add_noise(
+                        init_latents_proper, noise, torch.tensor([noise_timestep])
+                    )
 
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
