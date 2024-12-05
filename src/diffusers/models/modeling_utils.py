@@ -671,6 +671,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
+            is_bnb_quantization_method = hf_quantizer.quantization_config.quant_method.value == "bitsandbytes"
+            if is_bnb_quantization_method and device_map is not None:
+                raise NotImplementedError(
+                    "Currently, `device_map` is automatically inferred for quantized bitsandbytes models. Support for providing `device_map` as an input will be added in the future."
+                )
+
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
