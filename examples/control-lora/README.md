@@ -32,4 +32,6 @@ accelerate launch train_control_lora_flux.py \
   --push_to_hub
 ```
 
+`openpose.png` comes from [here](https://huggingface.co/Adapter/t2iadapter/resolve/main/openpose.png).
+
 You need to install `diffusers` from the branch of [this PR](https://github.com/huggingface/diffusers/pull/9999). 

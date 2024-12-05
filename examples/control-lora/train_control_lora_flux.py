@@ -25,7 +25,6 @@ from pathlib import Path
 import accelerate
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
@@ -43,7 +42,12 @@ from tqdm.auto import tqdm
 import diffusers
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxTransformer2DModel
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import cast_training_params, compute_density_for_timestep_sampling, free_memory
+from diffusers.training_utils import (
+    cast_training_params,
+    compute_density_for_timestep_sampling,
+    compute_loss_weighting_for_sd3,
+    free_memory,
+)
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
@@ -550,7 +554,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--weighting_scheme",
         type=str,
-        default="logit_normal",
+        default="none",
         choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
         help=('We default to the "none" weighting scheme for uniform sampling and uniform loss'),
     )
@@ -565,11 +569,6 @@ def parse_args(input_args=None):
         type=float,
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
-    )
-    parser.add_argument(
-        "--enable_model_cpu_offload",
-        action="store_true",
-        help="Enable model cpu offload and save memory.",
     )
 
     if input_args is not None:
@@ -672,7 +671,8 @@ def prepare_train_dataset(dataset, accelerator):
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution),
-            transforms.Lambda(lambda x: x / 127.5 - 1.0),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ]
     )
 
@@ -735,7 +735,7 @@ def main(args):
 
     # Disable AMP for MPS. A technique for accelerating machine learning computations on iOS and macOS devices.
     if torch.backends.mps.is_available():
-        print("MPS is enabled. Disabling AMP.")
+        logger.info("MPS is enabled. Disabling AMP.")
         accelerator.native_amp = False
 
     # Make one log on every process with the configuration for debugging.
@@ -776,6 +776,7 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
+    vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
     flux_transformer = FluxTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="transformer",
@@ -817,6 +818,8 @@ def main(args):
         new_linear.weight[:, :initial_input_channels].copy_(flux_transformer.x_embedder.weight)
         new_linear.bias.copy_(flux_transformer.x_embedder.bias)
         flux_transformer.x_embedder = new_linear
+
+    assert torch.all(new_linear.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
 
     if args.lora_layers is not None:
@@ -1092,24 +1095,6 @@ def main(args):
                 # offload vae to CPU.
                 vae.cpu()
 
-                # pack the latents.
-                packed_pixel_latents = FluxControlPipeline._pack_latents(
-                    pixel_latents,
-                    batch_size=pixel_latents.shape[0],
-                    num_channels_latents=pixel_latents.shape[1],
-                    height=pixel_latents.shape[2],
-                    width=pixel_latents.shape[3],
-                )
-                packed_control_latents = FluxControlPipeline._pack_latents(
-                    pixel_latents,
-                    batch_size=control_latents.shape[0],
-                    num_channels_latents=control_latents.shape[1],
-                    height=control_latents.shape[2],
-                    width=control_latents.shape[3],
-                )
-                # concate across channels.
-                latent_model_input = torch.cat([packed_pixel_latents, packed_control_latents], dim=2)
-
                 # Sample a random timestep for each image
                 # for weighting schemes where we sample timesteps non-uniformly
                 bsz = pixel_latents.shape[0]
@@ -1122,17 +1107,29 @@ def main(args):
                     mode_scale=args.mode_scale,
                 )
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
-                timesteps = noise_scheduler_copy.timesteps[indices].to(device=latent_model_input.device)
+                timesteps = noise_scheduler_copy.timesteps[indices].to(device=pixel_latents.device)
 
                 # Add noise according to flow matching.
-                sigmas = get_sigmas(timesteps, n_dim=latent_model_input.ndim, dtype=latent_model_input.dtype)
-                noisy_model_input = (1.0 - sigmas) * latent_model_input + sigmas * noise
+                sigmas = get_sigmas(timesteps, n_dim=pixel_latents.ndim, dtype=pixel_latents.dtype)
+                noisy_model_input = (1.0 - sigmas) * pixel_latents + sigmas * noise
+                # Concatenate across channels.
+                # Question: Should we concatenate before adding noise?
+                concatenated_noisy_model_input = torch.cat([noisy_model_input, control_latents], dim=1)
+
+                # pack the latents.
+                packed_noisy_model_input = FluxControlPipeline._pack_latents(
+                    concatenated_noisy_model_input,
+                    batch_size=bsz,
+                    num_channels_latents=concatenated_noisy_model_input.shape[1],
+                    height=concatenated_noisy_model_input.shape[2],
+                    width=concatenated_noisy_model_input.shape[3],
+                )
 
                 # latent image ids for RoPE.
                 latent_image_ids = FluxControlPipeline._prepare_latent_image_ids(
-                    pixel_latents.shape[0],
-                    pixel_latents.shape[2] // 2,
-                    pixel_latents.shape[3] // 2,
+                    bsz,
+                    concatenated_noisy_model_input.shape[2] // 2,
+                    concatenated_noisy_model_input.shape[3] // 2,
                     accelerator.device,
                     weight_dtype,
                 )
@@ -1140,7 +1137,7 @@ def main(args):
                 # handle guidance
                 if flux_transformer.config.guidance_embeds:
                     guidance_vec = torch.full(
-                        (noisy_model_input.shape[0],),
+                        (bsz,),
                         args.guidance_scale,
                         device=noisy_model_input.device,
                         dtype=weight_dtype,
@@ -1152,12 +1149,14 @@ def main(args):
                 captions = batch["captions"]
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
                 with torch.no_grad():
-                    prompt_embeds, pooled_prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(captions)
+                    prompt_embeds, pooled_prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
+                        captions, prompt_2=None
+                    )
                 text_encoding_pipeline = text_encoding_pipeline.to("cuda")
 
                 # Predict.
-                noise_pred = flux_transformer(
-                    hidden_states=noisy_model_input,
+                model_pred = flux_transformer(
+                    hidden_states=packed_noisy_model_input,
                     timestep=timesteps / 1000,
                     guidance=guidance_vec,
                     pooled_projections=pooled_prompt_embeds,
@@ -1166,10 +1165,24 @@ def main(args):
                     img_ids=latent_image_ids,
                     return_dict=False,
                 )[0]
+                model_pred = FluxControlPipeline._unpack_latents(
+                    model_pred,
+                    height=noisy_model_input.shape[2] * vae_scale_factor,
+                    width=noisy_model_input.shape[3] * vae_scale_factor,
+                    vae_scale_factor=vae_scale_factor,
+                )
+                # these weighting schemes use a uniform timestep sampling
+                # and instead post-weight the loss
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
 
-                loss = F.mse_loss(noise_pred.float(), (noise - pixel_latents).float(), reduction="mean")
+                # flow-matching loss
+                target = noise - pixel_latents
+                loss = torch.mean(
+                    (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),
+                    1,
+                )
+                loss = loss.mean()
                 accelerator.backward(loss)
-                # Check if the gradient of each model parameter contains NaN
 
                 if accelerator.sync_gradients:
                     params_to_clip = flux_transformer.parameters()
