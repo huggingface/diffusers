@@ -25,7 +25,7 @@ from transformers import AutoModel, AutoTokenizer
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...models.embeddings import get_2d_rotary_pos_embed_lumina
-from ...models.transformers.lumina_nextdit2d import LuminaextDiT2DModel
+from ...models.transformers.lumina_nextdit2d import LuminaNextDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,

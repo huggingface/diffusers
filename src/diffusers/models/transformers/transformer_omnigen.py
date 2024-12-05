@@ -225,15 +225,10 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     Reference: https://arxiv.org/pdf/2409.11340
 
     Parameters:
+        transformer_config (`dict`): config for transformer layers. OmniGen-v1 use Phi3 as transformer backbone
         patch_size (`int`, defaults to 2): Patch size to turn the input data into small patches.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input.
-        num_layers (`int`, *optional*, defaults to 18): The number of layers of MMDiT blocks to use.
-        num_single_layers (`int`, *optional*, defaults to 18): The number of layers of single DiT blocks to use.
-        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
-        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
-        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
-        guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
+        pos_embed_max_size (`int`, *optional*, defaults to 192): The max size of pos emb.
     """
     _supports_gradient_checkpointing = True
 

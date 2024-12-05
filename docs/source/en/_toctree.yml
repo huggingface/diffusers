@@ -51,6 +51,8 @@
     title: Text or image-to-video
   - local: using-diffusers/depth2img
     title: Depth-to-image
+  - local: using-diffusers/multimodal2img
+    title: Multimodal-to-image
   title: Generative tasks
 - sections:
   - local: using-diffusers/overview_techniques
@@ -87,6 +89,8 @@
     title: Kandinsky
   - local: using-diffusers/ip_adapter
     title: IP-Adapter
+  - local: using-diffusers/omnigen
+    title: OmniGen
   - local: using-diffusers/pag
     title: PAG
   - local: using-diffusers/controlnet
@@ -274,6 +278,8 @@
         title: LuminaNextDiT2DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
+      - local: api/models/omnigen_transformer
+        title: OmniGenTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -412,6 +418,8 @@
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
+    - local: api/pipelines/omnigen
+      title: OmniGen
     - local: api/pipelines/pag
       title: PAG
     - local: api/pipelines/paint_by_example
