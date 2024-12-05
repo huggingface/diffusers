@@ -36,11 +36,11 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_gguf_available,
     is_torch_available,
     is_torch_version,
     logging,
 )
-from ..utils.import_utils import is_gguf_available
 
 
 logger = logging.get_logger(__name__)
