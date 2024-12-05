@@ -53,6 +53,7 @@ class GGUFSingleFileTesterMixin:
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear) and hasattr(module.weight, "quant_type"):
                 assert module.weight.dtype == torch.uint8
+                assert module.bias.dtype == torch.float32
 
     def test_gguf_memory_usage(self):
         quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
