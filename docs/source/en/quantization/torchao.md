@@ -48,6 +48,15 @@ image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
 image.save("output.png")
 ```
 
+TorchAO offers seamless compatibility with `torch.compile`, setting it apart from other quantization methods. This ensures one to achieve remarkable speedups with ease.
+
+```python
+# In the above code, add the following after initializing the transformer
+transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
+```
+
+For speed/memory benchmarks on Flux/CogVideoX, please refer to the table [here](https://github.com/huggingface/diffusers/pull/10009#issue-2688781450).
+
 Additionally, TorchAO supports an automatic quantization API exposed with [`autoquant`](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. This can directly be used with the underlying modeling components at the moment, but Diffusers will also expose an autoquant configuration option in the future.
 
 ## Resources
