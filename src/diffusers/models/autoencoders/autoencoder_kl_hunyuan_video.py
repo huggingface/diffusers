@@ -25,10 +25,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import (
-    Attention,
-    SpatialNorm,
-)
+from ..attention_processor import Attention, SpatialNorm
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaGroupNorm, RMSNorm
