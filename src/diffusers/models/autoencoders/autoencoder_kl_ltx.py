@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
@@ -718,7 +719,7 @@ class LTXDecoder3d(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLLTX(ModelMixin, ConfigMixin):
+class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
     [LTX](https://huggingface.co/Lightricks/LTX-Video).

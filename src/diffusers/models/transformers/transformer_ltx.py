@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
@@ -266,7 +267,7 @@ class LTXTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class LTXTransformer3DModel(ModelMixin, ConfigMixin):
+class LTXTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 
