@@ -69,7 +69,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> # !pip install controlnet_aux
         >>> from controlnet_aux import LineartAnimeDetector
-        >>> from diffusers import StableDiffusionXLControlNetPipeline, ControlNetUnionModel, AutoencoderKL
+        >>> from diffusers import StableDiffusionXLControlNetUnionPipeline, ControlNetUnionModel, AutoencoderKL
         >>> from diffusers.models.controlnets import ControlNetUnionInput
         >>> from diffusers.utils import load_image
         >>> import torch
@@ -84,7 +84,7 @@ EXAMPLE_DOC_STRING = """
         ...     "xinsir/controlnet-union-sdxl-1.0", torch_dtype=torch.float16
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        >>> pipe = StableDiffusionXLControlNetUnionPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
         ...     controlnet=controlnet,
         ...     vae=vae,
