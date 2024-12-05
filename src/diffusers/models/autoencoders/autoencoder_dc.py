@@ -323,7 +323,6 @@ class Decoder(nn.Module):
         norm_type: Union[str, Tuple[str]] = "rms_norm",
         act_fn: Union[str, Tuple[str]] = "silu",
         upsample_block_type: str = "pixel_shuffle",
-        upsample_shortcut: str = "duplicating",
     ):
         super().__init__()
 
@@ -350,7 +349,7 @@ class Decoder(nn.Module):
                     block_out_channels[i + 1],
                     out_channel,
                     interpolate=upsample_block_type == "interpolate",
-                    shortcut=upsample_shortcut,
+                    shortcut=True,
                 )
                 up_block_list.append(upsample_block)
 
