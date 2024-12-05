@@ -1272,7 +1272,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
-                height, width = image.shape[-2:]
+                height, width = image[image_type].shape[-2:]
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
