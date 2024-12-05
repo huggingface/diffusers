@@ -400,9 +400,35 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     Args:
         quant_type (`str`):
-            The type of quantization we want to use, currently supporting: `int4_weight_only`, `int8_weight_only` and
-            `int8_dynamic_activation_int8_weight`.
-        modules_to_not_convert (`list`, *optional*, default to `None`):
+            The type of quantization we want to use, currently supporting:
+                - **Integer quantization:**
+                    - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
+                      `int8_weight_only`, `int8_dynamic_activation_int8_weight`
+                    - Shorthands: `int4wo`, `int4dq`, `int8wo`, `int8dq`
+                    - Documentation shorthands/Common speak: `int_a16w4`, `int_a8w4`, `int_a16w8`, `int_a8w8`
+
+                - **Floating point 8-bit quantization:**
+                    - Full function names: `float8_weight_only`, `float8_dynamic_activation_float8_weight`,
+                      `float8_static_activation_float8_weight`
+                    - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
+                      `float8_e4m3_tensor`, `float8_e4m3_row`, `float8sq`
+                    - Documentation shorthands/Common speak: `float8_e5m2_a16w8`, `float8_e4m3_a16w8`, `float_a8w8`,
+                      `float_a16w8`
+
+                - **Floating point X-bit quantization:**
+                    - Full function names: `fpx_weight_only`
+                    - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
+                      of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
+                      be satisfied for a given shorthand notation.
+                    - Documentation shorthands/Common speak: `float_a16w3`, `float_a16w4`, `float_a16w5`,
+                      `float_a16w6`, `float_a16w7`, `float_a16w8`
+
+                - **Unsigned Integer quantization:**
+                    - Full function names: `uintx_weight_only`
+                    - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
+                    - Documentation shorthands/Common speak: `uint_a16w1`, `uint_a16w2`, `uint_a16w3`, `uint_a16w4`,
+                      `uint_a16w5`, `uint_a16w6`, `uint_a16w7`
+        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
         kwargs (`Dict[str, Any]`, *optional*):
@@ -425,7 +451,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List] = None, **kwargs) -> None:
+    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
@@ -511,23 +537,6 @@ class TorchAoConfig(QuantizationConfigMixin):
 
                 return types
 
-            def generate_uintx_quantization_types(bits: int):
-                UINTX_TO_DTYPE = {
-                    1: torch.uint1,
-                    2: torch.uint2,
-                    3: torch.uint3,
-                    4: torch.uint4,
-                    5: torch.uint5,
-                    6: torch.uint6,
-                    7: torch.uint7,
-                    # 8: torch.uint8,  # uint8 quantization is not supported
-                }
-
-                types = {}
-                types[f"uint{bits}"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
-                types[f"uint{bits}wo"] = partial(uintx_weight_only, dtype=UINTX_TO_DTYPE[bits])
-                return types
-
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
                 "int4wo": int4_weight_only,
@@ -586,16 +595,15 @@ class TorchAoConfig(QuantizationConfigMixin):
             }
 
             UINTX_QUANTIZATION_DTYPES = {
-                "uintx": uintx_weight_only,
                 "uintx_weight_only": uintx_weight_only,
-                **generate_uintx_quantization_types(1),
-                **generate_uintx_quantization_types(2),
-                **generate_uintx_quantization_types(3),
-                **generate_uintx_quantization_types(4),
-                **generate_uintx_quantization_types(5),
-                **generate_uintx_quantization_types(6),
-                **generate_uintx_quantization_types(7),
-                # **generate_uintx_quantization_types(8),  # uint8 quantization is not supported
+                "uint1wo": partial(uintx_weight_only, dtype=torch.uint1),
+                "uint2wo": partial(uintx_weight_only, dtype=torch.uint2),
+                "uint3wo": partial(uintx_weight_only, dtype=torch.uint3),
+                "uint4wo": partial(uintx_weight_only, dtype=torch.uint4),
+                "uint5wo": partial(uintx_weight_only, dtype=torch.uint5),
+                "uint6wo": partial(uintx_weight_only, dtype=torch.uint6),
+                "uint7wo": partial(uintx_weight_only, dtype=torch.uint7),
+                # "uint8wo": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
             }
 
             SHORTHAND_QUANTIZATION_TYPES = {
