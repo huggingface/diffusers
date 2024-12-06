@@ -870,8 +870,8 @@ class RFInversionFluxPipeline(
 
                     else:
                         v_hat_t = v_t
-                    # SDE Eq: 17
 
+                    # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
                     latents_dtype = latents.dtype
                     latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
                 else:
