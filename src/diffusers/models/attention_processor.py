@@ -2873,7 +2873,7 @@ class XLAFlashAttnProcessor2_0:
             partition_spec = self.partition_spec if is_spmd() else None
             hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
         else:
-            logger.warning(f"Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096.")
+            logger.warning("Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096.")
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
