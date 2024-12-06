@@ -98,13 +98,14 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
     """
     x = x_in
     B, C, H, W = x.shape
+
     # Non-power of 2 images must be float32
     if (W & (W - 1)) != 0 or (H & (H - 1)) != 0:
         x = x.to(dtype=torch.float32)
     # fftn does not support bfloat16
     elif x.dtype == torch.bfloat16:
         x = x.to(dtype=torch.float32)
-    
+
     # FFT
     x_freq = fftn(x, dim=(-2, -1))
     x_freq = fftshift(x_freq, dim=(-2, -1))
