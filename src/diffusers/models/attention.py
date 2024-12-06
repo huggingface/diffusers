@@ -22,13 +22,7 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, SwiGLU
 from .attention_processor import Attention, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
-from .normalization import (
-    AdaLayerNorm,
-    AdaLayerNormContinuous,
-    AdaLayerNormZero,
-    RMSNorm,
-    SD35AdaLayerNormZeroX,
-)
+from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
 
 
 logger = logging.get_logger(__name__)
