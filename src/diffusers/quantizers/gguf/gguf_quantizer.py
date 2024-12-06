@@ -24,6 +24,7 @@ if is_torch_available() and is_gguf_available():
     from .utils import (
         GGML_QUANT_SIZES,
         GGUFParameter,
+        _dequantize_gguf_and_restore_linear,
         _quant_shape_from_byte_shape,
         _replace_with_gguf_linear,
     )
@@ -143,3 +144,16 @@ class GGUFQuantizer(DiffusersQuantizer):
     @property
     def is_trainable(self) -> bool:
         return False
+
+    def _dequantize(self, model):
+        is_model_on_cpu = model.device.type == "cpu"
+        if is_model_on_cpu:
+            logger.info(
+                "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to GPU. After dequantization, will move the model back to CPU again to preserve the previous device."
+            )
+            model.to(torch.cuda.current_device())
+
+        model = _dequantize_gguf_and_restore_linear(model, self.modules_to_not_convert)
+        if is_model_on_cpu:
+            model.to("cpu")
+        return model

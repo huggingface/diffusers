@@ -351,6 +351,7 @@ class FromOriginalModelMixin:
 
         if hf_quantizer is not None:
             hf_quantizer.postprocess_model(model)
+            model.hf_quantizer = hf_quantizer
 
         if torch_dtype is not None and hf_quantizer is None:
             model.to(torch_dtype)

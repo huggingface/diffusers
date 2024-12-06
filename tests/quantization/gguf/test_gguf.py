@@ -3,6 +3,7 @@ import unittest
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from diffusers import (
     FluxPipeline,
@@ -23,7 +24,7 @@ from diffusers.utils.testing_utils import (
 
 
 if is_gguf_available():
-    from diffusers.quantizers.gguf.utils import GGUFParameter
+    from diffusers.quantizers.gguf.utils import GGUFLinear, GGUFParameter
 
 
 @nightly
@@ -111,6 +112,24 @@ class GGUFSingleFileTesterMixin:
 
         # This should work
         model.to("cuda")
+
+    def test_dequantize_model(self):
+        quantization_config = GGUFQuantizationConfig(compute_dtype=self.torch_dtype)
+        model = self.model_cls.from_single_file(self.ckpt_path, quantization_config=quantization_config)
+        model.dequantize()
+
+        def _check_for_gguf_linear(model):
+            has_children = list(model.children())
+            if not has_children:
+                return
+
+            for name, module in model.named_children():
+                if isinstance(module, nn.Linear):
+                    assert not isinstance(module, GGUFLinear), f"{name} is still GGUFLinear"
+                    assert not isinstance(module.weight, GGUFParameter), f"{name} weight is still GGUFParameter"
+
+        for name, module in model.named_children():
+            _check_for_gguf_linear(module)
 
 
 class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):

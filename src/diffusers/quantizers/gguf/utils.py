@@ -13,6 +13,7 @@
 # # limitations under the License.
 
 
+import inspect
 from contextlib import nullcontext
 
 import gguf
@@ -23,7 +24,27 @@ from ...utils import is_accelerate_available
 
 
 if is_accelerate_available():
+    import accelerate
     from accelerate import init_empty_weights
+    from accelerate.hooks import add_hook_to_module, remove_hook_from_module
+
+
+# Copied from diffusers.quantizers.bitsandbytes.utils._create_accelerate_new_hook
+def _create_accelerate_new_hook(old_hook):
+    r"""
+    Creates a new hook based on the old hook. Use it only if you know what you are doing ! This method is a copy of:
+    https://github.com/huggingface/peft/blob/748f7968f3a31ec06a1c2b0328993319ad9a150a/src/peft/utils/other.py#L245 with
+    some changes
+    """
+    old_hook_cls = getattr(accelerate.hooks, old_hook.__class__.__name__)
+    old_hook_attr = old_hook.__dict__
+    filtered_old_hook_attr = {}
+    old_hook_init_signature = inspect.signature(old_hook_cls.__init__)
+    for k in old_hook_attr.keys():
+        if k in old_hook_init_signature.parameters:
+            filtered_old_hook_attr[k] = old_hook_attr[k]
+    new_hook = old_hook_cls(**filtered_old_hook_attr)
+    return new_hook
 
 
 def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modules_to_not_convert=[]):
@@ -55,6 +76,42 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modul
             model._modules[name].source_cls = type(module)
             # Force requires_grad to False to avoid unexpected errors
             model._modules[name].requires_grad_(False)
+
+    return model
+
+
+def _dequantize_gguf_and_restore_linear(model, modules_to_not_convert=[]):
+    for name, module in model.named_children():
+        if isinstance(module, GGUFLinear) and name not in modules_to_not_convert:
+            device = module.weight.device
+            bias = getattr(module, "bias", None)
+
+            ctx = init_empty_weights if is_accelerate_available() else nullcontext
+            with ctx():
+                new_module = nn.Linear(
+                    module.in_features,
+                    module.out_features,
+                    module.bias is not None,
+                    device=device,
+                )
+            new_module.weight = nn.Parameter(dequantize_gguf_tensor(module.weight))
+            if bias is not None:
+                new_module.bias = bias
+
+            # Create a new hook and attach it in case we use accelerate
+            if hasattr(module, "_hf_hook"):
+                old_hook = module._hf_hook
+                new_hook = _create_accelerate_new_hook(old_hook)
+
+                remove_hook_from_module(module)
+                add_hook_to_module(new_module, new_hook)
+
+            new_module.to(device)
+            model._modules[name] = new_module
+
+        has_children = list(module.children())
+        if has_children:
+            _dequantize_gguf_and_restore_linear(module, modules_to_not_convert)
 
     return model
 
