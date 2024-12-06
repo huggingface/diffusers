@@ -25,7 +25,7 @@ from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils import logging
+from diffusers.utils import load_image, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     floats_tensor,
@@ -576,5 +576,77 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
             [0.04882812, 0.04101562, 0.04882812, 0.03710938, 0.02929688, 0.02734375, 0.0234375, 0.01757812, 0.0390625]
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
+
+    def test_flux_bfl_control_lora_canny(self):
+        self.pipeline = FluxControlPipeline.from_pipe(self.pipeline)
+        self.pipeline.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora", "canny")
+        self.pipeline.set_adapters("canny", 0.85)
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+        control_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/robot_canny.png"
+        )
+
+        output = self.pipeline(
+            prompt=prompt,
+            control_image=control_image,
+            height=768,
+            width=768,
+            num_inference_steps=20,
+            guidance_scale=30.0,
+            generator=torch.manual_seed(self.seed),
+            output_type="np",
+        ).images
+        output = output.flatten()
+        output_slice = np.concatenate((output[:16], output[-16:]))
+
+        # fmt: off
+        expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        # fmt: on
+
+        print([round(x, 4) for x in output_slice.tolist()])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), output_slice)
+
+        assert max_diff < 1e-3
+
+    def test_flux_bfl_control_lora_depth(self):
+        self.pipeline = FluxControlPipeline.from_pipe(self.pipeline)
+        self.pipeline.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora", "depth")
+        self.pipeline.set_adapters("depth", 0.85)
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
+        self.pipeline.enable_model_cpu_offload()
+
+        prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+        control_image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/robot_depth.png"
+        )
+
+        output = self.pipeline(
+            prompt=prompt,
+            control_image=control_image,
+            height=768,
+            width=768,
+            num_inference_steps=20,
+            guidance_scale=10.0,
+            generator=torch.manual_seed(self.seed),
+            output_type="np",
+        ).images
+        output = output.flatten()
+        output_slice = np.concatenate((output[:16], output[-16:]))
+
+        # fmt: off
+        expected_slice = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        # fmt: on
+
+        print([round(x, 4) for x in output_slice.tolist()])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), output_slice)
 
         assert max_diff < 1e-3
