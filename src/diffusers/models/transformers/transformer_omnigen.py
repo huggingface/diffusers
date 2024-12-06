@@ -174,7 +174,7 @@ class OmniGenBaseTransformer(Phi3Model):
                 )
             else:
                 if offload_transformer_block and not self.training:
-                    if not not torch.cuda.is_available():
+                    if not torch.cuda.is_available():
                         logger.warning_once(
                             "We don't detecte any available GPU, so diable `offload_transformer_block`"
                         )
@@ -363,7 +363,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             input_img_inx = 0
             if input_img_latents is not None:
                 input_image_tokens = self.patch_embedding(input_img_latents,
-                                                                      is_input_image=True)
+                                                          is_input_image=True)
 
                 for b_inx in input_image_sizes.keys():
                     for start_inx, end_inx in input_image_sizes[b_inx]:
