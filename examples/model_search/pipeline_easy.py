@@ -374,7 +374,7 @@ def file_downloader(
         displayed_filename (`str`, *optional*):
             The filename of the file that is being downloaded. Value is used only to display a nice progress bar. If
             not set, the filename is guessed from the URL or the `Content-Disposition` header.
-    
+
     returns:
         None
     """
