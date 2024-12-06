@@ -820,7 +820,8 @@ def main(args):
         )
         new_linear.weight.zero_()
         new_linear.weight[:, :initial_input_channels].copy_(flux_transformer.x_embedder.weight)
-        new_linear.bias.copy_(flux_transformer.x_embedder.bias)
+        if flux_transformer.x_embedder.bias is not None:
+            new_linear.bias.copy_(flux_transformer.x_embedder.bias)
         flux_transformer.x_embedder = new_linear
 
     assert torch.all(new_linear.weight[:, initial_input_channels:].data == 0)
