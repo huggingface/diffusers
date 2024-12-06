@@ -419,6 +419,9 @@ class RFInversionFluxPipeline(
         self,
         prompt,
         prompt_2,
+        inverted_latents,
+        image_latents,
+        latent_image_ids,
         height,
         width,
         start_timestep,
@@ -467,6 +470,10 @@ class RFInversionFluxPipeline(
         if max_sequence_length is not None and max_sequence_length > 512:
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
+        if inverted_latents is not None and (image_latents is None or latent_image_ids is None):
+            raise ValueError(
+                "If `inverted_latents` are provided, `image_latents` and `latent_image_ids` also have to be passed. "
+            )
         # check start_timestep and stop_timestep
         if start_timestep < 0 or start_timestep > stop_timestep:
             raise ValueError(f"`start_timestep` should be in [0, stop_timestep] but is {start_timestep}")
@@ -536,7 +543,7 @@ class RFInversionFluxPipeline(
         """
         self.vae.disable_tiling()
 
-    def prepare_latents(
+    def prepare_latents_inversion(
         self,
         batch_size,
         num_channels_latents,
@@ -550,6 +557,41 @@ class RFInversionFluxPipeline(
         width = int(width) // self.vae_scale_factor
 
         latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
+
+        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
+
+        return latents, latent_image_ids
+
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
+
+        shape = (batch_size, num_channels_latents, height, width)
+
+        if latents is not None:
+            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
+            return latents.to(device=device, dtype=dtype), latent_image_ids
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -588,11 +630,11 @@ class RFInversionFluxPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        latents: Optional[torch.FloatTensor] = None,
-        image_latents: Optional[torch.FloatTensor] = None,
-        latent_image_ids: Optional[torch.FloatTensor] = None,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
+        inverted_latents: Optional[torch.FloatTensor] = None,
+        image_latents: Optional[torch.FloatTensor] = None,
+        latent_image_ids: Optional[torch.FloatTensor] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 1.0,
@@ -604,6 +646,7 @@ class RFInversionFluxPipeline(
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -693,6 +736,9 @@ class RFInversionFluxPipeline(
         self.check_inputs(
             prompt,
             prompt_2,
+            inverted_latents,
+            image_latents,
+            latent_image_ids,
             height,
             width,
             start_timestep,
@@ -706,6 +752,7 @@ class RFInversionFluxPipeline(
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
+        do_rf_inversion = inverted_latents is not None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -737,6 +784,19 @@ class RFInversionFluxPipeline(
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
+        if do_rf_inversion:
+            latents = inverted_latents
+        else:
+            latents, latent_image_ids = self.prepare_latents(
+                batch_size * num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                prompt_embeds.dtype,
+                device,
+                generator,
+                latents,
+            )
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
@@ -769,9 +829,11 @@ class RFInversionFluxPipeline(
         else:
             guidance = None
 
+        if do_rf_inversion:
+            y_0 = image_latents.clone()
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            y_0 = image_latents.clone()
+
             for i, t in enumerate(timesteps):
                 t_i = 1 - t / 1000
                 dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
@@ -782,7 +844,7 @@ class RFInversionFluxPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                v_t = -self.transformer(
+                noise_pred = self.transformer(
                     hidden_states=latents,
                     timestep=timestep / 1000,
                     guidance=guidance,
@@ -794,18 +856,25 @@ class RFInversionFluxPipeline(
                     return_dict=False,
                 )[0]
 
-                v_t_cond = (y_0 - latents) / (1 - t_i)
-                eta_t = eta if start_timestep <= i < stop_timestep else 0.0
-                if start_timestep <= i < stop_timestep:
-                    # controlled vector field
-                    v_hat_t = v_t + eta * (v_t_cond - v_t)
+                if do_rf_inversion:
+                    v_t = -noise_pred
 
+                    v_t_cond = (y_0 - latents) / (1 - t_i)
+                    eta_t = eta if start_timestep <= i < stop_timestep else 0.0
+                    if start_timestep <= i < stop_timestep:
+                        # controlled vector field
+                        v_hat_t = v_t + eta * (v_t_cond - v_t)
+
+                    else:
+                        v_hat_t = v_t
+                    # SDE Eq: 17
+
+                    latents_dtype = latents.dtype
+                    latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
                 else:
-                    v_hat_t = v_t
-                # SDE Eq: 17
-
-                latents_dtype = latents.dtype
-                latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents_dtype = latents.dtype
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
@@ -898,7 +967,7 @@ class RFInversionFluxPipeline(
 
         # 1. prepare image
         image_latents, _ = self.encode_image(image, height=height, width=width, dtype=dtype)
-        image_latents, latent_image_ids = self.prepare_latents(
+        image_latents, latent_image_ids = self.prepare_latents_inversion(
             batch_size, num_channels_latents, height, width, dtype, device, image_latents
         )
 
