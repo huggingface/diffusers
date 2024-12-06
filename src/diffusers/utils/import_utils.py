@@ -710,6 +710,8 @@ def is_torch_xla_version(operation: str, version: str):
         version (`str`):
             A string version of torch_xla
     """
+    if not is_torch_xla_available:
+        return False
     return compare_versions(parse(_torch_xla_version), operation, version)
 
 

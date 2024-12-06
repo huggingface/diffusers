@@ -294,13 +294,15 @@ class Attention(nn.Module):
             partition_spec (`Tuple[]`, *optional*):
                 Specify the partition specification if using SPMD. Otherwise None.
         """
-        if (
-            use_xla_flash_attention
-            and is_torch_xla_available
-            and is_torch_xla_version('>', '2.2')
-            and (not is_spmd() or is_torch_xla_version('>', '2.3'))
-        ):
-            processor = XLAFlashAttnProcessor2_0(partition_spec)
+        if use_xla_flash_attention:
+            if not is_torch_xla_available:
+                raise  "torch_xla is not available"
+            elif is_torch_xla_version("<", "2.3"):
+                raise "flash attention pallas kernel is supported from torch_xla version 2.3"
+            elif is_spmd() and is_torch_xla_version("<", "2.4"):
+                raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
+            else:
+                processor = XLAFlashAttnProcessor2_0(partition_spec)
         else:
             processor = (
                 AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
@@ -2871,6 +2873,7 @@ class XLAFlashAttnProcessor2_0:
             partition_spec = self.partition_spec if is_spmd() else None
             hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
         else:
+            logger.warning(f"Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096.")
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
