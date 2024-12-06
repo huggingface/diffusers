@@ -188,8 +188,8 @@ def main(args):
         print(colored(f"Saving the whole SanaPAGPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
         ae = AutoencoderDC.from_pretrained(
-            "Efficient-Large-Model/dc_ae_f32c32_sana_1.0_diffusers",
-            torch_dtype=torch.float32,
+            "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",
+            torch_dtype=torch.bfloat16,
         ).to(device)
 
         # Text Encoder
