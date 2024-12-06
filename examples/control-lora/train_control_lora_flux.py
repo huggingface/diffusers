@@ -18,6 +18,7 @@ import copy
 import logging
 import math
 import os
+import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
@@ -76,13 +77,16 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
         pipeline = FluxControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=flux_transformer,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=weight_dtype,
         )
     else:
+        transformer = FluxTransformer2DModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="transformer", torch_dtype=weight_dtype
+        )
         pipeline = FluxControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            transformer=flux_transformer,
-            torch_dtype=torch.bfloat16,
+            transformer=transformer,
+            torch_dtype=weight_dtype,
         )
         pipeline.load_lora_weights(args.output_dir)
 
@@ -308,6 +312,12 @@ def parse_args(input_args=None):
         help=("The dimension of the LoRA update matrices."),
     )
     parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0,
+        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
+    )
+    parser.add_argument(
         "--lora_layers",
         type=str,
         default=None,
@@ -473,12 +483,6 @@ def parse_args(input_args=None):
             "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         ),
-    )
-    parser.add_argument(
-        "--proportion_empty_prompts",
-        type=float,
-        default=0,
-        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     parser.add_argument(
         "--validation_prompt",
@@ -864,13 +868,15 @@ def main(args):
                 transformer_lora_layers_to_save = None
 
                 for model in models:
-                    if isinstance(model, type(unwrap_model(flux_transformer))):
+                    if isinstance(unwrap_model(model), type(unwrap_model(flux_transformer))):
+                        model = unwrap_model(model)
                         transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                     else:
                         raise ValueError(f"unexpected save model: {model.__class__}")
 
                     # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
+                    if weights:
+                        weights.pop()
 
                 FluxControlPipeline.save_lora_weights(
                     output_dir,
@@ -880,16 +886,22 @@ def main(args):
         def load_model_hook(models, input_dir):
             transformer_ = None
 
-            while len(models) > 0:
-                model = models.pop()
+            if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+                while len(models) > 0:
+                    model = models.pop()
 
-                if isinstance(model, type(unwrap_model(flux_transformer))):
-                    transformer_ = model
-                else:
-                    raise ValueError(f"unexpected save model: {model.__class__}")
+                    if isinstance(model, type(unwrap_model(flux_transformer))):
+                        transformer_ = model
+                    else:
+                        raise ValueError(f"unexpected save model: {model.__class__}")
+
+            else:
+                transformer_ = FluxTransformer2DModel.from_pretrained(
+                    args.pretrained_model_name_or_path, subfolder="transformer"
+                ).to(accelerator.device, weight_dtype)
+                transformer_.add_adapter(transformer_lora_config)
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
-
             transformer_state_dict = {
                 f'{k.replace("transformer.", "")}': v
                 for k, v in lora_state_dict.items()
@@ -1135,7 +1147,7 @@ def main(args):
                 )
 
                 # handle guidance
-                if flux_transformer.config.guidance_embeds:
+                if unwrap_model(flux_transformer).config.guidance_embeds:
                     guidance_vec = torch.full(
                         (bsz,),
                         args.guidance_scale,
@@ -1152,7 +1164,12 @@ def main(args):
                     prompt_embeds, pooled_prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
                         captions, prompt_2=None
                     )
-                text_encoding_pipeline = text_encoding_pipeline.to("cuda")
+                # this could be optimized by not having to do any text encoding and just
+                # doing zeros on specified shapes for `prompt_embeds` and `pooled_prompt_embeds`
+                if args.proportion_empty_prompts and random.random() < args.proportion_empty_prompts:
+                    prompt_embeds.zero_()
+                    pooled_prompt_embeds.zero_()
+                text_encoding_pipeline = text_encoding_pipeline.to("cpu")
 
                 # Predict.
                 model_pred = flux_transformer(
@@ -1274,7 +1291,7 @@ def main(args):
                 repo_id=repo_id,
                 folder_path=args.output_dir,
                 commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
+                ignore_patterns=["step_*", "epoch_*", "*.pt", "*.bin"],
             )
 
     accelerator.end_training()

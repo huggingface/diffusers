@@ -18,6 +18,7 @@ accelerate launch train_control_lora_flux.py \
   --output_dir="pose-control-lora" \
   --mixed_precision="bf16" \
   --train_batch_size=1 \
+  --rank=64 \
   --gradient_accumulation_steps=4 \
   --gradient_checkpointing \
   --use_8bit_adam \
