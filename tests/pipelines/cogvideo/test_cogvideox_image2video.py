@@ -22,7 +22,7 @@ from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
-from diffusers.pipelines.pyramid_broadcast_utils import PyramidAttentionBroadcastAttentionProcessorWrapper
+from diffusers.pipelines.pyramid_attention_broadcast_utils import PyramidAttentionBroadcastAttentionProcessorWrapper
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,

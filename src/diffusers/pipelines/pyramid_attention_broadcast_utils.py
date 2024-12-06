@@ -12,16 +12,103 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Callable, List, Optional, Tuple, Type, TypeVar
 
 import torch.nn as nn
 
 from ..models.attention_processor import Attention
 from ..models.hooks import PyramidAttentionBroadcastHook, add_hook_to_module, remove_hook_from_module
 from ..utils import logging
+from .pipeline_utils import DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+_ATTENTION_CLASSES = (Attention,)
+
+_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ["blocks", "transformer_blocks"]
+_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ["temporal_transformer_blocks"]
+_CROSS_ATTENTION_BLOCK_IDENTIFIERS = ["blocks", "transformer_blocks"]
+
+
+@dataclass
+class PyramidAttentionBroadcastConfig:
+    spatial_attention_block_skip = None
+    temporal_attention_block_skip = None
+    cross_attention_block_skip = None
+    
+    spatial_attention_timestep_skip_range = (100, 800)
+    temporal_attention_timestep_skip_range = (100, 800)
+    cross_attention_timestep_skip_range = (100, 800)
+
+    spatial_attention_block_identifiers = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS
+    temporal_attention_block_identifiers = _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
+    cross_attention_block_identifiers = _CROSS_ATTENTION_BLOCK_IDENTIFIERS
+
+
+class PyramidAttentionBroadcastState:
+    iteration = 0
+
+
+def apply_pyramid_attention_broadcast(
+    pipeline: DiffusionPipeline,
+    config: Optional[PyramidAttentionBroadcastConfig] = None,
+    denoiser: Optional[nn.Module] = None,
+):
+    if config is None:
+        config = PyramidAttentionBroadcastConfig()
+    
+    if config.spatial_attention_block_skip is None and config.temporal_attention_block_skip is None and config.cross_attention_block_skip is None:
+        logger.warning(
+            "Pyramid Attention Broadcast requires one or more of `spatial_attention_block_skip`, `temporal_attention_block_skip` "
+            "or `cross_attention_block_skip` parameters to be set to an integer, not `None`. Defaulting to using `spatial_attention_block_skip=2`. "
+            "To avoid this warning, please set one of the above parameters."
+        )
+        config.spatial_attention_block_skip = 2
+    
+    if denoiser is None:
+        denoiser = pipeline.transformer if hasattr(pipeline, "transformer") else pipeline.unet
+        
+    for name, module in denoiser.named_modules():
+        if not isinstance(module, _ATTENTION_CLASSES):
+            continue
+        if isinstance(module, Attention):
+            _apply_pyramid_attention_broadcast_on_attention_class(pipeline, name, module, config)
+
+
+# def apply_pyramid_attention_broadcast_spatial(module: TypeVar[_ATTENTION_CLASSES], config: PyramidAttentionBroadcastConfig):
+#     hook = PyramidAttentionBroadcastHook(skip_callback=)
+#     add_hook_to_module(module)
+
+
+def _apply_pyramid_attention_broadcast_on_attention_class(pipeline: DiffusionPipeline, name: str, module: Attention, config: PyramidAttentionBroadcastConfig):
+    # Similar check as PEFT to determine if a string layer name matches a module name
+    is_spatial_self_attention = (
+        any(f"{identifier}." in name or identifier == name for identifier in config.spatial_attention_block_identifiers)
+        and config.spatial_attention_timestep_skip_range is not None
+        and not module.is_cross_attention
+    )
+    is_temporal_self_attention = (
+        any(f"{identifier}." in name or identifier == name for identifier in config.temporal_attention_block_identifiers)
+        and config.temporal_attention_timestep_skip_range is not None
+        and not module.is_cross_attention
+    )
+    is_cross_attention = (
+        any(f"{identifier}." in name or identifier == name for identifier in config.cross_attention_block_identifiers)
+        and config.cross_attention_timestep_skip_range is not None
+        and not module.is_cross_attention
+    )
+
+    if is_spatial_self_attention:
+        apply_pyramid_attention_broadcast_spatial(module, config)
+    elif is_temporal_self_attention:
+        apply_pyramid_attention_broadcast_temporal(module, config)
+    elif is_cross_attention:
+        apply_pyramid_attention_broadcast_cross(module, config)
+    else:
+        logger.warning(f"Unable to apply Pyramid Attention Broadcast to the selected layer: {name}.")
 
 
 class PyramidAttentionBroadcastMixin:

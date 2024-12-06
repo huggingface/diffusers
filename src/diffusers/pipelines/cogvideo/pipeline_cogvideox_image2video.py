@@ -34,7 +34,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-from ..pyramid_broadcast_utils import PyramidAttentionBroadcastMixin
 from .pipeline_output import CogVideoXPipelineOutput
 
 
@@ -154,7 +153,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin, PyramidAttentionBroadcastMixin):
+class CogVideoXImageToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation using CogVideoX.
 
