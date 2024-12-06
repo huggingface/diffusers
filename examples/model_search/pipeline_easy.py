@@ -16,13 +16,12 @@
 import os
 import re
 import requests
-from tqdm.auto import tqdm
-from typing import Union
 from collections import OrderedDict
 from dataclasses import (
     dataclass,
     asdict
 )
+from typing import Union
 
 from huggingface_hub.file_download import http_get
 from huggingface_hub.utils import validate_hf_hub_args
@@ -31,11 +30,10 @@ from huggingface_hub import (
     hf_hub_download,
 )
 
-from diffusers.utils import logging
 from diffusers.loaders.single_file_utils import (
+    _extract_repo_id_and_weights_name,
     infer_diffusers_model_type,
     load_single_file_checkpoint,
-    _extract_repo_id_and_weights_name,
     VALID_URL_PREFIXES,
 )
 from diffusers.pipelines.auto_pipeline import (
@@ -48,6 +46,7 @@ from diffusers.pipelines.controlnet import (
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
 )
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -58,7 +57,7 @@ from diffusers.pipelines.stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils import logging
 
 logger = logging.get_logger(__name__)
 
@@ -189,7 +188,7 @@ class SearchResult:
             The status of the model.
     """
     model_path: str = ""
-    loading_method: Union[str, None] = None  
+    loading_method: Union[str, None] = None
     checkpoint_format: Union[str, None] = None
     repo_status: RepoStatus = RepoStatus()
     model_status: ModelStatus = ModelStatus()
@@ -282,7 +281,7 @@ def get_keyword_types(keyword):
         `dict`: A dictionary containing the model format, loading method,
                 and various types and extra types flags.
     """
-    
+
     # Initialize the status dictionary with default values
     status = {
         "checkpoint_format": None,
@@ -299,16 +298,16 @@ def get_keyword_types(keyword):
             "missing_model_index": None,
         },
     }
-    
+
     # Check if the keyword is an HTTP or HTTPS URL
     status["extra_type"]["url"] = bool(re.search(r"^(https?)://", keyword))
-    
+
     # Check if the keyword is a file
     if os.path.isfile(keyword):
         status["type"]["local"] = True
         status["checkpoint_format"] = "single_file"
         status["loading_method"] = "from_single_file"
-    
+
     # Check if the keyword is a directory
     elif os.path.isdir(keyword):
         status["type"]["local"] = True
@@ -316,13 +315,13 @@ def get_keyword_types(keyword):
         status["loading_method"] = "from_pretrained"
         if not os.path.exists(os.path.join(keyword, "model_index.json")):
             status["extra_type"]["missing_model_index"] = True
-    
+
     # Check if the keyword is a Civitai URL
     elif keyword.startswith("https://civitai.com/"):
         status["type"]["civitai_url"] = True
         status["checkpoint_format"] = "single_file"
         status["loading_method"] = None
-    
+
     # Check if the keyword starts with any valid URL prefixes
     elif any(keyword.startswith(prefix) for prefix in VALID_URL_PREFIXES):
         repo_id, weights_name = _extract_repo_id_and_weights_name(keyword)
@@ -334,19 +333,19 @@ def get_keyword_types(keyword):
             status["type"]["hf_repo"] = True
             status["checkpoint_format"] = "diffusers"
             status["loading_method"] = "from_pretrained"
-    
+
     # Check if the keyword matches a Hugging Face repository format
     elif re.match(r"^[^/]+/[^/]+$", keyword):
         status["type"]["hf_repo"] = True
         status["checkpoint_format"] = "diffusers"
         status["loading_method"] = "from_pretrained"
-    
+
     # If none of the above apply
     else:
         status["type"]["other"] = True
         status["checkpoint_format"] = None
         status["loading_method"] = None
-    
+
     return status
 
 
@@ -532,7 +531,7 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                     ):
                         diffusers_model_exists = True
                         break
-                    
+
                     elif (
                         any(file_path.endswith(ext) for ext in EXTENSION)
                         and not any(config in file_path for config in CONFIG_FILE_LIST)
@@ -540,7 +539,7 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                         and os.path.basename(os.path.dirname(file_path)) not in DIFFUSERS_CONFIG_DIR
                     ):
                         file_list.append(file_path)
-            
+
             # Exit from the loop if a multi-folder diffusers model or valid file is found
             if diffusers_model_exists or file_list:
                 break
@@ -560,7 +559,7 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                 )
             else:
                 model_path = repo_id
-                
+
         elif file_list:
             # Sort and find the safest model
             file_name = next(
@@ -571,7 +570,7 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                 ),
                 file_list[0]
             )
-            
+
 
             if download:
                 model_path = hf_hub_download(
@@ -581,12 +580,12 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                     token=token,
                     force_download=force_download,
                 )
-            
+
     if file_name:
         download_url = f"https://huggingface.co/{repo_id}/blob/main/{file_name}"
     else:
         download_url = f"https://huggingface.co/{repo_id}"
-    
+
     output_info = get_keyword_types(model_path)
 
     if include_params:
@@ -606,10 +605,10 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
                 local=download,
             )
         )
-    
+
     else:
         return model_path
-    
+
 
 def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]:
     r"""
@@ -693,7 +692,7 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
                 return None
             else:
                 raise ValueError("Invalid JSON response")
-    
+
     # Sort repositories by download count in descending order
     sorted_repos = sorted(data["items"], key=lambda x: x["stats"]["downloadCount"], reverse=True)
 
@@ -737,14 +736,14 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
         else:
             continue
         break
-    
+
     # Exception handling when search candidates are not found
     if not selected_model:
         if skip_error:
             return None
         else:
             raise ValueError("No model found. Please try changing the word you are searching for.")
-    
+
     # Define model file status
     file_name = selected_model["filename"]
     download_url = selected_model["download_url"]
@@ -814,7 +813,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
         # EnvironmentError is returned
         super().__init__()
 
-    
+
     @classmethod
     @validate_hf_hub_args
     def from_huggingface(cls, pretrained_model_link_or_path, **kwargs):
@@ -929,10 +928,10 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
         kwargs.update(_status)
 
         # Search for the model on Hugging Face and get the model status
-        hf_model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)   
+        hf_model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)
         logger.warning(f"checkpoint_path: {hf_model_status.model_status.download_url}")
         checkpoint_path = hf_model_status.model_path
-        
+
         # Check the format of the model checkpoint
         if hf_model_status.checkpoint_format == "single_file":
             # Load the pipeline from a single file checkpoint
@@ -943,7 +942,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
-    
+
     @classmethod
     def from_civitai(cls, pretrained_model_link_or_path, **kwargs):
         r"""
@@ -1047,7 +1046,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
             pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
             **kwargs
         )
-    
+
 
 
 class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
@@ -1071,7 +1070,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
     def __init__(self, *args, **kwargs):
         # EnvironmentError is returned
         super().__init__()
-    
+
     @classmethod
     @validate_hf_hub_args
     def from_huggingface(cls, pretrained_model_link_or_path, **kwargs):
@@ -1186,10 +1185,10 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
         kwargs.update(_parmas)
 
         # Search for the model on Hugging Face and get the model status
-        model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)   
+        model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)
         logger.warning(f"checkpoint_path: {model_status.model_status.download_url}")
         checkpoint_path = model_status.model_path
-        
+
         # Check the format of the model checkpoint
         if model_status.checkpoint_format == "single_file":
             # Load the pipeline from a single file checkpoint
@@ -1200,7 +1199,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
-    
+
     @classmethod
     def from_civitai(cls, pretrained_model_link_or_path, **kwargs):
         r"""
@@ -1305,7 +1304,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
             **kwargs
         )
 
-    
+
 
 class EasyPipelineForInpainting(AutoPipelineForInpainting):
     r"""
@@ -1328,7 +1327,7 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
     def __init__(self, *args, **kwargs):
         # EnvironmentError is returned
         super().__init__()
-    
+
     @classmethod
     @validate_hf_hub_args
     def from_huggingface(cls, pretrained_model_link_or_path, **kwargs):
@@ -1443,10 +1442,10 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
         kwargs.update(_status)
 
         # Search for the model on Hugging Face and get the model status
-        model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)   
+        model_status = search_huggingface(pretrained_model_link_or_path, **kwargs)
         logger.warning(f"checkpoint_path: {model_status.model_status.download_url}")
         checkpoint_path = model_status.model_path
-        
+
         # Check the format of the model checkpoint
         if model_status.checkpoint_format == "single_file":
             # Load the pipeline from a single file checkpoint
@@ -1457,7 +1456,7 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
-    
+
     @classmethod
     def from_civitai(cls, pretrained_model_link_or_path, **kwargs):
         r"""
