@@ -26,7 +26,6 @@ from ..attention_processor import (
     FusedAttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
 )
-from ..autoencoders.autoencoder_dc import GLUMBConv
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -58,40 +57,40 @@ class RMSNormScaled(RMSNorm):
         self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
 
 
-# Modified from diffusers.models.autoencoders.ecae.GLUMBConv
+# Modified from diffusers.models.autoencoders.autoencoder_dc.GLUMBConv
 @maybe_allow_in_graph
 class SanaGLUMBConv(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int, expand_ratio: float = 2.5) -> None:
         super().__init__()
 
-        hidden_channels = int(2.5 * in_channels)
+        hidden_channels = int(expand_ratio * in_channels)
 
         self.nonlinearity = nn.SiLU()
 
         self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
         self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
         self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
-        self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
 
-    def forward(self, x: torch.Tensor, HW=None) -> torch.Tensor:
-        B, N, C = x.shape
+    def forward(self, hidden_states: torch.Tensor, HW: Optional[tuple[int]] = None) -> torch.Tensor:
+        B, N, C = hidden_states.shape
         if HW is None:
             H = W = int(N**0.5)
         else:
             H, W = HW
 
-        x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
-        x = self.inverted_conv(x)
-        x = self.depth_conv(x)
+        hidden_states = hidden_states.reshape(B, H, W, C).permute(0, 3, 1, 2)
 
-        x, gate = torch.chunk(x, 2, dim=1)
-        gate = self.glu_act(gate)
-        x = x * gate
+        hidden_states = self.conv_inverted(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
 
-        x = self.point_conv(x)
-        x = x.reshape(B, C, N).permute(0, 2, 1)
+        hidden_states = self.conv_depth(hidden_states)
+        hidden_states, gate = torch.chunk(hidden_states, 2, dim=1)
+        hidden_states = hidden_states * self.nonlinearity(gate)
 
-        return x
+        hidden_states = self.conv_point(hidden_states)
+        hidden_states = hidden_states.reshape(B, C, N).permute(0, 2, 1)
+
+        return hidden_states
 
 
 # Modified from diffusers.models.attention.BasicTransformerBlock
@@ -130,8 +129,6 @@ class SanaLinearTransformerBlock(nn.Module):
         use_pe: bool = False,
         num_positional_embeddings: Optional[int] = None,
         expand_ratio: float = 2.5,
-        ff_bias: tuple =(True, True, False),
-        ff_norm: tuple =(None, None, None),
     ):
         super().__init__()
         self.dim = dim
@@ -186,9 +183,6 @@ class SanaLinearTransformerBlock(nn.Module):
             in_channels=dim,
             out_channels=dim,
             expand_ratio=expand_ratio,
-            use_bias=ff_bias,
-            norm=ff_norm,
-            act_func=activation_fn,
         )
 
         # 5. Scale-shift for Sana.
@@ -362,8 +356,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         attention_type: Optional[str] = "default",
         use_pe: Optional[bool] = False,
         expand_ratio=2.5,
-        ff_bias: tuple =(True, True, False),
-        ff_norm: tuple =(None, None, None),
     ):
         super().__init__()
 
@@ -428,8 +420,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                     norm_eps=self.config.norm_eps,
                     use_pe=self.config.use_pe,
                     expand_ratio=self.config.expand_ratio,
-                    ff_bias=self.config.ff_bias,
-                    ff_norm=self.config.ff_norm,
                 )
                 for _ in range(self.config.num_layers)
             ]

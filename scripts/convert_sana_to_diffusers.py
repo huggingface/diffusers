@@ -59,12 +59,11 @@ def main(args):
     # y norm
     converted_state_dict["caption_norm.weight"] = state_dict.pop("attention_y_norm.weight")
 
+    flow_shift = 3.0
     if args.model_type == "SanaMS_1600M_P1_D20":
         layer_num = 20
-        flow_shift = 3.0
     elif args.model_type == "SanaMS_600M_P1_D28":
         layer_num = 28
-        flow_shift = 4.0
     else:
         raise ValueError(f"{args.model_type} is not supported.")
 
@@ -89,19 +88,19 @@ def main(args):
         )
 
         # Feed-forward.
-        converted_state_dict[f"transformer_blocks.{depth}.ff.inverted_conv.conv.weight"] = state_dict.pop(
+        converted_state_dict[f"transformer_blocks.{depth}.ff.conv_inverted.weight"] = state_dict.pop(
             f"blocks.{depth}.mlp.inverted_conv.conv.weight"
         )
-        converted_state_dict[f"transformer_blocks.{depth}.ff.inverted_conv.conv.bias"] = state_dict.pop(
+        converted_state_dict[f"transformer_blocks.{depth}.ff.conv_inverted.bias"] = state_dict.pop(
             f"blocks.{depth}.mlp.inverted_conv.conv.bias"
         )
-        converted_state_dict[f"transformer_blocks.{depth}.ff.depth_conv.conv.weight"] = state_dict.pop(
+        converted_state_dict[f"transformer_blocks.{depth}.ff.conv_depth.weight"] = state_dict.pop(
             f"blocks.{depth}.mlp.depth_conv.conv.weight"
         )
-        converted_state_dict[f"transformer_blocks.{depth}.ff.depth_conv.conv.bias"] = state_dict.pop(
+        converted_state_dict[f"transformer_blocks.{depth}.ff.conv_depth.bias"] = state_dict.pop(
             f"blocks.{depth}.mlp.depth_conv.conv.bias"
         )
-        converted_state_dict[f"transformer_blocks.{depth}.ff.point_conv.conv.weight"] = state_dict.pop(
+        converted_state_dict[f"transformer_blocks.{depth}.ff.conv_point.weight"] = state_dict.pop(
             f"blocks.{depth}.mlp.point_conv.conv.weight"
         )
 
@@ -156,8 +155,6 @@ def main(args):
             attention_type="default",
             use_pe=False,
             expand_ratio=2.5,
-            ff_bias=(True, True, False),
-            ff_norm=(None, None, None),
         )
     if is_accelerate_available():
         load_model_dict_into_meta(transformer, converted_state_dict)
@@ -188,8 +185,8 @@ def main(args):
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
         ae = AutoencoderDC.from_pretrained(
-            "Efficient-Large-Model/dc_ae_f32c32_sana_1.0_diffusers",
-            torch_dtype=torch.float32,
+            "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",
+            torch_dtype=torch.bfloat16,
         ).to(device)
 
         # Text Encoder

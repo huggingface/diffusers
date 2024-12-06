@@ -5552,6 +5552,11 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor2_0,
     SlicedAttnProcessor,
     SlicedAttnAddedKVProcessor,
+    SanaLinearAttnProcessor2_0,
+    SanaMultiscaleLinearAttention,
+    SanaMultiscaleAttnProcessor2_0,
+    SanaMultiscaleAttentionProjection,
+    PAGCFGSanaLinearAttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
@@ -5562,5 +5567,4 @@ AttentionProcessor = Union[
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
     SanaLinearAttnProcessor2_0,
-    PAGCFGSanaLinearAttnProcessor2_0,
 ]
