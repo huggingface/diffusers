@@ -427,7 +427,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                     if lora_config_kwargs["lora_bias"]:
                         if is_peft_version("<=", "0.13.2"):
                             raise ValueError(
-                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                                "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
                             )
                     else:
                         if is_peft_version("<=", "0.13.2"):
@@ -970,7 +970,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                     if lora_config_kwargs["lora_bias"]:
                         if is_peft_version("<=", "0.13.2"):
                             raise ValueError(
-                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                                "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
                             )
                     else:
                         if is_peft_version("<=", "0.13.2"):
@@ -1479,7 +1479,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                     if lora_config_kwargs["lora_bias"]:
                         if is_peft_version("<=", "0.13.2"):
                             raise ValueError(
-                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                                "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
                             )
                     else:
                         if is_peft_version("<=", "0.13.2"):
@@ -2108,7 +2108,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     if lora_config_kwargs["lora_bias"]:
                         if is_peft_version("<=", "0.13.2"):
                             raise ValueError(
-                                "You need `peft` 0.13.3 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                                "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
                             )
                     else:
                         if is_peft_version("<=", "0.13.2"):
