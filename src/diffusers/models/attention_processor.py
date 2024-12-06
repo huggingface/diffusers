@@ -1171,6 +1171,7 @@ class PAGJointAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         residual = hidden_states
 
@@ -1907,7 +1908,9 @@ class FluxAttnProcessor2_0:
             query = apply_rotary_emb(query, image_rotary_emb)
             key = apply_rotary_emb(key, image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
@@ -5053,19 +5056,46 @@ CROSS_ATTENTION_PROCESSORS = (
 
 AttentionProcessor = Union[
     AttnProcessor,
-    AttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    XFormersAttnProcessor,
-    SlicedAttnProcessor,
-    AttnAddedKVProcessor,
-    SlicedAttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    XFormersAttnAddedKVProcessor,
     CustomDiffusionAttnProcessor,
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    JointAttnProcessor2_0,
+    PAGJointAttnProcessor2_0,
+    PAGCFGJointAttnProcessor2_0,
+    FusedJointAttnProcessor2_0,
+    AllegroAttnProcessor2_0,
+    AuraFlowAttnProcessor2_0,
+    FusedAuraFlowAttnProcessor2_0,
+    FluxAttnProcessor2_0,
+    FluxAttnProcessor2_0_NPU,
+    FusedFluxAttnProcessor2_0,
+    FusedFluxAttnProcessor2_0_NPU,
+    CogVideoXAttnProcessor2_0,
+    FusedCogVideoXAttnProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    XFormersAttnProcessor,
+    AttnProcessorNPU,
+    AttnProcessor2_0,
+    MochiVaeAttnProcessor2_0,
+    StableAudioAttnProcessor2_0,
+    HunyuanAttnProcessor2_0,
+    FusedHunyuanAttnProcessor2_0,
+    PAGHunyuanAttnProcessor2_0,
+    PAGCFGHunyuanAttnProcessor2_0,
+    LuminaAttnProcessor2_0,
+    MochiAttnProcessor2_0,
+    FusedAttnProcessor2_0,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
-    PAGCFGIdentitySelfAttnProcessor2_0,
+    SlicedAttnProcessor,
+    SlicedAttnAddedKVProcessor,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+    IPAdapterXFormersAttnProcessor,
     PAGIdentitySelfAttnProcessor2_0,
-    PAGCFGHunyuanAttnProcessor2_0,
-    PAGHunyuanAttnProcessor2_0,
+    PAGCFGIdentitySelfAttnProcessor2_0,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
 ]

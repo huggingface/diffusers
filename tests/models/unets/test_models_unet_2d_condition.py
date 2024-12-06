@@ -1078,30 +1078,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert new_output.sample.shape == (4, 4, 16, 16)
 
     @require_peft_backend
-    def test_lora(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        # forward pass without LoRA
-        with torch.no_grad():
-            non_lora_sample = model(**inputs_dict).sample
-
-        unet_lora_config = get_unet_lora_config()
-        model.add_adapter(unet_lora_config)
-
-        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-        # forward pass with LoRA
-        with torch.no_grad():
-            lora_sample = model(**inputs_dict).sample
-
-        assert not torch.allclose(
-            non_lora_sample, lora_sample, atol=1e-4, rtol=1e-4
-        ), "LoRA injected UNet should produce different results."
-
-    @require_peft_backend
-    def test_lora_serialization(self):
+    def test_load_attn_procs_raise_warning(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -1122,8 +1099,14 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
             model.unload_lora()
-            model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
+            with self.assertWarns(FutureWarning) as warning:
+                model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            warning_message = str(warning.warnings[0].message)
+            assert "Using the `load_attn_procs()` method has been deprecated" in warning_message
+
+            # import to still check for the rest of the stuff.
             assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
 
             with torch.no_grad():

@@ -194,6 +194,19 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         super().__init__()
         if isinstance(controlnet, (list, tuple)):
             controlnet = SD3MultiControlNetModel(controlnet)
+        if isinstance(controlnet, SD3MultiControlNetModel):
+            for controlnet_model in controlnet.nets:
+                # for SD3.5 8b controlnet, it shares the pos_embed with the transformer
+                if (
+                    hasattr(controlnet_model.config, "use_pos_embed")
+                    and controlnet_model.config.use_pos_embed is False
+                ):
+                    pos_embed = controlnet_model._get_pos_embed_from_transformer(transformer)
+                    controlnet_model.pos_embed = pos_embed.to(controlnet_model.dtype).to(controlnet_model.device)
+        elif isinstance(controlnet, SD3ControlNetModel):
+            if hasattr(controlnet.config, "use_pos_embed") and controlnet.config.use_pos_embed is False:
+                pos_embed = controlnet._get_pos_embed_from_transformer(transformer)
+                controlnet.pos_embed = pos_embed.to(controlnet.dtype).to(controlnet.device)
 
         self.register_modules(
             vae=vae,
@@ -720,7 +733,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.0,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
@@ -765,10 +778,10 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -858,6 +871,12 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
+        controlnet_config = (
+            self.controlnet.config
+            if isinstance(self.controlnet, SD3ControlNetModel)
+            else self.controlnet.nets[0].config
+        )
+
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
@@ -932,6 +951,11 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Prepare control image
+        if controlnet_config.force_zeros_for_pooled_projection:
+            # instantx sd3 controlnet does not apply shift factor
+            vae_shift_factor = 0
+        else:
+            vae_shift_factor = self.vae.config.shift_factor
         if isinstance(self.controlnet, SD3ControlNetModel):
             control_image = self.prepare_image(
                 image=control_image,
@@ -947,8 +971,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             height, width = control_image.shape[-2:]
 
             control_image = self.vae.encode(control_image).latent_dist.sample()
-            control_image = control_image * self.vae.config.scaling_factor
-
+            control_image = (control_image - vae_shift_factor) * self.vae.config.scaling_factor
         elif isinstance(self.controlnet, SD3MultiControlNetModel):
             control_images = []
 
@@ -966,7 +989,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 )
 
                 control_image_ = self.vae.encode(control_image_).latent_dist.sample()
-                control_image_ = control_image_ * self.vae.config.scaling_factor
+                control_image_ = (control_image_ - vae_shift_factor) * self.vae.config.scaling_factor
 
                 control_images.append(control_image_)
 
@@ -974,13 +997,8 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         else:
             assert False
 
-        if controlnet_pooled_projections is None:
-            controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
-        else:
-            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
-
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -1006,6 +1024,18 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             ]
             controlnet_keep.append(keeps[0] if isinstance(self.controlnet, SD3ControlNetModel) else keeps)
 
+        if controlnet_config.force_zeros_for_pooled_projection:
+            # instantx sd3 controlnet used zero pooled projection
+            controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
+        else:
+            controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
+
+        if controlnet_config.joint_attention_dim is not None:
+            controlnet_encoder_hidden_states = prompt_embeds
+        else:
+            # SD35 official 8b controlnet does not use encoder_hidden_states
+            controlnet_encoder_hidden_states = None
+
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1029,7 +1059,7 @@ class StableDiffusion3ControlNetPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
                 control_block_samples = self.controlnet(
                     hidden_states=latent_model_input,
                     timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=controlnet_encoder_hidden_states,
                     pooled_projections=controlnet_pooled_projections,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     controlnet_cond=control_image,
