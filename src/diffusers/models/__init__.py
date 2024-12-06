@@ -27,6 +27,7 @@ _import_structure = {}
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
@@ -56,6 +57,7 @@ if is_torch_available():
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
+    _import_structure["transformers.sana_transformer_2d"] = ["SanaTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
@@ -88,6 +90,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .adapter import MultiAdapter, T2IAdapter
         from .autoencoders import (
             AsymmetricAutoencoderKL,
+            AutoencoderDC,
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
@@ -127,6 +130,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MochiTransformer3DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            SanaTransformer2DModel,
             SD3Transformer2DModel,
             StableAudioDiTModel,
             T5FilmDecoder,
