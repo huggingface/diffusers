@@ -36,6 +36,7 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -642,6 +643,7 @@ class RFInversionFluxPipeline(
         start_timestep: float = 0,
         stop_timestep: float = 0.25,
         num_inference_steps: int = 28,
+        sigmas: Optional[List[float]] = None,
         timesteps: List[int] = None,
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
