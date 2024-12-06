@@ -673,10 +673,6 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
     inner_dim = 3072
     mlp_ratio = 4.0
 
-    for k in original_state_dict:
-        if "bias" in k and "img_in" in k:
-            print(f"{k=}")
-
     def swap_scale_shift(weight):
         shift, scale = weight.chunk(2, dim=0)
         new_weight = torch.cat([scale, shift], dim=0)
