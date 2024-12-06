@@ -314,6 +314,8 @@
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
+      - local: api/models/autoencoder_dc
+        title: AutoencoderDC
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
       - local: api/models/autoencoder_oobleck

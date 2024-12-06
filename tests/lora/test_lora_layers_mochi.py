@@ -108,7 +108,7 @@ class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         return noise, input_ids, pipeline_inputs
 
     @pytest.mark.xfail(
-        condtion=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
+        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
         strict=True,
     )

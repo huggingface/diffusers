@@ -187,7 +187,7 @@ class IPAdapterMixin:
                 state_dict = pretrained_model_name_or_path_or_dict
 
             keys = list(state_dict.keys())
-            if keys != ["image_proj", "ip_adapter"]:
+            if "image_proj" not in keys and "ip_adapter" not in keys:
                 raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
             state_dicts.append(state_dict)
