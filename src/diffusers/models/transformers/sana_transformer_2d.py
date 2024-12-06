@@ -60,30 +60,18 @@ class RMSNormScaled(RMSNorm):
 
 # Modified from diffusers.models.autoencoders.ecae.GLUMBConv
 @maybe_allow_in_graph
-class SanaGLUMBConv(GLUMBConv):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size=3,
-        stride=1,
-        mid_channels=None,
-        expand_ratio=2.5,
-        use_bias=False,
-        norm=(None, None, None),
-        act_func=("silu", "silu", None),
-    ):
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            mid_channels=mid_channels,
-            expand_ratio=expand_ratio,
-            use_bias=use_bias,
-            norm=norm,
-            act_func=act_func,
-        )
+class SanaGLUMBConv(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
+        super().__init__()
+
+        hidden_channels = int(2.5 * in_channels)
+
+        self.nonlinearity = nn.SiLU()
+
+        self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
+        self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
+        self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
+        self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
 
     def forward(self, x: torch.Tensor, HW=None) -> torch.Tensor:
         B, N, C = x.shape
