@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple
 
 import torch
 
@@ -166,7 +166,7 @@ class LayerSkipHook(ModelHook):
         super().__init__()
 
         self.skip_callback = skip_
-    
+
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
 
@@ -179,7 +179,7 @@ class LayerSkipHook(ModelHook):
             output = None
         else:
             output = module._old_forward(*args, **kwargs)
-        
+
         return module._diffusers_hook.post_forward(module, output)
 
 
