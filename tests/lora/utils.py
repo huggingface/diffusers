@@ -19,6 +19,7 @@ import unittest
 from itertools import product
 
 import numpy as np
+import pytest
 import torch
 
 from diffusers import (
@@ -32,6 +33,7 @@ from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     floats_tensor,
+    is_torch_version,
     require_peft_backend,
     require_peft_version_greater,
     require_transformers_version_greater,
@@ -1510,6 +1512,11 @@ class PeftLoraLoaderMixinTests:
             )
 
     @skip_mps
+    @pytest.mark.xfail(
+        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
+        reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
+        strict=True,
+    )
     def test_lora_fuse_nan(self):
         for scheduler_cls in self.scheduler_classes:
             components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
