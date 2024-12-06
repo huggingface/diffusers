@@ -834,10 +834,11 @@ class RFInversionFluxPipeline(
 
         if do_rf_inversion:
             y_0 = image_latents.clone()
-        # 6. Denoising loop
+        # 6. Denoising loop / Controlled Reverse ODE, Algorithm 2 from: https://arxiv.org/pdf/2410.10792
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if do_rf_inversion:
+                    # ti (current timestep) as annotated in algorithm 2 - i/num_inference_steps.
                     t_i = 1 - t / 1000
                     dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
 
@@ -862,7 +863,6 @@ class RFInversionFluxPipeline(
                 latents_dtype = latents.dtype
                 if do_rf_inversion:
                     v_t = -noise_pred
-
                     v_t_cond = (y_0 - latents) / (1 - t_i)
                     eta_t = eta if start_timestep <= i < stop_timestep else 0.0
                     if start_timestep <= i < stop_timestep:
