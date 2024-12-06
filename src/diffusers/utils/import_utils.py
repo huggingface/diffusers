@@ -344,7 +344,7 @@ _is_torchao_available = importlib.util.find_spec("torchao") is not None
 if _is_torchao_available:
     try:
         _torchao_version = importlib_metadata.version("torchao")
-        logger.debug(f"Successfully import gguf version {_torchao_version}")
+        logger.debug(f"Successfully import torchao version {_torchao_version}")
     except importlib_metadata.PackageNotFoundError:
         _is_torchao_available = False
 

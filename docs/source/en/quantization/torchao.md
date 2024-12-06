@@ -11,17 +11,18 @@ specific language governing permissions and limitations under the License. -->
 
 # torchao
 
-[TorchAO](https://github.com/pytorch/ao) is an architecture optimization library for PyTorch, it provides high performance dtypes, optimization techniques and kernels for inference and training, featuring composability with native PyTorch features like `torch.compile`, FSDP etc. Some benchmark numbers can be found [here](https://github.com/pytorch/ao/tree/main/torchao/quantization#benchmarks).
+[TorchAO](https://github.com/pytorch/ao) is an architecture optimization library for PyTorch. It provides high-performance dtypes, optimization techniques, and kernels for inference and training, featuring composability with native PyTorch features like [torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html), FullyShardedDataParallel (FSDP), and more.
 
-Before you begin, make sure you have Pytorch version 2.5, or above, and TorchAO installed:
+Before you begin, make sure you have Pytorch 2.5+ and TorchAO installed.
 
 ```bash
 pip install -U torch torchao
 ```
 
-## Usage
 
-Now you can quantize a model by passing a [`TorchAoConfig`] to [`~ModelMixin.from_pretrained`]. Loading pre-quantized models is supported as well! This works for any model in any modality, as long as it supports loading with [Accelerate](https://hf.co/docs/accelerate/index) and contains `torch.nn.Linear` layers.
+Quantize a model by passing [`TorchAoConfig`] to [`~ModelMixin.from_pretrained`] (you can also load pre-quantized models). This works for any model in any modality, as long as it supports loading with [Accelerate](https://hf.co/docs/accelerate/index) and contains `torch.nn.Linear` layers.
+
+The example below only quantizes the weights to int8.
 
 ```python
 from diffusers import FluxPipeline, FluxTransformer2DModel, TorchAoConfig
@@ -48,16 +49,16 @@ image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
 image.save("output.png")
 ```
 
-TorchAO offers seamless compatibility with `torch.compile`, setting it apart from other quantization methods. This ensures one to achieve remarkable speedups with ease.
+TorchAO is fully compatible with [torch.compile](./optimization/torch2.0#torchcompile), setting it apart from other quantization methods. This makes it easy to speed up inference with just one line of code.
 
 ```python
 # In the above code, add the following after initializing the transformer
 transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 ```
 
-For speed/memory benchmarks on Flux/CogVideoX, please refer to the table [here](https://github.com/huggingface/diffusers/pull/10009#issue-2688781450).
+For speed and memory benchmarks on Flux and CogVideoX, please refer to the table [here](https://github.com/huggingface/diffusers/pull/10009#issue-2688781450). You can also find some torchao [benchmarks](https://github.com/pytorch/ao/tree/main/torchao/quantization#benchmarks) numbers for various hardware.
 
-Additionally, TorchAO supports an automatic quantization API exposed with [`autoquant`](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. This can directly be used with the underlying modeling components at the moment, but Diffusers will also expose an autoquant configuration option in the future.
+torchao also supports an automatic quantization API through [autoquant](https://github.com/pytorch/ao/blob/main/torchao/quantization/README.md#autoquantization). Autoquantization determines the best quantization strategy applicable to a model by comparing the performance of each technique on chosen input types and shapes. Currently, this can be used directly on the underlying modeling components. Diffusers will also expose an autoquant configuration option in the future.
 
 The `TorchAoConfig` class accepts three parameters:
 - `quant_type`: A string value mentioning one of the quantization types below.
@@ -66,11 +67,11 @@ The `TorchAoConfig` class accepts three parameters:
 
 ## Supported quantization types
 
-Broadly, quantization in the follow data types is supported: `int8`, `float3-float8` and `uint1-uint7`. Among these types, there exists weight-only quantization techniques and weight + dynamic-activation quantization techniques.
+torchao supports weight-only quantization and weight and dynamic-activation quantization for int8, float3-float8, and uint1-uint7.
 
-Weight-only quantization refers to storing the model weights in a specific low-bit data type but performing computation in a higher precision data type, like `bfloat16`. This lowers the memory requirements from model weights, but retains the memory peaks for activation computation.
+Weight-only quantization stores the model weights in a specific low-bit data type but performs computation with a higher-precision data type, like `bfloat16`. This lowers the memory requirements from model weights but retains the memory peaks for activation computation.
 
-Dynamic Activation quantization refers to storing the model weights in a low-bit dtype, while also quantizing the activations on-the-fly to save additional memory. This lowers the memory requirements from model weights, while also lowering the memory overhead from activation computations. However, this may come at a quality tradeoff at times, so it is recommended to test different models thoroughly before settling for your favourite quantization method.
+Dynamic activation quantization stores the model weights in a low-bit dtype, while also quantizing the activations on-the-fly to save additional memory. This lowers the memory requirements from model weights, while also lowering the memory overhead from activation computations. However, this may come at a quality tradeoff at times, so it is recommended to test different models thoroughly.
 
 The quantization methods supported are as follows:
 
@@ -94,11 +95,11 @@ The quantization methods supported are as follows:
   - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
   - Documentation shorthands/Common speak: `uint_a16w1`, `uint_a16w2`, `uint_a16w3`, `uint_a16w4`, `uint_a16w5`, `uint_a16w6`, `uint_a16w7`
 
-The "Documentation shorthands/Common speak" representation is simply the underlying storage dtype with the number of bits for storing activations and weights respectively.
+The "Documentation shorthands/Common speak" refers to the underlying storage dtype with the number of bits for storing activations and weights, respectively. For example, int_a16w8 stores the activations in 16-bit and the weights in 8-bit.
 
-Note that some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows the usage of the quantization methods as specified in the TorchAO docs as-is, while also making it convenient to use easy to remember shorthand notations.
+Some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows using the quantization methods described in the torchao docs as-is, while also making it convenient to remember their shorthand notations.
 
-It is recommended to check out the official TorchAO Documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+Refer to the official torchao documentation for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
 ## Resources
 
