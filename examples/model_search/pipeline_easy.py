@@ -15,31 +15,25 @@
 
 import os
 import re
-import requests
 from collections import OrderedDict
-from dataclasses import (
-    dataclass,
-    asdict
-)
+from dataclasses import asdict, dataclass
 from typing import Union
 
+import requests
+from huggingface_hub import hf_api, hf_hub_download
 from huggingface_hub.file_download import http_get
 from huggingface_hub.utils import validate_hf_hub_args
-from huggingface_hub import (
-    hf_api,
-    hf_hub_download,
-)
 
 from diffusers.loaders.single_file_utils import (
+    VALID_URL_PREFIXES,
     _extract_repo_id_and_weights_name,
     infer_diffusers_model_type,
     load_single_file_checkpoint,
-    VALID_URL_PREFIXES,
 )
 from diffusers.pipelines.auto_pipeline import (
-    AutoPipelineForText2Image,
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
+    AutoPipelineForText2Image,
 )
 from diffusers.pipelines.controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
@@ -58,6 +52,7 @@ from diffusers.pipelines.stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from diffusers.utils import logging
+
 
 logger = logging.get_logger(__name__)
 
