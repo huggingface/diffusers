@@ -799,7 +799,7 @@ class RFInversionFluxPipeline(
             )
 
         # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
@@ -816,9 +816,10 @@ class RFInversionFluxPipeline(
             sigmas,
             mu=mu,
         )
-        start_timestep = int(start_timestep * num_inference_steps)
-        stop_timestep = min(int(stop_timestep * num_inference_steps), num_inference_steps)
-        timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength)
+        if do_rf_inversion:
+            start_timestep = int(start_timestep * num_inference_steps)
+            stop_timestep = min(int(stop_timestep * num_inference_steps), num_inference_steps)
+            timesteps, sigmas, num_inference_steps = self.get_timesteps(num_inference_steps, strength)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -833,10 +834,10 @@ class RFInversionFluxPipeline(
             y_0 = image_latents.clone()
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-
             for i, t in enumerate(timesteps):
-                t_i = 1 - t / 1000
-                dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
+                if do_rf_inversion:
+                    t_i = 1 - t / 1000
+                    dt = torch.tensor(1 / (len(timesteps) - 1), device=device)
 
                 if self.interrupt:
                     continue
