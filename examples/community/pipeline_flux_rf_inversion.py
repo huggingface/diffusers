@@ -588,6 +588,9 @@ class RFInversionFluxPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        latents: Optional[torch.FloatTensor] = None,
+        image_latents: Optional[torch.FloatTensor] = None,
+        latent_image_ids: Optional[torch.FloatTensor] = None,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
@@ -601,7 +604,6 @@ class RFInversionFluxPipeline(
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -735,9 +737,6 @@ class RFInversionFluxPipeline(
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
-        latents = self.inverted_latents
-        latent_image_ids = self.latent_image_ids
-        image_latents = self.image_latents
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
@@ -859,7 +858,6 @@ class RFInversionFluxPipeline(
         width: Optional[int] = None,
         timesteps: List[int] = None,
         dtype: Optional[torch.dtype] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
@@ -903,7 +901,6 @@ class RFInversionFluxPipeline(
         image_latents, latent_image_ids = self.prepare_latents(
             batch_size, num_channels_latents, height, width, dtype, device, image_latents
         )
-        self.image_latents = image_latents.clone()
 
         # 2. prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inversion_steps, num_inversion_steps)
@@ -974,7 +971,5 @@ class RFInversionFluxPipeline(
                 Y_t = Y_t + u_hat_t_i * (sigmas[i] - sigmas[i + 1])
                 progress_bar.update()
 
-        self.inverted_latents = Y_t
-        self.latent_image_ids = latent_image_ids
-
-        return self.image_latents, Y_t, latent_image_ids
+        # return the inverted latents (start point for the denoising loop), encoded image & latent image ids
+        return Y_t, image_latents, latent_image_ids
