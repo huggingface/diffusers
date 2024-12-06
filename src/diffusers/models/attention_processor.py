@@ -284,7 +284,9 @@ class Attention(nn.Module):
             )
         self.set_processor(processor)
 
-    def set_use_xla_flash_attention(self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None) -> None:
+    def set_use_xla_flash_attention(
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None
+    ) -> None:
         r"""
         Set whether to use xla flash attention from `torch_xla` or not.
 
@@ -296,7 +298,7 @@ class Attention(nn.Module):
         """
         if use_xla_flash_attention:
             if not is_torch_xla_available:
-                raise  "torch_xla is not available"
+                raise "torch_xla is not available"
             elif is_torch_xla_version("<", "2.3"):
                 raise "flash attention pallas kernel is supported from torch_xla version 2.3"
             elif is_spmd() and is_torch_xla_version("<", "2.4"):
@@ -2794,12 +2796,14 @@ class XLAFlashAttnProcessor2_0:
 
     def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
         if is_torch_xla_version("<", "2.3"):
             raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
         if is_spmd() and is_torch_xla_version("<", "2.4"):
             raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
-        self.partition_spec=partition_spec
+        self.partition_spec = partition_spec
 
     def __call__(
         self,
@@ -2875,7 +2879,9 @@ class XLAFlashAttnProcessor2_0:
             partition_spec = self.partition_spec if is_spmd() else None
             hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
         else:
-            logger.warning("Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096.")
+            logger.warning(
+                "Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096."
+            )
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
