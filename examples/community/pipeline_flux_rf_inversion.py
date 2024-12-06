@@ -859,6 +859,7 @@ class RFInversionFluxPipeline(
                     return_dict=False,
                 )[0]
 
+                latents_dtype = latents.dtype
                 if do_rf_inversion:
                     v_t = -noise_pred
 
@@ -872,11 +873,9 @@ class RFInversionFluxPipeline(
                         v_hat_t = v_t
 
                     # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
-                    latents_dtype = latents.dtype
                     latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
                 else:
                     # compute the previous noisy sample x_t -> x_t-1
-                    latents_dtype = latents.dtype
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 if latents.dtype != latents_dtype:
