@@ -23,7 +23,6 @@ from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
-    convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
@@ -82,9 +81,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "FluxTransformer2DModel": {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
-    },
-    "AutoencoderDC": {
-        "checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers,
     },
 }
 
@@ -232,7 +228,7 @@ class FromOriginalModelMixin:
             if config_mapping_fn is None:
                 raise ValueError(
                     (
-                        f"`original_config` has been provided for {mapping_class_name} but no mapping function "
+                        f"`original_config` has been provided for {mapping_class_name} but no mapping function"
                         "was found to convert the original config to a Diffusers config in"
                         "`diffusers.loaders.single_file_utils`"
                     )

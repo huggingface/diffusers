@@ -33,20 +33,6 @@ from diffusers import AutoencoderDC
 ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", torch_dtype=torch.float32).to("cuda")
 ```
 
-## Single file loading
-
-The `AutoencoderDC` implementation supports loading checkpoints shipped in the original format by MIT HAN Lab. The following example demonstrates how to load the `f128c512` checkpoint:
-
-```python
-from diffusers import AutoencoderDC
-
-model_name = "dc-ae-f128c512-mix-1.0"
-ae = AutoencoderDC.from_single_file(
-    f"https://huggingface.co/mit-han-lab/{model_name}/model.safetensors",
-    config=f"mit-han-lab/{model_name}-diffusers",
-)
-```
-
 ## AutoencoderDC
 
 [[autodoc]] AutoencoderDC
