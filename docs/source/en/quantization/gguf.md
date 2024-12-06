@@ -13,10 +13,19 @@ specific language governing permissions and limitations under the License.
 
 # GGUF
 
-The GGUF file format is typically used to store models for inference with [GGML]() and supports a variety of block wise quantization options. Diffusers supports loading checkpoints prequantized and saved in the GGUF format via `from_single_file` loading with Model classes. Support for loading GGUF checkpoint via Pipelines is currently not supported. The dequantizatation functions used for dynamic dequantizatation are based on the great work done by [city96](https://github.com/city96/ComfyUI-GGUF) 
+The GGUF file format is typically used to store models for inference with [GGML](https://github.com/ggerganov/ggml) and supports a variety of block wise quantization options. Diffusers supports loading checkpoints prequantized and saved in the GGUF format via `from_single_file` loading with Model classes. Loading GGUF checkpoints via Pipelines is currently not supported.
 
 The following example will load the [FLUX.1 DEV](https://huggingface.co/black-forest-labs/FLUX.1-dev) transformer model using the GGUF Q2_K quantization variant.
 
+Before starting please install gguf in your environment
+
+```shell
+pip install -U gguf
+```
+
+Since GGUF is a single file format, we will be using `from_single_file` to load the model and pass in the `GGUFQuantizationConfig` when loading the model.
+
+When using GGUF checkpoints, the quantized weights remain in a low memory `dtype`, typically `torch.unint8` and are dynamically dequantized and cast to the configured `compute_dtype` when running a forward pass through each module in the model. The `GGUFQuantizationConfig` allows you to set the `compute_dtype` for the forward pass of each module. The functions used for dynamic dequantizatation are based on the great work done by [city96](https://github.com/city96/ComfyUI-GGUF)
 
 ```python
 import torch
