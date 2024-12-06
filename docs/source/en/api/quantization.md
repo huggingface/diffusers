@@ -28,6 +28,10 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 [[autodoc]] BitsAndBytesConfig
 
+## GGUFQuantizationConfig
+
+[[autodoc]] GGUFQuantizationConfig
+
 ## DiffusersQuantizer
 
 [[autodoc]] quantizers.base.DiffusersQuantizer
