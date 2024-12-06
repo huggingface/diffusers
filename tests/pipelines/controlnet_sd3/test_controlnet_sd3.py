@@ -206,7 +206,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
         self.run_pipe(components)
 
     def test_controlnet_sd35(self):
-        components = self.get_dummy_components(num_control_layers=1, qk_norm="rms_norm", use_dual_attention=True)
+        components = self.get_dummy_components(num_controlnet_layers=1, qk_norm="rms_norm", use_dual_attention=True)
         self.run_pipe(components, use_sd35=True)
 
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
