@@ -570,6 +570,10 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "flux-dev"
         else:
             model_type = "flux-schnell"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["autoencoder_dc"]):
+        model_type = "autoencoder_dc"
+
     else:
         model_type = "v1"
 
@@ -2206,168 +2210,8 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
-def create_autoencoder_dc_config_from_original(original_config, checkpoint, **kwargs):
-    model_name = original_config.get("model_name", "dc-ae-f32c32-sana-1.0")
-
-    if model_name in ["dc-ae-f32c32-sana-1.0"]:
-        config = {
-            "latent_channels": 32,
-            "encoder_block_types": (
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ),
-            "decoder_block_types": (
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ),
-            "encoder_block_out_channels": (128, 256, 512, 512, 1024, 1024),
-            "decoder_block_out_channels": (128, 256, 512, 512, 1024, 1024),
-            "encoder_qkv_multiscales": ((), (), (), (5,), (5,), (5,)),
-            "decoder_qkv_multiscales": ((), (), (), (5,), (5,), (5,)),
-            "encoder_layers_per_block": (2, 2, 2, 3, 3, 3),
-            "decoder_layers_per_block": [3, 3, 3, 3, 3, 3],
-            "downsample_block_type": "conv",
-            "upsample_block_type": "interpolate",
-            "decoder_norm_types": "rms_norm",
-            "decoder_act_fns": "silu",
-            "scaling_factor": 0.41407,
-        }
-    elif model_name in ["dc-ae-f32c32-in-1.0", "dc-ae-f32c32-mix-1.0"]:
-        config = {
-            "latent_channels": 32,
-            "encoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "decoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "encoder_block_out_channels": [128, 256, 512, 512, 1024, 1024],
-            "decoder_block_out_channels": [128, 256, 512, 512, 1024, 1024],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2],
-            "encoder_qkv_multiscales": ((), (), (), (), (), ()),
-            "decoder_qkv_multiscales": ((), (), (), (), (), ()),
-            "decoder_norm_types": ["batch_norm", "batch_norm", "batch_norm", "rms_norm", "rms_norm", "rms_norm"],
-            "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu"],
-        }
-        if model_name == "dc-ae-f32c32-in-1.0":
-            config["scaling_factor"] = 0.3189
-        elif model_name == "dc-ae-f32c32-mix-1.0":
-            config["scaling_factor"] = 0.4552
-    elif model_name in ["dc-ae-f64c128-in-1.0", "dc-ae-f64c128-mix-1.0"]:
-        config = {
-            "latent_channels": 128,
-            "encoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "decoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "encoder_block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
-            "decoder_block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2],
-            "encoder_qkv_multiscales": ((), (), (), (), (), (), ()),
-            "decoder_qkv_multiscales": ((), (), (), (), (), (), ()),
-            "decoder_norm_types": [
-                "batch_norm",
-                "batch_norm",
-                "batch_norm",
-                "rms_norm",
-                "rms_norm",
-                "rms_norm",
-                "rms_norm",
-            ],
-            "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu"],
-        }
-        if model_name == "dc-ae-f64c128-in-1.0":
-            config["scaling_factor"] = 0.2889
-        elif model_name == "dc-ae-f64c128-mix-1.0":
-            config["scaling_factor"] = 0.4538
-    elif model_name in ["dc-ae-f128c512-in-1.0", "dc-ae-f128c512-mix-1.0"]:
-        config = {
-            "latent_channels": 512,
-            "encoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "decoder_block_types": [
-                "ResBlock",
-                "ResBlock",
-                "ResBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-                "EfficientViTBlock",
-            ],
-            "encoder_block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
-            "decoder_block_out_channels": [128, 256, 512, 512, 1024, 1024, 2048, 2048],
-            "encoder_layers_per_block": [0, 4, 8, 2, 2, 2, 2, 2],
-            "decoder_layers_per_block": [0, 5, 10, 2, 2, 2, 2, 2],
-            "encoder_qkv_multiscales": ((), (), (), (), (), (), (), ()),
-            "decoder_qkv_multiscales": ((), (), (), (), (), (), (), ()),
-            "decoder_norm_types": [
-                "batch_norm",
-                "batch_norm",
-                "batch_norm",
-                "rms_norm",
-                "rms_norm",
-                "rms_norm",
-                "rms_norm",
-                "rms_norm",
-            ],
-            "decoder_act_fns": ["relu", "relu", "relu", "silu", "silu", "silu", "silu", "silu"],
-        }
-        if model_name == "dc-ae-f128c512-in-1.0":
-            config["scaling_factor"] = 0.4883
-        elif model_name == "dc-ae-f128c512-mix-1.0":
-            config["scaling_factor"] = 0.3620
-
-    config.update({"model_name": model_name})
-
-    return config
-
-
 def convert_autoencoder_dc_checkpoint_to_diffusers(config, checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
-    model_name = config.pop("model_name")
 
     def remap_qkv_(key: str, state_dict):
         qkv = state_dict.pop(key)
@@ -2411,17 +2255,7 @@ def convert_autoencoder_dc_checkpoint_to_diffusers(config, checkpoint, **kwargs)
         "decoder.stages": "decoder.up_blocks",
     }
 
-    AE_F32C32_KEYS = {
-        "encoder.project_in.conv": "encoder.conv_in.conv",
-        "decoder.project_out.2.conv": "decoder.conv_out.conv",
-    }
-
-    AE_F64C128_KEYS = {
-        "encoder.project_in.conv": "encoder.conv_in.conv",
-        "decoder.project_out.2.conv": "decoder.conv_out.conv",
-    }
-
-    AE_F128C512_KEYS = {
+    AE_F32C32_F64C128_F128C512_KEYS = {
         "encoder.project_in.conv": "encoder.conv_in.conv",
         "decoder.project_out.2.conv": "decoder.conv_out.conv",
     }
@@ -2431,12 +2265,16 @@ def convert_autoencoder_dc_checkpoint_to_diffusers(config, checkpoint, **kwargs)
         "proj.conv.weight": remap_proj_conv_,
     }
 
-    if "f32c32" in model_name and "sana" not in model_name:
-        AE_KEYS_RENAME_DICT.update(AE_F32C32_KEYS)
-    elif "f64c128" in model_name:
-        AE_KEYS_RENAME_DICT.update(AE_F64C128_KEYS)
-    elif "f128c512" in model_name:
-        AE_KEYS_RENAME_DICT.update(AE_F128C512_KEYS)
+    if (
+        (
+            config["latent_channels"] == 32
+            and config["upsample_block_type"] == "pixel_shuffle"
+            and config["downsample_block_type"] == "pixel_unshuffle"
+        )
+        or config["latent_channels"] == 128
+        or config["latent_channels"] == 512
+    ):
+        AE_KEYS_RENAME_DICT.update(AE_F32C32_F64C128_F128C512_KEYS)
 
     for key in list(converted_state_dict.keys()):
         new_key = key[:]

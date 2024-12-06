@@ -43,7 +43,7 @@ from diffusers import AutoencoderDC
 model_name = "dc-ae-f128c512-mix-1.0"
 ae = AutoencoderDC.from_single_file(
     f"https://huggingface.co/mit-han-lab/{model_name}/model.safetensors",
-    original_config=f"https://huggingface.co/mit-han-lab/{model_name}/resolve/main/config.json"
+    config=f"mit-han-lab/{model_name}-diffusers",
 )
 ```
 

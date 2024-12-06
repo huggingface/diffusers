@@ -30,7 +30,6 @@ from .single_file_utils import (
     convert_ldm_vae_checkpoint,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
-    create_autoencoder_dc_config_from_original,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
@@ -86,7 +85,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "AutoencoderDC": {
         "checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers,
-        "config_mapping_fn": create_autoencoder_dc_config_from_original,
     },
 }
 
