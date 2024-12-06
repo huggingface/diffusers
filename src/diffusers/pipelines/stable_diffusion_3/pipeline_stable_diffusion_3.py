@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Stability AI, The HuggingFace Team and The InstantX Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,18 +16,29 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+from safetensors import safe_open
 from transformers import (
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     T5EncoderModel,
     T5TokenizerFast,
+    PreTrainedModel,
+    BaseImageProcessor,
 )
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, PipelineImageInput
 from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
+from ...models.embeddings import TimePerceiverResampler
 from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...models.attention_processor import IPAdapterJointAttnProcessor2_0
+from ...models.modeling_utils import (
+    load_model_dict_into_meta,
+    _LOW_CPU_MEM_USAGE_DEFAULT,
+    load_state_dict,
+)
+from huggingface_hub.utils import validate_hf_hub_args
 from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
@@ -35,6 +46,9 @@ from ...utils import (
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
+    is_torch_version,
+    is_accelerate_available,
+    _get_model_file,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -160,10 +174,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+        image_encoder (`PreTrainedModel`, *optional*):
+            Pre-trained Vision Model for IP Adapter.
+        feature_extractor (`BaseImageProcessor`, *optional*):
+            Image processor for IP Adapter.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
-    _optional_components = []
+    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "negative_pooled_prompt_embeds"]
 
     def __init__(
@@ -177,6 +195,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
+        image_encoder: PreTrainedModel = None,
+        feature_extractor: BaseImageProcessor = None
     ):
         super().__init__()
 
@@ -190,6 +210,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             tokenizer_3=tokenizer_3,
             transformer=transformer,
             scheduler=scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -668,7 +690,228 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     @property
     def interrupt(self):
         return self._interrupt
+    
+    @validate_hf_hub_args
+    def load_ip_adapter(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        weight_name: str,
+        subfolder: Optional[str] = None,
+        **kwargs,
+    ):
+        """
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `dict`):
+                Can be either:
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+            weight_name (`str`):
+                The name of the weight file to load.
+            subfolder (`str, *optional*):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
+        """
 
+        # Load the main state dict first
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
+
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+        
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            model_file = _get_model_file(
+                pretrained_model_name_or_path_or_dict,
+                weights_name=weight_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            if weight_name.endswith(".safetensors"):
+                state_dict = {"image_proj": {}, "ip_adapter": {}}
+                with safe_open(model_file, framework="pt", device="cpu") as f:
+                    for key in f.keys():
+                        if key.startswith("image_proj."):
+                            state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                        elif key.startswith("ip_adapter."):
+                            state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+            else:
+                state_dict = load_state_dict(model_file)
+        else:
+            state_dict = pretrained_model_name_or_path_or_dict
+
+        if list(state_dict.keys()) != ["image_proj", "ip_adapter"]:
+            raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
+        
+        # Load ip_adapter
+        hidden_size = self.transformer.config.attention_head_dim * self.transformer.config.num_attention_heads
+        ip_hidden_states_dim = self.transformer.config.attention_head_dim * self.transformer.config.num_attention_heads
+        timesteps_emb_dim = state_dict["ip_adapter"]["0.norm_ip.linear.weight"].shape[1]
+
+        # State dict by layer
+        layer_state_dict = {idx: {} for idx in range(len(self.transformer.attn_processors))}
+        for key, weights in state_dict["ip_adapter"].items():
+            idx, name = key.split(".", 1)
+            layer_state_dict[int(idx)][name] = weights
+
+        attn_procs = {}
+        for idx, name in enumerate(self.transformer.attn_processors.keys()):
+            attn_procs[name] = IPAdapterJointAttnProcessor2_0(
+                hidden_size=hidden_size,
+                ip_hidden_states_dim=ip_hidden_states_dim,
+                head_dim=self.transformer.config.attention_head_dim,
+                timesteps_emb_dim=timesteps_emb_dim,
+            ).to(self.device, dtype=self.dtype)
+
+            if not low_cpu_mem_usage:
+                attn_procs[name].load_state_dict(layer_state_dict[idx])
+            else:
+                load_model_dict_into_meta(attn_procs[name], layer_state_dict, device=self.device, dtype=self.dtype)
+
+        self.transformer.set_attn_processor(attn_procs)
+
+        # Load image_proj
+        embed_dim = state_dict["image_proj"]["proj_in.weight"].shape[1]
+        output_dim = state_dict["image_proj"]["proj_out.weight"].shape[0]
+        hidden_dim = state_dict["image_proj"]["latents"].shape[2]
+        heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
+        num_queries = state_dict["image_proj"]["latents"].shape[1]
+        timestep_in_dim = state_dict["image_proj"]["time_embedding.linear_1.weight"].shape[1]
+
+        self.image_proj = TimePerceiverResampler(
+            embed_dim=embed_dim,
+            output_dim=output_dim,
+            hidden_dim=hidden_dim,
+            heads=heads,
+            num_queries=num_queries,
+            timestep_in_dim=timestep_in_dim
+        ).to(device=self.device, dtype=self.dtype)
+
+        if not low_cpu_mem_usage:
+            self.image_proj.load_state_dict(state_dict["image_proj"], strict=True)
+        else:
+            load_model_dict_into_meta(self.image_proj, state_dict["image_proj"], device=self.device, dtype=self.dtype)
+
+    def set_ip_adapter_scale(self, scale):
+        """
+        Controls image/text prompt conditioning. A value of 1.0 means the model is only conditioned on the image prompt, and 0.0
+        only conditioned by the text prompt. Lowering this value encourages the model to produce more diverse images, but they 
+        may not be as aligned with the image prompt.
+        """
+        for attn_processor in self.transformes.attn_processors.values():
+            if isinstance(attn_processor, IPAdapterJointAttnProcessor2_0):
+                attn_processor.scale = scale
+
+    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
+    def encode_image(self, image):
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=self.device, dtype=self.dtype)
+
+        image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+        uncond_image_enc_hidden_states = self.image_encoder(torch.zeros_like(image), output_hidden_states=True).hidden_states[-2]
+        
+        return image_enc_hidden_states, uncond_image_enc_hidden_states
+
+    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
+    ):
+        # image_embeds = []
+
+        # if do_classifier_free_guidance:
+        #     negative_image_embeds = []
+
+        # if ip_adapter_image_embeds is None:
+        #         single_image_embeds, single_negative_image_embeds = self.encode_image(ip_adapter_image)
+        #         image_embeds.append(single_image_embeds[None, :])
+                
+        #         if do_classifier_free_guidance:
+        #             negative_image_embeds.append(single_negative_image_embeds[None, :])
+        # else:
+        #     for single_image_embeds in ip_adapter_image_embeds:
+        #         if do_classifier_free_guidance:
+        #             single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+        #             negative_image_embeds.append(single_negative_image_embeds)
+        #         image_embeds.append(single_image_embeds)
+
+        # ip_adapter_image_embeds = []
+        # for i, single_image_embeds in enumerate(image_embeds):
+        #     single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            
+        #     if do_classifier_free_guidance:
+        #         single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
+        #         single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+
+        #     single_image_embeds = single_image_embeds.to(device=device)
+        #     ip_adapter_image_embeds.append(single_image_embeds)
+
+
+        # Single image only :/
+        clip_image_tensor = self.feature_extractor(images=ip_adapter_image, return_tensors="pt").pixel_values
+        clip_image_tensor = clip_image_tensor.to(device, dtype=self.dtype)
+        clip_image_embeds = self.image_encoder(clip_image_tensor, output_hidden_states=True).hidden_states[-2]
+        
+        return torch.cat([torch.zeros_like(clip_image_embeds), clip_image_embeds], dim=0)
+        
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -691,17 +934,19 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Dict[str, Any] = {},
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
         skip_guidance_layers: List[int] = None,
-        skip_layer_guidance_scale: int = 2.8,
-        skip_layer_guidance_stop: int = 0.2,
-        skip_layer_guidance_start: int = 0.01,
+        skip_layer_guidance_scale: float = 2.8,
+        skip_layer_guidance_stop: float = 0.2,
+        skip_layer_guidance_start: float = 0.01,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -766,6 +1011,12 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            ip_adapter_image (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -900,7 +1151,17 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             latents,
         )
 
-        # 6. Denoising loop
+        # 6. Prepare image embeddings
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
+                self.do_classifier_free_guidance,
+            )
+
+        # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -912,16 +1173,34 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     if self.do_classifier_free_guidance and skip_guidance_layers is None
                     else latents
                 )
+
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
+
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+                    ip_hidden_states, temb = self.image_proj(
+                        image_embeds,
+                        timestep.to(dtype=latents.dtype),
+                        need_temb=True,
+                    )
+
+                    image_prompt_embeds = dict(
+                        ip_hidden_states = ip_hidden_states,
+                        temb = temb
+                    )
+                else:
+                    image_prompt_embeds = {}
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
+                    joint_attention_kwargs={
+                        **image_prompt_embeds,
+                        **self.joint_attention_kwargs,                        
+                    }
                 )[0]
 
                 # perform guidance
@@ -940,7 +1219,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                             timestep=timestep,
                             encoder_hidden_states=original_prompt_embeds,
                             pooled_projections=original_pooled_prompt_embeds,
-                            joint_attention_kwargs=self.joint_attention_kwargs,
+                            joint_attention_kwargs={
+                                **image_prompt_embeds,
+                                **self.joint_attention_kwargs,                        
+                            },
                             return_dict=False,
                             skip_layers=skip_guidance_layers,
                         )[0]

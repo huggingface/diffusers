@@ -1999,6 +1999,154 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         return out
 
 
+# Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+class TimePerceiverAttention(nn.Module):
+    def __init__(
+        self,
+        *,
+        dim: int,
+        dim_head: int = 64,
+        heads: int = 8,
+    ) -> None:
+        super().__init__()
+
+        self.scale = dim_head ** -0.5
+        self.dim_head = dim_head
+        self.heads = heads
+        inner_dim = dim_head * heads
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+
+    def forward(self, x, latents, shift=None, scale=None):
+        """
+        Args:
+            x (torch.Tensor): image features
+                shape (b, n1, D)
+            latent (torch.Tensor): latent features
+                shape (b, n2, D)
+        """
+        def reshape_tensor(x, heads):
+            bs, length, _ = x.shape
+            # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
+            x = x.view(bs, length, heads, -1)
+            # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
+            x = x.transpose(1, 2)
+            # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
+            return x.reshape(bs, heads, length, -1)
+
+        x = self.norm1(x)
+        latents = self.norm2(latents)
+
+        if shift is not None and scale is not None:
+            latents = latents * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+        b, l, _ = latents.shape
+
+        q = self.to_q(latents)
+        kv_input = torch.cat((x, latents), dim=-2)
+        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
+
+        q = reshape_tensor(q, self.heads)
+        k = reshape_tensor(k, self.heads)
+        v = reshape_tensor(v, self.heads)
+
+        # attention
+        scale = 1 / math.sqrt(math.sqrt(self.dim_head))
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        out = weight @ v
+
+        out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
+
+        return self.to_out(out)
+    
+
+# Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+class TimePerceiverResampler(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int = 1152,
+        output_dim: int = 2432,
+        hidden_dim: int = 1280,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 20,
+        num_queries: int = 64,
+        ffn_ratio: int = 4,
+        timestep_in_dim: int = 320,
+        timestep_flip_sin_to_cos: bool = True,
+        timestep_freq_shift: int = 0,
+    ) -> None:
+        super().__init__()
+        
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim ** 0.5)        
+        self.proj_in = nn.Linear(embed_dim, hidden_dim)
+        self.proj_out = nn.Linear(hidden_dim, output_dim)
+        self.norm_out = nn.LayerNorm(output_dim)
+        
+        ff_inner_dim = int(hidden_dim * ffn_ratio)
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        # msa
+                        TimePerceiverAttention(dim=hidden_dim, dim_head=dim_head, heads=heads),
+                        # ff
+                        nn.Sequential(
+                            nn.LayerNorm(hidden_dim),
+                            nn.Linear(hidden_dim, ff_inner_dim, bias=False),
+                            nn.GELU(),
+                            nn.Linear(ff_inner_dim, hidden_dim, bias=False),
+                        ),
+                        # adaLN
+                        nn.Sequential(
+                            nn.SiLU(),
+                            nn.Linear(hidden_dim, ff_inner_dim, bias=True)
+                        )
+                    ]
+                )
+            )
+
+        # Time
+        self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
+        self.time_embedding = TimestepEmbedding(timestep_in_dim, hidden_dim, act_fn="silu")
+
+    def forward(self, x, timestep, need_temb=False):
+        timestep_emb = self.time_proj(timestep).to(dtype=x.dtype)
+        timestep_emb = self.time_embedding(timestep_emb, None)
+
+        latents = self.latents.repeat(x.size(0), 1, 1)
+        
+        x = self.proj_in(x)
+        x = x + timestep_emb[:, None]
+
+        for attn, ff, adaLN_modulation in self.layers:
+            shift_msa, scale_msa, shift_mlp, scale_mlp = adaLN_modulation(timestep_emb).chunk(4, dim=1)
+            latents = attn(x, latents, shift_msa, scale_msa) + latents
+
+            res = latents
+            for idx_ff in range(len(ff)):
+                layer_ff = ff[idx_ff]
+                latents = layer_ff(latents)
+                if idx_ff == 0 and isinstance(layer_ff, nn.LayerNorm):  # adaLN
+                    latents = latents * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
+            latents = latents + res
+            
+        latents = self.proj_out(latents)
+        latents = self.norm_out(latents)
+
+        if need_temb:
+            return latents, timestep_emb
+        else:
+            return latents
+
+
 class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
