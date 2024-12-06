@@ -26,7 +26,6 @@ from pathlib import Path
 import accelerate
 import numpy as np
 import torch
-import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -49,7 +48,7 @@ from diffusers.training_utils import (
     compute_loss_weighting_for_sd3,
     free_memory,
 )
-from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.utils import check_min_version, is_wandb_available, load_image, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -63,7 +62,7 @@ check_min_version("0.32.0.dev0")
 logger = get_logger(__name__)
 
 
-def encode_image(pixels: torch.Tensor, vae: torch.nn.Module, weight_dtype):
+def encode_images(pixels: torch.Tensor, vae: torch.nn.Module, weight_dtype):
     pixel_latents = vae.encode(pixels.to(vae.dtype)).latent_dist.sample()
     pixel_latents = (pixel_latents - vae.config.shift_factor) * vae.config.scaling_factor
     return pixel_latents.to(weight_dtype)
@@ -71,9 +70,9 @@ def encode_image(pixels: torch.Tensor, vae: torch.nn.Module, weight_dtype):
 
 def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
-    flux_transformer = accelerator.unwrap_model(flux_transformer)
 
     if not is_final_validation:
+        flux_transformer = accelerator.unwrap_model(flux_transformer)
         pipeline = FluxControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=flux_transformer,
@@ -83,12 +82,16 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
         transformer = FluxTransformer2DModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="transformer", torch_dtype=weight_dtype
         )
+        initial_channels = transformer.config.in_channels
         pipeline = FluxControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=transformer,
             torch_dtype=weight_dtype,
         )
         pipeline.load_lora_weights(args.output_dir)
+        assert (
+            pipeline.transformer.config.in_channels == initial_channels * 2
+        ), f"{pipeline.transformer.config.in_channels=}"
 
     pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -119,8 +122,6 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
         autocast_ctx = torch.autocast(accelerator.device.type, weight_dtype)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
-        from diffusers.utils import load_image
-
         validation_image = load_image(validation_image)
         # maybe need to inference on 1024 to get a good image
         validation_image = validation_image.resize((args.resolution, args.resolution))
@@ -136,6 +137,9 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
                     num_inference_steps=50,
                     guidance_scale=args.guidance_scale,
                     generator=generator,
+                    max_sequence_length=512,
+                    height=1024,
+                    width=1204,
                 ).images[0]
             image = image.resize((args.resolution, args.resolution))
             images.append(image)
@@ -824,7 +828,7 @@ def main(args):
             new_linear.bias.copy_(flux_transformer.x_embedder.bias)
         flux_transformer.x_embedder = new_linear
 
-    assert torch.all(new_linear.weight[:, initial_input_channels:].data == 0)
+    assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
 
     if args.lora_layers is not None:
@@ -963,10 +967,8 @@ def main(args):
 
     # Optimization parameters
     transformer_lora_parameters = list(filter(lambda p: p.requires_grad, flux_transformer.parameters()))
-    transformer_parameters_with_lr = {"params": transformer_lora_parameters, "lr": args.learning_rate}
-    params_to_optimize = [transformer_parameters_with_lr]
     optimizer = optimizer_class(
-        params_to_optimize,
+        transformer_lora_parameters,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -1101,8 +1103,8 @@ def main(args):
             with accelerator.accumulate(flux_transformer):
                 # Convert images to latent space
                 # vae encode
-                pixel_latents = encode_image(batch["pixel_values"], vae.to(accelerator.device), weight_dtype)
-                control_latents = encode_image(
+                pixel_latents = encode_images(batch["pixel_values"], vae.to(accelerator.device), weight_dtype)
+                control_latents = encode_images(
                     batch["conditioning_pixel_values"], vae.to(accelerator.device), weight_dtype
                 )
                 # offload vae to CPU.
@@ -1273,7 +1275,7 @@ def main(args):
         image_logs = None
         if args.validation_prompt is not None:
             image_logs = log_validation(
-                flux_transformer=flux_transformer,
+                flux_transformer=None,
                 args=args,
                 accelerator=accelerator,
                 weight_dtype=weight_dtype,
