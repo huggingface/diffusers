@@ -72,13 +72,14 @@ EXAMPLE_DOC_STRING = """
 
         >>> edited_image = pipe(
         ...     prompt="a tomato",
-        ...     start_timestep=0, 
+        ...     start_timestep=0,
         ...     stop_timestep=.38,
         ...     num_inference_steps=28,
-        ...     eta=0.9, 
+        ...     eta=0.9,
         ... ).images[0]
         ```
 """
+
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
