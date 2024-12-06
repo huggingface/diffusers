@@ -2318,14 +2318,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
                 lora_A_weight_name = f"{name}.lora_A.weight"
                 lora_B_weight_name = f"{name}.lora_B.weight"
-                # lora_B_bias_name = f"{name}.lora_B.bias"
-
                 if lora_A_weight_name not in state_dict.keys():
                     continue
 
                 in_features = state_dict[lora_A_weight_name].shape[1]
                 out_features = state_dict[lora_B_weight_name].shape[0]
 
+                # This means there's no need for an expansion in the params, so we simply skip.
                 if tuple(module_weight.shape) == (out_features, in_features):
                     continue
 
@@ -2349,6 +2348,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 parent_module_name, _, current_module_name = name.rpartition(".")
                 parent_module = transformer.get_submodule(parent_module_name)
 
+                # TODO: consider initializing this under meta device for optims.
                 expanded_module = torch.nn.Linear(
                     in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
                 )
