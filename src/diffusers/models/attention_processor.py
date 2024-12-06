@@ -752,6 +752,98 @@ class Attention(nn.Module):
         self.fused_projections = fuse
 
 
+class SanaMultiscaleAttentionProjection(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        num_attention_heads: int,
+        kernel_size: int,
+    ) -> None:
+        super().__init__()
+
+        channels = 3 * in_channels
+        self.proj_in = nn.Conv2d(
+            channels,
+            channels,
+            kernel_size,
+            padding=kernel_size // 2,
+            groups=channels,
+            bias=False,
+        )
+        self.proj_out = nn.Conv2d(channels, channels, 1, 1, 0, groups=3 * num_attention_heads, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return hidden_states
+
+
+class SanaMultiscaleLinearAttention(nn.Module):
+    r"""Lightweight multi-scale linear attention"""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        num_attention_heads: Optional[int] = None,
+        attention_head_dim: int = 8,
+        mult: float = 1.0,
+        norm_type: str = "batch_norm",
+        kernel_sizes: Tuple[int, ...] = (5,),
+        eps: float = 1e-15,
+        residual_connection: bool = False,
+    ):
+        super().__init__()
+
+        # To prevent circular import
+        from .normalization import get_normalization
+
+        self.eps = eps
+        self.attention_head_dim = attention_head_dim
+        self.norm_type = norm_type
+        self.residual_connection = residual_connection
+
+        num_attention_heads = (
+            int(in_channels // attention_head_dim * mult) if num_attention_heads is None else num_attention_heads
+        )
+        inner_dim = num_attention_heads * attention_head_dim
+
+        self.to_q = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
+        self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
+
+        self.to_qkv_multiscale = nn.ModuleList()
+        for kernel_size in kernel_sizes:
+            self.to_qkv_multiscale.append(
+                SanaMultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size)
+            )
+
+        self.nonlinearity = nn.ReLU()
+        self.to_out = nn.Linear(inner_dim * (1 + len(kernel_sizes)), out_channels, bias=False)
+        self.norm_out = get_normalization(norm_type, num_features=out_channels)
+
+        self.processor = SanaMultiscaleAttnProcessor2_0()
+
+    def apply_linear_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1)  # Adds padding
+        scores = torch.matmul(value, key.transpose(-1, -2))
+        hidden_states = torch.matmul(scores, query)
+
+        hidden_states = hidden_states.to(dtype=torch.float32)
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
+        return hidden_states
+
+    def apply_quadratic_attention(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
+        scores = torch.matmul(key.transpose(-1, -2), query)
+        scores = scores.to(dtype=torch.float32)
+        scores = scores / (torch.sum(scores, dim=2, keepdim=True) + self.eps)
+        hidden_states = torch.matmul(value, scores)
+        return hidden_states
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.processor(self, hidden_states)
+
+
 class AttnProcessor:
     r"""
     Default processor for performing attention-related computations.
@@ -5003,6 +5095,66 @@ class PAGCFGIdentitySelfAttnProcessor2_0:
             hidden_states = hidden_states + residual
 
         hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class SanaMultiscaleAttnProcessor2_0:
+    r"""
+    Processor for implementing multiscale quadratic attention.
+    """
+
+    def __call__(self, attn: SanaMultiscaleLinearAttention, hidden_states: torch.Tensor) -> torch.Tensor:
+        height, width = hidden_states.shape[-2:]
+        if height * width > attn.attention_head_dim:
+            use_linear_attention = True
+        else:
+            use_linear_attention = False
+
+        residual = hidden_states
+
+        batch_size, _, height, width = list(hidden_states.size())
+        original_dtype = hidden_states.dtype
+
+        hidden_states = hidden_states.movedim(1, -1)
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+        hidden_states = torch.cat([query, key, value], dim=3)
+        hidden_states = hidden_states.movedim(-1, 1)
+
+        multi_scale_qkv = [hidden_states]
+        for block in attn.to_qkv_multiscale:
+            multi_scale_qkv.append(block(hidden_states))
+
+        hidden_states = torch.cat(multi_scale_qkv, dim=1)
+
+        if use_linear_attention:
+            # for linear attention upcast hidden_states to float32
+            hidden_states = hidden_states.to(dtype=torch.float32)
+
+        hidden_states = hidden_states.reshape(batch_size, -1, 3 * attn.attention_head_dim, height * width)
+
+        query, key, value = hidden_states.chunk(3, dim=2)
+        query = attn.nonlinearity(query)
+        key = attn.nonlinearity(key)
+
+        if use_linear_attention:
+            hidden_states = attn.apply_linear_attention(query, key, value)
+            hidden_states = hidden_states.to(dtype=original_dtype)
+        else:
+            hidden_states = attn.apply_quadratic_attention(query, key, value)
+
+        hidden_states = torch.reshape(hidden_states, (batch_size, -1, height, width))
+        hidden_states = attn.to_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+
+        if attn.norm_type == "rms_norm":
+            hidden_states = attn.norm_out(hidden_states.movedim(1, -1)).movedim(-1, 1)
+        else:
+            hidden_states = attn.norm_out(hidden_states)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
 
         return hidden_states
 
