@@ -673,6 +673,10 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
     inner_dim = 3072
     mlp_ratio = 4.0
 
+    for k in original_state_dict:
+        if "bias" in k and "img_in" in k:
+            print(f"{k=}")
+
     def swap_scale_shift(weight):
         shift, scale = weight.chunk(2, dim=0)
         new_weight = torch.cat([scale, shift], dim=0)
@@ -750,7 +754,7 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
     for i in range(num_layers):
         block_prefix = f"transformer_blocks.{i}."
 
-        for lora_key, lora_key in zip(["lora_A", "lora_B"], ["lora_A", "lora_B"]):
+        for lora_key in ["lora_A", "lora_B"]:
             # norms
             converted_state_dict[f"{block_prefix}norm1.linear.{lora_key}.weight"] = original_state_dict.pop(
                 f"double_blocks.{i}.img_mod.lin.{lora_key}.weight"

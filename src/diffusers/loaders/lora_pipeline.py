@@ -2318,7 +2318,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
                 lora_A_weight_name = f"{name}.lora_A.weight"
                 lora_B_weight_name = f"{name}.lora_B.weight"
-                lora_B_bias_name = f"{name}.lora_B.bias"
+                # lora_B_bias_name = f"{name}.lora_B.bias"
 
                 if lora_A_weight_name not in state_dict.keys():
                     continue
@@ -2352,24 +2352,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 expanded_module = torch.nn.Linear(
                     in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
                 )
-
+                # Only weights are expanded and biases are not.
                 new_weight = torch.zeros_like(
                     expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
                 )
                 slices = tuple(slice(0, dim) for dim in module_weight.shape)
                 new_weight[slices] = module_weight
                 expanded_module.weight.data.copy_(new_weight)
-
-                bias_present_for_lora_B = lora_B_bias_name in state_dict
-                if bias_present_for_lora_B:
-                    new_bias_shape = state_dict[lora_B_bias_name].shape
-                    if bias and module_bias.shape < new_bias_shape:
-                        new_bias = torch.zeros_like(
-                            expanded_module.bias.data, device=module_bias.device, dtype=module_bias.dtype
-                        )
-                        slices = tuple(slice(0, dim) for dim in module_bias.shape)
-                        new_bias[slices] = module_bias
-                        expanded_module.bias.data.copy_(new_bias)
+                if module_bias is not None:
+                    expanded_module.bias.data.copy_(module_bias)
 
                 setattr(parent_module, current_module_name, expanded_module)
 
