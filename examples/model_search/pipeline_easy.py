@@ -124,9 +124,10 @@ INPAINT_PIPELINE_KEYS = [
     "inpainting_v2",
 ]
 
-EXTENSION =  [".safetensors", ".ckpt", ".bin"]
+EXTENSION = [".safetensors", ".ckpt", ".bin"]
 
 CACHE_HOME = os.path.expanduser("~/.cache")
+
 
 @dataclass
 class RepoStatus:
@@ -141,9 +142,11 @@ class RepoStatus:
         version (`str`):
             The version ID of the repository.
     """
+
     repo_id: str = ""
     repo_hash: str = ""
     version: str = ""
+
 
 @dataclass
 class ModelStatus:
@@ -160,10 +163,12 @@ class ModelStatus:
         local (`bool`):
             Whether the model exists locally
     """
+
     search_word: str = ""
     download_url: str = ""
     file_name: str = ""
     local: bool = False
+
 
 @dataclass
 class SearchResult:
@@ -182,6 +187,7 @@ class SearchResult:
         model_status (`ModelStatus`):
             The status of the model.
     """
+
     model_path: str = ""
     loading_method: Union[str, None] = None
     checkpoint_format: Union[str, None] = None
@@ -345,10 +351,10 @@ def get_keyword_types(keyword):
 
 
 def file_downloader(
-        url,
-        save_path,
-        **kwargs,
-    ) -> None:
+    url,
+    save_path,
+    **kwargs,
+) -> None:
     """
     Downloads a file from a given URL and saves it to the specified path.
 
@@ -493,7 +499,7 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
             pipeline_tag=pipeline_tag,
             full=True,
             gated=gated,
-            token=token
+            token=token,
         )
         model_dicts = [asdict(value) for value in list(hf_models)]
 
@@ -508,22 +514,16 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
         for repo_info in model_dicts:
             repo_id = repo_info["id"]
             file_list = []
-            hf_repo_info = hf_api.model_info(
-                repo_id=repo_id,
-                securityStatus=True
-            )
+            hf_repo_info = hf_api.model_info(repo_id=repo_id, securityStatus=True)
             # Lists files with security issues.
             hf_security_info = hf_repo_info.security_repo_status
-            exclusion = [issue['path'] for issue in hf_security_info['filesWithIssues']]
+            exclusion = [issue["path"] for issue in hf_security_info["filesWithIssues"]]
 
             # Checks for multi-folder diffusers model or valid files (models with security issues are excluded).
             if hf_security_info["scansDone"]:
                 for info in repo_info["siblings"]:
                     file_path = info["rfilename"]
-                    if (
-                        "model_index.json" == file_path
-                        and checkpoint_format in ["diffusers", "all"]
-                    ):
+                    if "model_index.json" == file_path and checkpoint_format in ["diffusers", "all"]:
                         diffusers_model_exists = True
                         break
 
@@ -558,14 +558,9 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
         elif file_list:
             # Sort and find the safest model
             file_name = next(
-                (
-                    model
-                    for model in sorted(file_list, reverse=True)
-                    if re.search(r"(?i)[-_](safe|sfw)", model)
-                ),
-                file_list[0]
+                (model for model in sorted(file_list, reverse=True) if re.search(r"(?i)[-_](safe|sfw)", model)),
+                file_list[0],
             )
-
 
             if download:
                 model_path = hf_hub_download(
@@ -588,17 +583,13 @@ def search_huggingface(search_word: str, **kwargs) -> Union[str, SearchResult, N
             model_path=model_path or download_url,
             loading_method=output_info["loading_method"],
             checkpoint_format=output_info["checkpoint_format"],
-            repo_status=RepoStatus(
-                repo_id=repo_id,
-                repo_hash=hf_repo_info.sha,
-                version=revision
-            ),
+            repo_status=RepoStatus(repo_id=repo_id, repo_hash=hf_repo_info.sha, version=revision),
             model_status=ModelStatus(
                 search_word=search_word,
                 download_url=download_url,
                 file_name=file_name,
                 local=download,
-            )
+            ),
         )
 
     else:
@@ -673,9 +664,7 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
 
     try:
         # Make the request to the CivitAI API
-        response = requests.get(
-            "https://civitai.com/api/v1/models", params=params, headers=headers
-        )
+        response = requests.get("https://civitai.com/api/v1/models", params=params, headers=headers)
         response.raise_for_status()
     except requests.exceptions.HTTPError as err:
         raise requests.HTTPError(f"Could not get elements from the URL: {err}")
@@ -696,7 +685,9 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
         repo_id = selected_repo["id"]
 
         # Sort versions within the selected repo by download count
-        sorted_versions = sorted(selected_repo["modelVersions"], key=lambda x: x["stats"]["downloadCount"], reverse=True)
+        sorted_versions = sorted(
+            selected_repo["modelVersions"], key=lambda x: x["stats"]["downloadCount"], reverse=True
+        )
         for selected_version in sorted_versions:
             version_id = selected_version["id"]
             models_list = []
@@ -724,7 +715,7 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
                         for model_data in sorted_models
                         if bool(re.search(r"(?i)[-_](safe|sfw)", model_data["filename"]))
                     ),
-                    sorted_models[0]
+                    sorted_models[0],
                 )
 
                 break
@@ -746,9 +737,7 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
     # Handle file download and setting model information
     if download:
         # The path where the model is to be saved.
-        model_path = os.path.join(
-            str(civitai_cache_dir), str(repo_id), str(version_id), str(file_name)
-        )
+        model_path = os.path.join(str(civitai_cache_dir), str(repo_id), str(version_id), str(file_name))
         # Download Model File
         file_downloader(
             url=download_url,
@@ -772,17 +761,13 @@ def search_civitai(search_word: str, **kwargs) -> Union[str, SearchResult, None]
             model_path=model_path,
             loading_method=output_info["loading_method"],
             checkpoint_format=output_info["checkpoint_format"],
-            repo_status=RepoStatus(
-                repo_id=repo_name,
-                repo_hash=repo_id,
-                version=version_id
-            ),
+            repo_status=RepoStatus(repo_id=repo_name, repo_hash=repo_id, version=version_id),
             model_status=ModelStatus(
                 search_word=search_word,
                 download_url=download_url,
                 file_name=file_name,
-                local=output_info["type"]["local"]
-            )
+                local=output_info["type"]["local"],
+            ),
         )
 
 
@@ -807,7 +792,6 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
     def __init__(self, *args, **kwargs):
         # EnvironmentError is returned
         super().__init__()
-
 
     @classmethod
     @validate_hf_hub_args
@@ -933,7 +917,7 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
             return load_pipeline_from_single_file(
                 pretrained_model_or_path=checkpoint_path,
                 pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
-                **kwargs
+                **kwargs,
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
@@ -1039,9 +1023,8 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
         return load_pipeline_from_single_file(
             pretrained_model_or_path=checkpoint_path,
             pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
-            **kwargs
+            **kwargs,
         )
-
 
 
 class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
@@ -1190,7 +1173,7 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
             return load_pipeline_from_single_file(
                 pretrained_model_or_path=checkpoint_path,
                 pipeline_mapping=SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING,
-                **kwargs
+                **kwargs,
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
@@ -1296,9 +1279,8 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
         return load_pipeline_from_single_file(
             pretrained_model_or_path=checkpoint_path,
             pipeline_mapping=SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING,
-            **kwargs
+            **kwargs,
         )
-
 
 
 class EasyPipelineForInpainting(AutoPipelineForInpainting):
@@ -1447,7 +1429,7 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
             return load_pipeline_from_single_file(
                 pretrained_model_or_path=checkpoint_path,
                 pipeline_mapping=SINGLE_FILE_CHECKPOINT_INPAINT_PIPELINE_MAPPING,
-                **kwargs
+                **kwargs,
             )
         else:
             return cls.from_pretrained(checkpoint_path, **kwargs)
@@ -1553,5 +1535,5 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
         return load_pipeline_from_single_file(
             pretrained_model_or_path=checkpoint_path,
             pipeline_mapping=SINGLE_FILE_CHECKPOINT_INPAINT_PIPELINE_MAPPING,
-            **kwargs
+            **kwargs,
         )
