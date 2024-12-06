@@ -2246,7 +2246,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         ):
             logger.info(
                 "The provided state dict contains normalization layers in addition to LoRA layers. The normalization layers will be directly updated the state_dict of the transformer "
-                'as opposed to the LoRA layers that will co-exist separately until the "fuse_lora()" method is called. That is to say, the normalization layers will always be directly '
+                "as opposed to the LoRA layers that will co-exist separately until the 'fuse_lora()' method is called. That is to say, the normalization layers will always be directly "
                 "fused into the transformer and can only be unfused if `discard_original_layers=True` is passed."
             )
 
