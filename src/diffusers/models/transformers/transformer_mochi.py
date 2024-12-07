@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numbers
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -50,6 +51,34 @@ class MochiModulatedRMSNorm(nn.Module):
             hidden_states = hidden_states * scale
 
         hidden_states = hidden_states.to(hidden_states_dtype)
+
+        return hidden_states
+
+
+class MochiRMSNorm(nn.Module):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True):
+        super().__init__()
+
+        self.eps = eps
+
+        if isinstance(dim, numbers.Integral):
+            dim = (dim,)
+
+        self.dim = torch.Size(dim)
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(dim))
+        else:
+            self.weight = None
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+        if self.weight is not None:
+            hidden_states = hidden_states * self.weight
+        hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 
@@ -139,10 +168,10 @@ class MochiAttention(nn.Module):
 
         self.heads = out_dim // dim_head if out_dim is not None else heads
 
-        self.norm_q = RMSNorm(dim_head, eps, True)
-        self.norm_k = RMSNorm(dim_head, eps, True)
-        self.norm_added_q = RMSNorm(dim_head, eps, True)
-        self.norm_added_k = RMSNorm(dim_head, eps, True)
+        self.norm_q = MochiRMSNorm(dim_head, eps, True)
+        self.norm_k = MochiRMSNorm(dim_head, eps, True)
+        self.norm_added_q = MochiRMSNorm(dim_head, eps, True)
+        self.norm_added_k = MochiRMSNorm(dim_head, eps, True)
 
         self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
         self.to_k = nn.Linear(query_dim, self.inner_dim, bias=bias)
