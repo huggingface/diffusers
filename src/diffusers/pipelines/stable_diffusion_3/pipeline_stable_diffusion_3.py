@@ -855,7 +855,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         only conditioned by the text prompt. Lowering this value encourages the model to produce more diverse images, but they 
         may not be as aligned with the image prompt.
         """
-        for attn_processor in self.transformes.attn_processors.values():
+        for attn_processor in self.transformer.attn_processors.values():
             if isinstance(attn_processor, IPAdapterJointAttnProcessor2_0):
                 attn_processor.scale = scale
 
