@@ -40,6 +40,8 @@ class BetaSigmas:
         self.beta = beta
 
     def __call__(self, in_sigmas: torch.Tensor):
+        if not is_scipy_available():
+            raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
         sigma_min = self.sigma_min
         if sigma_min is None:
             sigma_min = in_sigmas[-1].item()
