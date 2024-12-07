@@ -1594,12 +1594,13 @@ class MochiAttentionPool(nn.Module):
         Returns:
             pooled: (B, D) tensor of pooled tokens.
         """
+        input_dtype = x.dtype
         assert x.size(1) == mask.size(1)  # Expected mask to have same length as tokens.
         assert x.size(0) == mask.size(0)  # Expected mask to have same batch size as tokens.
-        mask = mask[:, :, None].to(dtype=x.dtype)
+        mask = mask[:, :, None].to(dtype=torch.float32)
         mask = mask / mask.sum(dim=1, keepdim=True).clamp(min=1)
-        pooled = (x * mask).sum(dim=1, keepdim=keepdim)
-        return pooled
+        pooled = (x.to(torch.float32) * mask).sum(dim=1, keepdim=keepdim)
+        return pooled.to(input_dtype)
 
     def forward(self, x: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
         r"""
