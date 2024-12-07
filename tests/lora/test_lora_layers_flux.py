@@ -628,7 +628,7 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
             control_image=control_image,
             height=1024,
             width=1024,
-            num_inference_steps=50,
+            num_inference_steps=self.num_inference_steps,
             guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
             output_type="np",
             generator=torch.manual_seed(self.seed),
