@@ -625,7 +625,7 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
                 "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
             )
 
-        image = self.pipe(
+        image = self.pipeline(
             prompt=self.prompt,
             control_image=control_image,
             height=1024,
