@@ -19,19 +19,23 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 import safetensors.torch
 import torch
+from parameterized import parameterized
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils import logging
+from diffusers.utils import load_image, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     floats_tensor,
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
+    print_tensor_test,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_gpu,
@@ -578,3 +582,59 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
 
         assert max_diff < 1e-3
+
+
+@nightly
+@require_torch_gpu
+@require_peft_backend
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
+class FluxControlLoRAIntegrationTests(unittest.TestCase):
+    num_inference_steps = 10
+    seed = 0
+    prompt = "A robot made of exotic candies and chocolates of different kinds."
+
+    def setUp(self):
+        super().setUp()
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        self.pipeline = FluxControlPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+        ).to("cuda")
+
+    def tearDown(self):
+        super().tearDown()
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
+    def test_lora(self, lora_ckpt_id):
+        self.pipe.load_lora_weights(lora_ckpt_id)
+
+        if "Canny" in lora_ckpt_id:
+            control_image = load_image(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/canny_condition_image.png"
+            )
+        else:
+            control_image = load_image(
+                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
+            )
+
+        image = self.pipe(
+            prompt=self.prompt,
+            control_image=control_image,
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
+            output_type="np",
+            generator=torch.manual_seed(self.seed),
+        ).images
+
+        out_slice = image[0, -3:, -3:, -1].flatten()
+        print_tensor_test(out_slice)
+
+        assert out_slice is None
