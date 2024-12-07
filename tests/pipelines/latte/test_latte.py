@@ -53,11 +53,11 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     required_optional_params = PipelineTesterMixin.required_optional_params
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
         transformer = LatteTransformer3DModel(
             sample_size=8,
-            num_layers=1,
+            num_layers=num_layers,
             patch_size=2,
             attention_head_dim=8,
             num_attention_heads=3,
@@ -263,6 +263,47 @@ class LattePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_xformers_attention_forwardGenerator_pass(self):
         super()._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+
+    def test_pyramid_attention_broadcast(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        num_layers = 4
+        components = self.get_dummy_components(num_layers=num_layers)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        frames = pipe(**inputs).frames  # [B, F, C, H, W]
+        original_image_slice = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.enable_pyramid_attention_broadcast(spatial_attn_skip_range=2, spatial_attn_timestep_range=(100, 800))
+        assert pipe.pyramid_attention_broadcast_enabled
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_inference_steps"] = 4
+        frames = pipe(**inputs).frames
+        image_slice_pab_enabled = frames[0, -2:, -1, -3:, -3:]
+
+        pipe.disable_pyramid_attention_broadcast()
+        assert not pipe.pyramid_attention_broadcast_enabled
+
+        inputs = self.get_dummy_inputs(device)
+        frames = pipe(**inputs).frames
+        image_slice_pab_disabled = frames[0, -2:, -1, -3:, -3:]
+
+        # We need to use higher tolerance because we are using a random model. With a converged/trained
+        # model, the tolerance can be lower.
+        assert np.allclose(
+            original_image_slice, image_slice_pab_enabled, atol=0.25
+        ), "PAB outputs should not differ much in specified timestep range."
+        print((image_slice_pab_disabled - image_slice_pab_enabled).abs().max())
+        assert np.allclose(
+            image_slice_pab_enabled, image_slice_pab_disabled, atol=0.25
+        ), "Outputs, with PAB enabled, shouldn't differ much when PAB is disabled in specified timestep range."
+        assert np.allclose(
+            original_image_slice, image_slice_pab_disabled, atol=0.25
+        ), "Original outputs should match when PAB is disabled."
 
 
 @slow
