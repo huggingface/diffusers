@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...loaders import Mochi1LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import MochiTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -62,6 +62,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.mochi.pipeline_mochi.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -75,7 +76,7 @@ def calculate_shift(
     return mu
 
 
-# from: https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
+# Copied from diffusers.pipelines.mochi.pipeline_mochi.linear_quadratic_schedule
 def linear_quadratic_schedule(num_steps, threshold_noise, linear_steps=None):
     if linear_steps is None:
         linear_steps = num_steps // 2
@@ -153,9 +154,23 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class MochiVideoToVideoPipeline(DiffusionPipeline):
     r"""
-    The mochi pipeline for text-to-video generation.
+    The mochi pipeline for video-to-video generation.
 
     Reference: https://github.com/genmoai/models
 
@@ -207,8 +222,10 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         self.tokenizer_max_length = (
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
         )
+        self.default_height = 480
+        self.default_width = 848
 
-    # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -257,7 +274,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         return prompt_embeds, prompt_attention_mask
 
-    # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.encode_prompt
+    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -425,32 +442,74 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
     def prepare_latents(
         self,
+        video,
         batch_size,
         num_channels_latents,
         height,
         width,
-        num_frames,
+        timestep,
         dtype,
         device,
         generator,
         latents=None,
+        add_noise=False,
     ):
         height = height // self.vae_spatial_scale_factor
         width = width // self.vae_spatial_scale_factor
-        num_frames = (num_frames - 1) // self.vae_temporal_scale_factor + 1
+        num_frames = (video.size(1) - 1) // self.vae_temporal_scale_factor + 1 if latents is None else latents.size(2)
 
         shape = (batch_size, num_channels_latents, num_frames, height, width)
 
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if latents is None:
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            if self.vae.config.force_upcast:
+                video = video.float()
+                self.vae.to(dtype=torch.float32)
+
+            if isinstance(generator, list):
+                init_latents = [
+                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0), generator=generator[i]))
+                    for i in range(batch_size)
+                ]
+            else:
+                init_latents = [
+                    retrieve_latents(self.vae.encode(vid.unsqueeze(0), generator=generator)) for vid in video
+                ]
+
+            init_latents = torch.cat(init_latents, dim=0).to(dtype)
+            init_latents = self.vae_scaling_factor_image * init_latents
+
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        else:
+            latents = latents.to(device)
+
+            if add_noise:
+                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                latents = self.scheduler.add_noise(latents, noise, timestep)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
         return latents
+
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, timesteps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
 
     @property
     def guidance_scale(self):
@@ -465,10 +524,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         return self._num_timesteps
 
     @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
-
-    @property
     def interrupt(self):
         return self._interrupt
 
@@ -476,13 +531,15 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        video: List[Image.Image] = None,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_frames: int = 19,
-        num_inference_steps: int = 28,
+        num_inference_steps: int = 50,
+        enforce_inference_steps: bool = False,
         timesteps: List[int] = None,
+        strength: float = 0.8,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -493,7 +550,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
@@ -502,6 +558,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            video (`List[PIL.Image.Image]`):
+                The input video to condition the generation on. Must be a list of images/frames of the video.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -514,10 +572,15 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            enforce_inference_steps (`bool`, defaults to `False`):
+                Whether or not to enforce the denosing to take place in specifid number of inference steps as opposed
+                to being influenced by the `strength` parameter.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
+            strength (`float`, *optional*, defaults to 0.8):
+                Higher strength leads to more differences between original video and generated video.
             guidance_scale (`float`, defaults to `4.5`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -548,10 +611,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.mochi.MochiPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -591,7 +650,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         )
 
         self._guidance_scale = guidance_scale
-        self._attention_kwargs = attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -626,37 +684,61 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            num_frames,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
-
-        # 5. Prepare timestep
+        # 4. Prepare timestep
         # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
         threshold_noise = 0.025
         sigmas = linear_quadratic_schedule(num_inference_steps, threshold_noise)
         sigmas = np.array(sigmas)
 
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler,
-            num_inference_steps,
-            device,
-            timesteps,
-            sigmas,
+        if not enforce_inference_steps:
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler,
+                num_inference_steps,
+                device,
+                timesteps,
+                sigmas,
+            )
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+            self._num_timesteps = len(timesteps)
+        else:
+            denoising_inference_steps = int(num_inference_steps / strength)
+            timesteps, denoising_inference_steps = retrieve_timesteps(
+                self.scheduler,
+                denoising_inference_steps,
+                device,
+                timesteps,
+                sigmas,
+            )
+            timesteps = timesteps[-num_inference_steps:]
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+
+        # 5. Prepare latent variables
+        if latents is None:
+            video = self.video_processor.preprocess_video(video, height=height, width=width)
+            # TODO(debug):
+            breakpoint()
+            # video = video.permute(0, 2, 1, 3, 4)
+            video = video.to(device=device, dtype=prompt_embeds.dtype)
+
+        num_channels_latents = self.transformer.config.in_channels
+        latents = self.prepare_latents(
+            video=video,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=num_channels_latents,
+            height=height,
+            width=width,
+            timestep=latent_timestep,
+            dtype=prompt_embeds.dtype,
+            device=device,
+            generator=generator,
+            latents=latents,
+            add_noise=enforce_inference_steps,
         )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -671,7 +753,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     timestep=timestep,
                     encoder_attention_mask=prompt_attention_mask,
-                    attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
 
