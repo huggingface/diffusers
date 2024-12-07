@@ -34,7 +34,6 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_peft_version_greater,
@@ -637,6 +636,11 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
         ).images
 
         out_slice = image[0, -3:, -3:, -1].flatten()
-        print_tensor_test(out_slice)
+        if "Canny" in lora_ckpt_id:
+            expected_slice = np.array([0.8438, 0.8438, 0.8438, 0.8438, 0.8438, 0.8398, 0.8438, 0.8438, 0.8516])
+        else:
+            expected_slice = np.array([0.8203, 0.8320, 0.8359, 0.8203, 0.8281, 0.8281, 0.8203, 0.8242, 0.8359])
 
-        assert out_slice is None
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
