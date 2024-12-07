@@ -136,7 +136,6 @@ class MochiRMSNormZero(nn.Module):
 
         emb = self.linear(self.silu(emb))
         scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
-
         hidden_states = self.norm(hidden_states.to(torch.float32)) * (1 + scale_msa[:, None].to(torch.float32))
         hidden_states = hidden_states.to(hidden_states_dtype)
 
