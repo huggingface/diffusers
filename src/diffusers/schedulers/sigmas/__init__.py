@@ -19,6 +19,7 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
+    is_scipy_available,
     is_torch_available,
     is_transformers_available,
 )
@@ -35,9 +36,20 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
 else:
-    _import_structure["beta_sigmas"] = ["BetaSigmas"]
     _import_structure["exponential_sigmas"] = ["ExponentialSigmas"]
     _import_structure["karras_sigmas"] = ["KarrasSigmas"]
+
+try:
+    if not (is_torch_available() and is_scipy_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils import dummy_torch_and_scipy_objects  # noqa F403
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_scipy_objects))
+
+else:
+    _import_structure["beta_sigmas"] = ["BetaSigmas"]
+
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -47,9 +59,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .beta_sigmas import BetaSigmas
         from .exponential_sigmas import ExponentialSigmas
         from .karras_sigmas import KarrasSigmas
+
+    try:
+        if not (is_torch_available() and is_scipy_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_scipy_objects import *  # noqa F403
+    else:
+        from .beta_sigmas import BetaSigmas
 
 
 else:
