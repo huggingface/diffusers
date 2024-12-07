@@ -451,7 +451,7 @@ class MochiRoPE(nn.Module):
         return positions
 
     def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
-        with torch.autocast(self.device.type, torch.float32):
+        with torch.autocast(freqs.device.type, torch.float32):
             # Always run ROPE freqs computation in FP32
             freqs = torch.einsum("nd,dhf->nhf", pos.to(torch.float32), freqs.to(torch.float32))
 
