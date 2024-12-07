@@ -612,7 +612,9 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
 
     @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
     def test_lora(self, lora_ckpt_id):
-        self.pipe.load_lora_weights(lora_ckpt_id)
+        self.pipeline.load_lora_weights(lora_ckpt_id)
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
 
         if "Canny" in lora_ckpt_id:
             control_image = load_image(
