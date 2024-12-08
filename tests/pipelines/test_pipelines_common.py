@@ -1902,6 +1902,30 @@ class PipelineTesterMixin:
             )
         )
 
+    # @pytest.mark.xfail(condition=not os.getenv("RUN_DDUF_TEST", False), strict=True)
+    # Should consider guarding the test with proper transformers and huggingface_hub versions.
+    def test_save_load_dduf(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device="cpu")
+        inputs.pop("generator")
+        inputs["generator"] = torch.manual_seed(0)
+
+        pipeline_out = pipe(**inputs).images
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dduf_filename = f"{pipe.__class__.__name__.lower()}.dduf"
+            pipe.save_pretrained(tmpdir, dduf_file=dduf_filename)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
+
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_pipeline_out = loaded_pipe(**inputs).images
+
+        assert np.allclose(pipeline_out, loaded_pipeline_out)
+
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):
