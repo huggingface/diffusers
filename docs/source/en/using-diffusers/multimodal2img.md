@@ -79,8 +79,8 @@ pipe.to("cuda")
 
 
 prompt="A woman is walking down the street, wearing a white long-sleeve blouse with lace details on the sleeves, paired with a blue pleated skirt. The woman is <img><|image_1|></img>. The long-sleeve blouse and a pleated skirt are <img><|image_2|></img>."
-input_image_1 = load_image("/share/junjie/code/VISTA2/produce_data/laion_net/diffgpt/OmniGen/docs_img/emma.jpeg")
-input_image_2 = load_image("/share/junjie/code/VISTA2/produce_data/laion_net/diffgpt/OmniGen/docs_img/dress.jpg")
+input_image_1 = load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/emma.jpeg")
+input_image_2 = load_image("https://raw.githubusercontent.com/VectorSpaceLab/OmniGen/main/imgs/docs_img/dress.jpg")
 input_images=[input_image_1, input_image_2]
 image = pipe(
     prompt=prompt, 

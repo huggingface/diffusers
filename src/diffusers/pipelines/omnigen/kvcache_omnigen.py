@@ -19,14 +19,13 @@ from transformers.cache_utils import DynamicCache
 
 
 class OmniGenCache(DynamicCache):
-    def __init__(self,
-                 num_tokens_for_img: int,
-                 offload_kv_cache: bool = False) -> None:
+    def __init__(self, num_tokens_for_img: int, offload_kv_cache: bool = False) -> None:
         if not torch.cuda.is_available():
             # print("No avaliable GPU, offload_kv_cache wiil be set to False, which will result in large memory usage and time cost when input multiple images!!!")
             # offload_kv_cache = False
             raise RuntimeError(
-                "OffloadedCache can only be used with a GPU. If there is no GPU, you need to set use_kv_cache=False, which will result in longer inference time!")
+                "OffloadedCache can only be used with a GPU. If there is no GPU, you need to set use_kv_cache=False, which will result in longer inference time!"
+            )
         super().__init__()
         self.original_device = []
         self.prefetch_stream = torch.cuda.Stream()
@@ -76,14 +75,15 @@ class OmniGenCache(DynamicCache):
             raise KeyError(f"Cache only has {len(self)} layers, attempted to access layer with index {layer_idx}")
 
     def update(
-            self,
-            key_states: torch.Tensor,
-            value_states: torch.Tensor,
-            layer_idx: int,
-            cache_kwargs: Optional[Dict[str, Any]] = None,
+        self,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        layer_idx: int,
+        cache_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Updates the cache with the new `key_states` and `value_states` for the layer `layer_idx`.
+
         Parameters:
             key_states (`torch.Tensor`):
                 The new key states to cache.
@@ -101,8 +101,8 @@ class OmniGenCache(DynamicCache):
             raise ValueError("OffloadedCache does not support model usage where layers are skipped. Use DynamicCache.")
         elif len(self.key_cache) == layer_idx:
             # only cache the states for condition tokens
-            key_states = key_states[..., :-(self.num_tokens_for_img + 1), :]
-            value_states = value_states[..., :-(self.num_tokens_for_img + 1), :]
+            key_states = key_states[..., : -(self.num_tokens_for_img + 1), :]
+            value_states = value_states[..., : -(self.num_tokens_for_img + 1), :]
 
             # Update the number of seen tokens
             if layer_idx == 0:

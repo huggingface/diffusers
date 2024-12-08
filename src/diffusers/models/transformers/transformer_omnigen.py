@@ -53,8 +53,8 @@ class OmniGen2DModelOutput(Transformer2DModelOutput):
 
 class OmniGenBaseTransformer(Phi3Model):
     """
-    Transformer used in OmniGen. The transformer block is from Ph3, and only modify the attention mask.
-    References: [OmniGen](https://arxiv.org/pdf/2409.11340)
+    Transformer used in OmniGen. The transformer block is from Ph3, and only modify the attention mask. References:
+    [OmniGen](https://arxiv.org/pdf/2409.11340)
 
     Parameters:
         config: Phi3Config
@@ -89,18 +89,18 @@ class OmniGenBaseTransformer(Phi3Model):
         self.prefetch_layer((layer_idx + 1) % len(self.layers), device)
 
     def forward(
-            self,
-            input_ids: torch.LongTensor = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_values: Optional[List[torch.FloatTensor]] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            use_cache: Optional[bool] = None,
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            offload_transformer_block: Optional[bool] = False,
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        offload_transformer_block: Optional[bool] = False,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -225,15 +225,16 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input.
         pos_embed_max_size (`int`, *optional*, defaults to 192): The max size of pos emb.
     """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
-            self,
-            transformer_config: Dict,
-            patch_size=2,
-            in_channels=4,
-            pos_embed_max_size: int = 192,
+        self,
+        transformer_config: Dict,
+        patch_size=2,
+        in_channels=4,
+        pos_embed_max_size: int = 192,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -244,10 +245,12 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         transformer_config = Phi3Config(**transformer_config)
         hidden_size = transformer_config.hidden_size
 
-        self.patch_embedding = OmniGenPatchEmbed(patch_size=patch_size,
-                                                 in_channels=in_channels,
-                                                 embed_dim=hidden_size,
-                                                 pos_embed_max_size=pos_embed_max_size)
+        self.patch_embedding = OmniGenPatchEmbed(
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=hidden_size,
+            pos_embed_max_size=pos_embed_max_size,
+        )
 
         self.time_token = OmniGenTimestepEmbed(hidden_size)
         self.t_embedder = OmniGenTimestepEmbed(hidden_size)
@@ -260,14 +263,14 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     def unpatchify(self, x, h, w):
         """
-        x: (N, T, patch_size**2 * C)
-        imgs: (N, H, W, C)
+        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
         """
         c = self.out_channels
 
         x = x.reshape(
-            shape=(x.shape[0], h // self.patch_size, w // self.patch_size, self.patch_size, self.patch_size, c))
-        x = torch.einsum('nhwpqc->nchpwq', x)
+            shape=(x.shape[0], h // self.patch_size, w // self.patch_size, self.patch_size, self.patch_size, c)
+        )
+        x = torch.einsum("nhwpqc->nchpwq", x)
         imgs = x.reshape(shape=(x.shape[0], c, h, w))
         return imgs
 
@@ -335,13 +338,15 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    def get_multimodal_embeddings(self,
-                                  input_ids: torch.Tensor,
-                                  input_img_latents: List[torch.Tensor],
-                                  input_image_sizes: Dict,
-                                  ):
+    def get_multimodal_embeddings(
+        self,
+        input_ids: torch.Tensor,
+        input_img_latents: List[torch.Tensor],
+        input_image_sizes: Dict,
+    ):
         """
         get the multi-modal conditional embeddings
+
         Args:
             input_ids: a sequence of text id
             input_img_latents: continues embedding of input images
@@ -356,31 +361,32 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             condition_tokens = self.llm.embed_tokens(input_ids)
             input_img_inx = 0
             if input_img_latents is not None:
-                input_image_tokens = self.patch_embedding(input_img_latents,
-                                                          is_input_image=True)
+                input_image_tokens = self.patch_embedding(input_img_latents, is_input_image=True)
 
                 for b_inx in input_image_sizes.keys():
                     for start_inx, end_inx in input_image_sizes[b_inx]:
                         # replace the placeholder in text tokens with the image embedding.
-                        condition_tokens[b_inx, start_inx: end_inx] = input_image_tokens[input_img_inx].to(
-                            condition_tokens.dtype)
+                        condition_tokens[b_inx, start_inx:end_inx] = input_image_tokens[input_img_inx].to(
+                            condition_tokens.dtype
+                        )
                         input_img_inx += 1
 
         return condition_tokens
 
-    def forward(self,
-                hidden_states: torch.Tensor,
-                timestep: Union[int, float, torch.LongTensor],
-                input_ids: torch.Tensor,
-                input_img_latents: List[torch.Tensor],
-                input_image_sizes: Dict[int, List[int]],
-                attention_mask: torch.Tensor,
-                position_ids: torch.Tensor,
-                past_key_values: DynamicCache = None,
-                offload_transformer_block: bool = False,
-                attention_kwargs: Optional[Dict[str, Any]] = None,
-                return_dict: bool = True,
-                ):
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: Union[int, float, torch.LongTensor],
+        input_ids: torch.Tensor,
+        input_img_latents: List[torch.Tensor],
+        input_image_sizes: Dict[int, List[int]],
+        attention_mask: torch.Tensor,
+        position_ids: torch.Tensor,
+        past_key_values: DynamicCache = None,
+        offload_transformer_block: bool = False,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ):
         """
         The [`OmniGenTransformer2DModel`] forward method.
 
@@ -408,12 +414,11 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`OmniGen2DModelOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`OmniGen2DModelOutput`] instead of a plain tuple.
 
         Returns:
-            If `return_dict` is True, an [`OmniGen2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+            If `return_dict` is True, an [`OmniGen2DModelOutput`] is returned, otherwise a `tuple` where the first
+            element is the sample tensor.
 
         """
 
@@ -437,19 +442,22 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         time_token = self.time_token(timestep, dtype=hidden_states.dtype).unsqueeze(1)
 
-        condition_tokens = self.get_multimodal_embeddings(input_ids=input_ids,
-                                                          input_img_latents=input_img_latents,
-                                                          input_image_sizes=input_image_sizes,
-                                                          )
+        condition_tokens = self.get_multimodal_embeddings(
+            input_ids=input_ids,
+            input_img_latents=input_img_latents,
+            input_image_sizes=input_image_sizes,
+        )
         if condition_tokens is not None:
             input_emb = torch.cat([condition_tokens, time_token, hidden_states], dim=1)
         else:
             input_emb = torch.cat([time_token, hidden_states], dim=1)
-        output = self.llm(inputs_embeds=input_emb,
-                          attention_mask=attention_mask,
-                          position_ids=position_ids,
-                          past_key_values=past_key_values,
-                          offload_transformer_block=offload_transformer_block)
+        output = self.llm(
+            inputs_embeds=input_emb,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            offload_transformer_block=offload_transformer_block,
+        )
         output, past_key_values = output.last_hidden_state, output.past_key_values
 
         image_embedding = output[:, -num_tokens_for_output_image:]

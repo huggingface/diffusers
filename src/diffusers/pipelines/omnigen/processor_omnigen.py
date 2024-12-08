@@ -23,25 +23,19 @@ from torchvision import transforms
 
 def crop_image(pil_image, max_image_size):
     """
-    Crop the image so that its height and width does not exceed `max_image_size`,
-    while ensuring both the height and width are multiples of 16.
+    Crop the image so that its height and width does not exceed `max_image_size`, while ensuring both the height and
+    width are multiples of 16.
     """
     while min(*pil_image.size) >= 2 * max_image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
+        pil_image = pil_image.resize(tuple(x // 2 for x in pil_image.size), resample=Image.BOX)
 
     if max(*pil_image.size) > max_image_size:
         scale = max_image_size / max(*pil_image.size)
-        pil_image = pil_image.resize(
-            tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-        )
+        pil_image = pil_image.resize(tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC)
 
     if min(*pil_image.size) < 16:
         scale = 16 / min(*pil_image.size)
-        pil_image = pil_image.resize(
-            tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-        )
+        pil_image = pil_image.resize(tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC)
 
     arr = np.array(pil_image)
     crop_y1 = (arr.shape[0] % 16) // 2
@@ -50,28 +44,28 @@ def crop_image(pil_image, max_image_size):
     crop_x1 = (arr.shape[1] % 16) // 2
     crop_x2 = arr.shape[1] % 16 - crop_x1
 
-    arr = arr[crop_y1:arr.shape[0] - crop_y2, crop_x1:arr.shape[1] - crop_x2]
+    arr = arr[crop_y1 : arr.shape[0] - crop_y2, crop_x1 : arr.shape[1] - crop_x2]
     return Image.fromarray(arr)
 
 
 class OmniGenMultiModalProcessor:
-    def __init__(self,
-                 text_tokenizer,
-                 max_image_size: int = 1024):
+    def __init__(self, text_tokenizer, max_image_size: int = 1024):
         self.text_tokenizer = text_tokenizer
         self.max_image_size = max_image_size
 
-        self.image_transform = transforms.Compose([
-            transforms.Lambda(lambda pil_image: crop_image(pil_image, max_image_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
-        ])
+        self.image_transform = transforms.Compose(
+            [
+                transforms.Lambda(lambda pil_image: crop_image(pil_image, max_image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+            ]
+        )
 
         self.collator = OmniGenCollator()
 
     def process_image(self, image):
         if isinstance(image, str):
-            image = Image.open(image).convert('RGB')
+            image = Image.open(image).convert("RGB")
         return self.image_transform(image)
 
     def process_multi_modal_prompt(self, text, input_images):
@@ -91,11 +85,13 @@ class OmniGenMultiModalProcessor:
         image_ids = [int(s.split("|")[1].split("_")[-1]) for s in image_tags]
 
         unique_image_ids = sorted(set(image_ids))
-        assert unique_image_ids == list(range(1,
-                                              len(unique_image_ids) + 1)), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
+        assert unique_image_ids == list(
+            range(1, len(unique_image_ids) + 1)
+        ), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
         # total images must be the same as the number of image tags
-        assert len(unique_image_ids) == len(
-            input_images), f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(input_images)} images"
+        assert (
+            len(unique_image_ids) == len(input_images)
+        ), f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(input_images)} images"
 
         input_images = [input_images[x - 1] for x in image_ids]
 
@@ -112,24 +108,24 @@ class OmniGenMultiModalProcessor:
         return {"input_ids": all_input_ids, "pixel_values": input_images, "image_sizes": img_inx}
 
     def add_prefix_instruction(self, prompt):
-        user_prompt = '<|user|>\n'
-        generation_prompt = 'Generate an image according to the following instructions\n'
-        assistant_prompt = '<|assistant|>\n<|diffusion|>'
+        user_prompt = "<|user|>\n"
+        generation_prompt = "Generate an image according to the following instructions\n"
+        assistant_prompt = "<|assistant|>\n<|diffusion|>"
         prompt_suffix = "<|end|>\n"
         prompt = f"{user_prompt}{generation_prompt}{prompt}{prompt_suffix}{assistant_prompt}"
         return prompt
 
-    def __call__(self,
-                 instructions: List[str],
-                 input_images: List[List[str]] = None,
-                 height: int = 1024,
-                 width: int = 1024,
-                 negative_prompt: str = "low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers.",
-                 use_img_cfg: bool = True,
-                 separate_cfg_input: bool = False,
-                 use_input_image_size_as_output: bool = False,
-                 ) -> Dict:
-
+    def __call__(
+        self,
+        instructions: List[str],
+        input_images: List[List[str]] = None,
+        height: int = 1024,
+        width: int = 1024,
+        negative_prompt: str = "low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers.",
+        use_img_cfg: bool = True,
+        separate_cfg_input: bool = False,
+        use_input_image_size_as_output: bool = False,
+    ) -> Dict:
         if isinstance(instructions, str):
             instructions = [instructions]
             input_images = [input_images]
@@ -156,8 +152,14 @@ class OmniGenMultiModalProcessor:
                     img_cfg_mllm_input = neg_mllm_input
 
             if use_input_image_size_as_output:
-                input_data.append((mllm_input, neg_mllm_input, img_cfg_mllm_input,
-                                   [mllm_input['pixel_values'][0].size(-2), mllm_input['pixel_values'][0].size(-1)]))
+                input_data.append(
+                    (
+                        mllm_input,
+                        neg_mllm_input,
+                        img_cfg_mllm_input,
+                        [mllm_input["pixel_values"][0].size(-2), mllm_input["pixel_values"][0].size(-1)],
+                    )
+                )
             else:
                 input_data.append((mllm_input, neg_mllm_input, img_cfg_mllm_input, [height, width]))
 
@@ -175,14 +177,16 @@ class OmniGenCollator:
         img_length = max(num_tokens_for_output_images)
         for mask in attention_mask:
             temp_l = torch.sum(mask)
-            temp_position = [0] * (text_length - temp_l) + list(range(temp_l + img_length + 1))  # we add a time embedding into the sequence, so add one more token
+            temp_position = [0] * (text_length - temp_l) + list(
+                range(temp_l + img_length + 1)
+            )  # we add a time embedding into the sequence, so add one more token
             position_ids.append(temp_position)
         return torch.LongTensor(position_ids)
 
     def create_mask(self, attention_mask, num_tokens_for_output_images):
         """
-        OmniGen applies causal attention to each element in the sequence, but applies bidirectional attention within each image sequence
-        References: [OmniGen](https://arxiv.org/pdf/2409.11340)
+        OmniGen applies causal attention to each element in the sequence, but applies bidirectional attention within
+        each image sequence References: [OmniGen](https://arxiv.org/pdf/2409.11340)
         """
         extended_mask = []
         padding_images = []
@@ -261,9 +265,9 @@ class OmniGenCollator:
         pixel_values, image_sizes = [], {}
         b_inx = 0
         for x in mllm_inputs:
-            if x['pixel_values'] is not None:
-                pixel_values.extend(x['pixel_values'])
-                for size in x['image_sizes']:
+            if x["pixel_values"] is not None:
+                pixel_values.extend(x["pixel_values"])
+                for size in x["image_sizes"]:
                     if b_inx not in image_sizes:
                         image_sizes[b_inx] = [size]
                     else:
@@ -271,7 +275,7 @@ class OmniGenCollator:
             b_inx += 1
         pixel_values = [x.unsqueeze(0) for x in pixel_values]
 
-        input_ids = [x['input_ids'] for x in mllm_inputs]
+        input_ids = [x["input_ids"] for x in mllm_inputs]
         padded_input_ids, attention_mask, image_sizes = self.pad_input_ids(input_ids, image_sizes)
         position_ids = self.create_position(attention_mask, num_tokens_for_output_images)
         attention_mask, padding_images = self.create_mask(attention_mask, num_tokens_for_output_images)
@@ -292,13 +296,20 @@ class OmniGenCollator:
             mllm_inputs = mllm_inputs + cfg_mllm_inputs
             target_img_size = target_img_size + target_img_size
 
-        all_padded_input_ids, all_position_ids, all_attention_mask, all_padding_images, all_pixel_values, all_image_sizes = self.process_mllm_input(
-            mllm_inputs, target_img_size)
+        (
+            all_padded_input_ids,
+            all_position_ids,
+            all_attention_mask,
+            all_padding_images,
+            all_pixel_values,
+            all_image_sizes,
+        ) = self.process_mllm_input(mllm_inputs, target_img_size)
 
-        data = {"input_ids": all_padded_input_ids,
-                "attention_mask": all_attention_mask,
-                "position_ids": all_position_ids,
-                "input_pixel_values": all_pixel_values,
-                "input_image_sizes": all_image_sizes,
-                }
+        data = {
+            "input_ids": all_padded_input_ids,
+            "attention_mask": all_attention_mask,
+            "position_ids": all_position_ids,
+            "input_pixel_values": all_pixel_values,
+            "input_image_sizes": all_image_sizes,
+        }
         return data

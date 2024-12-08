@@ -37,7 +37,6 @@ from .processor_omnigen import OmniGenMultiModalProcessor
 
 
 if is_torch_xla_available():
-
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
@@ -63,12 +62,12 @@ EXAMPLE_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
-        scheduler,
-        num_inference_steps: Optional[int] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        timesteps: Optional[List[int]] = None,
-        sigmas: Optional[List[float]] = None,
-        **kwargs,
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
+    **kwargs,
 ):
     r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
@@ -148,11 +147,11 @@ class OmniGenPipeline(
     _callback_tensor_inputs = ["latents", "input_images_latents"]
 
     def __init__(
-            self,
-            transformer: OmniGenTransformer2DModel,
-            scheduler: FlowMatchEulerDiscreteScheduler,
-            vae: AutoencoderKL,
-            tokenizer: LlamaTokenizer,
+        self,
+        transformer: OmniGenTransformer2DModel,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKL,
+        tokenizer: LlamaTokenizer,
     ):
         super().__init__()
 
@@ -176,13 +175,14 @@ class OmniGenPipeline(
         self.default_sample_size = 128
 
     def encod_input_iamges(
-            self,
-            input_pixel_values: List[torch.Tensor],
-            device: Optional[torch.device] = None,
-            dtype: Optional[torch.dtype] = None,
+        self,
+        input_pixel_values: List[torch.Tensor],
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ):
         """
         get the continues embedding of input images by VAE
+
         Args:
             input_pixel_values: normlized pixel of input images
             device:
@@ -198,17 +198,16 @@ class OmniGenPipeline(
         return input_img_latents
 
     def check_inputs(
-            self,
-            prompt,
-            input_images,
-            height,
-            width,
-            use_kv_cache,
-            offload_kv_cache,
-            callback_on_step_end_tensor_inputs=None,
-            max_sequence_length=None,
+        self,
+        prompt,
+        input_images,
+        height,
+        width,
+        use_kv_cache,
+        offload_kv_cache,
+        callback_on_step_end_tensor_inputs=None,
+        max_sequence_length=None,
     ):
-
         if input_images is not None:
             if len(input_images) != len(prompt):
                 raise ValueError(
@@ -233,7 +232,7 @@ class OmniGenPipeline(
                 )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -283,15 +282,15 @@ class OmniGenPipeline(
         self.vae.disable_tiling()
 
     def prepare_latents(
-            self,
-            batch_size,
-            num_channels_latents,
-            height,
-            width,
-            dtype,
-            device,
-            generator,
-            latents=None,
+        self,
+        batch_size,
+        num_channels_latents,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
     ):
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -328,7 +327,7 @@ class OmniGenPipeline(
     def enable_transformer_block_cpu_offload(self, device: Union[torch.device, str] = "cuda"):
         torch_device = torch.device(device)
         for name, param in self.transformer.named_parameters():
-            if 'layers' in name and 'layers.0' not in name:
+            if "layers" in name and "layers.0" not in name:
                 param.data = param.data.cpu()
             else:
                 param.data = param.data.to(torch_device)
@@ -340,38 +339,39 @@ class OmniGenPipeline(
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            prompt: Union[str, List[str]],
-            input_images: Optional[
-                Union[List[str], List[PIL.Image.Image], List[List[str]], List[List[PIL.Image.Image]]]] = None,
-            height: Optional[int] = None,
-            width: Optional[int] = None,
-            num_inference_steps: int = 50,
-            max_input_image_size: int = 1024,
-            timesteps: List[int] = None,
-            guidance_scale: float = 2.5,
-            img_guidance_scale: float = 1.6,
-            use_kv_cache: bool = True,
-            offload_kv_cache: bool = True,
-            offload_transformer_block: bool = False,
-            use_input_image_size_as_output: bool = False,
-            num_images_per_prompt: Optional[int] = 1,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            latents: Optional[torch.FloatTensor] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            attention_kwargs: Optional[Dict[str, Any]] = None,
-            callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-            max_sequence_length: int = 120000,
+        self,
+        prompt: Union[str, List[str]],
+        input_images: Optional[
+            Union[List[str], List[PIL.Image.Image], List[List[str]], List[List[PIL.Image.Image]]]
+        ] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        num_inference_steps: int = 50,
+        max_input_image_size: int = 1024,
+        timesteps: List[int] = None,
+        guidance_scale: float = 2.5,
+        img_guidance_scale: float = 1.6,
+        use_kv_cache: bool = True,
+        offload_kv_cache: bool = True,
+        offload_transformer_block: bool = False,
+        use_input_image_size_as_output: bool = False,
+        num_images_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 120000,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation.
-                If the input includes images, need to add placeholders `<img><|image_i|></img>` in the prompt to indicate the position of the i-th images.
+                The prompt or prompts to guide the image generation. If the input includes images, need to add
+                placeholders `<img><|image_i|></img>` in the prompt to indicate the position of the i-th images.
             input_images (`List[str]` or `List[List[str]]`, *optional*):
                 The list of input images. We will replace the "<|image_i|>" in prompt with the i-th image in list.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -402,7 +402,8 @@ class OmniGenPipeline(
             offload_transformer_block (`bool`, *optional*, defaults to False):
                 offload the transformer layers to cpu, which can save memory but slow down the generation
             use_input_image_size_as_output (bool, defaults to False):
-                whether to use the input image size as the output image size, which can be used for single-image input, e.g., image editing task
+                whether to use the input image size as the output image size, which can be used for single-image input,
+                e.g., image editing task
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -476,18 +477,20 @@ class OmniGenPipeline(
         # 3. process multi-modal instructions
         if max_input_image_size != self.multimodal_processor.max_image_size:
             self.multimodal_processor = OmniGenMultiModalProcessor(self.tokenizer, max_image_size=max_input_image_size)
-        processed_data = self.multimodal_processor(prompt,
-                                                   input_images,
-                                                   height=height,
-                                                   width=width,
-                                                   use_img_cfg=use_img_cfg,
-                                                   use_input_image_size_as_output=use_input_image_size_as_output)
-        processed_data['input_ids'] = processed_data['input_ids'].to(device)
-        processed_data['attention_mask'] = processed_data['attention_mask'].to(device)
-        processed_data['position_ids'] = processed_data['position_ids'].to(device)
+        processed_data = self.multimodal_processor(
+            prompt,
+            input_images,
+            height=height,
+            width=width,
+            use_img_cfg=use_img_cfg,
+            use_input_image_size_as_output=use_input_image_size_as_output,
+        )
+        processed_data["input_ids"] = processed_data["input_ids"].to(device)
+        processed_data["attention_mask"] = processed_data["attention_mask"].to(device)
+        processed_data["position_ids"] = processed_data["position_ids"].to(device)
 
         # 4. Encode input images
-        input_img_latents = self.encod_input_iamges(processed_data['input_pixel_values'], device=device)
+        input_img_latents = self.encod_input_iamges(processed_data["input_pixel_values"], device=device)
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1, 0, num_inference_steps + 1)[:num_inference_steps]
@@ -497,7 +500,7 @@ class OmniGenPipeline(
 
         # 6. Prepare latents.
         if use_input_image_size_as_output:
-            height, width = processed_data['input_pixel_values'][0].shape[-2:]
+            height, width = processed_data["input_pixel_values"][0].shape[-2:]
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -511,7 +514,7 @@ class OmniGenPipeline(
         )
 
         # 7. Prepare OmniGenCache
-        num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.transformer.patch_size ** 2)
+        num_tokens_for_output_img = latents.size(-1) * latents.size(-2) // (self.transformer.patch_size**2)
         cache = OmniGenCache(num_tokens_for_output_img, offload_kv_cache) if use_kv_cache else None
         self.transformer.llm.config.use_cache = use_kv_cache
 
@@ -527,27 +530,29 @@ class OmniGenPipeline(
                 noise_pred, cache = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
-                    input_ids=processed_data['input_ids'],
+                    input_ids=processed_data["input_ids"],
                     input_img_latents=input_img_latents,
-                    input_image_sizes=processed_data['input_image_sizes'],
-                    attention_mask=processed_data['attention_mask'],
-                    position_ids=processed_data['position_ids'],
+                    input_image_sizes=processed_data["input_image_sizes"],
+                    attention_mask=processed_data["attention_mask"],
+                    position_ids=processed_data["position_ids"],
                     attention_kwargs=attention_kwargs,
                     past_key_values=cache,
-                    offload_transformer_block=self.offload_transformer_block if hasattr(self,
-                                                                                        'offload_transformer_block') else offload_transformer_block,
+                    offload_transformer_block=self.offload_transformer_block
+                    if hasattr(self, "offload_transformer_block")
+                    else offload_transformer_block,
                     return_dict=False,
                 )
 
                 # if use kv cache, don't need attention mask and position ids of condition tokens for next step
                 if use_kv_cache:
-                    if processed_data['input_ids'] is not None:
-                        processed_data['input_ids'] = None
-                        processed_data['attention_mask'] = processed_data['attention_mask'][...,
-                                                           -(num_tokens_for_output_img + 1):,
-                                                           :]  # +1 is for the timestep token
-                        processed_data['position_ids'] = processed_data['position_ids'][:,
-                                                         -(num_tokens_for_output_img + 1):]
+                    if processed_data["input_ids"] is not None:
+                        processed_data["input_ids"] = None
+                        processed_data["attention_mask"] = processed_data["attention_mask"][
+                            ..., -(num_tokens_for_output_img + 1) :, :
+                        ]  # +1 is for the timestep token
+                        processed_data["position_ids"] = processed_data["position_ids"][
+                            :, -(num_tokens_for_output_img + 1) :
+                        ]
 
                 if num_cfg == 2:
                     cond, uncond, img_cond = torch.split(noise_pred, len(noise_pred) // 3, dim=0)

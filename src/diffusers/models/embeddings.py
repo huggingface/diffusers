@@ -349,19 +349,18 @@ class PatchEmbed(nn.Module):
         return (latent + pos_embed).to(latent.dtype)
 
 
-
 class OmniGenPatchEmbed(nn.Module):
     """2D Image to Patch Embedding with support for OmniGen."""
 
     def __init__(
         self,
-        patch_size: int =2,
-        in_channels: int =4,
-        embed_dim: int =768,
-        bias: bool =True,
-        interpolation_scale: float =1,
-        pos_embed_max_size: int =192,
-        base_size: int =64,
+        patch_size: int = 2,
+        in_channels: int = 4,
+        embed_dim: int = 768,
+        bias: bool = True,
+        interpolation_scale: float = 1,
+        pos_embed_max_size: int = 192,
+        base_size: int = 64,
     ):
         super().__init__()
 
@@ -412,16 +411,14 @@ class OmniGenPatchEmbed(nn.Module):
         latent = latent.flatten(2).transpose(1, 2)
         return latent
 
-    def forward(self,
-                latent: torch.Tensor,
-                is_input_image: bool,
-                padding_latent: torch.Tensor = None
-                ):
+    def forward(self, latent: torch.Tensor, is_input_image: bool, padding_latent: torch.Tensor = None):
         """
         Args:
             latent: encoded image latents
             is_input_image: use input_image_proj or output_image_proj
-            padding_latent: When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence length.
+            padding_latent:
+                When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence
+                length.
 
         Returns: torch.Tensor
 
@@ -1155,18 +1152,16 @@ class OmniGenTimestepEmbed(nn.Module):
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
         """
-        Create sinusoidal timestep embeddings.
-        :param t: a 1-D Tensor of N indices, one per batch element.
+        Create sinusoidal timestep embeddings. :param t: a 1-D Tensor of N indices, one per batch element.
                           These may be fractional.
-        :param dim: the dimension of the output.
-        :param max_period: controls the minimum frequency of the embeddings.
+        :param dim: the dimension of the output. :param max_period: controls the minimum frequency of the embeddings.
         :return: an (N, D) Tensor of positional embeddings.
         """
         # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
         half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half
-        ).to(device=t.device)
+        freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+            device=t.device
+        )
         args = t[:, None].float() * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if dim % 2:
@@ -1177,7 +1172,6 @@ class OmniGenTimestepEmbed(nn.Module):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size).to(dtype)
         t_emb = self.mlp(t_freq)
         return t_emb
-
 
 
 class GaussianFourierProjection(nn.Module):

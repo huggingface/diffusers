@@ -24,16 +24,18 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "guidance_scale",
         ]
     )
-    batch_params = frozenset(["prompt", ])
+    batch_params = frozenset(
+        [
+            "prompt",
+        ]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
 
         transformer_config = {
             "_name_or_path": "Phi-3-vision-128k-instruct",
-            "architectures": [
-                "Phi3ForCausalLM"
-            ],
+            "architectures": ["Phi3ForCausalLM"],
             "attention_dropout": 0.0,
             "bos_token_id": 1,
             "eos_token_id": 2,
@@ -97,7 +99,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
                     64.760009765625,
                     64.80001068115234,
                     64.81001281738281,
-                    64.81001281738281
+                    64.81001281738281,
                 ],
                 "short_factor": [
                     1.05,
@@ -147,9 +149,9 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
                     2.9499999999999975,
                     3.049999999999997,
                     3.049999999999997,
-                    3.049999999999997
+                    3.049999999999997,
                 ],
-                "type": "su"
+                "type": "su",
             },
             "rope_theta": 10000.0,
             "sliding_window": 131072,
@@ -158,7 +160,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             "transformers_version": "4.38.1",
             "use_cache": True,
             "vocab_size": 32064,
-            "_attn_implementation": "sdpa"
+            "_attn_implementation": "sdpa",
         }
         transformer = OmniGenTransformer2DModel(
             transformer_config=transformer_config,
@@ -166,7 +168,6 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             in_channels=4,
             pos_embed_max_size=192,
         )
-
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -177,7 +178,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
             layers_per_block=1,
             latent_channels=4,
             norm_num_groups=1,
-            up_block_types = ["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler()
@@ -220,8 +221,6 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         self.assertEqual(generated_image.shape, (16, 16, 3))
 
 
-
-
 @slow
 @require_torch_gpu
 class OmniGenPipelineSlowTests(unittest.TestCase):
@@ -262,16 +261,18 @@ class OmniGenPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, :10, :10]
 
         expected_slice = np.array(
-            [[0.25806782, 0.28012177, 0.27807158],
-            [0.25740036, 0.2677201,  0.26857468],
-            [0.258638,   0.27035138, 0.26633185],
-            [0.2541029,  0.2636156,  0.26373306],
-            [0.24975497, 0.2608987,  0.2617477 ],
-            [0.25102,    0.26192215, 0.262023  ],
-            [0.24452701, 0.25664824, 0.259144  ],
-            [0.2419573,  0.2574909,  0.25996095],
-            [0.23953134, 0.25292695, 0.25652167],
-            [0.23523712, 0.24710432, 0.25460982]],
+            [
+                [0.25806782, 0.28012177, 0.27807158],
+                [0.25740036, 0.2677201, 0.26857468],
+                [0.258638, 0.27035138, 0.26633185],
+                [0.2541029, 0.2636156, 0.26373306],
+                [0.24975497, 0.2608987, 0.2617477],
+                [0.25102, 0.26192215, 0.262023],
+                [0.24452701, 0.25664824, 0.259144],
+                [0.2419573, 0.2574909, 0.25996095],
+                [0.23953134, 0.25292695, 0.25652167],
+                [0.23523712, 0.24710432, 0.25460982],
+            ],
             dtype=np.float32,
         )
 

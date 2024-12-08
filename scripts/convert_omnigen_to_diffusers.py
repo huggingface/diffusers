@@ -14,14 +14,15 @@ def main(args):
 
     if not os.path.exists(args.origin_ckpt_path):
         print("Model not found, downloading...")
-        cache_folder = os.getenv('HF_HUB_CACHE')
-        args.origin_ckpt_path = snapshot_download(repo_id=args.origin_ckpt_path,
-                                                  cache_dir=cache_folder,
-                                                  ignore_patterns=['flax_model.msgpack', 'rust_model.ot', 'tf_model.h5',
-                                                                   'model.pt'])
+        cache_folder = os.getenv("HF_HUB_CACHE")
+        args.origin_ckpt_path = snapshot_download(
+            repo_id=args.origin_ckpt_path,
+            cache_dir=cache_folder,
+            ignore_patterns=["flax_model.msgpack", "rust_model.ot", "tf_model.h5", "model.pt"],
+        )
         print(f"Downloaded model to {args.origin_ckpt_path}")
 
-    ckpt = os.path.join(args.origin_ckpt_path, 'model.safetensors')
+    ckpt = os.path.join(args.origin_ckpt_path, "model.safetensors")
     ckpt = load_file(ckpt, device="cpu")
 
     mapping_dict = {
@@ -34,7 +35,6 @@ def main(args):
         "final_layer.adaLN_modulation.1.bias": "norm_out.linear.bias",
         "final_layer.linear.weight": "proj_out.weight",
         "final_layer.linear.bias": "proj_out.bias",
-
     }
 
     converted_state_dict = {}
@@ -50,9 +50,7 @@ def main(args):
 
     transformer_config = {
         "_name_or_path": "Phi-3-vision-128k-instruct",
-        "architectures": [
-            "Phi3ForCausalLM"
-        ],
+        "architectures": ["Phi3ForCausalLM"],
         "attention_dropout": 0.0,
         "bos_token_id": 1,
         "eos_token_id": 2,
@@ -116,7 +114,7 @@ def main(args):
                 64.760009765625,
                 64.80001068115234,
                 64.81001281738281,
-                64.81001281738281
+                64.81001281738281,
             ],
             "short_factor": [
                 1.05,
@@ -166,9 +164,9 @@ def main(args):
                 2.9499999999999975,
                 3.049999999999997,
                 3.049999999999997,
-                3.049999999999997
+                3.049999999999997,
             ],
-            "type": "su"
+            "type": "su",
         },
         "rope_theta": 10000.0,
         "sliding_window": 131072,
@@ -177,7 +175,7 @@ def main(args):
         "transformers_version": "4.38.1",
         "use_cache": True,
         "vocab_size": 32064,
-        "_attn_implementation": "sdpa"
+        "_attn_implementation": "sdpa",
     }
     transformer = OmniGenTransformer2DModel(
         transformer_config=transformer_config,
@@ -197,9 +195,7 @@ def main(args):
 
     tokenizer = AutoTokenizer.from_pretrained(args.origin_ckpt_path)
 
-    pipeline = OmniGenPipeline(
-        tokenizer=tokenizer, transformer=transformer, vae=vae, scheduler=scheduler
-    )
+    pipeline = OmniGenPipeline(tokenizer=tokenizer, transformer=transformer, vae=vae, scheduler=scheduler)
     pipeline.save_pretrained(args.dump_path)
 
 
@@ -207,12 +203,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--origin_ckpt_path", default="Shitao/OmniGen-v1", type=str, required=False,
-        help="Path to the checkpoint to convert."
+        "--origin_ckpt_path",
+        default="Shitao/OmniGen-v1",
+        type=str,
+        required=False,
+        help="Path to the checkpoint to convert.",
     )
 
-    parser.add_argument("--dump_path", default="OmniGen-v1-diffusers", type=str, required=False,
-                        help="Path to the output pipeline.")
+    parser.add_argument(
+        "--dump_path", default="OmniGen-v1-diffusers", type=str, required=False, help="Path to the output pipeline."
+    )
 
     args = parser.parse_args()
     main(args)
