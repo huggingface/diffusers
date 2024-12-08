@@ -49,13 +49,13 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import OmniGenPipeline
 
-        >>> pipe = OmniGenPipeline.from_pretrained("****", torch_dtype=torch.bfloat16)
+        >>> pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1-diffusers", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
-        >>> image.save("flux.png")
+        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=2.5).images[0]
+        >>> image.save("t2i.png")
         ```
 """
 

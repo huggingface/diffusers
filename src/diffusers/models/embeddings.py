@@ -358,8 +358,8 @@ class OmniGenPatchEmbed(nn.Module):
                 ):
         """
         Args:
-            latent:
-            is_input_image:
+            latent: encoded image latents
+            is_input_image: use input_image_proj or output_image_proj
             padding_latent: When sizes of target images are inconsistent, use `padding_latent` to maintain consistent sequence length.
 
         Returns: torch.Tensor
