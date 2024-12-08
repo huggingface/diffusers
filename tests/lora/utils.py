@@ -1928,8 +1928,8 @@ class PeftLoraLoaderMixinTests:
             lora_scale = 0.5
             attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
             output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-            self.assertTrue(
-                not np.allclose(output_no_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+            self.assertFalse(
+                np.allclose(output_no_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
                 "Lora + scale should change the output",
             )
 
