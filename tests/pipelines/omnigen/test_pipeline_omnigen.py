@@ -3,9 +3,9 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, GemmaConfig, GemmaForCausalLM
+from transformers import AutoTokenizer
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenTransformer2DModel, OmniGenPipeline
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenPipeline, OmniGenTransformer2DModel
 from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_gpu,

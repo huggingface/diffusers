@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers.cache_utils import DynamicCache
@@ -61,7 +61,6 @@ class OmniGenCache(DynamicCache):
                 torch.cuda.current_stream().synchronize()
                 self.evict_previous_layer(layer_idx)
                 # Load current layer cache to its original device if not already there
-                original_device = self.original_device[layer_idx]
                 # self.prefetch_stream.synchronize(original_device)
                 torch.cuda.synchronize(self.prefetch_stream)
                 key_tensor = self.key_cache[layer_idx]

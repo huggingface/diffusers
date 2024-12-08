@@ -90,7 +90,7 @@ class OmniGenMultiModalProcessor:
         image_tags = re.findall(pattern, text)
         image_ids = [int(s.split("|")[1].split("_")[-1]) for s in image_tags]
 
-        unique_image_ids = sorted(list(set(image_ids)))
+        unique_image_ids = sorted(set(image_ids))
         assert unique_image_ids == list(range(1,
                                               len(unique_image_ids) + 1)), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
         # total images must be the same as the number of image tags
@@ -101,7 +101,6 @@ class OmniGenMultiModalProcessor:
 
         all_input_ids = []
         img_inx = []
-        idx = 0
         for i in range(len(prompt_chunks)):
             all_input_ids.extend(prompt_chunks[i])
             if i != len(prompt_chunks) - 1:
@@ -176,8 +175,7 @@ class OmniGenCollator:
         img_length = max(num_tokens_for_output_images)
         for mask in attention_mask:
             temp_l = torch.sum(mask)
-            temp_position = [0] * (text_length - temp_l) + [i for i in range(
-                temp_l + img_length + 1)]  # we add a time embedding into the sequence, so add one more token
+            temp_position = [0] * (text_length - temp_l) + list(range(temp_l + img_length + 1))  # we add a time embedding into the sequence, so add one more token
             position_ids.append(temp_position)
         return torch.LongTensor(position_ids)
 

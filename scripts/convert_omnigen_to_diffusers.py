@@ -6,7 +6,7 @@ from huggingface_hub import snapshot_download
 from safetensors.torch import load_file
 from transformers import AutoTokenizer
 
-from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenTransformer2DModel, OmniGenPipeline
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenPipeline, OmniGenTransformer2DModel
 
 
 def main(args):

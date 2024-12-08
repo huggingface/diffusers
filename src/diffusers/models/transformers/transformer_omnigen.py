@@ -13,12 +13,12 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers import Phi3Model, Phi3Config
+from transformers import Phi3Config, Phi3Model
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
@@ -120,7 +120,7 @@ class OmniGenBaseTransformer(Phi3Model):
                 )
                 use_cache = False
 
-        # kept for BC (non `Cache` `past_key_values` inputs) 
+        # kept for BC (non `Cache` `past_key_values` inputs)
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):
             return_legacy_cache = True

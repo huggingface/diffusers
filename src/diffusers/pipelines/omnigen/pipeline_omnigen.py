@@ -15,8 +15,8 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
 import numpy as np
+import PIL
 import torch
 from transformers import LlamaTokenizer
 
@@ -34,6 +34,7 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .kvcache_omnigen import OmniGenCache
 from .processor_omnigen import OmniGenMultiModalProcessor
+
 
 if is_torch_xla_available():
 
@@ -228,7 +229,7 @@ class OmniGenPipeline(
         if use_kv_cache and offload_kv_cache:
             if not torch.cuda.is_available():
                 raise ValueError(
-                    f"Don't fine avaliable GPUs. `offload_kv_cache` can't be used when there is no GPU. please set it to False: `use_kv_cache=False, offload_kv_cache=False`"
+                    "Don't fine avaliable GPUs. `offload_kv_cache` can't be used when there is no GPU. please set it to False: `use_kv_cache=False, offload_kv_cache=False`"
                 )
 
         if callback_on_step_end_tensor_inputs is not None and not all(

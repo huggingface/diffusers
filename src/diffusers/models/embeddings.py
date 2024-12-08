@@ -429,7 +429,7 @@ class OmniGenPatchEmbed(nn.Module):
         if isinstance(latent, list):
             if padding_latent is None:
                 padding_latent = [None] * len(latent)
-            patched_latents, num_tokens, shapes = [], [], []
+            patched_latents = []
             for sub_latent, padding in zip(latent, padding_latent):
                 height, width = sub_latent.shape[-2:]
                 sub_latent = self.patch_embeddings(sub_latent, is_input_image)
