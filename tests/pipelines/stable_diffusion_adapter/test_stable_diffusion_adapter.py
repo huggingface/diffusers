@@ -593,6 +593,18 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
 
+    @unittest.skip("Test not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_to_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        pass
+
 
 @slow
 @require_torch_gpu
