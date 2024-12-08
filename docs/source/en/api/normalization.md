@@ -41,3 +41,28 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 ## GlobalResponseNorm
 
 [[autodoc]] models.normalization.GlobalResponseNorm
+
+
+## LuminaLayerNormContinuous
+[[autodoc]] models.normalization.LuminaLayerNormContinuous
+
+## SD35AdaLayerNormZeroX
+[[autodoc]] models.normalization.SD35AdaLayerNormZeroX
+
+## AdaLayerNormZeroSingle
+[[autodoc]] models.normalization.AdaLayerNormZeroSingle
+
+## LuminaRMSNormZero
+[[autodoc]] models.normalization.LuminaRMSNormZero
+
+## LpNorm
+[[autodoc]] models.normalization.LpNorm
+
+## CogView3PlusAdaLayerNormZeroTextImage
+[[autodoc]] models.normalization.CogView3PlusAdaLayerNormZeroTextImage
+
+## CogVideoXLayerNormZero
+[[autodoc]] models.normalization.CogVideoXLayerNormZero
+
+## MochiRMSNormZero
+[[autodoc]] models.normalization.MochiRMSNormZero

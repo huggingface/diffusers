@@ -25,3 +25,12 @@ Customized activation functions for supporting various models in 🤗 Diffusers.
 ## ApproximateGELU
 
 [[autodoc]] models.activations.ApproximateGELU
+
+
+## SwiGLU
+
+[[autodoc]] models.activations.SwiGLU
+
+## FP32SiLU
+
+[[autodoc]] models.activations.FP32SiLU

@@ -41,11 +41,15 @@ def check_attention_processors():
         processor_classes = re.findall(r"class\s+(\w+Processor(?:\d*_?\d*))[(:]", doctext)
         processor_classes = [proc for proc in processor_classes if "LoRA" not in proc and proc != "Attention"]
 
+    undocumented_attn_processors = set()
     for processor in processor_classes:
         if processor not in documented_attention_processors:
-            raise ValueError(
-                f"{processor} should be in listed in the attention processor documentation but is not. Please update the documentation."
-            )
+            undocumented_attn_processors.add(processor)
+
+    if undocumented_attn_processors:
+        raise ValueError(
+            f"The following attention processors should be in listed in the attention processor documentation but are not: {list(undocumented_attn_processors)}. Please update the documentation."
+        )
 
 
 def check_image_processors():
@@ -58,10 +62,12 @@ def check_image_processors():
         doctext = f.read()
         processor_classes = re.findall(r"class\s+(\w+Processor(?:\d*_?\d*))[(:]", doctext)
 
+    undocumented_img_processors = set()
     for processor in processor_classes:
         if processor not in documented_image_processors:
+            undocumented_img_processors.add(processor)
             raise ValueError(
-                f"{processor} should be in listed in the image processor documentation but is not. Please update the documentation."
+                f"The following image processors should be in listed in the image processor documentation but are not: {list(undocumented_img_processors)}. Please update the documentation."
             )
 
 
@@ -75,11 +81,15 @@ def check_activations():
         doctext = f.read()
         activation_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
 
+    undocumented_activations = set()
     for activation in activation_classes:
         if activation not in documented_activations:
-            raise ValueError(
-                f"{activation} should be in listed in the activations documentation but is not. Please update the documentation."
-            )
+            undocumented_activations.add(activation)
+
+    if undocumented_activations:
+        raise ValueError(
+            f"The following activations should be in listed in the activations documentation but are not: {list(undocumented_activations)}. Please update the documentation."
+        )
 
 
 def check_normalizations():
@@ -94,11 +104,15 @@ def check_normalizations():
         # LayerNorm is an exception because adding doc for is confusing.
         normalization_classes = [norm for norm in normalization_classes if norm != "LayerNorm"]
 
+    undocumented_norms = set()
     for norm in normalization_classes:
         if norm not in documented_normalizations:
-            raise ValueError(
-                f"{norm} should be in listed in the normalizations documentation but is not. Please update the documentation."
-            )
+            undocumented_norms.add(norm)
+
+    if undocumented_norms:
+        raise ValueError(
+            f"The following norms should be in listed in the normalizations documentation but are not: {list(undocumented_norms)}. Please update the documentation."
+        )
 
 
 if __name__ == "__main__":

@@ -67,3 +67,76 @@ An attention processor is a class for applying different types of attention mech
 
 ## JointAttnProcessor2_0
 [[autodoc]] models.attention_processor.JointAttnProcessor2_0
+
+## JointAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGJointAttnProcessor2_0
+
+## PAGCFGJointAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGCFGJointAttnProcessor2_0
+
+
+## FusedJointAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedJointAttnProcessor2_0
+
+## AllegroAttnProcessor2_0
+[[autodoc]] models.attention_processor.AllegroAttnProcessor2_0
+
+## AuraFlowAttnProcessor2_0
+[[autodoc]] models.attention_processor.AuraFlowAttnProcessor2_0
+
+## MochiVaeAttnProcessor2_0
+[[autodoc]] models.attention_processor.MochiVaeAttnProcessor2_0
+
+## PAGCFGIdentitySelfAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGCFGIdentitySelfAttnProcessor2_0
+
+## FusedAuraFlowAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedAuraFlowAttnProcessor2_0
+
+## FusedFluxAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedFluxAttnProcessor2_0
+
+## SanaMultiscaleAttnProcessor2_0
+[[autodoc]] models.attention_processor.SanaMultiscaleAttnProcessor2_0
+
+## PAGHunyuanAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGHunyuanAttnProcessor2_0
+
+## HunyuanAttnProcessor2_0
+[[autodoc]] models.attention_processor.HunyuanAttnProcessor2_0
+
+## FluxAttnProcessor2_0
+[[autodoc]] models.attention_processor.FluxAttnProcessor2_0
+
+## PAGIdentitySelfAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGIdentitySelfAttnProcessor2_0
+
+## FusedCogVideoXAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedCogVideoXAttnProcessor2_0
+
+## MochiAttnProcessor2_0
+[[autodoc]] models.attention_processor.MochiAttnProcessor2_0
+
+## StableAudioAttnProcessor2_0
+[[autodoc]] models.attention_processor.StableAudioAttnProcessor2_0
+
+## XLAFlashAttnProcessor2_0
+[[autodoc]] models.attention_processor.XLAFlashAttnProcessor2_0
+
+## FusedHunyuanAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedHunyuanAttnProcessor2_0
+
+## IPAdapterXFormersAttnProcessor
+[[autodoc]] models.attention_processor.IPAdapterXFormersAttnProcessor
+
+## LuminaAttnProcessor2_0
+[[autodoc]] models.attention_processor.LuminaAttnProcessor2_0
+
+## PAGCFGHunyuanAttnProcessor2_0
+[[autodoc]] models.attention_processor.PAGCFGHunyuanAttnProcessor2_0
+
+## FluxSingleAttnProcessor2_0
+[[autodoc]] models.attention_processor.FluxSingleAttnProcessor2_0
+
+## CogVideoXAttnProcessor2_0
+[[autodoc]] models.attention_processor.CogVideoXAttnProcessor2_0
