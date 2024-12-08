@@ -175,6 +175,7 @@ else:
             "StableDiffusionPAGPipeline",
             "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGImg2ImgPipeline",
