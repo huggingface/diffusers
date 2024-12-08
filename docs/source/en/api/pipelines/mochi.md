@@ -27,7 +27,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
 
 ## Generating videos with Mochi-1 Preview
 
-The following example will download the full precision `mochi-1-preview` weights and produce the highest quality results but will require at least 42GB VRAM to run.   
+The following example will download the full precision `mochi-1-preview` weights and produce the highest quality results but will require at least 42GB VRAM to run.
 
 ```python
 import torch
@@ -43,7 +43,7 @@ pipe.enable_vae_tiling()
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 
 with torch.autocast("cuda", torch.bfloat16, cache_enabled=False):
-      frames = pipe(prompt, num_frames=84).frames[0]
+      frames = pipe(prompt, num_frames=85).frames[0]
 
 export_to_video(frames, "mochi.mp4", fps=30)
 ```
@@ -64,9 +64,75 @@ pipe.enable_model_cpu_offload()
 pipe.enable_vae_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
-frames = pipe(prompt, num_frames=84).frames[0]
+frames = pipe(prompt, num_frames=85).frames[0]
 
 export_to_video(frames, "mochi.mp4", fps=30)
+```
+
+## Reproducing the results from the Genmo Mochi repo
+
+The [Genmo Mochi implementation](https://github.com/genmoai/mochi/tree/main) uses different precision values for each stage in the inference process. The text encoder and VAE use `torch.float32`, while the DiT uses `torch.bfloat16` with the [attention kernel](https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html#torch.nn.attention.sdpa_kernel) set to `EFFICIENT_ATTENTION`. Diffusers pipelines currently do not support setting different `dtypes` for different stages of the pipeline. In order to run inference in the same way as the the original implementation, please refer to the following example.
+
+<Tip>
+Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames
+in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`
+</Tip>
+
+```python
+import torch
+from torch.nn.attention import SDPBackend, sdpa_kernel
+
+from diffusers import MochiPipeline
+from diffusers.utils import export_to_video
+from diffusers.video_processor import VideoProcessor
+
+pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
+pipe.enable_vae_tiling()
+pipe.enable_model_cpu_offload()
+
+prompt =  "An aerial shot of a parade of elephants walking across the African savannah. The camera showcases the herd and the surrounding landscape."
+
+with torch.no_grad():
+    prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
+        pipe.encode_prompt(prompt=prompt)
+    )
+
+with torch.autocast("cuda", torch.bfloat16):
+    with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+        frames = pipe(
+            prompt_embeds=prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            guidance_scale=4.5,
+            num_inference_steps=64,
+            height=480,
+            width=848,
+            num_frames=163,
+            generator=torch.Generator("cuda").manual_seed(0),
+            output_type="latent",
+            return_dict=False,
+        )[0]
+
+video_processor = VideoProcessor(vae_scale_factor=8)
+has_latents_mean = hasattr(pipe.vae.config, "latents_mean") and pipe.vae.config.latents_mean is not None
+has_latents_std = hasattr(pipe.vae.config, "latents_std") and pipe.vae.config.latents_std is not None
+if has_latents_mean and has_latents_std:
+    latents_mean = (
+        torch.tensor(pipe.vae.config.latents_mean).view(1, 12, 1, 1, 1).to(frames.device, frames.dtype)
+    )
+    latents_std = (
+        torch.tensor(pipe.vae.config.latents_std).view(1, 12, 1, 1, 1).to(frames.device, frames.dtype)
+    )
+    frames = frames * latents_std / pipe.vae.config.scaling_factor + latents_mean
+else:
+    frames = frames / pipe.vae.config.scaling_factor
+
+with torch.no_grad():
+    video = pipe.vae.decode(frames.to(pipe.vae.dtype), return_dict=False)[0]
+
+video = video_processor.postprocess_video(video)[0]
+export_to_video(video, "mochi.mp4", fps=30)
 ```
 
 ## MochiPipeline
