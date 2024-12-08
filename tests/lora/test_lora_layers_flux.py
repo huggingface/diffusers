@@ -34,7 +34,6 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_peft_version_greater,
@@ -612,7 +611,9 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
 
     @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
     def test_lora(self, lora_ckpt_id):
-        self.pipe.load_lora_weights(lora_ckpt_id)
+        self.pipeline.load_lora_weights(lora_ckpt_id)
+        self.pipeline.fuse_lora()
+        self.pipeline.unload_lora_weights()
 
         if "Canny" in lora_ckpt_id:
             control_image = load_image(
@@ -623,18 +624,23 @@ class FluxControlLoRAIntegrationTests(unittest.TestCase):
                 "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
             )
 
-        image = self.pipe(
+        image = self.pipeline(
             prompt=self.prompt,
             control_image=control_image,
             height=1024,
             width=1024,
-            num_inference_steps=50,
+            num_inference_steps=self.num_inference_steps,
             guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
             output_type="np",
             generator=torch.manual_seed(self.seed),
         ).images
 
         out_slice = image[0, -3:, -3:, -1].flatten()
-        print_tensor_test(out_slice)
+        if "Canny" in lora_ckpt_id:
+            expected_slice = np.array([0.8438, 0.8438, 0.8438, 0.8438, 0.8438, 0.8398, 0.8438, 0.8438, 0.8516])
+        else:
+            expected_slice = np.array([0.8203, 0.8320, 0.8359, 0.8203, 0.8281, 0.8281, 0.8203, 0.8242, 0.8359])
 
-        assert out_slice is None
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
+
+        assert max_diff < 1e-3
