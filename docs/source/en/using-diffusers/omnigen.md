@@ -320,9 +320,10 @@ Here are some guidelines to help you reduce computational costs when input multi
   - With enabling cpu offloading, memory usage is `28 GB`
 
 - `offload_transformer_block=True`:
-  - 17G
+  - offload transformer block to reduce memory usage
+  - When enabled, memory usage is under `25 GB`
 
 - `pipe.enable_sequential_cpu_offload()`:
-  - 11G
-
+  - significantly reduce memory usage at the cost of slow inference
+  - When enabled, memory usage is under `11 GB`
 

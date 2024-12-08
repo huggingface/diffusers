@@ -1,20 +1,32 @@
-from tqdm import tqdm
+# Copyright 2024 OmniGen team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Optional, Dict, Any, Tuple, List
-import gc
 
 import torch
-from transformers.cache_utils import Cache, DynamicCache, OffloadedCache
-
+from transformers.cache_utils import DynamicCache
 
 
 class OmniGenCache(DynamicCache):
-    def __init__(self, 
-                num_tokens_for_img: int, 
-                offload_kv_cache: bool=False) -> None:
+    def __init__(self,
+                 num_tokens_for_img: int,
+                 offload_kv_cache: bool = False) -> None:
         if not torch.cuda.is_available():
             # print("No avaliable GPU, offload_kv_cache wiil be set to False, which will result in large memory usage and time cost when input multiple images!!!")
             # offload_kv_cache = False
-            raise RuntimeError("OffloadedCache can only be used with a GPU. If there is no GPU, you need to set use_kv_cache=False, which will result in longer inference time!")
+            raise RuntimeError(
+                "OffloadedCache can only be used with a GPU. If there is no GPU, you need to set use_kv_cache=False, which will result in longer inference time!")
         super().__init__()
         self.original_device = []
         self.prefetch_stream = torch.cuda.Stream()
@@ -30,18 +42,16 @@ class OmniGenCache(DynamicCache):
                 self.key_cache[layer_idx] = self.key_cache[layer_idx].to(device, non_blocking=True)
                 self.value_cache[layer_idx] = self.value_cache[layer_idx].to(device, non_blocking=True)
 
-    
     def evict_previous_layer(self, layer_idx: int):
         "Moves the previous layer cache to the CPU"
         if len(self) > 2:
             # We do it on the default stream so it occurs after all earlier computations on these tensors are done
-            if layer_idx == 0: 
+            if layer_idx == 0:
                 prev_layer_idx = -1
             else:
                 prev_layer_idx = (layer_idx - 1) % len(self)
             self.key_cache[prev_layer_idx] = self.key_cache[prev_layer_idx].to("cpu", non_blocking=True)
             self.value_cache[prev_layer_idx] = self.value_cache[prev_layer_idx].to("cpu", non_blocking=True)
-
 
     def __getitem__(self, layer_idx: int) -> List[Tuple[torch.Tensor]]:
         "Gets the cache for this layer to the device. Prefetches the next and evicts the previous layer."
@@ -56,7 +66,7 @@ class OmniGenCache(DynamicCache):
                 torch.cuda.synchronize(self.prefetch_stream)
                 key_tensor = self.key_cache[layer_idx]
                 value_tensor = self.value_cache[layer_idx]
-                
+
                 # Prefetch the next layer
                 self.prefetch_layer((layer_idx + 1) % len(self))
             else:
@@ -65,13 +75,13 @@ class OmniGenCache(DynamicCache):
             return (key_tensor, value_tensor)
         else:
             raise KeyError(f"Cache only has {len(self)} layers, attempted to access layer with index {layer_idx}")
-        
+
     def update(
-        self,
-        key_states: torch.Tensor, 
-        value_states: torch.Tensor,
-        layer_idx: int,
-        cache_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            key_states: torch.Tensor,
+            value_states: torch.Tensor,
+            layer_idx: int,
+            cache_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Updates the cache with the new `key_states` and `value_states` for the layer `layer_idx`.
@@ -92,13 +102,13 @@ class OmniGenCache(DynamicCache):
             raise ValueError("OffloadedCache does not support model usage where layers are skipped. Use DynamicCache.")
         elif len(self.key_cache) == layer_idx:
             # only cache the states for condition tokens
-            key_states = key_states[..., :-(self.num_tokens_for_img+1), :]
-            value_states = value_states[..., :-(self.num_tokens_for_img+1), :]
+            key_states = key_states[..., :-(self.num_tokens_for_img + 1), :]
+            value_states = value_states[..., :-(self.num_tokens_for_img + 1), :]
 
-             # Update the number of seen tokens
+            # Update the number of seen tokens
             if layer_idx == 0:
                 self._seen_tokens += key_states.shape[-2]
-                
+
             self.key_cache.append(key_states)
             self.value_cache.append(value_states)
             self.original_device.append(key_states.device)

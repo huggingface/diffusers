@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union, List
 
-from dataclasses import dataclass
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers.cache_utils import DynamicCache
 from transformers import Phi3Model, Phi3Config
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast
@@ -34,7 +33,6 @@ from ..normalization import AdaLayerNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 
 @dataclass
@@ -74,7 +72,7 @@ class OmniGenBaseTransformer(Phi3Model):
         prev_layer_idx = layer_idx - 1
         for name, param in self.layers[prev_layer_idx].named_parameters():
             param.data = param.data.to("cpu", non_blocking=True)
-            
+
     def get_offload_layer(self, layer_idx: int, device: torch.device):
         # init stream
         if not hasattr(self, "prefetch_stream"):
@@ -83,7 +81,7 @@ class OmniGenBaseTransformer(Phi3Model):
         # delete previous layer
         torch.cuda.current_stream().synchronize()
         self.evict_previous_layer(layer_idx)
-        
+
         # make sure the current layer is ready
         torch.cuda.synchronize(self.prefetch_stream)
 
@@ -273,7 +271,6 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         imgs = x.reshape(shape=(x.shape[0], c, h, w))
         return imgs
 
-
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
@@ -337,12 +334,12 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
-    
-    def get_multimodal_embeddings(self, 
-                                input_ids: torch.Tensor,
-                                input_img_latents: List[torch.Tensor],
-                                input_image_sizes: Dict,
-                                ):
+
+    def get_multimodal_embeddings(self,
+                                  input_ids: torch.Tensor,
+                                  input_img_latents: List[torch.Tensor],
+                                  input_image_sizes: Dict,
+                                  ):
         """
         get the multi-modal conditional embeddings
         Args:
@@ -353,7 +350,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         Returns: torch.Tensor
 
         """
-        input_img_latents = [x.to(self.dtype) for x in input_img_latents] 
+        input_img_latents = [x.to(self.dtype) for x in input_img_latents]
         condition_tokens = None
         if input_ids is not None:
             condition_tokens = self.llm.embed_tokens(input_ids)
@@ -384,6 +381,41 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 attention_kwargs: Optional[Dict[str, Any]] = None,
                 return_dict: bool = True,
                 ):
+        """
+        The [`OmniGenTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            input_ids (`torch.LongTensor`):
+                token ids
+            input_img_latents (`torch.FloatTensor`):
+                encoded image latents by VAE
+            input_image_sizes (`dict`):
+                the indices of the input_img_latents in the input_ids
+            attention_mask (`torch.FloatTensor`):
+                mask for self-attention
+            position_ids (`torch.LongTensor`):
+                id to represent position
+            past_key_values (`transformers.cache_utils.Cache`):
+                previous key and value states
+            offload_transformer_block (`bool`, *optional*, defaults to `True`):
+                offload transformer block to cpu
+            attention_kwargs: (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`OmniGen2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`OmniGen2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+
+        """
 
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
