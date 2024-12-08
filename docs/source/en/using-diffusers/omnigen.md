@@ -274,6 +274,7 @@ image = pipe(
     guidance_scale=2.5, 
     img_guidance_scale=1.6,
     generator=torch.Generator(device="cpu").manual_seed(666)).images[0]
+image
 ```
 
 <div class="flex flex-row gap-4">

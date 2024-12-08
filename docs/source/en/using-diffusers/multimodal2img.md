@@ -16,7 +16,9 @@ specific language governing permissions and limitations under the License.
 
 
 
-Multimodal instructions mean you can input any sequence of mixed text and images to guide image generation. You can input multiple images and use prompts to describe the desired output. This approach is more flexible than using only text or images.
+Multimodal instructions mean you can input arbitrarily interleaved text and image inputs as conditions to guide image generation.
+You can input multiple images and use prompts to describe the desired output. 
+This approach is more flexible than using only text or images.
 
 ## Examples
 
