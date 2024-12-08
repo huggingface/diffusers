@@ -36,7 +36,9 @@ extra intermediate steps, greatly simplifying the image generation workflow. 3) 
 learning in a unified format, OmniGen effectively transfers
 knowledge across different tasks, manages unseen tasks and
 domains, and exhibits novel capabilities. We also explore
-the model’s reasoning capabilities and potential applications of the chain-of-thought mechanism. This work represents the first attempt at a general-purpose image generation model, and we will release our resources at https:
+the model’s reasoning capabilities and potential applications of the chain-of-thought mechanism. 
+This work represents the first attempt at a general-purpose image generation model, 
+and we will release our resources at https:
 //github.com/VectorSpaceLab/OmniGen to foster future advancements.*
 
 <Tip>
