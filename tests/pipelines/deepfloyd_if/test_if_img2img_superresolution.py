@@ -22,7 +22,15 @@ import torch
 from diffusers import IFImg2ImgSuperResolutionPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    load_numpy,
+    require_accelerator,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -72,7 +80,8 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self):
         # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
         super().test_save_load_float16(expected_max_diff=1e-1)

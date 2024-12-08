@@ -1648,11 +1648,15 @@ def main(args):
                             prompt=prompts,
                         )
                 else:
+                    elems_to_repeat = len(prompts)
                     if args.train_text_encoder:
                         prompt_embeds, pooled_prompt_embeds, text_ids = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two],
                             tokenizers=[None, None],
-                            text_input_ids_list=[tokens_one, tokens_two],
+                            text_input_ids_list=[
+                                tokens_one.repeat(elems_to_repeat, 1),
+                                tokens_two.repeat(elems_to_repeat, 1),
+                            ],
                             max_sequence_length=args.max_sequence_length,
                             device=accelerator.device,
                             prompt=args.instance_prompt,
@@ -1844,6 +1848,9 @@ def main(args):
                     del text_encoder_one, text_encoder_two
                     free_memory()
 
+                images = None
+                del pipeline
+
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1907,6 +1914,9 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+        images = None
+        del pipeline
 
     accelerator.end_training()
 

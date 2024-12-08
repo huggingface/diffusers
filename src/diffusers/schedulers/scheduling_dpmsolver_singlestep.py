@@ -264,6 +264,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 orders = [1, 2] * (steps // 2)
             elif order == 1:
                 orders = [1] * steps
+
+        if self.config.final_sigmas_type == "zero":
+            orders[-1] = 1
+
         return orders
 
     @property
@@ -339,16 +343,18 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        log_sigmas = np.log(sigmas)
         if self.config.use_karras_sigmas:
-            log_sigmas = np.log(sigmas)
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
         elif self.config.use_exponential_sigmas:
-            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            sigmas = np.flip(sigmas).copy()
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         elif self.config.use_beta_sigmas:
-            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
+            sigmas = np.flip(sigmas).copy()
+            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
@@ -498,7 +504,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
         sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
-        sigmas = torch.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps).exp()
+        sigmas = np.exp(np.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps))
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
@@ -522,7 +528,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
         sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
-        sigmas = torch.Tensor(
+        sigmas = np.array(
             [
                 sigma_min + (ppf * (sigma_max - sigma_min))
                 for ppf in [
@@ -810,6 +816,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         model_output_list: List[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
+        noise: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -907,6 +914,23 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                     - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                     - (sigma_t * ((torch.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
                 )
+        elif self.config.algorithm_type == "sde-dpmsolver++":
+            assert noise is not None
+            if self.config.solver_type == "midpoint":
+                x_t = (
+                    (sigma_t / sigma_s2 * torch.exp(-h)) * sample
+                    + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1_1
+                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+                )
+            elif self.config.solver_type == "heun":
+                x_t = (
+                    (sigma_t / sigma_s2 * torch.exp(-h)) * sample
+                    + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
+                    + (alpha_t * ((1.0 - torch.exp(-2.0 * h) + (-2.0 * h)) / (-2.0 * h) ** 2 - 0.5)) * D2
+                    + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
+                )
         return x_t
 
     def singlestep_dpm_solver_update(
@@ -968,7 +992,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         elif order == 2:
             return self.singlestep_dpm_solver_second_order_update(model_output_list, sample=sample, noise=noise)
         elif order == 3:
-            return self.singlestep_dpm_solver_third_order_update(model_output_list, sample=sample)
+            return self.singlestep_dpm_solver_third_order_update(model_output_list, sample=sample, noise=noise)
         else:
             raise ValueError(f"Order must be 1, 2, 3, got {order}")
 

@@ -183,7 +183,7 @@ Add the transformer model to the pipeline for denoising, but set the other model
 
 ```py
 pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", ,
+    "black-forest-labs/FLUX.1-dev",
     text_encoder=None,
     text_encoder_2=None,
     tokenizer=None,

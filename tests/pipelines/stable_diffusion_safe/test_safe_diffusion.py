@@ -24,7 +24,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
-from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import floats_tensor, nightly, require_accelerator, require_torch_gpu, torch_device
 
 
 class SafeDiffusionPipelineFastTests(unittest.TestCase):
@@ -228,7 +228,7 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    @require_accelerator
     def test_stable_diffusion_fp16(self):
         """Test that stable diffusion works with fp16"""
         unet = self.dummy_cond_unet

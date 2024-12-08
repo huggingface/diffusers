@@ -18,13 +18,15 @@ from diffusers import (
     StableVideoDiffusionPipeline,
     UNetSpatioTemporalConditionModel,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version, load_image, logging
+from diffusers.utils import load_image, logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
+    require_accelerator,
     require_torch_gpu,
     slow,
     torch_device,
@@ -250,7 +252,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -366,7 +369,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -381,14 +384,14 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         output_cpu = pipe(**self.get_dummy_inputs("cpu")).frames[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda")).frames[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device)).frames[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()
@@ -402,10 +405,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
-    )
+    @require_accelerator
+    @require_accelerate_version_greater("0.14.0")
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -419,7 +420,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs).frames[0]
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs).frames[0]
@@ -427,10 +428,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
+    @require_accelerator
+    @require_accelerate_version_greater("0.17.0")
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         generator_device = "cpu"
         components = self.get_dummy_components()
@@ -446,7 +445,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs).frames[0]
 
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs).frames[0]
 

@@ -323,7 +323,7 @@ class DownBlockMotion(nn.Module):
 
         blocks = zip(self.resnets, self.motion_modules)
         for resnet, motion_module in blocks:
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -513,7 +513,7 @@ class CrossAttnDownBlockMotion(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
         for i, (resnet, attn, motion_module) in enumerate(blocks):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -732,7 +732,7 @@ class CrossAttnUpBlockMotion(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -895,7 +895,7 @@ class UpBlockMotion(nn.Module):
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1079,7 +1079,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 return_dict=False,
             )[0]
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
