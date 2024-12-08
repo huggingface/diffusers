@@ -18,10 +18,11 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 import safetensors.torch
 
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, FluxTransformer2DModel, SD3Transformer2DModel
-from diffusers.utils import logging
+from diffusers.utils import is_accelerate_version, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     is_bitsandbytes_available,
@@ -47,6 +48,7 @@ def get_some_linear_layer(model):
 
 
 if is_transformers_available():
+    from transformers import BitsAndBytesConfig as BnbConfig
     from transformers import T5EncoderModel
 
 if is_torch_available():
@@ -432,7 +434,6 @@ class SlowBnb4BitTests(Base4bitTests):
         expected_slice = np.array([0.1123, 0.1296, 0.1609, 0.1042, 0.1230, 0.1274, 0.0928, 0.1165, 0.1216])
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, out_slice)
-        print(f"{max_diff=}")
         self.assertTrue(max_diff < 1e-2)
 
     def test_generate_quality_dequantize(self):
@@ -483,6 +484,47 @@ class SlowBnb4BitTests(Base4bitTests):
             ).to("cpu")
 
         assert "Pipelines loaded with `dtype=torch.float16`" in cap_logger.out
+
+    @pytest.mark.xfail(
+        condition=is_accelerate_version("<=", "1.1.1"),
+        reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
+        strict=True,
+    )
+    def test_pipeline_cuda_placement_works_with_nf4(self):
+        transformer_nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        transformer_4bit = SD3Transformer2DModel.from_pretrained(
+            self.model_name,
+            subfolder="transformer",
+            quantization_config=transformer_nf4_config,
+            torch_dtype=torch.float16,
+        )
+        text_encoder_3_nf4_config = BnbConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        text_encoder_3_4bit = T5EncoderModel.from_pretrained(
+            self.model_name,
+            subfolder="text_encoder_3",
+            quantization_config=text_encoder_3_nf4_config,
+            torch_dtype=torch.float16,
+        )
+        # CUDA device placement works.
+        pipeline_4bit = DiffusionPipeline.from_pretrained(
+            self.model_name,
+            transformer=transformer_4bit,
+            text_encoder_3=text_encoder_3_4bit,
+            torch_dtype=torch.float16,
+        ).to("cuda")
+
+        # Check if inference works.
+        _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
+
+        del pipeline_4bit
 
 
 @require_transformers_version_greater("4.44.0")
