@@ -127,6 +127,9 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "sd35_large": {
         "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-large",
     },
+    "sd35_medium": {
+        "pretrained_model_name_or_path": "stabilityai/stable-diffusion-3.5-medium",
+    },
     "animatediff_v1": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5"},
     "animatediff_v2": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-2"},
     "animatediff_v3": {"pretrained_model_name_or_path": "guoyww/animatediff-motion-adapter-v1-5-3"},
@@ -527,7 +530,10 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "stable_cascade_stage_b"
 
     elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["sd3"]].shape[-1] == 9216:
-        model_type = "sd3"
+        if checkpoint["model.diffusion_model.pos_embed"].shape[1] == 36864:
+            model_type = "sd3"
+        elif checkpoint["model.diffusion_model.pos_embed"].shape[1] == 147456:
+            model_type = "sd35_medium"
 
     elif CHECKPOINT_KEY_NAMES["sd35_large"] in checkpoint:
         model_type = "sd35_large"

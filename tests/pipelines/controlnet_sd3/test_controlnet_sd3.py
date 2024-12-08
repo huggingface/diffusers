@@ -60,7 +60,9 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
 
-    def get_dummy_components(self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm"):
+    def get_dummy_components(
+        self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm", use_dual_attention=False
+    ):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(
             sample_size=32,
@@ -74,6 +76,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             pooled_projection_dim=64,
             out_channels=8,
             qk_norm=qk_norm,
+            dual_attention_layers=() if not use_dual_attention else (0, 1),
         )
 
         torch.manual_seed(0)
@@ -88,7 +91,10 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
             caption_projection_dim=32,
             pooled_projection_dim=64,
             out_channels=8,
+            qk_norm=qk_norm,
+            dual_attention_layers=() if not use_dual_attention else (0,),
         )
+
         clip_text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
@@ -173,8 +179,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         return inputs
 
-    def test_controlnet_sd3(self):
-        components = self.get_dummy_components()
+    def run_pipe(self, components, use_sd35=False):
         sd_pipe = StableDiffusion3ControlNetPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -187,11 +192,22 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
+        if not use_sd35:
+            expected_slice = np.array([0.5767, 0.7100, 0.5981, 0.5674, 0.5952, 0.4102, 0.5093, 0.5044, 0.6030])
+        else:
+            expected_slice = np.array([1.0000, 0.9072, 0.4209, 0.2744, 0.5737, 0.3840, 0.6113, 0.6250, 0.6328])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f"Expected: {expected_slice}, got: {image_slice.flatten()}"
+
+    def test_controlnet_sd3(self):
+        components = self.get_dummy_components()
+        self.run_pipe(components)
+
+    def test_controlnet_sd35(self):
+        components = self.get_dummy_components(num_controlnet_layers=1, qk_norm="rms_norm", use_dual_attention=True)
+        self.run_pipe(components, use_sd35=True)
 
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
     def test_xformers_attention_forwardGenerator_pass(self):
