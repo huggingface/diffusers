@@ -1941,7 +1941,7 @@ class PeftLoraLoaderMixinTests:
             )
             self.assertTrue(
                 np.allclose(output_lora_scale, output_lora_scale_wo_kwargs, atol=1e-3, rtol=1e-3),
-                "Lora + scale should change match the output of `set_adapters()`.",
+                "Lora + scale should match the output of `set_adapters()`.",
             )
 
             with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1960,7 +1960,6 @@ class PeftLoraLoaderMixinTests:
                 for module_name, module in modules_to_save.items():
                     self.assertTrue(check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}")
 
-                print(f"{attention_kwargs=}")
                 output_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
                 self.assertTrue(
                     not np.allclose(output_no_lora, output_lora_from_pretrained, atol=1e-3, rtol=1e-3),
