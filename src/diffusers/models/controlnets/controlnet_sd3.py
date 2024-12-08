@@ -266,6 +266,20 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    # Notes: This is for SD3.5 8b controlnet, which shares the pos_embed with the transformer
+    # we should have handled this in conversion script
+    def _get_pos_embed_from_transformer(self, transformer):
+        pos_embed = PatchEmbed(
+            height=transformer.config.sample_size,
+            width=transformer.config.sample_size,
+            patch_size=transformer.config.patch_size,
+            in_channels=transformer.config.in_channels,
+            embed_dim=transformer.inner_dim,
+            pos_embed_max_size=transformer.config.pos_embed_max_size,
+        )
+        pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=True)
+        return pos_embed
+
     @classmethod
     def from_transformer(
         cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
@@ -379,13 +393,19 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                if self.context_embedder is not None:
+                    encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block), hidden_states, temb, **ckpt_kwargs
+                    )
 
             else:
                 if self.context_embedder is not None:
