@@ -777,7 +777,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps,
+            self.scheduler, num_inference_steps, device, timesteps, sigmas
         )
 
         # 5. Prepare latents.
