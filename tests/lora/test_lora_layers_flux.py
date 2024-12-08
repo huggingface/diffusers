@@ -19,6 +19,7 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 import safetensors.torch
 import torch
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
@@ -29,6 +30,7 @@ from diffusers.utils.testing_utils import (
     is_peft_available,
     nightly,
     numpy_cosine_similarity_distance,
+    require_big_gpu_with_torch_cuda,
     require_peft_backend,
     require_torch_gpu,
     slow,
@@ -169,8 +171,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @nightly
 @require_torch_gpu
 @require_peft_backend
-@unittest.skip("We cannot run inference on this model with the current CI hardware")
-# TODO (DN6, sayakpaul): move these tests to a beefier GPU
+@require_big_gpu_with_torch_cuda
+@pytest.mark.big_gpu_with_torch_cuda
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -192,6 +194,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
 
+        del self.pipeline
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -199,7 +202,10 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("TheLastBen/Jon_Snow_Flux_LoRA", weight_name="jon_snow.safetensors")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        self.pipeline.enable_model_cpu_offload()
+        # Instead of calling `enable_model_cpu_offload()`, we do a cuda placement here because the CI
+        # run supports it. We have about 34GB RAM in the CI runner which kills the test when run with
+        # `enable_model_cpu_offload()`. We repeat this for the other tests, too.
+        self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "jon snow eating pizza with ketchup"
 
@@ -221,7 +227,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("Norod78/brain-slug-flux")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        self.pipeline.enable_model_cpu_offload()
+        self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "The cat with a brain slug earring"
         out = self.pipeline(
@@ -243,7 +249,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("cocktailpeanut/optimus", weight_name="optimus.safetensors")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        self.pipeline.enable_model_cpu_offload()
+        self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "optimus is cleaning the house with broomstick"
         out = self.pipeline(
@@ -265,7 +271,7 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
         self.pipeline.fuse_lora()
         self.pipeline.unload_lora_weights()
-        self.pipeline.enable_model_cpu_offload()
+        self.pipeline = self.pipeline.to(torch_device)
 
         prompt = "A blue jay standing on a large basket of rainbow macarons, disney style"
 
