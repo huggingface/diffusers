@@ -327,6 +327,18 @@ class OmniGenPipeline(
     @property
     def interrupt(self):
         return self._interrupt
+    
+    def enable_transformer_block_cpu_offload(self, device: Union[torch.device, str] = "cuda"):
+        torch_device = torch.device(device)
+        for name, param in self.transformer.named_parameters():
+            if 'layers' in name and 'layers.0' not in name:
+                param.data = param.data.cpu()
+            else:
+                param.data = param.data.to(torch_device)
+        for buffer_name, buffer in self.transformer.patch_embedding.named_buffers():
+            setattr(self.transformer.patch_embedding, buffer_name, buffer.to(torch_device))
+        self.vae.to(torch_device)
+        self.offload_transformer_block = True
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -440,6 +452,9 @@ class OmniGenPipeline(
         # using Float32 for the VAE doesn't take up much memory but can prevent potential black image outputs.
         self.vae.to(torch.float32)
 
+        if offload_transformer_block:
+            self.enable_transformer_block_cpu_offload()
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -460,9 +475,10 @@ class OmniGenPipeline(
         batch_size = len(prompt)
         device = self._execution_device
 
+
         # 3. process multi-modal instructions
         if max_input_image_size != self.multimodal_processor.max_image_size:
-            self.multimodal_processor = OmniGenMultiModalProcessor(self.text_tokenizer, max_image_size=max_input_image_size)
+            self.multimodal_processor = OmniGenMultiModalProcessor(self.tokenizer, max_image_size=max_input_image_size)
         processed_data = self.multimodal_processor(prompt,
                                                     input_images,
                                                     height=height,
@@ -521,7 +537,7 @@ class OmniGenPipeline(
                     position_ids=processed_data['position_ids'],
                     attention_kwargs=attention_kwargs,
                     past_key_values=cache,
-                    offload_transformer_block=offload_transformer_block,
+                    offload_transformer_block=self.offload_transformer_block if hasattr(self, 'offload_transformer_block') else offload_transformer_block,
                     return_dict=False,
                 )
                 

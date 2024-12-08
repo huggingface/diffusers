@@ -74,21 +74,18 @@ class OmniGenBaseTransformer(Phi3Model):
         prev_layer_idx = layer_idx - 1
         for name, param in self.layers[prev_layer_idx].named_parameters():
             param.data = param.data.to("cpu", non_blocking=True)
-
+            
     def get_offload_layer(self, layer_idx: int, device: torch.device):
         # init stream
         if not hasattr(self, "prefetch_stream"):
             self.prefetch_stream = torch.cuda.Stream()
 
         # delete previous layer
-        # main stream sync shouldn't be necessary since all computation on iter i-1 is finished by iter i
-        # torch.cuda.current_stream().synchronize()
-        # avoid extra eviction of last layer
-        if layer_idx > 0:
-            self.evict_previous_layer(layer_idx)
-
+        torch.cuda.current_stream().synchronize()
+        self.evict_previous_layer(layer_idx)
+        
         # make sure the current layer is ready
-        self.prefetch_stream.synchronize()
+        torch.cuda.synchronize(self.prefetch_stream)
 
         # load next layer
         self.prefetch_layer((layer_idx + 1) % len(self.layers), device)
