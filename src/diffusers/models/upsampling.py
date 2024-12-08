@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..utils import deprecate
+from ..utils.import_utils import is_torch_version
 from .normalization import RMSNorm
 
 
@@ -151,11 +152,10 @@ class Upsample2D(nn.Module):
         if self.use_conv_transpose:
             return self.conv(hidden_states)
 
-        # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16
-        # TODO(Suraj): Remove this cast once the issue is fixed in PyTorch
-        # https://github.com/pytorch/pytorch/issues/86679
+        # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16 until PyTorch 2.1
+        # https://github.com/pytorch/pytorch/issues/86679#issuecomment-1783978767
         dtype = hidden_states.dtype
-        if dtype == torch.bfloat16:
+        if dtype == torch.bfloat16 and is_torch_version("<", "2.1"):
             hidden_states = hidden_states.to(torch.float32)
 
         # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -165,13 +165,21 @@ class Upsample2D(nn.Module):
         # if `output_size` is passed we force the interpolation output
         # size and do not make use of `scale_factor=2`
         if self.interpolate:
+            # upsample_nearest_nhwc also fails when the number of output elements is large
+            # https://github.com/pytorch/pytorch/issues/141831
+            scale_factor = (
+                2 if output_size is None else max([f / s for f, s in zip(output_size, hidden_states.shape[-2:])])
+            )
+            if hidden_states.numel() * scale_factor > pow(2, 31):
+                hidden_states = hidden_states.contiguous()
+
             if output_size is None:
                 hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
             else:
                 hidden_states = F.interpolate(hidden_states, size=output_size, mode="nearest")
 
-        # If the input is bfloat16, we cast back to bfloat16
-        if dtype == torch.bfloat16:
+        # Cast back to original dtype
+        if dtype == torch.bfloat16 and is_torch_version("<", "2.1"):
             hidden_states = hidden_states.to(dtype)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
@@ -346,6 +354,70 @@ class KUpsample2D(nn.Module):
         kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
         weight[indices, indices] = kernel
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
+
+
+class CogVideoXUpsample3D(nn.Module):
+    r"""
+    A 3D Upsample layer using in CogVideoX by Tsinghua University & ZhipuAI # Todo: Wait for paper relase.
+
+    Args:
+        in_channels (`int`):
+            Number of channels in the input image.
+        out_channels (`int`):
+            Number of channels produced by the convolution.
+        kernel_size (`int`, defaults to `3`):
+            Size of the convolving kernel.
+        stride (`int`, defaults to `1`):
+            Stride of the convolution.
+        padding (`int`, defaults to `1`):
+            Padding added to all four sides of the input.
+        compress_time (`bool`, defaults to `False`):
+            Whether or not to compress the time dimension.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: int = 1,
+        padding: int = 1,
+        compress_time: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+        self.compress_time = compress_time
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        if self.compress_time:
+            if inputs.shape[2] > 1 and inputs.shape[2] % 2 == 1:
+                # split first frame
+                x_first, x_rest = inputs[:, :, 0], inputs[:, :, 1:]
+
+                x_first = F.interpolate(x_first, scale_factor=2.0)
+                x_rest = F.interpolate(x_rest, scale_factor=2.0)
+                x_first = x_first[:, :, None, :, :]
+                inputs = torch.cat([x_first, x_rest], dim=2)
+            elif inputs.shape[2] > 1:
+                inputs = F.interpolate(inputs, scale_factor=2.0)
+            else:
+                inputs = inputs.squeeze(2)
+                inputs = F.interpolate(inputs, scale_factor=2.0)
+                inputs = inputs[:, :, None, :, :]
+        else:
+            # only interpolate 2D
+            b, c, t, h, w = inputs.shape
+            inputs = inputs.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            inputs = F.interpolate(inputs, scale_factor=2.0)
+            inputs = inputs.reshape(b, t, c, *inputs.shape[2:]).permute(0, 2, 1, 3, 4)
+
+        b, c, t, h, w = inputs.shape
+        inputs = inputs.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        inputs = self.conv(inputs)
+        inputs = inputs.reshape(b, t, *inputs.shape[1:]).permute(0, 2, 1, 3, 4)
+
+        return inputs
 
 
 def upfirdn2d_native(

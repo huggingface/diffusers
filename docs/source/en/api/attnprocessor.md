@@ -47,6 +47,9 @@ An attention processor is a class for applying different types of attention mech
 ## CustomDiffusionXFormersAttnProcessor
 [[autodoc]] models.attention_processor.CustomDiffusionXFormersAttnProcessor
 
+## FusedAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedAttnProcessor2_0
+
 ## SlicedAttnProcessor
 [[autodoc]] models.attention_processor.SlicedAttnProcessor
 

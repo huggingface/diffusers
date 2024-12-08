@@ -21,6 +21,7 @@ import unittest
 from collections import OrderedDict
 
 import torch
+from huggingface_hub import snapshot_download
 from parameterized import parameterized
 from pytest import mark
 
@@ -37,10 +38,11 @@ from diffusers.utils.testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
+    is_peft_available,
     load_hf_numpy,
+    require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_accelerator_with_training,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -51,9 +53,36 @@ from diffusers.utils.testing_utils import (
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
+
+
+def get_unet_lora_config():
+    rank = 4
+    unet_lora_config = LoraConfig(
+        r=rank,
+        lora_alpha=rank,
+        target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+        init_lora_weights=False,
+        use_dora=False,
+    )
+    return unet_lora_config
+
+
+def check_if_lora_correctly_set(model) -> bool:
+    """
+    Checks if the LoRA layers are correctly set with peft
+    """
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return True
+    return False
 
 
 def create_ip_adapter_state_dict(model):
@@ -146,42 +175,64 @@ def create_ip_adapter_plus_state_dict(model):
     )
 
     ip_image_projection_state_dict = OrderedDict()
+    keys = [k for k in image_projection.state_dict() if "layers." in k]
+    print(keys)
     for k, v in image_projection.state_dict().items():
         if "2.to" in k:
             k = k.replace("2.to", "0.to")
-        elif "3.0.weight" in k:
-            k = k.replace("3.0.weight", "1.0.weight")
-        elif "3.0.bias" in k:
-            k = k.replace("3.0.bias", "1.0.bias")
-        elif "3.0.weight" in k:
-            k = k.replace("3.0.weight", "1.0.weight")
-        elif "3.1.net.0.proj.weight" in k:
-            k = k.replace("3.1.net.0.proj.weight", "1.1.weight")
-        elif "3.net.2.weight" in k:
-            k = k.replace("3.net.2.weight", "1.3.weight")
-        elif "layers.0.0" in k:
-            k = k.replace("layers.0.0", "layers.0.0.norm1")
-        elif "layers.0.1" in k:
-            k = k.replace("layers.0.1", "layers.0.0.norm2")
-        elif "layers.1.0" in k:
-            k = k.replace("layers.1.0", "layers.1.0.norm1")
-        elif "layers.1.1" in k:
-            k = k.replace("layers.1.1", "layers.1.0.norm2")
-        elif "layers.2.0" in k:
-            k = k.replace("layers.2.0", "layers.2.0.norm1")
-        elif "layers.2.1" in k:
-            k = k.replace("layers.2.1", "layers.2.0.norm2")
+        elif "layers.0.ln0" in k:
+            k = k.replace("layers.0.ln0", "layers.0.0.norm1")
+        elif "layers.0.ln1" in k:
+            k = k.replace("layers.0.ln1", "layers.0.0.norm2")
+        elif "layers.1.ln0" in k:
+            k = k.replace("layers.1.ln0", "layers.1.0.norm1")
+        elif "layers.1.ln1" in k:
+            k = k.replace("layers.1.ln1", "layers.1.0.norm2")
+        elif "layers.2.ln0" in k:
+            k = k.replace("layers.2.ln0", "layers.2.0.norm1")
+        elif "layers.2.ln1" in k:
+            k = k.replace("layers.2.ln1", "layers.2.0.norm2")
+        elif "layers.3.ln0" in k:
+            k = k.replace("layers.3.ln0", "layers.3.0.norm1")
+        elif "layers.3.ln1" in k:
+            k = k.replace("layers.3.ln1", "layers.3.0.norm2")
+        elif "to_q" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
+        elif "to_out.0" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
+            k = k.replace("to_out.0", "to_out")
+        else:
+            k = k.replace("0.ff.0", "0.1.0")
+            k = k.replace("0.ff.1.net.0.proj", "0.1.1")
+            k = k.replace("0.ff.1.net.2", "0.1.3")
 
-        if "norm_cross" in k:
-            ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
-        elif "layer_norm" in k:
-            ip_image_projection_state_dict[k.replace("layer_norm", "norm2")] = v
-        elif "to_k" in k:
+            k = k.replace("1.ff.0", "1.1.0")
+            k = k.replace("1.ff.1.net.0.proj", "1.1.1")
+            k = k.replace("1.ff.1.net.2", "1.1.3")
+
+            k = k.replace("2.ff.0", "2.1.0")
+            k = k.replace("2.ff.1.net.0.proj", "2.1.1")
+            k = k.replace("2.ff.1.net.2", "2.1.3")
+
+            k = k.replace("3.ff.0", "3.1.0")
+            k = k.replace("3.ff.1.net.0.proj", "3.1.1")
+            k = k.replace("3.ff.1.net.2", "3.1.3")
+
+        # if "norm_cross" in k:
+        #     ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
+        # elif "layer_norm" in k:
+        #     ip_image_projection_state_dict[k.replace("layer_norm", "norm2")] = v
+        if "to_k" in k:
+            parts = k.split(".")
+            parts[2] = "attn"
+            k = ".".join(parts)
             ip_image_projection_state_dict[k.replace("to_k", "to_kv")] = torch.cat([v, v], dim=0)
         elif "to_v" in k:
             continue
-        elif "to_out.0" in k:
-            ip_image_projection_state_dict[k.replace("to_out.0", "to_out")] = v
         else:
             ip_image_projection_state_dict[k] = v
 
@@ -354,47 +405,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    @require_torch_accelerator_with_training
-    def test_gradient_checkpointing(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        assert not model.is_gradient_checkpointing and model.training
-
-        out = model(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-
-        labels = torch.randn_like(out)
-        loss = (out - labels).mean()
-        loss.backward()
-
-        # re-instantiate the model now enabling gradient checkpointing
-        model_2 = self.model_class(**init_dict)
-        # clone model
-        model_2.load_state_dict(model.state_dict())
-        model_2.to(torch_device)
-        model_2.enable_gradient_checkpointing()
-
-        assert model_2.is_gradient_checkpointing and model_2.training
-
-        out_2 = model_2(**inputs_dict).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
-        loss_2 = (out_2 - labels).mean()
-        loss_2.backward()
-
-        # compare the output and parameters gradients
-        self.assertTrue((loss - loss_2).abs() < 1e-5)
-        named_params = dict(model.named_parameters())
-        named_params_2 = dict(model_2.named_parameters())
-        for name, param in named_params.items():
-            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
-
     def test_model_with_attention_head_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -547,31 +557,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             check_sliceable_dim_attr(module)
 
     def test_gradient_checkpointing_is_applied(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["block_out_channels"] = (16, 32)
-        init_dict["attention_head_dim"] = (8, 16)
-
-        model_class_copy = copy.copy(self.model_class)
-
-        modules_with_gc_enabled = {}
-
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
-        def _set_gradient_checkpointing_new(self, module, value=False):
-            if hasattr(module, "gradient_checkpointing"):
-                module.gradient_checkpointing = value
-                modules_with_gc_enabled[module.__class__.__name__] = True
-
-        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
-
-        model = model_class_copy(**init_dict)
-        model.enable_gradient_checkpointing()
-
-        EXPECTED_SET = {
+        expected_set = {
             "CrossAttnUpBlock2D",
             "CrossAttnDownBlock2D",
             "UNetMidBlock2DCrossAttn",
@@ -579,9 +565,11 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "Transformer2DModel",
             "DownBlock2D",
         }
-
-        assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
-        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+        attention_head_dim = (8, 16)
+        block_out_channels = (16, 32)
+        super().test_gradient_checkpointing_is_applied(
+            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
+        )
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):
@@ -983,6 +971,172 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
+    @require_torch_gpu
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub_local(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_from_hub_local_subfolder(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, subfolder="unet", local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub(self, repo_id, variant):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self, repo_id, variant):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, subfolder="unet", device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_device_map_from_hub_local(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_gpu
+    def test_load_sharded_checkpoint_device_map_from_hub_local_subfolder(self):
+        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
+        loaded_model = self.model_class.from_pretrained(
+            ckpt_path, local_files_only=True, subfolder="unet", device_map="auto"
+        )
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_peft_backend
+    def test_load_attn_procs_raise_warning(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        # forward pass without LoRA
+        with torch.no_grad():
+            non_lora_sample = model(**inputs_dict).sample
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        # forward pass with LoRA
+        with torch.no_grad():
+            lora_sample_1 = model(**inputs_dict).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname)
+            model.unload_lora()
+
+            with self.assertWarns(FutureWarning) as warning:
+                model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            warning_message = str(warning.warnings[0].message)
+            assert "Using the `load_attn_procs()` method has been deprecated" in warning_message
+
+            # import to still check for the rest of the stuff.
+            assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+            with torch.no_grad():
+                lora_sample_2 = model(**inputs_dict).sample
+
+        assert not torch.allclose(
+            non_lora_sample, lora_sample_1, atol=1e-4, rtol=1e-4
+        ), "LoRA injected UNet should produce different results."
+        assert torch.allclose(
+            lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4
+        ), "Loading from a saved checkpoint should produce identical results."
+
+    @require_peft_backend
+    def test_save_attn_procs_raise_warning(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with self.assertWarns(FutureWarning) as warning:
+                model.save_attn_procs(tmpdirname)
+
+        warning_message = str(warning.warnings[0].message)
+        assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+
 
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
@@ -1001,11 +1155,11 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
-        revision = "fp16" if fp16 else None
+        variant = "fp16" if fp16 else None
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision
+            model_id, subfolder="unet", torch_dtype=torch_dtype, variant=variant
         )
         model.to(torch_device).eval()
 
@@ -1167,7 +1321,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1195,7 +1349,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-v1-5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
@@ -1224,7 +1378,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     @require_torch_accelerator
     @skip_mps
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
 
@@ -1252,7 +1406,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_accelerator_with_fp16
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
+        model = self.get_unet_model(model_id="stable-diffusion-v1-5/stable-diffusion-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 

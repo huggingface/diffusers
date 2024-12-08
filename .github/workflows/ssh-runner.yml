@@ -1,11 +1,16 @@
-name: SSH into runners
+name: SSH into GPU runners
 
 on:
   workflow_dispatch:
     inputs:
       runner_type:
-        description: 'Type of runner to test (a10 or t4)'
+        description: 'Type of runner to test (aws-g6-4xlarge-plus: a10, aws-g4dn-2xlarge: t4, aws-g6e-xlarge-plus: L40)'
+        type: choice
         required: true
+        options:
+          - aws-g6-4xlarge-plus
+          - aws-g4dn-2xlarge
+          - aws-g6e-xlarge-plus
       docker_image:
         description: 'Name of the Docker image'
         required: true
@@ -22,10 +27,11 @@ env:
 jobs:
   ssh_runner:
     name: "SSH"
-    runs-on: [single-gpu, nvidia-gpu, "${{ github.event.inputs.runner_type }}", ci]
+    runs-on:
+      group: "${{ github.event.inputs.runner_type }}"
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --gpus all --privileged --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
 
     steps:
       - name: Checkout diffusers
@@ -38,7 +44,7 @@ jobs:
           nvidia-smi
 
       - name: Tailscale # In order to be able to SSH when a test fails
-        uses: huggingface/tailscale-action@v1
+        uses: huggingface/tailscale-action@main
         with:
           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}

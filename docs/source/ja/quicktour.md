@@ -54,7 +54,7 @@ specific language governing permissions and limitations under the License.
 
 まず、[`DiffusionPipeline`]のインスタンスを作成し、ダウンロードしたいパイプラインのチェックポイントを指定します。
 この[`DiffusionPipeline`]はHugging Face Hubに保存されている任意の[チェックポイント](https://huggingface.co/models?library=diffusers&sort=downloads)を使用することができます。
-この案内では、[`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)チェックポイントでテキストから画像へ生成します。
+この案内では、[`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)チェックポイントでテキストから画像へ生成します。
 
 <Tip warning={true}>
 
@@ -67,7 +67,7 @@ specific language governing permissions and limitations under the License.
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 ```
 [`DiffusionPipeline`]は全てのモデリング、トークン化、スケジューリングコンポーネントをダウンロードしてキャッシュします。Stable Diffusionパイプラインは[`UNet2DConditionModel`]と[`PNDMScheduler`]などで構成されています：
 
@@ -123,7 +123,7 @@ PyTorchと同じように、ジェネレータオブジェクトをGPUに移す�
 
 ```bash
 !git lfs install
-!git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+!git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
 保存したウェイトをパイプラインにロードします：
@@ -141,7 +141,7 @@ PyTorchと同じように、ジェネレータオブジェクトをGPUに移す�
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
+>>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 

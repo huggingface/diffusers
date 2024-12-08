@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ControlNet
+# ControlNetModel
 
 The ControlNet model was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, Maneesh Agrawala. It provides a greater degree of control over text-to-image generation by conditioning the model on additional inputs such as edge maps, depth maps, segmentation maps, and keypoints for pose detection.
 
@@ -21,7 +21,7 @@ The abstract from the paper is:
 ## Loading from the original format
 
 By default the [`ControlNetModel`] should be loaded with [`~ModelMixin.from_pretrained`], but it can also be loaded
-from the original format using [`FromOriginalControlnetMixin.from_single_file`] as follows:
+from the original format using [`FromOriginalModelMixin.from_single_file`] as follows:
 
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
@@ -29,7 +29,7 @@ from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
 controlnet = ControlNetModel.from_single_file(url)
 
-url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
+url = "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
 pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=controlnet)
 ```
 
@@ -39,7 +39,7 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 
 ## ControlNetOutput
 
-[[autodoc]] models.controlnet.ControlNetOutput
+[[autodoc]] models.controlnets.controlnet.ControlNetOutput
 
 ## FlaxControlNetModel
 
@@ -47,4 +47,4 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 
 ## FlaxControlNetOutput
 
-[[autodoc]] models.controlnet_flax.FlaxControlNetOutput
+[[autodoc]] models.controlnets.controlnet_flax.FlaxControlNetOutput

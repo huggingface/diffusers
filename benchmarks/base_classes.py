@@ -34,7 +34,7 @@ from utils import (  # noqa: E402
 
 
 RESOLUTION_MAPPING = {
-    "runwayml/stable-diffusion-v1-5": (512, 512),
+    "Lykon/DreamShaper": (512, 512),
     "lllyasviel/sd-controlnet-canny": (512, 512),
     "diffusers/controlnet-canny-sdxl-1.0": (1024, 1024),
     "TencentARC/t2iadapter_canny_sd14v1": (512, 512),
@@ -268,7 +268,7 @@ class IPAdapterTextToImageBenchmark(TextToImageBenchmark):
 class ControlNetBenchmark(TextToImageBenchmark):
     pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel
-    root_ckpt = "runwayml/stable-diffusion-v1-5"
+    root_ckpt = "Lykon/DreamShaper"
 
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
     image = load_image(url).convert("RGB")
@@ -311,7 +311,7 @@ class ControlNetSDXLBenchmark(ControlNetBenchmark):
 class T2IAdapterBenchmark(ControlNetBenchmark):
     pipeline_class = StableDiffusionAdapterPipeline
     aux_network_class = T2IAdapter
-    root_ckpt = "CompVis/stable-diffusion-v1-4"
+    root_ckpt = "Lykon/DreamShaper"
 
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_for_adapter.png"
     image = load_image(url).convert("L")

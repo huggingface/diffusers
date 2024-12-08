@@ -111,6 +111,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         latent_shift: float = 0.5,
         force_upcast: bool = False,
         scaling_factor: float = 1.0,
+        shift_factor: float = 0.0,
     ):
         super().__init__()
 
@@ -309,7 +310,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
     ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
-            output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
+            output = [
+                self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x_slice) for x_slice in x.split(1)
+            ]
             output = torch.cat(output)
         else:
             output = self._tiled_decode(x) if self.use_tiling else self.decoder(x)
@@ -340,7 +343,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         # as if we were loading the latents from an RGBA uint8 image.
         unscaled_enc = self.unscale_latents(scaled_enc / 255.0)
 
-        dec = self.decode(unscaled_enc)
+        dec = self.decode(unscaled_enc).sample
 
         if not return_dict:
             return (dec,)

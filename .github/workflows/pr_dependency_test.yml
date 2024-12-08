@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   check_dependencies:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -33,4 +33,3 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           pytest tests/others/test_dependencies.py
-      

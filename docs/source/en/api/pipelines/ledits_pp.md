@@ -25,11 +25,11 @@ You can find additional information about LEDITS++ on the [project page](https:/
 </Tip>
 
 <Tip warning={true}>
-Due to some backward compatability issues with the current diffusers implementation of [`~schedulers.DPMSolverMultistepScheduler`] this implementation of LEdits++ can no longer guarantee perfect inversion. 
-This issue is unlikely to have any noticeable effects on applied use-cases. However, we provide an alternative implementation that guarantees perfect inversion in a dedicated [GitHub repo](https://github.com/ml-research/ledits_pp). 
+Due to some backward compatability issues with the current diffusers implementation of [`~schedulers.DPMSolverMultistepScheduler`] this implementation of LEdits++ can no longer guarantee perfect inversion.
+This issue is unlikely to have any noticeable effects on applied use-cases. However, we provide an alternative implementation that guarantees perfect inversion in a dedicated [GitHub repo](https://github.com/ml-research/ledits_pp).
 </Tip>
 
-We provide two distinct pipelines based on different pre-trained models. 
+We provide two distinct pipelines based on different pre-trained models.
 
 ## LEditsPPPipelineStableDiffusion
 [[autodoc]] pipelines.ledits_pp.LEditsPPPipelineStableDiffusion

@@ -7,13 +7,13 @@ We provide implementations for both Stable Diffusion (SD) and Stable Diffusion X
 * [mhdang/dpo-sd1.5-text2image-v1](https://huggingface.co/mhdang/dpo-sd1.5-text2image-v1)
 * [mhdang/dpo-sdxl-text2image-v1](https://huggingface.co/mhdang/dpo-sdxl-text2image-v1)
 
-> 💡 Note: The scripts are highly experimental and were only tested on low-data regimes. Proceed with caution. Feel free to let us know about your findings via GitHub issues. 
+> 💡 Note: The scripts are highly experimental and were only tested on low-data regimes. Proceed with caution. Feel free to let us know about your findings via GitHub issues.
 
 ## SD training command
 
 ```bash
 accelerate launch train_diffusion_dpo.py \
-  --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5  \
+  --pretrained_model_name_or_path=stable-diffusion-v1-5/stable-diffusion-v1-5  \
   --output_dir="diffusion-dpo" \
   --mixed_precision="fp16" \
   --dataset_name=kashif/pickascore \
@@ -91,4 +91,4 @@ accelerate launch train_diffusion_dpo_sdxl.py \
 
 ## Acknowledgements
 
-This is based on the amazing work done by [Bram](https://github.com/bram-w) here for Diffusion DPO: https://github.com/bram-w/trl/blob/dpo/. 
+This is based on the amazing work done by [Bram](https://github.com/bram-w) here for Diffusion DPO: https://github.com/bram-w/trl/blob/dpo/.

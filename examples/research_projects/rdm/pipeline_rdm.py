@@ -4,7 +4,7 @@ from typing import Callable, List, Optional, Union
 import torch
 from PIL import Image
 from retriever import Retriever, normalize_images, preprocess_images
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -47,7 +47,7 @@ class RDMPipeline(DiffusionPipeline, StableDiffusionMixin):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        feature_extractor ([`CLIPFeatureExtractor`]):
+        feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
@@ -65,7 +65,7 @@ class RDMPipeline(DiffusionPipeline, StableDiffusionMixin):
             EulerAncestralDiscreteScheduler,
             DPMSolverMultistepScheduler,
         ],
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
         retriever: Optional[Retriever] = None,
     ):
         super().__init__()

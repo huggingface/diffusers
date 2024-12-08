@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Transformer2D
+# Transformer2DModel
 
 A Transformer model for image-like data from [CompVis](https://huggingface.co/CompVis) that is based on the [Vision Transformer](https://huggingface.co/papers/2010.11929) introduced by Dosovitskiy et al. The [`Transformer2DModel`] accepts discrete (classes of vector embeddings) or continuous (actual embeddings) inputs.
 
@@ -38,4 +38,4 @@ It is assumed one of the input classes is the masked latent pixel. The predicted
 
 ## Transformer2DModelOutput
 
-[[autodoc]] models.transformers.transformer_2d.Transformer2DModelOutput
+[[autodoc]] models.modeling_outputs.Transformer2DModelOutput

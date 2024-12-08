@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDIMInverseScheduler, KarrasDiffusionSchedulers
@@ -85,10 +85,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> init_image = download_image(img_url).resize((768, 768))
 
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
         ... )
-        >>> pipe = pipe.to("cuda")
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
@@ -97,9 +96,9 @@ EXAMPLE_DOC_STRING = """
         >>> mask_prompt = "A bowl of fruits"
         >>> prompt = "A bowl of pears"
 
-        >>> mask_image = pipe.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
-        >>> image_latents = pipe.invert(image=init_image, prompt=mask_prompt).latents
-        >>> image = pipe(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
+        >>> mask_image = pipeline.generate_mask(image=init_image, source_prompt=prompt, target_prompt=mask_prompt)
+        >>> image_latents = pipeline.invert(image=init_image, prompt=mask_prompt).latents
+        >>> image = pipeline(prompt=prompt, mask_image=mask_image, image_latents=image_latents).images[0]
         ```
 """
 
@@ -122,10 +121,9 @@ EXAMPLE_INVERT_DOC_STRING = """
 
         >>> init_image = download_image(img_url).resize((768, 768))
 
-        >>> pipe = StableDiffusionDiffEditPipeline.from_pretrained(
+        >>> pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16
         ... )
-        >>> pipe = pipe.to("cuda")
 
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
@@ -133,7 +131,7 @@ EXAMPLE_INVERT_DOC_STRING = """
 
         >>> prompt = "A bowl of fruits"
 
-        >>> inverted_latents = pipe.invert(image=init_image, prompt=prompt).latents
+        >>> inverted_latents = pipeline.invert(image=init_image, prompt=prompt).latents
         ```
 """
 
@@ -236,7 +234,7 @@ def preprocess_mask(mask, batch_size: int = 1):
 
 
 class StableDiffusionDiffEditPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
 ):
     r"""
     <Tip warning={true}>
@@ -252,8 +250,8 @@ class StableDiffusionDiffEditPipeline(
 
     The pipeline also inherits the following loading and saving methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -450,7 +448,7 @@ class StableDiffusionDiffEditPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -582,9 +580,10 @@ class StableDiffusionDiffEditPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 

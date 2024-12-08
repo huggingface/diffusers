@@ -164,7 +164,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
     @require_torch_accelerator
     def test_from_pretrained_accelerate_wont_change_results(self):
-        # by defautl model loading will use accelerate as `low_cpu_mem_usage=True`
+        # by default model loading will use accelerate as `low_cpu_mem_usage=True`
         model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model_accelerate.to(torch_device)
         model_accelerate.eval()

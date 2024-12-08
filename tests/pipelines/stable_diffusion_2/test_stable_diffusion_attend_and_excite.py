@@ -30,7 +30,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     skip_mps,
     torch_device,
 )
@@ -142,7 +142,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = inputs = {
+        inputs = {
             "prompt": "a cat and a frog",
             "token_indices": [2, 5],
             "generator": generator,
@@ -201,8 +201,11 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_karras_schedulers_shape(self):
         super().test_karras_schedulers_shape(num_inference_steps_for_strength_for_iterations=3)
 
+    def test_from_pipe_consistent_forward_pass_cpu_offload(self):
+        super().test_from_pipe_consistent_forward_pass_cpu_offload(expected_max_diff=5e-3)
 
-@require_torch_gpu
+
+@require_torch_accelerator
 @nightly
 class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
     # Attend and excite requires being able to run a backward pass at
@@ -234,7 +237,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.to("cuda")
+        pipe.to(torch_device)
 
         prompt = "a painting of an elephant with glasses"
         token_indices = [5, 7]

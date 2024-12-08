@@ -21,7 +21,7 @@ The abstract from the paper is:
 ## Loading from the original format
 
 By default the [`AutoencoderKL`] should be loaded with [`~ModelMixin.from_pretrained`], but it can also be loaded
-from the original format using [`FromOriginalVAEMixin.from_single_file`] as follows:
+from the original format using [`FromOriginalModelMixin.from_single_file`] as follows:
 
 ```py
 from diffusers import AutoencoderKL

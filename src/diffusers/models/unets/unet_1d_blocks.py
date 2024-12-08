@@ -200,7 +200,7 @@ class MidResTemporalBlock1D(nn.Module):
 
         self.upsample = None
         if add_upsample:
-            self.upsample = Downsample1D(out_channels, use_conv=True)
+            self.upsample = Upsample1D(out_channels, use_conv=True)
 
         self.downsample = None
         if add_downsample:
