@@ -700,6 +700,21 @@ def is_torch_version(operation: str, version: str):
     return compare_versions(parse(_torch_version), operation, version)
 
 
+def is_torch_xla_version(operation: str, version: str):
+    """
+    Compares the current torch_xla version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of torch_xla
+    """
+    if not is_torch_xla_available:
+        return False
+    return compare_versions(parse(_torch_xla_version), operation, version)
+
+
 def is_transformers_version(operation: str, version: str):
     """
     Compares the current Transformers version to a given reference with an operation.
