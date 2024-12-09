@@ -84,7 +84,8 @@ def get_3d_sincos_pos_embed(
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
-) -> np.ndarray:
+    device: Optional[torch.device] = None,
+) -> torch.Tensor:
     r"""
     Creates 3D sinusoidal positional embeddings.
 
@@ -102,7 +103,7 @@ def get_3d_sincos_pos_embed(
             Scale factor for temporal grid interpolation.
 
     Returns:
-        `np.ndarray`:
+        `torch.Tensor`:
             The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
             embed_dim]`.
     """
@@ -115,31 +116,39 @@ def get_3d_sincos_pos_embed(
     embed_dim_temporal = embed_dim // 4
 
     # 1. Spatial
-    grid_h = np.arange(spatial_size[1], dtype=np.float32) / spatial_interpolation_scale
-    grid_w = np.arange(spatial_size[0], dtype=np.float32) / spatial_interpolation_scale
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid_h = torch.arange(spatial_size[1], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid_w = torch.arange(spatial_size[0], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
 
     grid = grid.reshape([2, 1, spatial_size[1], spatial_size[0]])
     pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(embed_dim_spatial, grid)
 
     # 2. Temporal
-    grid_t = np.arange(temporal_size, dtype=np.float32) / temporal_interpolation_scale
+    grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32) / temporal_interpolation_scale
     pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(embed_dim_temporal, grid_t)
 
     # 3. Concat
-    pos_embed_spatial = pos_embed_spatial[np.newaxis, :, :]
-    pos_embed_spatial = np.repeat(pos_embed_spatial, temporal_size, axis=0)  # [T, H*W, D // 4 * 3]
+    pos_embed_spatial = pos_embed_spatial[None, :, :]
+    pos_embed_spatial = pos_embed_spatial.repeat_interleave(temporal_size, dim=0)  # [T, H*W, D // 4 * 3]
 
-    pos_embed_temporal = pos_embed_temporal[:, np.newaxis, :]
-    pos_embed_temporal = np.repeat(pos_embed_temporal, spatial_size[0] * spatial_size[1], axis=1)  # [T, H*W, D // 4]
+    pos_embed_temporal = pos_embed_temporal[:, None, :]
+    pos_embed_temporal = pos_embed_temporal.repeat_interleave(
+        spatial_size[0] * spatial_size[1], dim=1
+    )  # [T, H*W, D // 4]
 
-    pos_embed = np.concatenate([pos_embed_temporal, pos_embed_spatial], axis=-1)  # [T, H*W, D]
+    pos_embed = torch.concat([pos_embed_temporal, pos_embed_spatial], dim=-1)  # [T, H*W, D]
     return pos_embed
 
 
 def get_2d_sincos_pos_embed(
-    embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
+    embed_dim,
+    grid_size,
+    cls_token=False,
+    extra_tokens=0,
+    interpolation_scale=1.0,
+    base_size=16,
+    device: Optional[torch.device] = None,
 ):
     """
     Creates 2D sinusoidal positional embeddings.
@@ -157,22 +166,30 @@ def get_2d_sincos_pos_embed(
             The scale of the interpolation.
 
     Returns:
-        pos_embed (`np.ndarray`):
+        pos_embed (`torch.Tensor`):
             Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or `[1 + grid_size*grid_size,
             embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
 
-    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / interpolation_scale
-    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / interpolation_scale
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid_h = (
+        torch.arange(grid_size[0], device=device, dtype=torch.float32)
+        / (grid_size[0] / base_size)
+        / interpolation_scale
+    )
+    grid_w = (
+        torch.arange(grid_size[1], device=device, dtype=torch.float32)
+        / (grid_size[1] / base_size)
+        / interpolation_scale
+    )
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
 
     grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
+        pos_embed = torch.concat([torch.zeros([extra_tokens, embed_dim]), pos_embed], dim=0)
     return pos_embed
 
 
@@ -182,10 +199,10 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
     Args:
         embed_dim (`int`): The embedding dimension.
-        grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
+        grid (`torch.Tensor`): Grid of positions with shape `(H * W,)`.
 
     Returns:
-        `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
+        `torch.Tensor`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
@@ -194,7 +211,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
-    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+    emb = torch.concat([emb_h, emb_w], dim=1)  # (H*W, D)
     return emb
 
 
@@ -204,25 +221,25 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     Args:
         embed_dim (`int`): The embedding dimension `D`
-        pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
+        pos (`torch.Tensor`): 1D tensor of positions with shape `(M,)`
 
     Returns:
-        `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
+        `torch.Tensor`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega = torch.arange(embed_dim // 2, device=pos.device, dtype=torch.float64)
     omega /= embed_dim / 2.0
     omega = 1.0 / 10000**omega  # (D/2,)
 
     pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
+    out = torch.outer(pos, omega)  # (M, D/2), outer product
 
-    emb_sin = np.sin(out)  # (M, D/2)
-    emb_cos = np.cos(out)  # (M, D/2)
+    emb_sin = torch.sin(out)  # (M, D/2)
+    emb_cos = torch.cos(out)  # (M, D/2)
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
     return emb
 
 
@@ -291,7 +308,7 @@ class PatchEmbed(nn.Module):
                 embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
             )
             persistent = True if pos_embed_max_size else False
-            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
+            self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=persistent)
         else:
             raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
 
@@ -341,8 +358,9 @@ class PatchEmbed(nn.Module):
                     grid_size=(height, width),
                     base_size=self.base_size,
                     interpolation_scale=self.interpolation_scale,
+                    device=latent.device,
                 )
-                pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).to(latent.device)
+                pos_embed = pos_embed.float().unsqueeze(0)
             else:
                 pos_embed = self.pos_embed
 
@@ -453,7 +471,9 @@ class CogVideoXPatchEmbed(nn.Module):
             pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
             self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
-    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+    def _get_positional_embeddings(
+        self, sample_height: int, sample_width: int, sample_frames: int, device: Optional[torch.device] = None
+    ) -> torch.Tensor:
         post_patch_height = sample_height // self.patch_size
         post_patch_width = sample_width // self.patch_size
         post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
@@ -465,8 +485,9 @@ class CogVideoXPatchEmbed(nn.Module):
             post_time_compression_frames,
             self.spatial_interpolation_scale,
             self.temporal_interpolation_scale,
+            device=device,
         )
-        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
+        pos_embedding = pos_embedding.flatten(0, 1)
         joint_pos_embedding = torch.zeros(
             1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
         )
@@ -521,8 +542,10 @@ class CogVideoXPatchEmbed(nn.Module):
                 or self.sample_width != width
                 or self.sample_frames != pre_time_compression_frames
             ):
-                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
-                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+                pos_embedding = self._get_positional_embeddings(
+                    height, width, pre_time_compression_frames, device=embeds.device
+                )
+                pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             else:
                 pos_embedding = self.pos_embedding
 
@@ -554,7 +577,7 @@ class CogView3PlusPatchEmbed(nn.Module):
 
         pos_embed = get_2d_sincos_pos_embed(hidden_size, pos_embed_max_size, base_size=pos_embed_max_size)
         pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float(), persistent=False)
+        self.register_buffer("pos_embed", pos_embed.float(), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, channel, height, width = hidden_states.shape
