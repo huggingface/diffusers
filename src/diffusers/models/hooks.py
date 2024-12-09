@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 
@@ -78,9 +78,6 @@ class ModelHook:
         """
         return module
 
-    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
-        return module
-
 
 class SequentialHook(ModelHook):
     r"""A hook that can contain several hooks and iterates through them at each event."""
@@ -107,62 +104,6 @@ class SequentialHook(ModelHook):
         for hook in self.hooks:
             module = hook.detach_hook(module)
         return module
-
-    def reset_state(self, module):
-        for hook in self.hooks:
-            module = hook.reset_state(module)
-        return module
-
-
-class PyramidAttentionBroadcastHook(ModelHook):
-    def __init__(self, skip_callback: Callable[[torch.nn.Module], bool]) -> None:
-        super().__init__()
-
-        self.skip_callback = skip_callback
-
-        self.cache = None
-        self._iteration = 0
-
-    def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
-        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-
-        if self.cache is not None and self.skip_callback(module):
-            output = self.cache
-        else:
-            output = module._old_forward(*args, **kwargs)
-
-        return module._diffusers_hook.post_forward(module, output)
-
-    def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
-        self.cache = output
-        return output
-
-    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
-        self.cache = None
-        self._iteration = 0
-        return module
-
-
-class LayerSkipHook(ModelHook):
-    def __init__(self, skip_: Callable[[torch.nn.Module], bool]) -> None:
-        super().__init__()
-
-        self.skip_callback = skip_
-
-    def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
-        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-
-        if self.skip_callback(module):
-            # We want to skip this layer, so we have to return the input of the current layer
-            # as output of the next layer. But at this point, we don't have information about
-            # the arguments required by next layer. Even if we did, order matters unless we
-            # always pass kwargs. But that is not the case usually with hidden_states, encoder_hidden_states,
-            # temb, etc. TODO(aryan): implement correctly later
-            output = None
-        else:
-            output = module._old_forward(*args, **kwargs)
-
-        return module._diffusers_hook.post_forward(module, output)
 
 
 def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False):

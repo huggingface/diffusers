@@ -1088,10 +1088,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
         functions correctly when applying enable_model_cpu_offload.
         """
-
-        if hasattr(self, "_diffusers_hook"):
-            self._diffusers_hook.reset_state()
-
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return

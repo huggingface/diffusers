@@ -13,12 +13,12 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import torch.nn as nn
 
 from ..models.attention_processor import Attention
-from ..models.hooks import PyramidAttentionBroadcastHook, add_hook_to_module
+from ..models.hooks import ModelHook, add_hook_to_module
 from ..utils import logging
 from .pipeline_utils import DiffusionPipeline
 
@@ -28,7 +28,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 _ATTENTION_CLASSES = (Attention,)
 
-_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
+_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
 _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
 _CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
 
@@ -96,21 +96,15 @@ class PyramidAttentionBroadcastState:
 
     def __init__(self) -> None:
         self.iteration = 0
+        self.cache = None
+
+    def update_state(self, output: Any) -> None:
+        self.iteration += 1
+        self.cache = output
 
     def reset_state(self):
         self.iteration = 0
-
-
-class nnModulePAB(Protocol):
-    r"""
-    Type hint for a torch.nn.Module that contains a `_pyramid_attention_broadcast_state` attribute.
-
-    Attributes:
-        _pyramid_attention_broadcast_state (`PyramidAttentionBroadcastState`):
-            The state of Pyramid Attention Broadcast.
-    """
-
-    _pyramid_attention_broadcast_state: PyramidAttentionBroadcastState
+        self.cache = None
 
 
 def apply_pyramid_attention_broadcast(
@@ -247,14 +241,15 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         )
         return
 
-    def skip_callback(module: nnModulePAB) -> bool:
+    def skip_callback(module: nn.Module) -> bool:
         pab_state = module._pyramid_attention_broadcast_state
-        current_timestep = pipeline._current_timestep
-        is_within_timestep_range = timestep_skip_range[0] < current_timestep < timestep_skip_range[1]
+        if pab_state.cache is None:
+            return False
+
+        is_within_timestep_range = timestep_skip_range[0] < pipeline._current_timestep < timestep_skip_range[1]
 
         if is_within_timestep_range:
             should_compute_attention = pab_state.iteration > 0 and pab_state.iteration % block_skip_range == 0
-            pab_state.iteration += 1
             return not should_compute_attention
 
         # We are still not in the phase of inference where skipping attention is possible without minimal quality
@@ -263,3 +258,24 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
 
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
     apply_pyramid_attention_broadcast_on_module(module, skip_callback)
+
+
+class PyramidAttentionBroadcastHook(ModelHook):
+    def __init__(self, skip_callback: Callable[[nn.Module], bool]) -> None:
+        super().__init__()
+
+        self.skip_callback = skip_callback
+
+    def new_forward(self, module: nn.Module, *args, **kwargs) -> Any:
+        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
+
+        if self.skip_callback(module):
+            output = module._pyramid_attention_broadcast_state.cache
+        else:
+            output = module._old_forward(*args, **kwargs)
+
+        return module._diffusers_hook.post_forward(module, output)
+
+    def post_forward(self, module: nn.Module, output: Any) -> Any:
+        module._pyramid_attention_broadcast_state.update_state(output)
+        return output
