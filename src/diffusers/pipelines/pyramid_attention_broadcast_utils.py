@@ -80,6 +80,9 @@ class PyramidAttentionBroadcastConfig:
     temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
     cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_ATTENTION_BLOCK_IDENTIFIERS
 
+    # TODO(aryan): add PAB for MLP layers (very limited speedup from testing with original codebase
+    # so not added for now)
+
 
 class PyramidAttentionBroadcastState:
     r"""
