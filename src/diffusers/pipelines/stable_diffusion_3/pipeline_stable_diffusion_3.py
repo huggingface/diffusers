@@ -738,7 +738,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Dict[str, Any] = {},
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -980,11 +980,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     )
 
                     image_prompt_embeds = dict(
-                        ip_hidden_states = ip_hidden_states,
-                        temb = temb
+                        ip_hidden_states=ip_hidden_states,
+                        temb=temb
                     )
-                else:
-                    image_prompt_embeds = {}
+
+                    if self.joint_attention_kwargs is None:
+                        self._joint_attention_kwargs = image_prompt_embeds
+                    else:
+                        self._joint_attention_kwargs.update(**image_prompt_embeds)                        
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -992,10 +995,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
                     return_dict=False,
-                    joint_attention_kwargs={
-                        **image_prompt_embeds,
-                        **self.joint_attention_kwargs,                        
-                    }
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                 )[0]
 
                 # perform guidance
@@ -1016,10 +1016,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                             timestep=timestep,
                             encoder_hidden_states=original_prompt_embeds,
                             pooled_projections=original_pooled_prompt_embeds,
-                            joint_attention_kwargs={
-                                **image_prompt_embeds,
-                                **self.joint_attention_kwargs,                        
-                            },
+                            joint_attention_kwargs=self.joint_attention_kwargs,
                             return_dict=False,
                             skip_layers=skip_guidance_layers,
                         )[0]
