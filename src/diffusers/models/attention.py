@@ -192,7 +192,7 @@ class JointTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
-        joint_attention_kwargs: Dict[str, Any] = {},
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         if self.use_dual_attention:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(
@@ -207,6 +207,10 @@ class JointTransformerBlock(nn.Module):
             norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
                 encoder_hidden_states, emb=temb
             )
+
+        # Empty dict if None is passed
+        if joint_attention_kwargs is None:
+            joint_attention_kwargs = {}
 
         # Attention.
         attn_output, context_attn_output = self.attn(
