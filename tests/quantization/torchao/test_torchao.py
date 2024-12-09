@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     is_torch_available,
     is_torchao_available,
+    nightly,
     require_torch,
     require_torch_gpu,
     require_torchao_version_greater,
@@ -280,7 +281,8 @@ class TorchAoTest(unittest.TestCase):
 
     def test_offload(self):
         """
-        Test if the quantized model int4 weight-only is working properly with cpu/disk offload.
+        Test if the quantized model int4 weight-only is working properly with cpu/disk offload. Also verifies
+        that the device map is correctly set (in the `hf_device_map` attribute of the model).
         """
 
         device_map_offload = {
@@ -305,6 +307,8 @@ class TorchAoTest(unittest.TestCase):
                 torch_dtype=torch.bfloat16,
                 offload_folder=offload_folder,
             )
+
+            self.assertTrue(quantized_model.hf_device_map == device_map_offload)
 
             output = quantized_model(**inputs)[0]
             output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
@@ -539,6 +543,7 @@ class TorchAoSerializationINTA16W8CPUTest(TorchAoSerializationTest):
 @require_torch_gpu
 @require_torchao_version_greater("0.6.0")
 @slow
+@nightly
 class SlowTorchAoTests(unittest.TestCase):
     def tearDown(self):
         gc.collect()

@@ -45,7 +45,7 @@ pipe = FluxPipeline.from_pretrained(
 pipe.to("cuda")
 
 prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+image = pipe(prompt, num_inference_steps=28, guidance_scale=0.0).images[0]
 image.save("output.png")
 ```
 
@@ -75,27 +75,12 @@ Dynamic activation quantization stores the model weights in a low-bit dtype, whi
 
 The quantization methods supported are as follows:
 
-- **Integer quantization:**
-  - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`, `int8_weight_only`, `int8_dynamic_activation_int8_weight`
-  - Shorthands: `int4wo`, `int4dq`, `int8wo`, `int8dq`
-  - Documentation shorthands/Common speak: `int_a16w4`, `int_a8w4`, `int_a16w8`, `int_a8w8`
-
-- **Floating point 8-bit quantization:**
-  - Full function names: `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight`
-  - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8_e4m3_tensor`, `float8_e4m3_row`, `float8sq`
-  - Documentation shorthands/Common speak: `float8_e5m2_a16w8`, `float8_e4m3_a16w8`, `float_a8w8`, `float_a16w8`
-
-- **Floating point X-bit quantization:**
-  - Full function names: `fpx_weight_only`
-  - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must be satisfied for a given shorthand notation.
-  - Documentation shorthands/Common speak: `float_a16w3`, `float_a16w4`, `float_a16w5`, `float_a16w6`, `float_a16w7`, `float_a16w8`
-
-- **Unsigned Integer quantization:**
-  - Full function names: `uintx_weight_only`
-  - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
-  - Documentation shorthands/Common speak: `uint_a16w1`, `uint_a16w2`, `uint_a16w3`, `uint_a16w4`, `uint_a16w5`, `uint_a16w6`, `uint_a16w7`
-
-The "Documentation shorthands/Common speak" refers to the underlying storage dtype with the number of bits for storing activations and weights, respectively. For example, int_a16w8 stores the activations in 16-bit and the weights in 8-bit.
+| **Category** | **Full Function Names** | **Shorthands** |
+|--------------|-------------------------|----------------|
+| **Integer quantization** | `int4_weight_only`, `int8_dynamic_activation_int4_weight`, `int8_weight_only`, `int8_dynamic_activation_int8_weight` | `int4wo`, `int4dq`, `int8wo`, `int8dq` |
+| **Floating point 8-bit quantization** | `float8_weight_only`, `float8_dynamic_activation_float8_weight`, `float8_static_activation_float8_weight` | `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`, `float8_e4m3_tensor`, `float8_e4m3_row` |
+| **Floating point X-bit quantization** | `fpx_weight_only` | `fpX_eAwB` where `X` is the number of bits (1-7), `A` is exponent bits, and `B` is mantissa bits. Constraint: `X == A + B + 1` |
+| **Unsigned Integer quantization** | `uintx_weight_only` | `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo` |
 
 Some quantization methods are aliases (for example, `int8wo` is the commonly used shorthand for `int8_weight_only`). This allows using the quantization methods described in the torchao docs as-is, while also making it convenient to remember their shorthand notations.
 

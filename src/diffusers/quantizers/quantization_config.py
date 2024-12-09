@@ -405,29 +405,22 @@ class TorchAoConfig(QuantizationConfigMixin):
                     - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
                       `int8_weight_only`, `int8_dynamic_activation_int8_weight`
                     - Shorthands: `int4wo`, `int4dq`, `int8wo`, `int8dq`
-                    - Documentation shorthands/Common speak: `int_a16w4`, `int_a8w4`, `int_a16w8`, `int_a8w8`
 
                 - **Floating point 8-bit quantization:**
                     - Full function names: `float8_weight_only`, `float8_dynamic_activation_float8_weight`,
                       `float8_static_activation_float8_weight`
                     - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
-                      `float8_e4m3_tensor`, `float8_e4m3_row`, `float8sq`
-                    - Documentation shorthands/Common speak: `float8_e5m2_a16w8`, `float8_e4m3_a16w8`, `float_a8w8`,
-                      `float_a16w8`
+                      `float8_e4m3_tensor`, `float8_e4m3_row`,
 
                 - **Floating point X-bit quantization:**
                     - Full function names: `fpx_weight_only`
                     - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
                       of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
                       be satisfied for a given shorthand notation.
-                    - Documentation shorthands/Common speak: `float_a16w3`, `float_a16w4`, `float_a16w5`,
-                      `float_a16w6`, `float_a16w7`, `float_a16w8`
 
                 - **Unsigned Integer quantization:**
                     - Full function names: `uintx_weight_only`
                     - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
-                    - Documentation shorthands/Common speak: `uint_a16w1`, `uint_a16w2`, `uint_a16w3`, `uint_a16w4`,
-                      `uint_a16w5`, `uint_a16w6`, `uint_a16w7`
         modules_to_not_convert (`List[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
@@ -584,7 +577,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_float8dq_types(torch.float8_e4m3fn),
                 # float8 weight + float8 activation (static)
                 "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
-                "float8sq": float8_static_activation_float8_weight,
                 # For fpx, only x <= 8 is supported by default. Other dtypes can be explored by users directly
                 # fpx weight + bfloat16/float16 activation
                 **generate_fpx_quantization_types(3),
@@ -606,42 +598,13 @@ class TorchAoConfig(QuantizationConfigMixin):
                 # "uint8wo": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
             }
 
-            SHORTHAND_QUANTIZATION_TYPES = {
-                "int_a16w4": int4_weight_only,
-                "int_a8w4": int8_dynamic_activation_int4_weight,
-                "int_a16w8": int8_weight_only,
-                "int_a8w8": int8_dynamic_activation_int8_weight,
-                "uint_a16w1": partial(uintx_weight_only, dtype=torch.uint1),
-                "uint_a16w2": partial(uintx_weight_only, dtype=torch.uint2),
-                "uint_a16w3": partial(uintx_weight_only, dtype=torch.uint3),
-                "uint_a16w4": partial(uintx_weight_only, dtype=torch.uint4),
-                "uint_a16w5": partial(uintx_weight_only, dtype=torch.uint5),
-                "uint_a16w6": partial(uintx_weight_only, dtype=torch.uint6),
-                "uint_a16w7": partial(uintx_weight_only, dtype=torch.uint7),
-                # "uint_a16w8": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
-            }
-
-            SHORTHAND_FLOAT_QUANTIZATION_TYPES = {
-                "float_e5m2_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float_e4m3_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
-                "float_a8w8": float8_dynamic_activation_float8_weight,
-                "float_a16w3": partial(fpx_weight_only, ebits=2, mbits=0),
-                "float_a16w4": partial(fpx_weight_only, ebits=2, mbits=1),
-                "float_a16w5": partial(fpx_weight_only, ebits=3, mbits=1),
-                "float_a16w6": partial(fpx_weight_only, ebits=3, mbits=2),
-                "float_a16w7": partial(fpx_weight_only, ebits=4, mbits=2),
-                "float_a16w8": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-            }
-
             QUANTIZATION_TYPES = {}
             QUANTIZATION_TYPES.update(INT4_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(INT8_QUANTIZATION_TYPES)
             QUANTIZATION_TYPES.update(UINTX_QUANTIZATION_DTYPES)
-            QUANTIZATION_TYPES.update(SHORTHAND_QUANTIZATION_TYPES)
 
             if cls._is_cuda_capability_atleast_8_9():
                 QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
-                QUANTIZATION_TYPES.update(SHORTHAND_FLOAT_QUANTIZATION_TYPES)
 
             return QUANTIZATION_TYPES
         else:
