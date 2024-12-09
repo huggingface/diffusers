@@ -16,7 +16,6 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from safetensors import safe_open
 from transformers import (
     CLIPTextModelWithProjection,
     CLIPTokenizer,
@@ -27,18 +26,10 @@ from transformers import (
 )
 
 from ...image_processor import VaeImageProcessor, PipelineImageInput
-from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin
+from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin, SD3IPAdapterMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
-from ...models.embeddings import TimePerceiverResampler
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...models.attention_processor import IPAdapterJointAttnProcessor2_0
-from ...models.modeling_utils import (
-    load_model_dict_into_meta,
-    _LOW_CPU_MEM_USAGE_DEFAULT,
-    load_state_dict,
-)
-from huggingface_hub.utils import validate_hf_hub_args
 from ...utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
@@ -46,9 +37,6 @@ from ...utils import (
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
-    is_torch_version,
-    is_accelerate_available,
-    _get_model_file,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -142,7 +130,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -691,174 +679,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     def interrupt(self):
         return self._interrupt
     
-    @validate_hf_hub_args
-    def load_ip_adapter(
-        self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        weight_name: str,
-        subfolder: Optional[str] = None,
-        **kwargs,
-    ):
-        """
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `dict`):
-                Can be either:
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-            weight_name (`str`):
-                The name of the weight file to load.
-            subfolder (`str, *optional*):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
-        """
-
-        # Load the main state dict first
-        cache_dir = kwargs.pop("cache_dir", None)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", None)
-        token = kwargs.pop("token", None)
-        revision = kwargs.pop("revision", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-
-        if low_cpu_mem_usage:
-            if is_accelerate_available():
-                from accelerate import init_empty_weights
-
-            else:
-                low_cpu_mem_usage = False
-                logger.warning(
-                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                    " install accelerate\n```\n."
-                )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-        
-        user_agent = {
-            "file_type": "attn_procs_weights",
-            "framework": "pytorch",
-        }
-
-        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            model_file = _get_model_file(
-                pretrained_model_name_or_path_or_dict,
-                weights_name=weight_name,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-            if weight_name.endswith(".safetensors"):
-                state_dict = {"image_proj": {}, "ip_adapter": {}}
-                with safe_open(model_file, framework="pt", device="cpu") as f:
-                    for key in f.keys():
-                        if key.startswith("image_proj."):
-                            state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
-                        elif key.startswith("ip_adapter."):
-                            state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
-            else:
-                state_dict = load_state_dict(model_file)
-        else:
-            state_dict = pretrained_model_name_or_path_or_dict
-
-        if list(state_dict.keys()) != ["image_proj", "ip_adapter"]:
-            raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
-        
-        # Load ip_adapter
-        hidden_size = self.transformer.config.attention_head_dim * self.transformer.config.num_attention_heads
-        ip_hidden_states_dim = self.transformer.config.attention_head_dim * self.transformer.config.num_attention_heads
-        timesteps_emb_dim = state_dict["ip_adapter"]["0.norm_ip.linear.weight"].shape[1]
-
-        # State dict by layer
-        layer_state_dict = {idx: {} for idx in range(len(self.transformer.attn_processors))}
-        for key, weights in state_dict["ip_adapter"].items():
-            idx, name = key.split(".", 1)
-            layer_state_dict[int(idx)][name] = weights
-
-        attn_procs = {}
-        for idx, name in enumerate(self.transformer.attn_processors.keys()):
-            attn_procs[name] = IPAdapterJointAttnProcessor2_0(
-                hidden_size=hidden_size,
-                ip_hidden_states_dim=ip_hidden_states_dim,
-                head_dim=self.transformer.config.attention_head_dim,
-                timesteps_emb_dim=timesteps_emb_dim,
-            ).to(self.device, dtype=self.dtype)
-
-            if not low_cpu_mem_usage:
-                attn_procs[name].load_state_dict(layer_state_dict[idx])
-            else:
-                load_model_dict_into_meta(attn_procs[name], layer_state_dict, device=self.device, dtype=self.dtype)
-
-        self.transformer.set_attn_processor(attn_procs)
-
-        # Load image_proj
-        embed_dim = state_dict["image_proj"]["proj_in.weight"].shape[1]
-        output_dim = state_dict["image_proj"]["proj_out.weight"].shape[0]
-        hidden_dim = state_dict["image_proj"]["latents"].shape[2]
-        heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
-        num_queries = state_dict["image_proj"]["latents"].shape[1]
-        timestep_in_dim = state_dict["image_proj"]["time_embedding.linear_1.weight"].shape[1]
-
-        self.image_proj = TimePerceiverResampler(
-            embed_dim=embed_dim,
-            output_dim=output_dim,
-            hidden_dim=hidden_dim,
-            heads=heads,
-            num_queries=num_queries,
-            timestep_in_dim=timestep_in_dim
-        ).to(device=self.device, dtype=self.dtype)
-
-        if not low_cpu_mem_usage:
-            self.image_proj.load_state_dict(state_dict["image_proj"], strict=True)
-        else:
-            load_model_dict_into_meta(self.image_proj, state_dict["image_proj"], device=self.device, dtype=self.dtype)
-
-    def set_ip_adapter_scale(self, scale):
-        """
-        Controls image/text prompt conditioning. A value of 1.0 means the model is only conditioned on the image prompt, and 0.0
-        only conditioned by the text prompt. Lowering this value encourages the model to produce more diverse images, but they 
-        may not be as aligned with the image prompt.
-        """
-        for attn_processor in self.transformer.attn_processors.values():
-            if isinstance(attn_processor, IPAdapterJointAttnProcessor2_0):
-                attn_processor.scale = scale
-
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
     def encode_image(self, image):
         if not isinstance(image, torch.Tensor):
@@ -1173,7 +993,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 timestep = t.expand(latent_model_input.shape[0])
 
                 if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-                    ip_hidden_states, temb = self.image_proj(
+                    ip_hidden_states, temb = self.transformer.image_proj(
                         image_embeds,
                         timestep.to(dtype=latents.dtype),
                         need_temb=True,
