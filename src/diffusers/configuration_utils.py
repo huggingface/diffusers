@@ -360,13 +360,14 @@ class ConfigMixin:
                 "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
             )
         # Custom path for now
+        if dduf_entries:
             if subfolder is not None:
-                config_file = if os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name) in dduf_entries
+                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
             else:
-                config_file = if os.path.join(pretrained_model_name_or_path, cls.config_name)
-            if config_filepath not in dduf_entries:
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            if config_file not in dduf_entries:
                 raise ValueError(
-                    f"We did not manage to find the file {os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)} in the dduf file. We only have the following files {dduf_entries.keys()}"
+                    f"We did not manage to find the file {config_file} in the dduf file. We only have the following files {dduf_entries.keys()}"
                 )
         elif os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
