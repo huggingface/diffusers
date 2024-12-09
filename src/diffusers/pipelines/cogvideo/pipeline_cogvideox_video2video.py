@@ -529,6 +529,7 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 crops_coords=grid_crops_coords,
                 grid_size=(grid_height, grid_width),
                 temporal_size=num_frames,
+                device=device,
             )
         else:
             # CogVideoX 1.5
@@ -541,10 +542,9 @@ class CogVideoXVideoToVideoPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin)
                 temporal_size=base_num_frames,
                 grid_type="slice",
                 max_size=(base_size_height, base_size_width),
+                device=device,
             )
 
-        freqs_cos = freqs_cos.to(device=device)
-        freqs_sin = freqs_sin.to(device=device)
         return freqs_cos, freqs_sin
 
     @property
