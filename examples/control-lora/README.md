@@ -1,13 +1,17 @@
 # Training Control LoRA with Flux
 
-This example shows how train Control LoRA with Flux to condition it with additional structural controls (like depth maps, poses, etc.). 
-
-This is still an experimental version and the following differences exist:
-
-* No use of bias on `lora_B`.
-* Mo updates on the norm scales.
+This (experimental) example shows how train Control LoRA with [Flux](https://huggingface.co/black-forest-labs/FLUX.1-dev) to condition it with additional structural controls (like depth maps, poses, etc.). 
 
 We simply expand the input channels of Flux.1 Dev from 64 to 128 to allow for additional inputs and then train a regular LoRA on top of it. To account for the newly added input channels, we additional append a LoRA on the underlying layer (`x_embedder`). Inference, however, is performed with the `FluxControlPipeline`. 
+
+> [!NOTE]
+> **Gated model**
+>
+> As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
+
+```bash
+huggingface-cli login
+```
 
 Example command:
 
@@ -35,4 +39,46 @@ accelerate launch train_control_lora_flux.py \
 
 `openpose.png` comes from [here](https://huggingface.co/Adapter/t2iadapter/resolve/main/openpose.png).
 
-You need to install `diffusers` from the branch of [this PR](https://github.com/huggingface/diffusers/pull/9999). 
+You need to install `diffusers` from the branch of [this PR](https://github.com/huggingface/diffusers/pull/9999). When it's merged, you should install `diffusers` from the `main`.
+
+The training script exposes additional CLI args that might be useful to experiment with:
+
+* `use_lora_bias`: When set, additionally trains the biases of the `lora_B` layer. 
+* `train_norm_layers`: When set, additionally trains the normalization scales. Takes care of saving and loading.
+* `lora_layers`: Specify the layers you want to apply LoRA to. If you specify "all-linear", all the linear layers will be LoRA-attached.
+
+## Training with DeepSpeed
+
+It's possible to train with [DeepSpeed](https://github.com/microsoft/DeepSpeed), specifically leveraging the Zero2 system optimization. To use it, save the following config to an YAML file (feel free to modify as needed):
+
+```yaml
+compute_environment: LOCAL_MACHINE
+debug: false
+deepspeed_config:
+  gradient_accumulation_steps: 1
+  gradient_clipping: 1.0
+  offload_optimizer_device: cpu
+  offload_param_device: cpu
+  zero3_init_flag: false
+  zero_stage: 2
+distributed_type: DEEPSPEED
+downcast_bf16: 'no'
+enable_cpu_affinity: false
+machine_rank: 0
+main_training_function: main
+mixed_precision: bf16
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+```
+
+And then while launching training, pass the config file:
+
+```bash
+accelerate launch --config_file=CONFIG_FILE.yaml ...
+```
