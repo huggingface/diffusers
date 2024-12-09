@@ -564,7 +564,8 @@ class PushToHubMixin:
             commit_message (`str`, *optional*):
                 Message to commit while pushing. Default to `"Upload {object}"`.
             private (`bool`, *optional*):
-                Whether or not the repository created should be private.
+                Whether to make the repo private. If `None` (default), the repo will be public unless the
+                organization's default is private. This value is ignored if the repo already exists.
             token (`str`, *optional*):
                 The token to use as HTTP bearer authorization for remote files. The token generated when running
                 `huggingface-cli login` (stored in `~/.huggingface`).

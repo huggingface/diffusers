@@ -238,7 +238,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         for i, (spatial_block, temp_block) in enumerate(
             zip(self.transformer_blocks, self.temporal_transformer_blocks)
         ):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     spatial_block,
                     hidden_states,
@@ -271,7 +271,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
                 if i == 0 and num_frame > 1:
                     hidden_states = hidden_states + self.temp_pos_embed
 
-                if self.training and self.gradient_checkpointing:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         temp_block,
                         hidden_states,

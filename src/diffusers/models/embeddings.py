@@ -86,12 +86,25 @@ def get_3d_sincos_pos_embed(
     temporal_interpolation_scale: float = 1.0,
 ) -> np.ndarray:
     r"""
+    Creates 3D sinusoidal positional embeddings.
+
     Args:
         embed_dim (`int`):
+            The embedding dimension of inputs. It must be divisible by 16.
         spatial_size (`int` or `Tuple[int, int]`):
+            The spatial dimension of positional embeddings. If an integer is provided, the same size is applied to both
+            spatial dimensions (height and width).
         temporal_size (`int`):
+            The temporal dimension of postional embeddings (number of frames).
         spatial_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for spatial grid interpolation.
         temporal_interpolation_scale (`float`, defaults to 1.0):
+            Scale factor for temporal grid interpolation.
+
+    Returns:
+        `np.ndarray`:
+            The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
+            embed_dim]`.
     """
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
@@ -129,8 +142,24 @@ def get_2d_sincos_pos_embed(
     embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
 ):
     """
-    grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
-    [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    Creates 2D sinusoidal positional embeddings.
+
+    Args:
+        embed_dim (`int`):
+            The embedding dimension.
+        grid_size (`int`):
+            The size of the grid height and width.
+        cls_token (`bool`, defaults to `False`):
+            Whether or not to add a classification token.
+        extra_tokens (`int`, defaults to `0`):
+            The number of extra tokens to add.
+        interpolation_scale (`float`, defaults to `1.0`):
+            The scale of the interpolation.
+
+    Returns:
+        pos_embed (`np.ndarray`):
+            Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or `[1 + grid_size*grid_size,
+            embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
@@ -148,6 +177,16 @@ def get_2d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    r"""
+    This function generates 2D sinusoidal positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension.
+        grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
+
+    Returns:
+        `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
+    """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
@@ -161,7 +200,14 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
-    embed_dim: output dimension for each position pos: a list of positions to be encoded: size (M,) out: (M, D)
+    This function generates 1D positional embeddings from a grid.
+
+    Args:
+        embed_dim (`int`): The embedding dimension `D`
+        pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
+
+    Returns:
+        `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
@@ -181,7 +227,22 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
 
 class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding with support for SD3 cropping."""
+    """
+    2D Image to Patch Embedding with support for SD3 cropping.
+
+    Args:
+        height (`int`, defaults to `224`): The height of the image.
+        width (`int`, defaults to `224`): The width of the image.
+        patch_size (`int`, defaults to `16`): The size of the patches.
+        in_channels (`int`, defaults to `3`): The number of input channels.
+        embed_dim (`int`, defaults to `768`): The output dimension of the embedding.
+        layer_norm (`bool`, defaults to `False`): Whether or not to use layer normalization.
+        flatten (`bool`, defaults to `True`): Whether or not to flatten the output.
+        bias (`bool`, defaults to `True`): Whether or not to use bias.
+        interpolation_scale (`float`, defaults to `1`): The scale of the interpolation.
+        pos_embed_type (`str`, defaults to `"sincos"`): The type of positional embedding.
+        pos_embed_max_size (`int`, defaults to `None`): The maximum size of the positional embedding.
+    """
 
     def __init__(
         self,
@@ -289,7 +350,15 @@ class PatchEmbed(nn.Module):
 
 
 class LuminaPatchEmbed(nn.Module):
-    """2D Image to Patch Embedding with support for Lumina-T2X"""
+    """
+    2D Image to Patch Embedding with support for Lumina-T2X
+
+    Args:
+        patch_size (`int`, defaults to `2`): The size of the patches.
+        in_channels (`int`, defaults to `4`): The number of input channels.
+        embed_dim (`int`, defaults to `768`): The output dimension of the embedding.
+        bias (`bool`, defaults to `True`): Whether or not to use bias.
+    """
 
     def __init__(self, patch_size=2, in_channels=4, embed_dim=768, bias=True):
         super().__init__()
@@ -338,6 +407,7 @@ class CogVideoXPatchEmbed(nn.Module):
     def __init__(
         self,
         patch_size: int = 2,
+        patch_size_t: Optional[int] = None,
         in_channels: int = 16,
         embed_dim: int = 1920,
         text_embed_dim: int = 4096,
@@ -355,6 +425,7 @@ class CogVideoXPatchEmbed(nn.Module):
         super().__init__()
 
         self.patch_size = patch_size
+        self.patch_size_t = patch_size_t
         self.embed_dim = embed_dim
         self.sample_height = sample_height
         self.sample_width = sample_width
@@ -366,9 +437,15 @@ class CogVideoXPatchEmbed(nn.Module):
         self.use_positional_embeddings = use_positional_embeddings
         self.use_learned_positional_embeddings = use_learned_positional_embeddings
 
-        self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
-        )
+        if patch_size_t is None:
+            # CogVideoX 1.0 checkpoints
+            self.proj = nn.Conv2d(
+                in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+            )
+        else:
+            # CogVideoX 1.5 checkpoints
+            self.proj = nn.Linear(in_channels * patch_size * patch_size * patch_size_t, embed_dim)
+
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
 
         if use_positional_embeddings or use_learned_positional_embeddings:
@@ -407,12 +484,24 @@ class CogVideoXPatchEmbed(nn.Module):
         """
         text_embeds = self.text_proj(text_embeds)
 
-        batch, num_frames, channels, height, width = image_embeds.shape
-        image_embeds = image_embeds.reshape(-1, channels, height, width)
-        image_embeds = self.proj(image_embeds)
-        image_embeds = image_embeds.view(batch, num_frames, *image_embeds.shape[1:])
-        image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
-        image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
+        batch_size, num_frames, channels, height, width = image_embeds.shape
+
+        if self.patch_size_t is None:
+            image_embeds = image_embeds.reshape(-1, channels, height, width)
+            image_embeds = self.proj(image_embeds)
+            image_embeds = image_embeds.view(batch_size, num_frames, *image_embeds.shape[1:])
+            image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
+            image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
+        else:
+            p = self.patch_size
+            p_t = self.patch_size_t
+
+            image_embeds = image_embeds.permute(0, 1, 3, 4, 2)
+            image_embeds = image_embeds.reshape(
+                batch_size, num_frames // p_t, p_t, height // p, p, width // p, p, channels
+            )
+            image_embeds = image_embeds.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(4, 7).flatten(1, 3)
+            image_embeds = self.proj(image_embeds)
 
         embeds = torch.cat(
             [text_embeds, image_embeds], dim=1
@@ -497,7 +586,14 @@ class CogView3PlusPatchEmbed(nn.Module):
 
 
 def get_3d_rotary_pos_embed(
-    embed_dim, crops_coords, grid_size, temporal_size, theta: int = 10000, use_real: bool = True
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    theta: int = 10000,
+    use_real: bool = True,
+    grid_type: str = "linspace",
+    max_size: Optional[Tuple[int, int]] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
@@ -513,17 +609,30 @@ def get_3d_rotary_pos_embed(
         The size of the temporal dimension.
     theta (`float`):
         Scaling factor for frequency computation.
+    grid_type (`str`):
+        Whether to use "linspace" or "slice" to compute grids.
 
     Returns:
         `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
     """
     if use_real is not True:
         raise ValueError(" `use_real = False` is not currently supported for get_3d_rotary_pos_embed")
-    start, stop = crops_coords
-    grid_size_h, grid_size_w = grid_size
-    grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
-    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+
+    if grid_type == "linspace":
+        start, stop = crops_coords
+        grid_size_h, grid_size_w = grid_size
+        grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
+        grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+        grid_t = np.arange(temporal_size, dtype=np.float32)
+        grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+    elif grid_type == "slice":
+        max_h, max_w = max_size
+        grid_size_h, grid_size_w = grid_size
+        grid_h = np.arange(max_h, dtype=np.float32)
+        grid_w = np.arange(max_w, dtype=np.float32)
+        grid_t = np.arange(temporal_size, dtype=np.float32)
+    else:
+        raise ValueError("Invalid value passed for `grid_type`.")
 
     # Compute dimensions for each axis
     dim_t = embed_dim // 4
@@ -559,6 +668,12 @@ def get_3d_rotary_pos_embed(
     t_cos, t_sin = freqs_t  # both t_cos and t_sin has shape: temporal_size, dim_t
     h_cos, h_sin = freqs_h  # both h_cos and h_sin has shape: grid_size_h, dim_h
     w_cos, w_sin = freqs_w  # both w_cos and w_sin has shape: grid_size_w, dim_w
+
+    if grid_type == "slice":
+        t_cos, t_sin = t_cos[:temporal_size], t_sin[:temporal_size]
+        h_cos, h_sin = h_cos[:grid_size_h], h_sin[:grid_size_h]
+        w_cos, w_sin = w_cos[:grid_size_w], w_sin[:grid_size_w]
+
     cos = combine_time_height_width(t_cos, h_cos, w_cos)
     sin = combine_time_height_width(t_sin, h_sin, w_sin)
     return cos, sin
@@ -629,6 +744,20 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
 
 
 def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
+    """
+    Get 2D RoPE from grid.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    grid (`np.ndarray`):
+        The grid of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
     assert embed_dim % 4 == 0
 
     # use half of dimensions to encode grid_h
@@ -649,6 +778,23 @@ def get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=False):
 
 
 def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, ntk_factor=1.0):
+    """
+    Get 2D RoPE from grid.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    grid (`np.ndarray`):
+        The grid of the positional embedding.
+    linear_factor (`float`):
+        The linear factor of the positional embedding, which is used to scale the positional embedding in the linear
+        layer.
+    ntk_factor (`float`):
+        The ntk factor of the positional embedding, which is used to scale the positional embedding in the ntk layer.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
     assert embed_dim % 4 == 0
 
     emb_h = get_1d_rotary_pos_embed(
@@ -813,7 +959,12 @@ class FluxPosEmbed(nn.Module):
         freqs_dtype = torch.float32 if is_mps else torch.float64
         for i in range(n_axes):
             cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i], pos[:, i], repeat_interleave_real=True, use_real=True, freqs_dtype=freqs_dtype
+                self.axes_dim[i],
+                pos[:, i],
+                theta=self.theta,
+                repeat_interleave_real=True,
+                use_real=True,
+                freqs_dtype=freqs_dtype,
             )
             cos_out.append(cos)
             sin_out.append(sin)
@@ -1356,6 +1507,41 @@ class LuminaCombinedTimestepCaptionEmbedding(nn.Module):
         return conditioning
 
 
+class MochiCombinedTimestepCaptionEmbedding(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        pooled_projection_dim: int,
+        text_embed_dim: int,
+        time_embed_dim: int = 256,
+        num_attention_heads: int = 8,
+    ) -> None:
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0.0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=time_embed_dim, time_embed_dim=embedding_dim)
+        self.pooler = MochiAttentionPool(
+            num_attention_heads=num_attention_heads, embed_dim=text_embed_dim, output_dim=embedding_dim
+        )
+        self.caption_proj = nn.Linear(text_embed_dim, pooled_projection_dim)
+
+    def forward(
+        self,
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
+        hidden_dtype: Optional[torch.dtype] = None,
+    ):
+        time_proj = self.time_proj(timestep)
+        time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
+
+        pooled_projections = self.pooler(encoder_hidden_states, encoder_attention_mask)
+        caption_proj = self.caption_proj(encoder_hidden_states)
+
+        conditioning = time_emb + pooled_projections
+        return conditioning, caption_proj
+
+
 class TextTimeEmbedding(nn.Module):
     def __init__(self, encoder_dim: int, time_embed_dim: int, num_heads: int = 64):
         super().__init__()
@@ -1482,6 +1668,88 @@ class AttentionPooling(nn.Module):
         a = a.reshape(bs, -1, 1).transpose(1, 2)
 
         return a[:, 0, :]  # cls_token
+
+
+class MochiAttentionPool(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        embed_dim: int,
+        output_dim: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+
+        self.output_dim = output_dim or embed_dim
+        self.num_attention_heads = num_attention_heads
+
+        self.to_kv = nn.Linear(embed_dim, 2 * embed_dim)
+        self.to_q = nn.Linear(embed_dim, embed_dim)
+        self.to_out = nn.Linear(embed_dim, self.output_dim)
+
+    @staticmethod
+    def pool_tokens(x: torch.Tensor, mask: torch.Tensor, *, keepdim=False) -> torch.Tensor:
+        """
+        Pool tokens in x using mask.
+
+        NOTE: We assume x does not require gradients.
+
+        Args:
+            x: (B, L, D) tensor of tokens.
+            mask: (B, L) boolean tensor indicating which tokens are not padding.
+
+        Returns:
+            pooled: (B, D) tensor of pooled tokens.
+        """
+        assert x.size(1) == mask.size(1)  # Expected mask to have same length as tokens.
+        assert x.size(0) == mask.size(0)  # Expected mask to have same batch size as tokens.
+        mask = mask[:, :, None].to(dtype=x.dtype)
+        mask = mask / mask.sum(dim=1, keepdim=True).clamp(min=1)
+        pooled = (x * mask).sum(dim=1, keepdim=keepdim)
+        return pooled
+
+    def forward(self, x: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
+        r"""
+        Args:
+            x (`torch.Tensor`):
+                Tensor of shape `(B, S, D)` of input tokens.
+            mask (`torch.Tensor`):
+                Boolean ensor of shape `(B, S)` indicating which tokens are not padding.
+
+        Returns:
+            `torch.Tensor`:
+                `(B, D)` tensor of pooled tokens.
+        """
+        D = x.size(2)
+
+        # Construct attention mask, shape: (B, 1, num_queries=1, num_keys=1+L).
+        attn_mask = mask[:, None, None, :].bool()  # (B, 1, 1, L).
+        attn_mask = F.pad(attn_mask, (1, 0), value=True)  # (B, 1, 1, 1+L).
+
+        # Average non-padding token features. These will be used as the query.
+        x_pool = self.pool_tokens(x, mask, keepdim=True)  # (B, 1, D)
+
+        # Concat pooled features to input sequence.
+        x = torch.cat([x_pool, x], dim=1)  # (B, L+1, D)
+
+        # Compute queries, keys, values. Only the mean token is used to create a query.
+        kv = self.to_kv(x)  # (B, L+1, 2 * D)
+        q = self.to_q(x[:, 0])  # (B, D)
+
+        # Extract heads.
+        head_dim = D // self.num_attention_heads
+        kv = kv.unflatten(2, (2, self.num_attention_heads, head_dim))  # (B, 1+L, 2, H, head_dim)
+        kv = kv.transpose(1, 3)  # (B, H, 2, 1+L, head_dim)
+        k, v = kv.unbind(2)  # (B, H, 1+L, head_dim)
+        q = q.unflatten(1, (self.num_attention_heads, head_dim))  # (B, H, head_dim)
+        q = q.unsqueeze(2)  # (B, H, 1, head_dim)
+
+        # Compute attention.
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)  # (B, H, 1, head_dim)
+
+        # Concatenate heads and run output.
+        x = x.squeeze(2).flatten(1, 2)  # (B, D = H * head_dim)
+        x = self.to_out(x)
+        return x
 
 
 def get_fourier_embeds_from_boundingbox(embed_dim, box):
