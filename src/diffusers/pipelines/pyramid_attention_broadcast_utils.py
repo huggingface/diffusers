@@ -251,7 +251,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
             pab_state.iteration += 1
             return not should_compute_attention
 
-        # We are still not yet in the phase of inference where skipping attention is possible without minimal quality
+        # We are still not in the phase of inference where skipping attention is possible without minimal quality
         # loss, as described in the paper. So, the attention computation cannot be skipped
         return False
 

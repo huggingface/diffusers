@@ -115,18 +115,9 @@ class SequentialHook(ModelHook):
 
 
 class PyramidAttentionBroadcastHook(ModelHook):
-    def __init__(
-        self,
-        skip_callback: Callable[[torch.nn.Module], bool],
-        # skip_range: int,
-        # timestep_range: Tuple[int, int],
-        # timestep_callback: Callable[[], Union[torch.LongTensor, int]],
-    ) -> None:
+    def __init__(self, skip_callback: Callable[[torch.nn.Module], bool]) -> None:
         super().__init__()
 
-        # self.skip_range = skip_range
-        # self.timestep_range = timestep_range
-        # self.timestep_callback = timestep_callback
         self.skip_callback = skip_callback
 
         self.cache = None
@@ -134,15 +125,6 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
         args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-
-        # current_timestep = self.timestep_callback()
-        # is_within_timestep_range = self.timestep_range[0] < current_timestep < self.timestep_range[1]
-        # should_compute_attention = self._iteration % self.skip_range == 0
-
-        # if not is_within_timestep_range or should_compute_attention:
-        #     output = module._old_forward(*args, **kwargs)
-        # else:
-        #     output = self.attention_cache
 
         if self.cache is not None and self.skip_callback(module):
             output = self.cache
