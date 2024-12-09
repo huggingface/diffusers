@@ -337,7 +337,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
         block_controlnet_hidden_states: List = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = {},
         return_dict: bool = True,
         skip_layers: Optional[List[int]] = None,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
