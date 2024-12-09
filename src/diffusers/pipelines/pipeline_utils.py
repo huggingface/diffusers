@@ -825,8 +825,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_huggingface_hub_version(">", "0.26.3"):
                 (">=", "0.17.0.dev0")
                 raise RuntimeError(
-                    "In order to load a dduf file, you need to install huggingface_hub>0.26.3. "
-                    "You can install it with the following: `pip install --upgrade huggingface_hub"
+                    "To load a dduf file, you need to install huggingface_hub>0.26.3. "
+                    "You can install it with the following: `pip install --upgrade huggingface_hub`."
                 )
 
             from huggingface_hub import read_dduf_file
