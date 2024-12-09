@@ -18,7 +18,6 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from torch import nn
-from einops import rearrange
 
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
@@ -5156,11 +5155,11 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             ip_value = self.to_v_ip(norm_ip_hidden_states)
 
             # Reshape
-            img_query = rearrange(img_query, 'b l (h d) -> b h l d', h=attn.heads)
-            img_key = rearrange(img_key, 'b l (h d) -> b h l d', h=attn.heads)
-            img_value = rearrange(img_value, 'b l (h d) -> b h l d', h=attn.heads)
-            ip_key = rearrange(ip_key, 'b l (h d) -> b h l d', h=attn.heads)
-            ip_value = rearrange(ip_value, 'b l (h d) -> b h l d', h=attn.heads)
+            img_query = img_query.view(batch_size, head_dim, attn.heads, -1).transpose(1,2)            
+            img_key = img_key.view(batch_size, head_dim, attn.heads, -1).transpose(1,2)
+            img_value = img_value.view(batch_size, head_dim, attn.heads, -1).transpose(1,2)
+            ip_key = ip_key.view(batch_size, head_dim, attn.heads, -1).transpose(1,2)
+            ip_value = ip_value.view(batch_size, head_dim, attn.heads, -1).transpose(1,2)
 
             # Norm
             img_query = self.norm_q(img_query)
@@ -5172,7 +5171,7 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             img_value = torch.cat([img_value, ip_value], dim=2)
 
             ip_hidden_states = F.scaled_dot_product_attention(img_query, img_key, img_value, dropout_p=0.0, is_causal=False)
-            ip_hidden_states = rearrange(ip_hidden_states, 'b h l d -> b l (h d)')
+            ip_hidden_states = ip_hidden_states.transpose(1,2).view(batch_size, head_dim, -1)
             ip_hidden_states = ip_hidden_states.to(img_query.dtype)
 
             hidden_states = hidden_states + ip_hidden_states * self.scale
