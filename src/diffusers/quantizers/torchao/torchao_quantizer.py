@@ -139,14 +139,34 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
+        quant_type = self.quantization_config.quant_type
+
+        if quant_type.startswith("int8") or quant_type.startswith("int4"):
+            # Note that int4 weights are created by packing into torch.int8, but since there is no torch.int4, we use torch.int8
+            return torch.int8
+        elif quant_type == "uintx_weight_only":
+            return self.quantization_config.quant_type_kwargs.get("dtype", torch.uint8)
+        elif quant_type.startswith("uint"):
+            return {
+                1: torch.uint1,
+                2: torch.uint2,
+                3: torch.uint3,
+                4: torch.uint4,
+                5: torch.uint5,
+                6: torch.uint6,
+                7: torch.uint7,
+            }[int(quant_type[4])]
+        elif quant_type.startswith("float") or quant_type.startswith("fp"):
+            return torch.bfloat16
+
         if isinstance(target_dtype, SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION):
             return target_dtype
 
         # We need one of the supported dtypes to be selected in order for accelerate to determine
-        # the total size of modules/parameters for auto device placement. This method will not be
-        # called when device_map is not "auto".
+        # the total size of modules/parameters for auto device placement.
+        possible_device_maps = ["auto", "balanced", "balanced_low_0", "sequential"]
         raise ValueError(
-            f"You are using `device_map='auto'` on a TorchAO quantized model but a suitable target dtype "
+            f"You have set `device_map` as one of {possible_device_maps} on a TorchAO quantized model but a suitable target dtype "
             f"could not be inferred. The supported target_dtypes are: {SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION}. If you think the "
             f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
         )
