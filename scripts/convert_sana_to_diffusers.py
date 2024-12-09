@@ -19,16 +19,39 @@ from diffusers import (
 )
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
-
+from huggingface_hub import hf_hub_download, snapshot_download
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
-ckpt_id = "Sana"
+ckpt_ids = [
+    "Efficient-Large-Model/Sana_1600M_1024px_MultiLing",
+    "Efficient-Large-Model/Sana_1600M_512px_MultiLing",
+    "Efficient-Large-Model/Sana_1600M_1024px",
+    "Efficient-Large-Model/Sana_1600M_512px",
+    "Efficient-Large-Model/Sana_600M_1024px",
+    "Efficient-Large-Model/Sana_600M_512px",
+]
 # https://github.com/NVlabs/Sana/blob/main/scripts/inference.py
 
 
 def main(args):
-    all_state_dict = torch.load(args.orig_ckpt_path, map_location=torch.device("cpu"))
+    ckpt_id = ckpt_ids[0]
+    cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
+    if args.orig_ckpt_path is None:
+        snapshot_download(
+            repo_id=ckpt_id,
+            cache_dir=cache_dir_path,
+            repo_type="model",
+        )
+        file_path = hf_hub_download(
+            repo_id=ckpt_id,
+            filename=f"checkpoints/{ckpt_id.split('/')[-1]}.pth",
+            cache_dir=cache_dir_path,
+            repo_type="model",
+        )
+    else:
+        file_path = args.orig_ckpt_path
+    all_state_dict = torch.load(file_path, map_location=torch.device("cpu"))
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 

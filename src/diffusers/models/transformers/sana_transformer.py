@@ -248,7 +248,6 @@ class SanaLinearTransformerBlock(nn.Module):
 
 
 class SanaTransformer2DModel(ModelMixin, ConfigMixin):
-    # TODO: Change pixart name below
     r"""
     A 2D Transformer model as introduced in Sana family of models (https://arxiv.org/abs/2310.00426,
     https://arxiv.org/abs/2403.04692).
@@ -272,6 +271,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             The width of the latent images. This parameter is fixed during training.
         patch_size (int, defaults to 1):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
+        activation_fn (str, optional, defaults to "gelu-approximate"):
+            Activation function to use in feed-forward networks within Transformer blocks.
         num_embeds_ada_norm (int, optional, defaults to 1000):
             Number of embeddings for AdaLayerNorm, fixed during training and affects the maximum denoising steps during
             inference.
@@ -311,6 +312,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         attention_bias: bool = True,
         sample_size: int = 32,
         patch_size: int = 1,
+        activation_fn: tuple = None,
         num_embeds_ada_norm: Optional[int] = 1000,
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_single",

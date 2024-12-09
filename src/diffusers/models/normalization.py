@@ -594,7 +594,7 @@ def get_normalization(
 
 class RMSNormScaled(nn.Module):
     def __init__(self, dim, eps: float, elementwise_affine: bool = True, scale_factor: float = 1.0, bias: bool = False):
-        super().__init__(dim, eps, elementwise_affine)
+        super().__init__()
         self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
 
         self.eps = eps
