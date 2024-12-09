@@ -280,6 +280,7 @@ class RFInversionFluxPipeline(
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
+    def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
