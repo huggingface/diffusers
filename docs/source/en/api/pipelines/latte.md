@@ -16,7 +16,7 @@
 
 ![latte text-to-video](https://github.com/Vchitect/Latte/blob/52bc0029899babbd6e9250384c83d8ed2670ff7a/visuals/latte.gif?raw=true)
 
-[Latte: Latent Diffusion Transformer for Video Generation](https://huggingface.co/papers/2401.03048) from Monash University, Shanghai AI Lab, Nanjing University, and Nanyang Technological University.
+[Latte: Latent Diffusion Transformer for Video Generation](https://arxiv.org/abs/2401.03048) from Monash University, Shanghai AI Lab, Nanjing University, and Nanyang Technological University.
 
 The abstract from the paper is:
 
@@ -69,37 +69,6 @@ The [benchmark](https://gist.github.com/a-r-r-o-w/4e1694ca46374793c0361d740a99ff
 Without torch.compile(): Average inference time: 16.246 seconds.
 With torch.compile(): Average inference time: 14.573 seconds.
 ```
-
-### Pyramid Attention Broadcast
-
-[Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) from Xuanlei Zhao, Xiaolong Jin, Kai Wang, Yang You.
-
-Pyramid Attention Broadcast (PAB) is a method that speeds up inference in diffusion models by systematically skipping attention computations between successive inference steps, and re-using cached attention states. This is due to the realization that the attention states do not differ too much numerically between successive steps. This difference is most significant/prominent in the spatial attention blocks, lesser so in temporal attention blocks, and least in cross attention blocks. Therefore, many cross attention computation blocks can be skipped, followed by temporal and spatial attention blocks. By combining other techniques like Sequence Parallelism and CFG Parallelism, the authors achieve near real-time video generation.
-
-PAB can be enabled easily on any pipeline by deriving from the [`PyramidAttentionBroadcastMixin`] and keeping track of current inference timestep in the pipeline. Minimal example to demonstrate how to use PAB with Latte:
-
-```python
-import torch
-from diffusers import LattePipeline
-from diffusers.utils import export_to_gif
-
-pipe = LattePipeline.from_pretrained("maxin-cn/Latte-1", torch_dtype=torch.float16)
-
-pipe.enable_pyramid_attention_broadcast(
-    spatial_attn_skip_range=2,
-    cross_attn_skip_range=6,
-    spatial_attn_timestep_range=[100, 800],
-    cross_attn_timestep_range=[100, 800],
-)
-
-prompt = "A small cactus with a happy face in the Sahara desert."
-videos = pipe(prompt).frames[0]
-export_to_gif(videos, "latte.gif")
-```
-
-|      model |   model_memory |   normal_memory |   pab_memory |   normal_time |   pab_time |   speedup |
-|:----------:|:--------------:|:---------------:|:------------:|:-------------:|:----------:|:---------:|
-|      Latte |         11.007 |          25.594 |       25.594 |        28.026 |     24.073 |     1.164 |
 
 ## LattePipeline
 

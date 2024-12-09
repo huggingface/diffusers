@@ -15,7 +15,7 @@
 
 # CogVideoX
 
-[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://huggingface.co/papers/2408.06072) from Tsinghua University & ZhipuAI, by Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, Da Yin, Xiaotao Gu, Yuxuan Zhang, Weihan Wang, Yean Cheng, Ting Liu, Bin Xu, Yuxiao Dong, Jie Tang.
+[CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://arxiv.org/abs/2408.06072) from Tsinghua University & ZhipuAI, by Zhuoyi Yang, Jiayan Teng, Wendi Zheng, Ming Ding, Shiyu Huang, Jiazheng Xu, Yuanming Yang, Wenyi Hong, Xiaohan Zhang, Guanyu Feng, Da Yin, Xiaotao Gu, Yuxuan Zhang, Weihan Wang, Yean Cheng, Ting Liu, Bin Xu, Yuxiao Dong, Jie Tang.
 
 The abstract from the paper is:
 
@@ -119,45 +119,6 @@ CogVideoX-2b requires about 19 GB of GPU memory to decode 49 frames (6 seconds o
 It is also worth noting that torchao quantization is fully compatible with [torch.compile](/optimization/torch2.0#torchcompile), which allows for much faster inference speed. Additionally, models can be serialized and stored in a quantized datatype to save disk space with torchao. Find examples and benchmarks in the gists below.
 - [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
 - [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
-
-### Pyramid Attention Broadcast
-
-[Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) from Xuanlei Zhao, Xiaolong Jin, Kai Wang, Yang You.
-
-Pyramid Attention Broadcast (PAB) is a method that speeds up inference in diffusion models by systematically skipping attention computations between successive inference steps and reusing cached attention states. The attention states aren't that different between successive steps. The most prominent difference is in the spatial attention blocks, not as much in the temporal attention blocks, and finally the least in the cross attention blocks. Therefore, many cross attention computation blocks can be skipped, followed by the temporal and spatial attention blocks. By combining other techniques like sequence parallelism and classifier-free guidance parallelism, PAB achieves near real-time video generation.
-
-Enable PAB with [`~PyramidAttentionBroadcastMixin.enable_pyramind_attention_broadcast`] on any pipeline and keep track of the current inference timestep in the pipeline.
-
-```python
-import torch
-from diffusers import CogVideoXPipeline
-from diffusers.utils import export_to_video
-
-pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.float16)
-pipe.to("cuda")
-
-pipe.enable_pyramid_attention_broadcast(
-    spatial_attn_skip_range=2,
-    spatial_attn_timestep_range=[100, 850],
-)
-
-prompt = (
-    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
-    "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
-    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
-    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
-    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
-    "atmosphere of this unique musical performance."
-)
-video = pipe(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
-export_to_video(video, "output.mp4", fps=8)
-```
-
-|      model |   model_memory |   normal_memory |   pab_memory |   normal_time |   pab_time |   speedup |
-|:----------:|:--------------:|:---------------:|:------------:|:-------------:|:----------:|:---------:|
-| Cog-2b T2V |          12.55 |          35.342 |       35.342 |        86.915 |     63.914 |     1.359 |
-| Cog-5b T2V |          19.66 |          40.945 |       40.945 |       246.152 |     168.59 |     1.460 |
-| Cog-5b I2V |         19.764 |           42.74 |        42.74 |       246.867 |    170.111 |     1.451 |
 
 ## CogVideoXPipeline
 
