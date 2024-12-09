@@ -52,7 +52,7 @@ def main(args):
         )
     else:
         file_path = args.orig_ckpt_path
-    all_state_dict = torch.load(file_path, map_location=torch.device("cpu"))
+    all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
@@ -167,7 +167,6 @@ def main(args):
             attention_bias=False,
             sample_size=32,
             patch_size=1,
-            activation_fn=("silu", "silu", None),
             upcast_attention=False,
             norm_type="ada_norm_single",
             norm_elementwise_affine=False,

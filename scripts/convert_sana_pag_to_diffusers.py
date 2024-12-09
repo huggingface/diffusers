@@ -7,6 +7,7 @@ from contextlib import nullcontext
 
 import torch
 from accelerate import init_empty_weights
+from huggingface_hub import hf_hub_download, snapshot_download
 from termcolor import colored
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -23,12 +24,35 @@ from diffusers.utils.import_utils import is_accelerate_available
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
-ckpt_id = "Sana"
+ckpt_ids = [
+    "Efficient-Large-Model/Sana_1600M_1024px_MultiLing",
+    "Efficient-Large-Model/Sana_1600M_512px_MultiLing",
+    "Efficient-Large-Model/Sana_1600M_1024px",
+    "Efficient-Large-Model/Sana_1600M_512px",
+    "Efficient-Large-Model/Sana_600M_1024px",
+    "Efficient-Large-Model/Sana_600M_512px",
+]
 # https://github.com/NVlabs/Sana/blob/main/scripts/inference.py
 
 
 def main(args):
-    all_state_dict = torch.load(args.orig_ckpt_path, map_location=torch.device("cpu"))
+    ckpt_id = ckpt_ids[0]
+    cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
+    if args.orig_ckpt_path is None:
+        snapshot_download(
+            repo_id=ckpt_id,
+            cache_dir=cache_dir_path,
+            repo_type="model",
+        )
+        file_path = hf_hub_download(
+            repo_id=ckpt_id,
+            filename=f"checkpoints/{ckpt_id.split('/')[-1]}.pth",
+            cache_dir=cache_dir_path,
+            repo_type="model",
+        )
+    else:
+        file_path = args.orig_ckpt_path
+    all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
@@ -143,7 +167,6 @@ def main(args):
             attention_bias=False,
             sample_size=32,
             patch_size=1,
-            activation_fn=("silu", "silu", None),
             upcast_attention=False,
             norm_type="ada_norm_single",
             norm_elementwise_affine=False,
@@ -175,7 +198,7 @@ def main(args):
         print(
             colored(
                 f"Only saving transformer model of {args.model_type}. "
-                f"Set --save_full_pipeline to save the whole SanaPipeline",
+                f"Set --save_full_pipeline to save the whole SanaPAGPipeline",
                 "green",
                 attrs=["bold"],
             )
