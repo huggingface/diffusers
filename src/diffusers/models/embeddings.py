@@ -84,7 +84,8 @@ def get_3d_sincos_pos_embed(
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
-) -> np.ndarray:
+    device: Optional[torch.device] = None,
+) -> torch.Tensor:
     r"""
     Creates 3D sinusoidal positional embeddings.
 
@@ -102,7 +103,7 @@ def get_3d_sincos_pos_embed(
             Scale factor for temporal grid interpolation.
 
     Returns:
-        `np.ndarray`:
+        `torch.Tensor`:
             The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
             embed_dim]`.
     """
@@ -115,26 +116,28 @@ def get_3d_sincos_pos_embed(
     embed_dim_temporal = embed_dim // 4
 
     # 1. Spatial
-    grid_h = np.arange(spatial_size[1], dtype=np.float32) / spatial_interpolation_scale
-    grid_w = np.arange(spatial_size[0], dtype=np.float32) / spatial_interpolation_scale
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid_h = torch.arange(spatial_size[1], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid_w = torch.arange(spatial_size[0], device=device, dtype=torch.float32) / spatial_interpolation_scale
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
 
     grid = grid.reshape([2, 1, spatial_size[1], spatial_size[0]])
     pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(embed_dim_spatial, grid)
 
     # 2. Temporal
-    grid_t = np.arange(temporal_size, dtype=np.float32) / temporal_interpolation_scale
+    grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32) / temporal_interpolation_scale
     pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(embed_dim_temporal, grid_t)
 
     # 3. Concat
-    pos_embed_spatial = pos_embed_spatial[np.newaxis, :, :]
-    pos_embed_spatial = np.repeat(pos_embed_spatial, temporal_size, axis=0)  # [T, H*W, D // 4 * 3]
+    pos_embed_spatial = pos_embed_spatial[None, :, :]
+    pos_embed_spatial = pos_embed_spatial.repeat_interleave(temporal_size, dim=0)  # [T, H*W, D // 4 * 3]
 
-    pos_embed_temporal = pos_embed_temporal[:, np.newaxis, :]
-    pos_embed_temporal = np.repeat(pos_embed_temporal, spatial_size[0] * spatial_size[1], axis=1)  # [T, H*W, D // 4]
+    pos_embed_temporal = pos_embed_temporal[:, None, :]
+    pos_embed_temporal = pos_embed_temporal.repeat_interleave(
+        spatial_size[0] * spatial_size[1], dim=1
+    )  # [T, H*W, D // 4]
 
-    pos_embed = np.concatenate([pos_embed_temporal, pos_embed_spatial], axis=-1)  # [T, H*W, D]
+    pos_embed = torch.concat([pos_embed_temporal, pos_embed_spatial], dim=-1)  # [T, H*W, D]
     return pos_embed
 
 
@@ -468,7 +471,9 @@ class CogVideoXPatchEmbed(nn.Module):
             pos_embedding = self._get_positional_embeddings(sample_height, sample_width, sample_frames)
             self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
-    def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
+    def _get_positional_embeddings(
+        self, sample_height: int, sample_width: int, sample_frames: int, device: Optional[torch.device] = None
+    ) -> torch.Tensor:
         post_patch_height = sample_height // self.patch_size
         post_patch_width = sample_width // self.patch_size
         post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
@@ -480,8 +485,9 @@ class CogVideoXPatchEmbed(nn.Module):
             post_time_compression_frames,
             self.spatial_interpolation_scale,
             self.temporal_interpolation_scale,
+            device=device,
         )
-        pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
+        pos_embedding = pos_embedding.flatten(0, 1)
         joint_pos_embedding = torch.zeros(
             1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
         )
@@ -536,8 +542,10 @@ class CogVideoXPatchEmbed(nn.Module):
                 or self.sample_width != width
                 or self.sample_frames != pre_time_compression_frames
             ):
-                pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
-                pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+                pos_embedding = self._get_positional_embeddings(
+                    height, width, pre_time_compression_frames, device=embeds.device
+                )
+                pos_embedding = pos_embedding.to(dtype=embeds.dtype)
             else:
                 pos_embedding = self.pos_embedding
 
