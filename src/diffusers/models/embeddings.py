@@ -139,7 +139,13 @@ def get_3d_sincos_pos_embed(
 
 
 def get_2d_sincos_pos_embed(
-    embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
+    embed_dim,
+    grid_size,
+    cls_token=False,
+    extra_tokens=0,
+    interpolation_scale=1.0,
+    base_size=16,
+    device: Optional[torch.device] = None,
 ):
     """
     Creates 2D sinusoidal positional embeddings.
@@ -157,22 +163,30 @@ def get_2d_sincos_pos_embed(
             The scale of the interpolation.
 
     Returns:
-        pos_embed (`np.ndarray`):
+        pos_embed (`torch.Tensor`):
             Shape is either `[grid_size * grid_size, embed_dim]` if not using cls_token, or `[1 + grid_size*grid_size,
             embed_dim]` if using cls_token
     """
     if isinstance(grid_size, int):
         grid_size = (grid_size, grid_size)
 
-    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / interpolation_scale
-    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / interpolation_scale
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid_h = (
+        torch.arange(grid_size[0], device=device, dtype=torch.float32)
+        / (grid_size[0] / base_size)
+        / interpolation_scale
+    )
+    grid_w = (
+        torch.arange(grid_size[1], device=device, dtype=torch.float32)
+        / (grid_size[1] / base_size)
+        / interpolation_scale
+    )
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0)
 
     grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
+        pos_embed = torch.concat([torch.zeros([extra_tokens, embed_dim]), pos_embed], dim=0)
     return pos_embed
 
 
@@ -182,10 +196,10 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
     Args:
         embed_dim (`int`): The embedding dimension.
-        grid (`np.ndarray`): Grid of positions with shape `(H * W,)`.
+        grid (`torch.Tensor`): Grid of positions with shape `(H * W,)`.
 
     Returns:
-        `np.ndarray`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
+        `torch.Tensor`: The 2D sinusoidal positional embeddings with shape `(H * W, embed_dim)`
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
@@ -194,7 +208,7 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
-    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+    emb = torch.concat([emb_h, emb_w], dim=1)  # (H*W, D)
     return emb
 
 
@@ -204,25 +218,25 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     Args:
         embed_dim (`int`): The embedding dimension `D`
-        pos (`numpy.ndarray`): 1D tensor of positions with shape `(M,)`
+        pos (`torch.Tensor`): 1D tensor of positions with shape `(M,)`
 
     Returns:
-        `numpy.ndarray`: Sinusoidal positional embeddings of shape `(M, D)`.
+        `torch.Tensor`: Sinusoidal positional embeddings of shape `(M, D)`.
     """
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega = torch.arange(embed_dim // 2, device=pos.device, dtype=torch.float64)
     omega /= embed_dim / 2.0
     omega = 1.0 / 10000**omega  # (D/2,)
 
     pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
+    out = torch.outer(pos, omega)  # (M, D/2), outer product
 
-    emb_sin = np.sin(out)  # (M, D/2)
-    emb_cos = np.cos(out)  # (M, D/2)
+    emb_sin = torch.sin(out)  # (M, D/2)
+    emb_cos = torch.cos(out)  # (M, D/2)
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
     return emb
 
 
@@ -291,7 +305,7 @@ class PatchEmbed(nn.Module):
                 embed_dim, grid_size, base_size=self.base_size, interpolation_scale=self.interpolation_scale
             )
             persistent = True if pos_embed_max_size else False
-            self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=persistent)
+            self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=persistent)
         else:
             raise ValueError(f"Unsupported pos_embed_type: {pos_embed_type}")
 
@@ -341,8 +355,9 @@ class PatchEmbed(nn.Module):
                     grid_size=(height, width),
                     base_size=self.base_size,
                     interpolation_scale=self.interpolation_scale,
+                    device=latent.device,
                 )
-                pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).to(latent.device)
+                pos_embed = pos_embed.float().unsqueeze(0)
             else:
                 pos_embed = self.pos_embed
 
@@ -554,7 +569,7 @@ class CogView3PlusPatchEmbed(nn.Module):
 
         pos_embed = get_2d_sincos_pos_embed(hidden_size, pos_embed_max_size, base_size=pos_embed_max_size)
         pos_embed = pos_embed.reshape(pos_embed_max_size, pos_embed_max_size, hidden_size)
-        self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float(), persistent=False)
+        self.register_buffer("pos_embed", pos_embed.float(), persistent=False)
 
     def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, channel, height, width = hidden_states.shape
