@@ -365,6 +365,7 @@ class TorchAoTest(unittest.TestCase):
                 self.assertTrue(module.adapter[1].weight.grad is not None)
                 self.assertTrue(module.adapter[1].weight.grad.norm().item() > 0)
 
+    @nightly
     def test_torch_compile(self):
         r"""Test that verifies if torch.compile works with torchao quantization."""
         quantization_config = TorchAoConfig("int8_weight_only")
