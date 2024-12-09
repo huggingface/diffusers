@@ -158,7 +158,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
         temp_pos_embed = get_1d_sincos_pos_embed_from_grid(
             inner_dim, torch.arange(0, video_length).unsqueeze(1)
         )  # 1152 hidden size
-        self.register_buffer("temp_pos_embed", torch.from_numpy(temp_pos_embed).float().unsqueeze(0), persistent=False)
+        self.register_buffer("temp_pos_embed", temp_pos_embed.float().unsqueeze(0), persistent=False)
 
         self.gradient_checkpointing = False
 
