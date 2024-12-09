@@ -957,7 +957,7 @@ def get_3d_rotary_pos_embed_allegro(
     return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
 
 
-def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
+def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, device: Optional[torch.device] = None):
     """
     RoPE for image tokens with 2d structure.
 
@@ -970,15 +970,22 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True):
         The grid size of the positional embedding.
     use_real (`bool`):
         If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+    device: (`torch.device`, **optional**):
+        The device used to create tensors.
 
     Returns:
         `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
     start, stop = crops_coords
-    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)  # [2, W, H]
+    # scale end by (steps−1)/steps matches np.linspace(..., endpoint=False)
+    grid_h = torch.linspace(
+        start[0], stop[0] * (grid_size[0] - 1) / grid_size[0], grid_size[0], device=device, dtype=torch.float32
+    )
+    grid_w = torch.linspace(
+        start[1], stop[1] * (grid_size[1] - 1) / grid_size[1], grid_size[1], device=device, dtype=torch.float32
+    )
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")
+    grid = torch.stack(grid, dim=0)  # [2, W, H]
 
     grid = grid.reshape([2, 1, *grid.shape[1:]])
     pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
