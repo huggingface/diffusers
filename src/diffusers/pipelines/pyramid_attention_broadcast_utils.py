@@ -220,7 +220,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
     is_cross_attention = (
         any(f"{identifier}." in name or identifier == name for identifier in config.cross_attention_block_identifiers)
         and config.cross_attention_block_skip_range is not None
-        and not module.is_cross_attention
+        and module.is_cross_attention
     )
 
     block_skip_range, timestep_skip_range, block_type = None, None, None
@@ -238,7 +238,13 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         block_type = "cross"
 
     if block_skip_range is None or timestep_skip_range is None:
-        logger.warning(f"Unable to apply Pyramid Attention Broadcast to the selected layer: {name}.")
+        logger.info(
+            f'Unable to apply Pyramid Attention Broadcast to the selected layer: "{name}" because it does '
+            f"not match any of the required criteria for spatial, temporal or cross attention layers. Note, "
+            f"however, that this layer may still be valid for applying PAB. Please specify the correct "
+            f"block identifiers in the configuration or use the specialized `apply_pyramid_attention_broadcast_on_module` "
+            f"function to apply PAB to this layer."
+        )
         return
 
     def skip_callback(module: nnModulePAB) -> bool:
