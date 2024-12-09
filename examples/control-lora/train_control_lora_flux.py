@@ -61,6 +61,8 @@ check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
+NORM_LAYER_PREFIXES = ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]
+
 
 def encode_images(pixels: torch.Tensor, vae: torch.nn.Module, weight_dtype):
     pixel_latents = vae.encode(pixels.to(vae.dtype)).latent_dist.sample()
@@ -138,8 +140,8 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
                     guidance_scale=args.guidance_scale,
                     generator=generator,
                     max_sequence_length=512,
-                    height=1024,
-                    width=1204,
+                    height=args.resolution,
+                    width=args.resolution,
                 ).images[0]
             image = image.resize((args.resolution, args.resolution))
             images.append(image)
@@ -310,17 +312,18 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--rank",
-        type=int,
-        default=4,
-        help=("The dimension of the LoRA update matrices."),
-    )
-    parser.add_argument(
         "--proportion_empty_prompts",
         type=float,
         default=0,
         help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument("--use_lora_bias", action="store_true", help="If training the bias of lora_B layers.")
     parser.add_argument(
         "--lora_layers",
         type=str,
@@ -329,6 +332,12 @@ def parse_args(input_args=None):
             'The transformer modules to apply LoRA training on. Please specify the layers in a comma seperated. E.g. - "to_k,to_q,to_v,to_out.0" will result in lora training of attention layers only'
         ),
     )
+    parser.add_argument(
+        "--gaussian_init_lora",
+        action="store_true",
+        help="If using the Gaussian init strategy. When False, we follow the original LoRA init strategy.",
+    )
+    parser.add_argument("--train_norm_layers", action="store_true", help="Whether to train the norm scales.")
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
@@ -432,12 +441,6 @@ def parse_args(input_args=None):
             " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
         ),
-    )
-    parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
-        "--enable_npu_flash_attention", action="store_true", help="Whether or not to use npu flash attention."
     )
     parser.add_argument(
         "--set_grads_to_none",
@@ -677,8 +680,7 @@ def get_train_dataset(args, accelerator):
 def prepare_train_dataset(dataset, accelerator):
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
+            transforms.Resize((args.resolution, args.resolution), interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ]
@@ -723,6 +725,8 @@ def main(args):
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
             " Please use `huggingface-cli login` to authenticate with the Hub."
         )
+    if args.use_lora_bias and args.gaussian_init_lora:
+        raise ValueError("`gaussian` LoRA init scheme isn't supported when `use_lora_bias` is True.")
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
 
@@ -810,7 +814,7 @@ def main(args):
 
     # let's not move the VAE to the GPU yet.
     vae.to(dtype=torch.float32)  # keep the VAE in float32.
-    flux_transformer.to(dtype=weight_dtype)
+    flux_transformer.to(dtype=weight_dtype, device=accelerator.device)
 
     # enable image inputs
     with torch.no_grad():
@@ -831,11 +835,23 @@ def main(args):
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2)
 
+    if args.train_norm_layers:
+        for name, param in flux_transformer.named_parameters():
+            if any(k in name for k in NORM_LAYER_PREFIXES):
+                param.requires_grad = True
+
     if args.lora_layers is not None:
-        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
-        # add the input layer to the mix.
-        if "x_embedder" not in target_modules:
-            target_modules.append("x_embedder")
+        if args.lora_layers != "all-linear":
+            target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+            # add the input layer to the mix.
+            if "x_embedder" not in target_modules:
+                target_modules.append("x_embedder")
+        elif args.lora_layers == "all-linear":
+            target_modules = set()
+            for name, module in flux_transformer.named_modules():
+                if isinstance(module, torch.nn.Linear):
+                    target_modules.add(name)
+            target_modules = list(target_modules)
     else:
         target_modules = [
             "x_embedder",
@@ -855,8 +871,9 @@ def main(args):
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
-        init_lora_weights="gaussian",
+        init_lora_weights="gaussian" if args.gaussian_init_lora else True,
         target_modules=target_modules,
+        lora_bias=args.use_lora_bias,
     )
     flux_transformer.add_adapter(transformer_lora_config)
 
@@ -876,6 +893,16 @@ def main(args):
                     if isinstance(unwrap_model(model), type(unwrap_model(flux_transformer))):
                         model = unwrap_model(model)
                         transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                        if args.train_norm_layers:
+                            transformer_norm_layers_to_save = {
+                                f"transformer.{name}": param
+                                for name, param in model.named_parameters()
+                                if any(k in name for k in NORM_LAYER_PREFIXES)
+                            }
+                            transformer_lora_layers_to_save = {
+                                **transformer_lora_layers_to_save,
+                                **transformer_norm_layers_to_save,
+                            }
                     else:
                         raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -907,12 +934,14 @@ def main(args):
                 transformer_.add_adapter(transformer_lora_config)
 
             lora_state_dict = FluxControlPipeline.lora_state_dict(input_dir)
-            transformer_state_dict = {
+            transformer_lora_state_dict = {
                 f'{k.replace("transformer.", "")}': v
                 for k, v in lora_state_dict.items()
-                if k.startswith("transformer.")
+                if k.startswith("transformer.") and "lora" in k
             }
-            incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
+            incompatible_keys = set_peft_model_state_dict(
+                transformer_, transformer_lora_state_dict, adapter_name="default"
+            )
             if incompatible_keys is not None:
                 # check only for unexpected keys
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -921,6 +950,17 @@ def main(args):
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
+            if args.train_norm_layers:
+                transformer_norm_state_dict = {
+                    k: v
+                    for k, v in lora_state_dict.items()
+                    if k.startswith("transformer.") and any(norm_k in k for norm_k in NORM_LAYER_PREFIXES)
+                }
+                transformer_._transformer_norm_layers = FluxControlPipeline._load_norm_into_transformer(
+                    transformer_norm_state_dict,
+                    transformer=transformer_,
+                    discard_original_layers=False,
+                )
 
             # Make sure the trainable params are in float32. This is again needed since the base models
             # are in `weight_dtype`. More details:
@@ -1266,6 +1306,13 @@ def main(args):
         if args.upcast_before_saving:
             flux_transformer.to(torch.float32)
         transformer_lora_layers = get_peft_model_state_dict(flux_transformer)
+        if args.train_norm_layers:
+            transformer_norm_layers = {
+                f"transformer.{name}": param
+                for name, param in flux_transformer.named_parameters()
+                if any(k in name for k in NORM_LAYER_PREFIXES)
+            }
+            transformer_lora_layers = {**transformer_lora_layers, **transformer_norm_layers}
         FluxControlPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
