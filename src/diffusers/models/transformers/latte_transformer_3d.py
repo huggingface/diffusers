@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Union
+from typing import Optional
 
 import torch
 from torch import nn
@@ -20,7 +20,6 @@ from torch import nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.embeddings import PixArtAlphaTextProjection, get_1d_sincos_pos_embed_from_grid
 from ..attention import BasicTransformerBlock
-from ..attention_processor import AttentionProcessor
 from ..embeddings import PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
