@@ -13,11 +13,13 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 from transformers import (
     CLIPTextModelWithProjection,
     CLIPTokenizer,
@@ -28,6 +30,11 @@ from transformers import (
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, SD3LoraLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKL
+from diffusers.models.embeddings import TimestepEmbedding, Timesteps
+from diffusers.models.normalization import RMSNorm
+from diffusers.models.transformers import SD3Transformer2DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -38,15 +45,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
-
-from diffusers.models.transformers import SD3Transformer2DModel
-from diffusers.models.normalization import RMSNorm
-from einops import rearrange
-import math
-
-from diffusers.models.embeddings import Timesteps, TimestepEmbedding
 
 
 if is_torch_xla_available():
@@ -86,10 +84,10 @@ def FeedForward(dim, mult=4):
         nn.Linear(inner_dim, dim, bias=False),
     )
 
-    
+
 def reshape_tensor(x, heads):
     bs, length, width = x.shape
-    #(bs, length, width) --> (bs, length, n_heads, dim_per_head)
+    # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
     x = x.view(bs, length, heads, -1)
     # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
     x = x.transpose(1, 2)
@@ -113,7 +111,6 @@ class PerceiverAttention(nn.Module):
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-
     def forward(self, x, latents, shift=None, scale=None):
         """
         Args:
@@ -127,23 +124,23 @@ class PerceiverAttention(nn.Module):
 
         if shift is not None and scale is not None:
             latents = latents * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-        
+
         b, l, _ = latents.shape
 
         q = self.to_q(latents)
         kv_input = torch.cat((x, latents), dim=-2)
         k, v = self.to_kv(kv_input).chunk(2, dim=-1)
-        
+
         q = reshape_tensor(q, self.heads)
         k = reshape_tensor(k, self.heads)
         v = reshape_tensor(v, self.heads)
 
         # attention
         scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(-2, -1) # More stable with f16 than dividing afterwards
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         out = weight @ v
-        
+
         out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
 
         return self.to_out(out)
@@ -166,14 +163,14 @@ class TimeResampler(nn.Module):
         timestep_freq_shift=0,
     ):
         super().__init__()
-        
+
         self.latents = nn.Parameter(torch.randn(1, num_queries, dim) / dim**0.5)
-        
+
         self.proj_in = nn.Linear(embedding_dim, dim)
 
         self.proj_out = nn.Linear(dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-        
+
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(
@@ -184,7 +181,7 @@ class TimeResampler(nn.Module):
                         # ff
                         FeedForward(dim=dim, mult=ff_mult),
                         # adaLN
-                        nn.Sequential(nn.SiLU(), nn.Linear(dim, 4 * dim, bias=True))
+                        nn.Sequential(nn.SiLU(), nn.Linear(dim, 4 * dim, bias=True)),
                     ]
                 )
             )
@@ -199,12 +196,11 @@ class TimeResampler(nn.Module):
         #     nn.Linear(timestep_out_dim, 6 * timestep_out_dim, bias=True)
         # )
 
-
     def forward(self, x, timestep, need_temb=False):
         timestep_emb = self.embedding_time(x, timestep)  # bs, dim
 
         latents = self.latents.repeat(x.size(0), 1, 1)
-        
+
         x = self.proj_in(x)
         x = x + timestep_emb[:, None]
 
@@ -221,7 +217,7 @@ class TimeResampler(nn.Module):
             latents = latents + res
 
             # latents = ff(latents) + latents
-            
+
         latents = self.proj_out(latents)
         latents = self.norm_out(latents)
 
@@ -230,10 +226,7 @@ class TimeResampler(nn.Module):
         else:
             return latents
 
-
-
     def embedding_time(self, sample, timestep):
-
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
@@ -271,15 +264,12 @@ class AdaLayerNorm(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, time_embedding_dim=None, mode='normal'):
+    def __init__(self, embedding_dim: int, time_embedding_dim=None, mode="normal"):
         super().__init__()
 
         self.silu = nn.SiLU()
-        num_params_dict = dict(
-            zero=6,
-            normal=2,
-        )
-        num_params = num_params_dict[mode]
+
+        num_params = 2 if mode == "normal" else 6
         self.linear = nn.Linear(time_embedding_dim or embedding_dim, num_params * embedding_dim, bias=True)
         self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
         self.mode = mode
@@ -287,16 +277,16 @@ class AdaLayerNorm(nn.Module):
     def forward(
         self,
         x,
-        hidden_dtype = None,
-        emb = None,
+        hidden_dtype=None,
+        emb=None,
     ):
         emb = self.linear(self.silu(emb))
-        if self.mode == 'normal':
+        if self.mode == "normal":
             shift_msa, scale_msa = emb.chunk(2, dim=1)
             x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
             return x
 
-        elif self.mode == 'zero':
+        elif self.mode == "zero":
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
             x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
             return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
@@ -322,7 +312,6 @@ class JointIPAttnProcessor(torch.nn.Module):
         self.norm_q = RMSNorm(head_dim, 1e-6)
         self.norm_k = RMSNorm(head_dim, 1e-6)
         self.norm_ip_k = RMSNorm(head_dim, 1e-6)
-
 
     def __call__(
         self,
@@ -396,9 +385,8 @@ class JointIPAttnProcessor(torch.nn.Module):
             if not attn.context_pre_only:
                 encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
-
         # IPadapter
-        ip_hidden_states = emb_dict.get('ip_hidden_states', None)
+        ip_hidden_states = emb_dict.get("ip_hidden_states", None)
         ip_hidden_states = self.get_ip_hidden_states(
             attn,
             img_query,
@@ -407,11 +395,10 @@ class JointIPAttnProcessor(torch.nn.Module):
             img_value,
             None,
             None,
-            emb_dict['temb'],
+            emb_dict["temb"],
         )
         if ip_hidden_states is not None:
-            hidden_states = hidden_states + ip_hidden_states * emb_dict.get('scale', 1.0)
-
+            hidden_states = hidden_states + ip_hidden_states * emb_dict.get("scale", 1.0)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -423,12 +410,13 @@ class JointIPAttnProcessor(torch.nn.Module):
         else:
             return hidden_states
 
-
-    def get_ip_hidden_states(self, attn, query, ip_hidden_states, img_key=None, img_value=None, text_key=None, text_value=None, temb=None):
+    def get_ip_hidden_states(
+        self, attn, query, ip_hidden_states, img_key=None, img_value=None, text_key=None, text_value=None, temb=None
+    ):
         if ip_hidden_states is None:
             return None
-        
-        if not hasattr(self, 'to_k_ip') or not hasattr(self, 'to_v_ip'):
+
+        if not hasattr(self, "to_k_ip") or not hasattr(self, "to_v_ip"):
             return None
 
         # norm ip input
@@ -439,11 +427,11 @@ class JointIPAttnProcessor(torch.nn.Module):
         ip_value = self.to_v_ip(norm_ip_hidden_states)
 
         # reshape
-        query = rearrange(query, 'b l (h d) -> b h l d', h=attn.heads)
-        img_key = rearrange(img_key, 'b l (h d) -> b h l d', h=attn.heads)
-        img_value = rearrange(img_value, 'b l (h d) -> b h l d', h=attn.heads)
-        ip_key = rearrange(ip_key, 'b l (h d) -> b h l d', h=attn.heads)
-        ip_value = rearrange(ip_value, 'b l (h d) -> b h l d', h=attn.heads)
+        query = rearrange(query, "b l (h d) -> b h l d", h=attn.heads)
+        img_key = rearrange(img_key, "b l (h d) -> b h l d", h=attn.heads)
+        img_value = rearrange(img_value, "b l (h d) -> b h l d", h=attn.heads)
+        ip_key = rearrange(ip_key, "b l (h d) -> b h l d", h=attn.heads)
+        ip_value = rearrange(ip_value, "b l (h d) -> b h l d", h=attn.heads)
 
         # norm
         query = self.norm_q(query)
@@ -454,9 +442,9 @@ class JointIPAttnProcessor(torch.nn.Module):
         key = torch.cat([img_key, ip_key], dim=2)
         value = torch.cat([img_value, ip_value], dim=2)
 
-        # 
+        #
         ip_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
-        ip_hidden_states = rearrange(ip_hidden_states, 'b h l d -> b l (h d)')
+        ip_hidden_states = rearrange(ip_hidden_states, "b h l d -> b l (h d)")
         ip_hidden_states = ip_hidden_states.to(query.dtype)
         return ip_hidden_states
 
@@ -1049,10 +1037,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     def interrupt(self):
         return self._interrupt
 
-
     @torch.inference_mode()
     def init_ipadapter(self, ip_adapter_path, image_encoder_path, nb_token, output_dim=2432):
-        from transformers import SiglipVisionModel, SiglipImageProcessor
+        from transformers import SiglipImageProcessor, SiglipVisionModel
+
         state_dict = torch.load(ip_adapter_path, map_location="cpu")
 
         device, dtype = self.transformer.device, self.transformer.dtype
@@ -1084,14 +1072,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         self.image_proj_model = image_proj_model
 
-
         attn_procs = {}
         transformer = self.transformer
         for idx_name, name in enumerate(transformer.attn_processors.keys()):
             hidden_size = transformer.config.attention_head_dim * transformer.config.num_attention_heads
             ip_hidden_states_dim = transformer.config.attention_head_dim * transformer.config.num_attention_heads
             ip_encoder_hidden_states_dim = transformer.config.caption_projection_dim
-            
+
             attn_procs[name] = JointIPAttnProcessor(
                 hidden_size=hidden_size,
                 cross_attention_dim=transformer.config.caption_projection_dim,
@@ -1107,10 +1094,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         key_name = tmp_ip_layers.load_state_dict(state_dict["ip_adapter"], strict=False)
         print(f"=> loading ip_adapter: {key_name}")
 
-
     @torch.inference_mode()
     def encode_clip_image_emb(self, clip_image, device, dtype):
-
         # clip
         clip_image_tensor = self.clip_image_processor(images=clip_image, return_tensors="pt").pixel_values
         clip_image_tensor = clip_image_tensor.to(device, dtype=dtype)
@@ -1118,8 +1103,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         clip_image_embeds = torch.cat([torch.zeros_like(clip_image_embeds), clip_image_embeds], dim=0)
 
         return clip_image_embeds
-
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1150,7 +1133,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
-
         # ipa
         clip_image=None,
         ipadapter_scale=1.0,
@@ -1349,18 +1331,16 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 timestep = t.expand(latent_model_input.shape[0])
 
                 image_prompt_embeds, timestep_emb = self.image_proj_model(
-                    clip_image_embeds, 
-                    timestep.to(dtype=latents.dtype), 
-                    need_temb=True
+                    clip_image_embeds, timestep.to(dtype=latents.dtype), need_temb=True
                 )
 
-                joint_attention_kwargs = dict(
-                    emb_dict=dict(
-                        ip_hidden_states=image_prompt_embeds,
-                        temb=timestep_emb,
-                        scale=ipadapter_scale,
-                    )
-                )
+                joint_attention_kwargs = {
+                    "emb_dict": {
+                        "ip_hidden_states": image_prompt_embeds,
+                        "temb": timestep_emb,
+                        "scale": ipadapter_scale,
+                    }
+                }
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
