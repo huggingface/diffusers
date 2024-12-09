@@ -69,10 +69,13 @@ EXAMPLE_DOC_STRING = """
         >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/tennis.jpg"
         >>> image = download_image(img_url)
 
-        >>> _,__,___ = pipe.invert(image=image, num_inversion_steps=28, gamma=0.5)
+        >>> inverted_latents, image_latents, latent_image_ids = pipe.invert(image=image, num_inversion_steps=28, gamma=0.5)
 
         >>> edited_image = pipe(
         ...     prompt="a tomato",
+        ...     inverted_latents=inverted_latents,
+        ...     image_latents=image_latents,
+        ...     latent_image_ids=latent_image_ids,
         ...     start_timestep=0,
         ...     stop_timestep=.38,
         ...     num_inference_steps=28,
