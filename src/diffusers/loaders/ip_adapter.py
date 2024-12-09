@@ -33,22 +33,18 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPImageProcessor,
-        CLIPVisionModelWithProjection,
-        SiglipImageProcessor,
-        SiglipVisionModel
-    )
+    from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, SiglipImageProcessor, SiglipVisionModel
 
 from ..models.attention_processor import (
     AttnProcessor,
     AttnProcessor2_0,
-    JointAttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
-    IPAdapterXFormersAttnProcessor,
     IPAdapterJointAttnProcessor2_0,
+    IPAdapterXFormersAttnProcessor,
+    JointAttnProcessor2_0,
 )
+
 
 logger = logging.get_logger(__name__)
 
@@ -495,8 +491,10 @@ class SD3IPAdapterMixin:
                     )
 
                     self.register_modules(
-                        feature_extractor = SiglipImageProcessor.from_pretrained(**args).to(self.device, dtype=self.dtype),
-                        image_encoder = SiglipVisionModel.from_pretrained(**args).to(self.device, dtype=self.dtype),
+                        feature_extractor=SiglipImageProcessor.from_pretrained(**args).to(
+                            self.device, dtype=self.dtype
+                        ),
+                        image_encoder=SiglipVisionModel.from_pretrained(**args).to(self.device, dtype=self.dtype),
                     )
                 else:
                     raise ValueError(
@@ -513,9 +511,9 @@ class SD3IPAdapterMixin:
 
     def set_ip_adapter_scale(self, scale: float):
         """
-        Controls image/text prompt conditioning. A value of 1.0 means the model is only conditioned on the image prompt, and 0.0
-        only conditioned by the text prompt. Lowering this value encourages the model to produce more diverse images, but they 
-        may not be as aligned with the image prompt.
+        Controls image/text prompt conditioning. A value of 1.0 means the model is only conditioned on the image
+        prompt, and 0.0 only conditioned by the text prompt. Lowering this value encourages the model to produce more
+        diverse images, but they may not be as aligned with the image prompt.
 
         Example:
 
@@ -556,11 +554,7 @@ class SD3IPAdapterMixin:
 
         # Restore original attention processors layers
         attn_procs = {
-            name: (
-                JointAttnProcessor2_0()
-                if isinstance(value, IPAdapterJointAttnProcessor2_0)
-                else value.__class__()
-            )
+            name: (JointAttnProcessor2_0() if isinstance(value, IPAdapterJointAttnProcessor2_0) else value.__class__())
             for name, value in self.transformer.attn_processors.items()
         }
         self.transformer.set_attn_processor(attn_procs)

@@ -17,16 +17,16 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import (
+    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
+    PreTrainedModel,
     T5EncoderModel,
     T5TokenizerFast,
-    PreTrainedModel,
-    BaseImageProcessor,
 )
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
-from ...loaders import FromSingleFileMixin, SD3LoraLoaderMixin, SD3IPAdapterMixin
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin, SD3IPAdapterMixin, SD3LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import SD3Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -184,7 +184,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
         image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None
+        feature_extractor: BaseImageProcessor = None,
     ):
         super().__init__()
 
@@ -199,7 +199,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             transformer=transformer,
             scheduler=scheduler,
             image_encoder=image_encoder,
-            feature_extractor=feature_extractor
+            feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -678,7 +678,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     @property
     def interrupt(self):
         return self._interrupt
-    
+
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
     def encode_image(self, image):
         if not isinstance(image, torch.Tensor):
@@ -687,8 +687,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         image = image.to(device=self.device, dtype=self.dtype)
 
         image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-        uncond_image_enc_hidden_states = self.image_encoder(torch.zeros_like(image), output_hidden_states=True).hidden_states[-2]
-        
+        uncond_image_enc_hidden_states = self.image_encoder(
+            torch.zeros_like(image), output_hidden_states=True
+        ).hidden_states[-2]
+
         return image_enc_hidden_states, uncond_image_enc_hidden_states
 
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
@@ -696,7 +698,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
-                single_image_embeds, single_negative_image_embeds = self.encode_image(ip_adapter_image)
+            single_image_embeds, single_negative_image_embeds = self.encode_image(ip_adapter_image)
         else:
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
@@ -705,13 +707,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     single_image_embeds = ip_adapter_image_embeds
 
         single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
-        
+
         if do_classifier_free_guidance:
             single_negative_image_embeds = torch.cat([single_negative_image_embeds] * num_images_per_prompt, dim=0)
             single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
 
         return single_image_embeds.to(device=device)
-        
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -979,15 +981,12 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                         need_temb=True,
                     )
 
-                    image_prompt_embeds = dict(
-                        ip_hidden_states=ip_hidden_states,
-                        temb=temb
-                    )
+                    image_prompt_embeds = {"ip_hidden_states": ip_hidden_states, "temb": temb}
 
                     if self.joint_attention_kwargs is None:
                         self._joint_attention_kwargs = image_prompt_embeds
                     else:
-                        self._joint_attention_kwargs.update(**image_prompt_embeds)                        
+                        self._joint_attention_kwargs.update(**image_prompt_embeds)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,

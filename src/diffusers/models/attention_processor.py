@@ -5047,7 +5047,7 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
+
 
 class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
     """Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections."""
@@ -5058,15 +5058,14 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         ip_hidden_states_dim: int,
         head_dim: int,
         timesteps_emb_dim: int = 1280,
-        scale: float = 0.5
+        scale: float = 0.5,
     ):
         super().__init__()
 
         # To prevent circular import
-        from .normalization import RMSNorm, AdaLayerNorm
+        from .normalization import AdaLayerNorm, RMSNorm
 
-        self.norm_ip = AdaLayerNorm(timesteps_emb_dim, output_dim=ip_hidden_states_dim * 2,
-                                    norm_eps=1e-6, chunk_dim=1)
+        self.norm_ip = AdaLayerNorm(timesteps_emb_dim, output_dim=ip_hidden_states_dim * 2, norm_eps=1e-6, chunk_dim=1)
         self.to_k_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
         self.to_v_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
         self.norm_q = RMSNorm(head_dim, 1e-6)
@@ -5081,7 +5080,7 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         ip_hidden_states: torch.FloatTensor = None,
-        temb: torch.FloatTensor = None
+        temb: torch.FloatTensor = None,
     ) -> torch.FloatTensor:
         residual = hidden_states
 
@@ -5170,7 +5169,9 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             img_key = torch.cat([img_key, ip_key], dim=2)
             img_value = torch.cat([img_value, ip_value], dim=2)
 
-            ip_hidden_states = F.scaled_dot_product_attention(img_query, img_key, img_value, dropout_p=0.0, is_causal=False)
+            ip_hidden_states = F.scaled_dot_product_attention(
+                img_query, img_key, img_value, dropout_p=0.0, is_causal=False
+            )
             ip_hidden_states = ip_hidden_states.transpose(1, 2).view(batch_size, -1, attn.heads * head_dim)
             ip_hidden_states = ip_hidden_states.to(img_query.dtype)
 

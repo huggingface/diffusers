@@ -2115,7 +2115,7 @@ class TimePerceiverAttention(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.dim_head = dim_head
         self.heads = heads
         inner_dim = dim_head * heads
@@ -2135,6 +2135,7 @@ class TimePerceiverAttention(nn.Module):
             latent (torch.Tensor): latent features
                 shape (b, n2, D)
         """
+
         def reshape_tensor(x, heads):
             bs, length, _ = x.shape
             # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
@@ -2169,7 +2170,7 @@ class TimePerceiverAttention(nn.Module):
         out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
 
         return self.to_out(out)
-    
+
 
 # Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
 class TimePerceiverResampler(nn.Module):
@@ -2188,12 +2189,12 @@ class TimePerceiverResampler(nn.Module):
         timestep_freq_shift: int = 0,
     ) -> None:
         super().__init__()
-        
-        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim ** 0.5)        
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim**0.5)
         self.proj_in = nn.Linear(embed_dim, hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-        
+
         ff_inner_dim = int(hidden_dim * ffn_ratio)
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -2210,10 +2211,7 @@ class TimePerceiverResampler(nn.Module):
                             nn.Linear(ff_inner_dim, hidden_dim, bias=False),
                         ),
                         # adaLN
-                        nn.Sequential(
-                            nn.SiLU(),
-                            nn.Linear(hidden_dim, ff_inner_dim, bias=True)
-                        )
+                        nn.Sequential(nn.SiLU(), nn.Linear(hidden_dim, ff_inner_dim, bias=True)),
                     ]
                 )
             )
@@ -2227,7 +2225,7 @@ class TimePerceiverResampler(nn.Module):
         timestep_emb = self.time_embedding(timestep_emb, None)
 
         latents = self.latents.repeat(x.size(0), 1, 1)
-        
+
         x = self.proj_in(x)
         x = x + timestep_emb[:, None]
 
@@ -2242,7 +2240,7 @@ class TimePerceiverResampler(nn.Module):
                 if idx_ff == 0 and isinstance(layer_ff, nn.LayerNorm):  # adaLN
                     latents = latents * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
             latents = latents + res
-            
+
         latents = self.proj_out(latents)
         latents = self.norm_out(latents)
 

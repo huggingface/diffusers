@@ -24,8 +24,8 @@ from ...models.attention_processor import (
     Attention,
     AttentionProcessor,
     FusedJointAttnProcessor2_0,
-    JointAttnProcessor2_0,
     IPAdapterJointAttnProcessor2_0,
+    JointAttnProcessor2_0,
 )
 from ...models.modeling_utils import ModelMixin, load_model_dict_into_meta
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero
@@ -376,7 +376,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             hidden_dim=hidden_dim,
             heads=heads,
             num_queries=num_queries,
-            timestep_in_dim=timestep_in_dim
+            timestep_in_dim=timestep_in_dim,
         ).to(device=self.device, dtype=self.dtype)
 
         if not low_cpu_mem_usage:
@@ -470,7 +470,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 )
             elif not is_skip:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb,
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
