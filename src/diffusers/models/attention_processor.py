@@ -5566,5 +5566,4 @@ AttentionProcessor = Union[
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
-    SanaLinearAttnProcessor2_0,
 ]

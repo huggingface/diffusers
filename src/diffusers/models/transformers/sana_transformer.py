@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import numbers
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -25,36 +26,16 @@ from ..attention_processor import (
     AttnProcessor2_0,
     FusedAttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
+    SanaMultiscaleAttnProcessor2_0,
+    SanaMultiscaleLinearAttention,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle, RMSNorm
+from ..normalization import AdaLayerNormSingle, RMSNormScaled
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int, HW: tuple=None):
-    # "feed_forward_chunk_size" can be used to save memory
-    if hidden_states.shape[chunk_dim] % chunk_size != 0:
-        raise ValueError(
-            f"`hidden_states` dimension to be chunked: {hidden_states.shape[chunk_dim]} has to be divisible by chunk size: {chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
-        )
-
-    num_chunks = hidden_states.shape[chunk_dim] // chunk_size
-    ff_output = torch.cat(
-        [ff(hid_slice, HW) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
-        dim=chunk_dim,
-    )
-    return ff_output
-
-
-@maybe_allow_in_graph
-class RMSNormScaled(RMSNorm):
-    def __init__(self, dim, eps: float, elementwise_affine: bool = True, scale_factor: float = 1.0):
-        super().__init__(dim, eps, elementwise_affine)
-        self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
 
 
 # Modified from diffusers.models.autoencoders.autoencoder_dc.GLUMBConv
@@ -105,22 +86,19 @@ class SanaLinearTransformerBlock(nn.Module):
         dim (`int`): The number of channels in the input and output.
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
-        context_pre_only (`bool`): Boolean to determine if we should add some blocks associated with the
-            processing of `context` conditions.
     """
 
     def __init__(
         self,
-        dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        dropout=0.0,
-        num_cross_attention_heads: Optional[int] = None,
-        cross_attention_head_dim: Optional[int] = None,
-        cross_attention_dim: Optional[int] = None,
-        activation_fn: tuple = ("silu", "silu", None),
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
+        dim: int = 2240,
+        num_attention_heads: int = 70,
+        attention_head_dim: int = 32,
+        dropout: float = 0.0,
+        num_cross_attention_heads: Optional[int] = 20,
+        cross_attention_head_dim: Optional[int] = 112,
+        cross_attention_dim: Optional[int] = 2240,
+        num_embeds_ada_norm: Optional[int] = 1000,
+        attention_bias: bool = True,
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_single",
         norm_elementwise_affine: bool = False,
@@ -136,7 +114,6 @@ class SanaLinearTransformerBlock(nn.Module):
         self.attention_head_dim = attention_head_dim
         self.dropout = dropout
         self.cross_attention_dim = cross_attention_dim
-        self.activation_fn = activation_fn
         self.attention_bias = attention_bias
         self.norm_elementwise_affine = norm_elementwise_affine
 
@@ -205,8 +182,6 @@ class SanaLinearTransformerBlock(nn.Module):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         HW: Optional[tuple[int]] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
@@ -260,11 +235,7 @@ class SanaLinearTransformerBlock(nn.Module):
             norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
-        if self._chunk_size is not None:
-            # "feed_forward_chunk_size" can be used to save memory
-            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size, HW=HW)
-        else:
-            ff_output = self.ff(norm_hidden_states, HW=HW)
+        ff_output = self.ff(norm_hidden_states, HW=HW)
 
         if self.norm_type == "ada_norm_single":
             ff_output = gate_mlp * ff_output
@@ -301,8 +272,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             The width of the latent images. This parameter is fixed during training.
         patch_size (int, defaults to 1):
             Size of the patches the model processes, relevant for architectures working on non-sequential data.
-        activation_fn (str, optional, defaults to "gelu-approximate"):
-            Activation function to use in feed-forward networks within Transformer blocks.
         num_embeds_ada_norm (int, optional, defaults to 1000):
             Number of embeddings for AdaLayerNorm, fixed during training and affects the maximum denoising steps during
             inference.
@@ -338,11 +307,10 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         num_cross_attention_heads: Optional[int] = 20,
         cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 1152,
+        cross_attention_dim: Optional[int] = 2240,
         attention_bias: bool = True,
         sample_size: int = 32,
         patch_size: int = 1,
-        activation_fn: tuple = ("silu", "silu", None),
         num_embeds_ada_norm: Optional[int] = 1000,
         upcast_attention: bool = False,
         norm_type: str = "ada_norm_single",
@@ -371,7 +339,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         # Set some common variables used across the board.
         self.attention_head_dim = attention_head_dim
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.inner_dim = num_attention_heads * attention_head_dim
         self.out_channels = in_channels if out_channels is None else out_channels
         if use_additional_conditions is None:
             if sample_size == 128:
@@ -383,63 +351,66 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
 
         # 2. Initialize the position embedding and transformer blocks.
-        self.height = self.config.sample_size
-        self.width = self.config.sample_size
+        self.height = sample_size
+        self.width = sample_size
 
-        interpolation_scale = (
-            self.config.interpolation_scale
-            if self.config.interpolation_scale is not None
-            else max(self.config.sample_size // 64, 1)
-        )
+        if use_pe:
+            interpolation_scale = (
+                interpolation_scale
+                if interpolation_scale is not None
+                else max(sample_size // 64, 1)
+            )
+        else:
+            interpolation_scale = None
+
         self.pos_embed = PatchEmbed(
-            height=self.config.sample_size,
-            width=self.config.sample_size,
-            patch_size=self.config.patch_size,
-            in_channels=self.config.in_channels,
+            height=sample_size,
+            width=sample_size,
+            patch_size=patch_size,
+            in_channels=in_channels,
             embed_dim=self.inner_dim,
             interpolation_scale=interpolation_scale,
-            pos_embed_type="sincos" if self.config.use_pe else None
+            pos_embed_type="sincos" if use_pe else None
         )
 
         self.transformer_blocks = nn.ModuleList(
             [
                 SanaLinearTransformerBlock(
                     self.inner_dim,
-                    self.config.num_attention_heads,
-                    self.config.attention_head_dim,
-                    dropout=self.config.dropout,
-                    num_cross_attention_heads=self.config.num_cross_attention_heads,
-                    cross_attention_head_dim=self.config.cross_attention_head_dim,
-                    cross_attention_dim=self.config.cross_attention_dim,
-                    activation_fn=self.config.activation_fn,
-                    num_embeds_ada_norm=self.config.num_embeds_ada_norm,
-                    attention_bias=self.config.attention_bias,
-                    upcast_attention=self.config.upcast_attention,
+                    num_attention_heads,
+                    attention_head_dim,
+                    dropout=dropout,
+                    num_cross_attention_heads=num_cross_attention_heads,
+                    cross_attention_head_dim=cross_attention_head_dim,
+                    cross_attention_dim=cross_attention_dim,
+                    num_embeds_ada_norm=num_embeds_ada_norm,
+                    attention_bias=attention_bias,
+                    upcast_attention=upcast_attention,
                     norm_type=norm_type,
-                    norm_elementwise_affine=self.config.norm_elementwise_affine,
-                    norm_eps=self.config.norm_eps,
-                    use_pe=self.config.use_pe,
-                    expand_ratio=self.config.expand_ratio,
+                    norm_elementwise_affine=norm_elementwise_affine,
+                    norm_eps=norm_eps,
+                    use_pe=use_pe,
+                    expand_ratio=expand_ratio,
                 )
-                for _ in range(self.config.num_layers)
+                for _ in range(num_layers)
             ]
         )
 
         # 3. Output blocks.
         self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
         self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
-        self.proj_out = nn.Linear(self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels)
 
         self.adaln_single = AdaLayerNormSingle(
             self.inner_dim, use_additional_conditions=self.use_additional_conditions
         )
         self.caption_projection = None
-        if self.config.caption_channels is not None:
+        if caption_channels is not None:
             self.caption_projection = PixArtAlphaTextProjection(
-                in_features=self.config.caption_channels, hidden_size=self.inner_dim
+                in_features=caption_channels, hidden_size=self.inner_dim
             )
         self.caption_norm = None
-        if self.config.use_caption_norm:
+        if use_caption_norm:
             self.caption_norm = RMSNormScaled(self.inner_dim, eps=1e-5, scale_factor=caption_norm_scale_factor)
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -506,46 +477,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
-    def fuse_qkv_projections(self):
-        """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
-        are fused. For cross-attention modules, key and value projection matrices are fused.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-        """
-        self.original_attn_processors = None
-
-        for _, attn_processor in self.attn_processors.items():
-            if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
-
-        self.original_attn_processors = self.attn_processors
-
-        for module in self.modules():
-            if isinstance(module, Attention):
-                module.fuse_projections(fuse=True)
-
-        self.set_attn_processor(FusedAttnProcessor2_0())
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
-    def unfuse_qkv_projections(self):
-        """Disables the fused QKV projection if enabled.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-
-        """
-        if self.original_attn_processors is not None:
-            self.set_attn_processor(self.original_attn_processors)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -556,7 +487,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        **kwargs,
     ):
         """
         The [`PixArtTransformer2DModel`] forward method.

@@ -11,7 +11,7 @@ if is_torch_available():
     from .lumina_nextdit2d import LuminaNextDiT2DModel
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
-    from .sana_transformer_2d import SanaTransformer2DModel
+    from .sana_transformer import SanaTransformer2DModel
     from .stable_audio_transformer import StableAudioDiTModel
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
