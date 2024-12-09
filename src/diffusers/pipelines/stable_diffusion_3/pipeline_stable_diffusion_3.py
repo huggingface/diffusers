@@ -994,8 +994,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
-                    return_dict=False,
                     joint_attention_kwargs=self.joint_attention_kwargs,
+                    return_dict=False,
                 )[0]
 
                 # perform guidance
