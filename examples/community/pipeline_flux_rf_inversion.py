@@ -572,6 +572,7 @@ class RFInversionFluxPipeline(
 
         return latents, latent_image_ids
 
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
