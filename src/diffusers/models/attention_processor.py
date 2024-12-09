@@ -20,8 +20,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
-from ..utils import deprecate, logging
-from ..utils.import_utils import is_torch_npu_available, is_xformers_available
+from ..utils import deprecate, is_torch_xla_available, logging
+from ..utils.import_utils import is_torch_npu_available, is_torch_xla_version, is_xformers_available
 from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
 
 
@@ -35,6 +35,15 @@ if is_xformers_available():
     import xformers.ops
 else:
     xformers = None
+
+if is_torch_xla_available():
+    # flash attention pallas kernel is introduced in the torch_xla 2.3 release.
+    if is_torch_xla_version(">", "2.2"):
+        from torch_xla.experimental.custom_kernel import flash_attention
+        from torch_xla.runtime import is_spmd
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 @maybe_allow_in_graph
@@ -270,6 +279,33 @@ class Attention(nn.Module):
         # torch.nn.functional.scaled_dot_product_attention for native Flash/memory_efficient_attention
         # but only if it has the default `scale` argument. TODO remove scale_qk check when we move to torch 2.1
         if processor is None:
+            processor = (
+                AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
+            )
+        self.set_processor(processor)
+
+    def set_use_xla_flash_attention(
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Tuple[Optional[str], ...]] = None
+    ) -> None:
+        r"""
+        Set whether to use xla flash attention from `torch_xla` or not.
+
+        Args:
+            use_xla_flash_attention (`bool`):
+                Whether to use pallas flash attention kernel from `torch_xla` or not.
+            partition_spec (`Tuple[]`, *optional*):
+                Specify the partition specification if using SPMD. Otherwise None.
+        """
+        if use_xla_flash_attention:
+            if not is_torch_xla_available:
+                raise "torch_xla is not available"
+            elif is_torch_xla_version("<", "2.3"):
+                raise "flash attention pallas kernel is supported from torch_xla version 2.3"
+            elif is_spmd() and is_torch_xla_version("<", "2.4"):
+                raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
+            else:
+                processor = XLAFlashAttnProcessor2_0(partition_spec)
+        else:
             processor = (
                 AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") and self.scale_qk else AttnProcessor()
             )
@@ -2825,6 +2861,122 @@ class AttnProcessor2_0:
         hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class XLAFlashAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
+    """
+
+    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+        if is_torch_xla_version("<", "2.3"):
+            raise ImportError("XLA flash attention requires torch_xla version >= 2.3.")
+        if is_spmd() and is_torch_xla_version("<", "2.4"):
+            raise ImportError("SPMD support for XLA flash attention needs torch_xla version >= 2.4.")
+        self.partition_spec = partition_spec
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        residual = hidden_states
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        if all(tensor.shape[2] >= 4096 for tensor in [query, key, value]):
+            if attention_mask is not None:
+                attention_mask = attention_mask.view(batch_size, 1, 1, attention_mask.shape[-1])
+                # Convert mask to float and replace 0s with -inf and 1s with 0
+                attention_mask = (
+                    attention_mask.float()
+                    .masked_fill(attention_mask == 0, float("-inf"))
+                    .masked_fill(attention_mask == 1, float(0.0))
+                )
+
+                # Apply attention mask to key
+                key = key + attention_mask
+            query /= math.sqrt(query.shape[3])
+            partition_spec = self.partition_spec if is_spmd() else None
+            hidden_states = flash_attention(query, key, value, causal=False, partition_spec=partition_spec)
+        else:
+            logger.warning(
+                "Unable to use the flash attention pallas kernel API call due to QKV sequence length < 4096."
+            )
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
@@ -5537,6 +5689,7 @@ AttentionProcessor = Union[
     FusedCogVideoXAttnProcessor2_0,
     XFormersAttnAddedKVProcessor,
     XFormersAttnProcessor,
+    XLAFlashAttnProcessor2_0,
     AttnProcessorNPU,
     AttnProcessor2_0,
     MochiVaeAttnProcessor2_0,

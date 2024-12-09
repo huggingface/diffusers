@@ -612,6 +612,7 @@ class RMSNormScaled(nn.Module):
             self.weight = nn.Parameter(torch.ones(dim) * scale_factor)
             if bias:
                 self.bias = nn.Parameter(torch.zeros(dim))
+
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
