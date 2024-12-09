@@ -221,16 +221,19 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         and not module.is_cross_attention
     )
 
-    block_skip_range, timestep_skip_range = None, None
+    block_skip_range, timestep_skip_range, block_type = None, None, None
     if is_spatial_self_attention:
         block_skip_range = config.spatial_attention_block_skip_range
         timestep_skip_range = config.spatial_attention_timestep_skip_range
+        block_type = "spatial"
     elif is_temporal_self_attention:
         block_skip_range = config.temporal_attention_block_skip_range
         timestep_skip_range = config.temporal_attention_timestep_skip_range
+        block_type = "temporal"
     elif is_cross_attention:
         block_skip_range = config.cross_attention_block_skip_range
         timestep_skip_range = config.cross_attention_timestep_skip_range
+        block_type = "cross"
 
     if block_skip_range is None or timestep_skip_range is None:
         logger.warning(f"Unable to apply Pyramid Attention Broadcast to the selected layer: {name}.")
@@ -250,5 +253,5 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         # loss, as described in the paper. So, the attention computation cannot be skipped
         return False
 
-    logger.debug(f"Enabling Pyramid Attention Broadcast in layer: {name}")
+    logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
     apply_pyramid_attention_broadcast_on_module(module, skip_callback)
