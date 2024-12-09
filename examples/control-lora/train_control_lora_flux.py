@@ -1139,6 +1139,7 @@ def main(args):
 
     image_logs = None
     for epoch in range(first_epoch, args.num_train_epochs):
+        flux_transformer.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(flux_transformer):
                 # Convert images to latent space
