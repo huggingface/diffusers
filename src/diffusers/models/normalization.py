@@ -512,20 +512,24 @@ else:
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim, eps: float, elementwise_affine: bool = True):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True, bias: bool = False):
         super().__init__()
 
         self.eps = eps
+        self.elementwise_affine = elementwise_affine
 
         if isinstance(dim, numbers.Integral):
             dim = (dim,)
 
         self.dim = torch.Size(dim)
 
+        self.weight = None
+        self.bias = None
+
         if elementwise_affine:
             self.weight = nn.Parameter(torch.ones(dim))
-        else:
-            self.weight = None
+            if bias:
+                self.bias = nn.Parameter(torch.zeros(dim))
 
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
@@ -537,6 +541,8 @@ class RMSNorm(nn.Module):
             if self.weight.dtype in [torch.float16, torch.bfloat16]:
                 hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = hidden_states * self.weight
+            if self.bias is not None:
+                hidden_states = hidden_states + self.bias
         else:
             hidden_states = hidden_states.to(input_dtype)
 
@@ -566,3 +572,21 @@ class LpNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
+
+
+def get_normalization(
+    norm_type: str = "batch_norm",
+    num_features: Optional[int] = None,
+    eps: float = 1e-5,
+    elementwise_affine: bool = True,
+    bias: bool = True,
+) -> nn.Module:
+    if norm_type == "rms_norm":
+        norm = RMSNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "layer_norm":
+        norm = nn.LayerNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "batch_norm":
+        norm = nn.BatchNorm2d(num_features, eps=eps, affine=elementwise_affine)
+    else:
+        raise ValueError(f"{norm_type=} is not supported.")
+    return norm
