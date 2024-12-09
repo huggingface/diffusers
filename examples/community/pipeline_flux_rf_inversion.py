@@ -678,6 +678,12 @@ class RFInversionFluxPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 will be used instead
+            inverted_latents (`torch.Tensor`, *optional*):
+                The inverted latents from `pipe.invert`.
+            image_latents (`torch.Tensor`, *optional*):
+                The image latents from `pipe.invert`.
+            latent_image_ids (`torch.Tensor`, *optional*):
+                The latent image ids from `pipe.invert`.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
