@@ -80,6 +80,9 @@ EXAMPLE_DOC_STRING = """
         ...     stop_timestep=.38,
         ...     num_inference_steps=28,
         ...     eta=0.9,
+        ...     stop_timestep=.38,
+        ...     num_inference_steps=28,
+        ...     eta=0.9,
         ... ).images[0]
         ```
 """
