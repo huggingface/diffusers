@@ -34,6 +34,8 @@ else:
     _import_structure["pipeline_pag_sd_3_img2img"] = ["StableDiffusion3PAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_sd_animatediff"] = ["AnimateDiffPAGPipeline"]
     _import_structure["pipeline_pag_sd_img2img"] = ["StableDiffusionPAGImg2ImgPipeline"]
+    _import_structure["pipeline_pag_sd_inpaint"] = ["StableDiffusionPAGInpaintPipeline"]
+
     _import_structure["pipeline_pag_sd_xl"] = ["StableDiffusionXLPAGPipeline"]
     _import_structure["pipeline_pag_sd_xl_img2img"] = ["StableDiffusionXLPAGImg2ImgPipeline"]
     _import_structure["pipeline_pag_sd_xl_inpaint"] = ["StableDiffusionXLPAGInpaintPipeline"]
@@ -58,6 +60,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_pag_sd_3_img2img import StableDiffusion3PAGImg2ImgPipeline
         from .pipeline_pag_sd_animatediff import AnimateDiffPAGPipeline
         from .pipeline_pag_sd_img2img import StableDiffusionPAGImg2ImgPipeline
+        from .pipeline_pag_sd_inpaint import StableDiffusionPAGInpaintPipeline
         from .pipeline_pag_sd_xl import StableDiffusionXLPAGPipeline
         from .pipeline_pag_sd_xl_img2img import StableDiffusionXLPAGImg2ImgPipeline
         from .pipeline_pag_sd_xl_inpaint import StableDiffusionXLPAGInpaintPipeline
