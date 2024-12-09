@@ -40,23 +40,26 @@ class PyramidAttentionBroadcastConfig:
 
     Args:
         spatial_attention_block_skip_range (`int`, *optional*, defaults to `None`):
-            The number of blocks to skip in the spatial attention layer. If `None`, the spatial attention layer
-            computations will not be skipped.
+            The number of times a specific spatial attention broadcast is skipped before computing the attention states
+            to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
+            old attention states will be re-used) before computing the new attention states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
-            The number of blocks to skip in the temporal attention layer. If `None`, the temporal attention layer
-            computations will not be skipped.
+            The number of times a specific temporal attention broadcast is skipped before computing the attention
+            states to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times
+            (i.e., old attention states will be re-used) before computing the new attention states again.
         cross_attention_block_skip_range (`int`, *optional*, defaults to `None`):
-            The number of blocks to skip in the cross-attention layer. If `None`, the cross-attention layer computations
-            will not be skipped.
+            The number of times a specific cross-attention broadcast is skipped before computing the attention states
+            to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
+            old attention states will be re-used) before computing the new attention states again.
         spatial_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
-            The range of timesteps to skip in the spatial attention layer. The attention computations will be skipped
-            if the current timestep is within the specified range.
+            The range of timesteps to skip in the spatial attention layer. The attention computations will be
+            conditionally skipped if the current timestep is within the specified range.
         temporal_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
-            The range of timesteps to skip in the temporal attention layer. The attention computations will be skipped
-            if the current timestep is within the specified range.
+            The range of timesteps to skip in the temporal attention layer. The attention computations will be
+            conditionally skipped if the current timestep is within the specified range.
         cross_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
-            The range of timesteps to skip in the cross-attention layer. The attention computations will be skipped if
-            the current timestep is within the specified range.
+            The range of timesteps to skip in the cross-attention layer. The attention computations will be
+            conditionally skipped if the current timestep is within the specified range.
         spatial_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("blocks", "transformer_blocks")`):
             The identifiers to match against the layer names to determine if the layer is a spatial attention layer.
         temporal_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("temporal_transformer_blocks",)`):
@@ -64,6 +67,7 @@ class PyramidAttentionBroadcastConfig:
         cross_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("blocks", "transformer_blocks")`):
             The identifiers to match against the layer names to determine if the layer is a cross-attention layer.
     """
+
     spatial_attention_block_skip_range: Optional[int] = None
     temporal_attention_block_skip_range: Optional[int] = None
     cross_attention_block_skip_range: Optional[int] = None
@@ -86,6 +90,7 @@ class PyramidAttentionBroadcastState:
             The current iteration of the Pyramid Attention Broadcast. It is necessary to ensure that `reset_state` is
             called before starting a new inference forward pass for PAB to work correctly.
     """
+
     def __init__(self) -> None:
         self.iteration = 0
 
@@ -101,6 +106,7 @@ class nnModulePAB(Protocol):
         _pyramid_attention_broadcast_state (`PyramidAttentionBroadcastState`):
             The state of Pyramid Attention Broadcast.
     """
+
     _pyramid_attention_broadcast_state: PyramidAttentionBroadcastState
 
 
