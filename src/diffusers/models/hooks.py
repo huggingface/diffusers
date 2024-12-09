@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 
@@ -28,6 +28,7 @@ class ModelHook:
     def init_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is initialized.
+
         Args:
             module (`torch.nn.Module`):
                 The module attached to this hook.
@@ -37,6 +38,7 @@ class ModelHook:
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
@@ -53,6 +55,7 @@ class ModelHook:
     def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
         r"""
         Hook that is executed just after the forward method of the model.
+
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass been executed just before this event.
@@ -66,13 +69,11 @@ class ModelHook:
     def detach_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when the hook is detached from a module.
+
         Args:
             module (`torch.nn.Module`):
                 The module detached from this hook.
         """
-        return module
-
-    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
         return module
 
 
@@ -102,52 +103,19 @@ class SequentialHook(ModelHook):
             module = hook.detach_hook(module)
         return module
 
-    def reset_state(self, module):
-        for hook in self.hooks:
-            module = hook.reset_state(module)
-        return module
-
-
-class FasterCacheHook(ModelHook):
-    def __init__(
-        self,
-        skip_callback: Callable[[torch.nn.Module], bool],
-    ) -> None:
-        super().__init__()
-
-        self.skip_callback = skip_callback
-
-        self.cache = None
-        self._iteration = 0
-
-    def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
-        args, kwargs = module._diffusers_hook.pre_forward(module, *args, **kwargs)
-
-        if self.cache is not None and self.skip_callback(module):
-            output = self.cache
-        else:
-            output = module._old_forward(*args, **kwargs)
-
-        return module._diffusers_hook.post_forward(module, output)
-
-    def post_forward(self, module: torch.nn.Module, output: Any) -> Any:
-        self.cache = output
-        return output
-
-    def reset_state(self, module: torch.nn.Module) -> torch.nn.Module:
-        self.cache = None
-        self._iteration = 0
-        return module
-
 
 def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = False):
     r"""
     Adds a hook to a given module. This will rewrite the `forward` method of the module to include the hook, to remove
     this behavior and restore the original `forward` method, use `remove_hook_from_module`.
+
     <Tip warning={true}>
+
     If the module already contains a hook, this will replace it with the new hook passed by default. To chain two hooks
     together, pass `append=True`, so it chains the current and new hook into an instance of the `SequentialHook` class.
+
     </Tip>
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.
@@ -198,6 +166,7 @@ def add_hook_to_module(module: torch.nn.Module, hook: ModelHook, append: bool = 
 def remove_hook_from_module(module: torch.nn.Module, recurse: bool = False) -> torch.nn.Module:
     """
     Removes any hook attached to a module via `add_hook_to_module`.
+
     Args:
         module (`torch.nn.Module`):
             The module to attach a hook to.

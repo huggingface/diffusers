@@ -1091,7 +1091,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if hasattr(self, "_diffusers_hook"):
             self._diffusers_hook.reset_state()
-        
+
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return
