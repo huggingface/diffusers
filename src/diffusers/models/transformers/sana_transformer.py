@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import numbers
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -24,10 +23,7 @@ from ..attention_processor import (
     Attention,
     AttentionProcessor,
     AttnProcessor2_0,
-    FusedAttnProcessor2_0,
     SanaLinearAttnProcessor2_0,
-    SanaMultiscaleAttnProcessor2_0,
-    SanaMultiscaleLinearAttention,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, SinusoidalPositionalEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
@@ -491,7 +487,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ):
         """
-        The [`PixArtTransformer2DModel`] forward method.
+        The [`SanaTransformer2DModel`] forward method.
 
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):

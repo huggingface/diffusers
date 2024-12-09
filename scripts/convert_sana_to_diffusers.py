@@ -7,6 +7,7 @@ from contextlib import nullcontext
 
 import torch
 from accelerate import init_empty_weights
+from huggingface_hub import hf_hub_download, snapshot_download
 from termcolor import colored
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -19,7 +20,7 @@ from diffusers import (
 )
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
-from huggingface_hub import hf_hub_download, snapshot_download
+
 
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
