@@ -280,7 +280,6 @@ class RFInversionFluxPipeline(
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
-    def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
@@ -723,7 +722,7 @@ class RFInversionFluxPipeline(
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
+                Whether to return a [`~pipelines.flux.FluxPipelineOutput`] instead of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
