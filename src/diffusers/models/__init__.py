@@ -27,6 +27,7 @@ _import_structure = {}
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
@@ -88,6 +89,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .adapter import MultiAdapter, T2IAdapter
         from .autoencoders import (
             AsymmetricAutoencoderKL,
+            AutoencoderDC,
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
