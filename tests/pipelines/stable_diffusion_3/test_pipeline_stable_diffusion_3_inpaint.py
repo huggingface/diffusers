@@ -106,8 +106,6 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
             "tokenizer_3": tokenizer_3,
             "transformer": transformer,
             "vae": vae,
-            "image_encoder": None,
-            "feature_extractor": None,
         }
 
     def get_dummy_inputs(self, device, seed=0):
