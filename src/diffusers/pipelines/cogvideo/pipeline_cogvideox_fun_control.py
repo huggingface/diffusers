@@ -30,7 +30,6 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-from ..pyramid_broadcast_utils import PyramidAttentionBroadcastMixin
 from .pipeline_output import CogVideoXPipelineOutput
 
 
@@ -145,7 +144,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin, PyramidAttentionBroadcastMixin):
+class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for controlled text-to-video generation using CogVideoX Fun.
 

@@ -37,7 +37,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
-from ..pyramid_broadcast_utils import PyramidAttentionBroadcastMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -133,7 +132,7 @@ class LattePipelineOutput(BaseOutput):
     frames: torch.Tensor
 
 
-class LattePipeline(DiffusionPipeline, PyramidAttentionBroadcastMixin):
+class LattePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-video generation using Latte.
 

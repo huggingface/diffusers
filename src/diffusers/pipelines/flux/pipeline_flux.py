@@ -655,6 +655,7 @@ class FluxPipeline(
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Define call parameters
@@ -731,6 +732,7 @@ class FluxPipeline(
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -771,9 +773,10 @@ class FluxPipeline(
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
+        self._current_timestep = None
+
         if output_type == "latent":
             image = latents
-
         else:
             latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
