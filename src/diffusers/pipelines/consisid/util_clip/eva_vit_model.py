@@ -4,16 +4,20 @@
 import math
 import os
 from functools import partial
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
 try:
     from timm.models.layers import drop_path, to_2tuple, trunc_normal_
 except:
     from timm.layers import drop_path, to_2tuple, trunc_normal_
-    
+
+from .rope import VisionRotaryEmbeddingFast
 from .transformer import PatchDropout
-from .rope import VisionRotaryEmbedding, VisionRotaryEmbeddingFast
+
 
 if os.getenv('ENV_TYPE') == 'deepspeed':
     try:
@@ -24,7 +28,6 @@ else:
     from torch.utils.checkpoint import checkpoint
 
 try:
-    import xformers
     import xformers.ops as xops
     XFORMERS_IS_AVAILBLE = True
 except:
@@ -39,19 +42,19 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
-    
+
     def extra_repr(self) -> str:
         return 'p={}'.format(self.drop_prob)
 
 
 class Mlp(nn.Module):
     def __init__(
-        self, 
-        in_features, 
-        hidden_features=None, 
-        out_features=None, 
-        act_layer=nn.GELU, 
-        norm_layer=nn.LayerNorm, 
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
         drop=0.,
         subln=False,
 
@@ -71,7 +74,7 @@ class Mlp(nn.Module):
         x = self.fc1(x)
         x = self.act(x)
         # x = self.drop(x)
-        # commit this for the orignal BERT implement 
+        # commit this for the orignal BERT implement
         x = self.ffn_ln(x)
 
         x = self.fc2(x)
@@ -79,7 +82,7 @@ class Mlp(nn.Module):
         return x
 
 class SwiGLU(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.SiLU, drop=0., 
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.SiLU, drop=0.,
                 norm_layer=nn.LayerNorm, subln=False):
         super().__init__()
         out_features = out_features or in_features
@@ -91,7 +94,7 @@ class SwiGLU(nn.Module):
         self.act = act_layer()
         self.ffn_ln = norm_layer(hidden_features) if subln else nn.Identity()
         self.w3 = nn.Linear(hidden_features, out_features)
-        
+
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
@@ -172,20 +175,20 @@ class Attention(nn.Module):
 
     def forward(self, x, rel_pos_bias=None, attn_mask=None):
         B, N, C = x.shape
-        if self.subln: 
+        if self.subln:
             q = F.linear(input=x, weight=self.q_proj.weight, bias=self.q_bias)
             k = F.linear(input=x, weight=self.k_proj.weight, bias=None)
             v = F.linear(input=x, weight=self.v_proj.weight, bias=self.v_bias)
 
             q = q.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)     # B, num_heads, N, C
-            k = k.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)  
-            v = v.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3) 
-        else: 
+            k = k.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+            v = v.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        else:
 
             qkv_bias = None
             if self.q_bias is not None:
                 qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
-            
+
             qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
             qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)   # 3, B, num_heads, N, C
             q, k, v = qkv[0], qkv[1], qkv[2]
@@ -232,7 +235,7 @@ class Attention(nn.Module):
             if attn_mask is not None:
                 attn_mask = attn_mask.bool()
                 attn = attn.masked_fill(~attn_mask[:, None, None, :], float("-inf"))
-            
+
             attn = attn.softmax(dim=-1)
             attn = self.attn_drop(attn)
 
@@ -262,15 +265,15 @@ class Block(nn.Module):
 
         if naiveswiglu:
             self.mlp = SwiGLU(
-                in_features=dim, 
-                hidden_features=mlp_hidden_dim, 
+                in_features=dim,
+                hidden_features=mlp_hidden_dim,
                 subln=subln,
                 norm_layer=norm_layer,
             )
         else:
             self.mlp = Mlp(
-                in_features=dim, 
-                hidden_features=mlp_hidden_dim, 
+                in_features=dim,
+                hidden_features=mlp_hidden_dim,
                 act_layer=act_layer,
                 subln=subln,
                 drop=drop
@@ -407,7 +410,7 @@ class EVAVisionTransformer(nn.Module):
                 ft_seq_len=hw_seq_len if intp_freq else None,
                 # patch_dropout=patch_dropout
             )
-        else: 
+        else:
             self.rope = None
 
         self.naiveswiglu = naiveswiglu
@@ -469,7 +472,7 @@ class EVAVisionTransformer(nn.Module):
 
     def get_num_layers(self):
         return len(self.blocks)
-    
+
     def lock(self, unlocked_groups=0, freeze_bn_stats=False):
         assert unlocked_groups == 0, 'partial locking not currently supported for this model'
         for param in self.parameters():
@@ -491,7 +494,7 @@ class EVAVisionTransformer(nn.Module):
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x, return_all_features=False, return_hidden=False, shuffle=False):
-        
+
         x = self.patch_embed(x)
         batch_size, seq_len, _ = x.size()
 

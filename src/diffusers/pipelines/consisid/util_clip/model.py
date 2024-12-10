@@ -2,24 +2,25 @@
 
 Adapted from https://github.com/openai/CLIP. Originally MIT License, Copyright (c) 2021 OpenAI.
 """
-import os
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 from functools import partial
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+
 try:
     from .hf_model import HFTextEncoder
 except:
     HFTextEncoder = None
+from .eva_vit_model import EVAVisionTransformer
 from .modified_resnet import ModifiedResNet
 from .timm_model import TimmModel
-from .eva_vit_model import EVAVisionTransformer
-from .transformer import LayerNorm, QuickGELU, Attention, VisionTransformer, TextTransformer
+from .transformer import Attention, LayerNorm, QuickGELU, TextTransformer, VisionTransformer
+
 
 try:
     from apex.normalization import FusedLayerNorm
@@ -106,7 +107,7 @@ def _build_vision_tower(
     if vision_cfg.eva_model_name:
         vision_heads = vision_cfg.width // vision_cfg.head_width
         norm_layer = LayerNorm
-        
+
         visual = EVAVisionTransformer(
             img_size=vision_cfg.image_size,
             patch_size=vision_cfg.patch_size,
@@ -151,7 +152,8 @@ def _build_vision_tower(
         )
     else:
         vision_heads = vision_cfg.width // vision_cfg.head_width
-        norm_layer = LayerNormFp32 if cast_dtype in (torch.float16, torch.bfloat16) else LayerNorm
+        # norm_layer = LayerNormFp32 if cast_dtype in (torch.float16, torch.bfloat16) else LayerNorm
+        norm_layer = LayerNorm
         visual = VisionTransformer(
             image_size=vision_cfg.image_size,
             patch_size=vision_cfg.patch_size,
@@ -238,7 +240,7 @@ class CLIP(nn.Module):
     def set_grad_checkpointing(self, enable=True):
         self.visual.set_grad_checkpointing(enable)
         self.transformer.grad_checkpointing = enable
-    
+
     @torch.jit.ignore
     def no_weight_decay(self):
         return {'logit_scale'}
@@ -316,7 +318,7 @@ def convert_weights_to_lp(model: nn.Module, dtype=torch.float16):
     """Convert applicable model parameters to low-precision (bf16 or fp16)"""
 
     def _convert_weights(l):
-        
+
         if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
             l.weight.data = l.weight.data.to(dtype)
             if l.bias is not None:
@@ -392,7 +394,7 @@ def build_model_from_openai_state_dict(
     vocab_size = state_dict["token_embedding.weight"].shape[0]
     transformer_width = state_dict["ln_final.weight"].shape[0]
     transformer_heads = transformer_width // 64
-    transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith(f"transformer.resblocks")))
+    transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith("transformer.resblocks")))
 
     vision_cfg = CLIPVisionCfg(
         layers=vision_layers,

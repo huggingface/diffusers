@@ -1,13 +1,14 @@
-from itertools import repeat
 import collections.abc
 import logging
 import math
-import numpy as np
+from itertools import repeat
 
+import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn as nn
 from torchvision.ops.misc import FrozenBatchNorm2d
-import torch.nn.functional as F
+
 
 # open CLIP
 def resize_clip_pos_embed(state_dict, model, interpolation: str = 'bicubic', seq_dim=1):
@@ -135,7 +136,7 @@ def resize_eva_pos_embed(state_dict, model, interpolation: str = 'bicubic', seq_
             patch_size = model.visual.patch_embed.patch_size
             state_dict['patch_embed.proj.weight'] = torch.nn.functional.interpolate(
                 patch_embed_proj.float(), size=patch_size, mode='bicubic', align_corners=False)
-                
+
 
 def resize_rel_pos_embed(state_dict, model, interpolation: str = 'bicubic', seq_dim=1):
     all_keys = list(state_dict.keys())

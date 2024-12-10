@@ -1,7 +1,7 @@
-import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
 
 try:
     import torch.distributed.nn
@@ -119,7 +119,7 @@ class ClipLoss(nn.Module):
                 self.prev_num_logits = num_logits
         else:
             labels = self.labels[device]
-        
+
         if self.label_smoothing_cross_entropy:
             total_loss = (
                 self.label_smoothing_cross_entropy(logits_per_image, labels) +
@@ -130,7 +130,7 @@ class ClipLoss(nn.Module):
                 F.cross_entropy(logits_per_image, labels) +
                 F.cross_entropy(logits_per_text, labels)
                 ) / 2
-            
+
         acc = None
         i2t_acc = (logits_per_image.argmax(-1) == labels).sum() / len(logits_per_image)
         t2i_acc = (logits_per_text.argmax(-1) == labels).sum() / len(logits_per_text)

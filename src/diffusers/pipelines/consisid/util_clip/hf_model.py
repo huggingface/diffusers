@@ -7,14 +7,18 @@ import re
 
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
 from torch import TensorType
+
+
 try:
     import transformers
-    from transformers import AutoModel, AutoModelForMaskedLM, AutoTokenizer, AutoConfig, PretrainedConfig
-    from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling, \
-        BaseModelOutputWithPoolingAndCrossAttentions
-except ImportError as e:
+    from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM, AutoTokenizer, PretrainedConfig
+    from transformers.modeling_outputs import (
+        BaseModelOutput,
+        BaseModelOutputWithPooling,
+        BaseModelOutputWithPoolingAndCrossAttentions,
+    )
+except ImportError:
     transformers = None
 
 
@@ -26,6 +30,7 @@ except ImportError as e:
         pass
 
 from .hf_configs import arch_dict
+
 
 # utils
 def _camel2snake(s):
@@ -63,19 +68,19 @@ class ClsPooler(nn.Module):
         self.use_pooler_output = use_pooler_output
 
     def forward(self, x:BaseModelOutput, attention_mask:TensorType):
-        
-        if (self.use_pooler_output and 
+
+        if (self.use_pooler_output and
             isinstance(x, (BaseModelOutputWithPooling, BaseModelOutputWithPoolingAndCrossAttentions)) and
             (x.pooler_output is not None)
             ):
             return x.pooler_output
-        
+
         return x.last_hidden_state[:, self.cls_token_position, :]
 
 class HFTextEncoder(nn.Module):
     """HuggingFace model adapter"""
     def __init__(
-            self, 
+            self,
             model_name_or_path: str,
             output_dim: int,
             tokenizer_name: str = None,
@@ -137,10 +142,10 @@ class HFTextEncoder(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
     # def forward_itm(self, x:TensorType, image_embeds:TensorType) -> TensorType:
-    #     image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(x.device)  
+    #     image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(x.device)
     #     attn_mask = (x != self.config.pad_token_id).long()
     #     out = self.transformer(
-    #         input_ids=x, 
+    #         input_ids=x,
     #         attention_mask=attn_mask,
     #         encoder_hidden_states = image_embeds,
     #         encoder_attention_mask = image_atts,
@@ -150,14 +155,14 @@ class HFTextEncoder(nn.Module):
     #     return self.itm_proj(pooled_out)
 
     def mask(self, input_ids, vocab_size, device, targets=None, masked_indices=None, probability_matrix=None):
-        if masked_indices is None:                                       
+        if masked_indices is None:
             masked_indices = torch.bernoulli(probability_matrix).bool()
-                                               
+
         masked_indices[input_ids == self.tokenizer.pad_token_id] = False
         masked_indices[input_ids == self.tokenizer.cls_token_id] = False
-        
+
         if targets is not None:
-            targets[~masked_indices] = -100 # We only compute loss on masked tokens            
+            targets[~masked_indices] = -100 # We only compute loss on masked tokens
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = torch.bernoulli(torch.full(input_ids.shape, 0.8)).bool() & masked_indices
@@ -166,9 +171,9 @@ class HFTextEncoder(nn.Module):
         # 10% of the time, we replace masked input tokens with random word
         indices_random = torch.bernoulli(torch.full(input_ids.shape, 0.5)).bool() & masked_indices & ~indices_replaced
         random_words = torch.randint(vocab_size, input_ids.shape, dtype=torch.long).to(device)
-        input_ids[indices_random] = random_words[indices_random]                     
-        # The rest of the time (10% of the time) we keep the masked input tokens unchanged   
-        
+        input_ids[indices_random] = random_words[indices_random]
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+
         if targets is not None:
             return input_ids, targets
         else:
@@ -177,7 +182,7 @@ class HFTextEncoder(nn.Module):
     def forward_mlm(self, input_ids, image_embeds, mlm_probability=0.25):
         labels = input_ids.clone()
         attn_mask = (input_ids != self.config.pad_token_id).long()
-        image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(input_ids.device) 
+        image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(input_ids.device)
         vocab_size = getattr(self.config, arch_dict[self.config.model_type]["config_names"]["vocab_size"])
         probability_matrix = torch.full(labels.shape, mlm_probability)
         input_ids, labels = self.mask(input_ids, vocab_size, input_ids.device, targets=labels,

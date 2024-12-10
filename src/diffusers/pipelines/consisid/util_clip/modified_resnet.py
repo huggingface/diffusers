@@ -1,10 +1,11 @@
 import os
 import sys
+from collections import OrderedDict
 
 import torch
 from torch import nn
 from torch.nn import functional as F
-from collections import OrderedDict
+
 
 current_file_path = os.path.abspath(__file__)
 project_roots = [os.path.dirname(current_file_path)]

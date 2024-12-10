@@ -4,16 +4,17 @@ Copied from https://github.com/openai/CLIP. Originally MIT License, Copyright (c
 """
 import gzip
 import html
+
+# https://stackoverflow.com/q/62691279
 import os
 from functools import lru_cache
-from typing import Union, List
+from typing import List, Union
 
 import ftfy
 import regex as re
 import torch
 
-# https://stackoverflow.com/q/62691279
-import os
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 

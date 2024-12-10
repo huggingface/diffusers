@@ -75,9 +75,9 @@ def reshape_tensor(x, heads):
 class PerceiverAttention(nn.Module):
     """
     Implements the Perceiver attention mechanism with multi-head attention.
-    
+
     This layer takes two inputs: 'x' (image features) and 'latents' (latent features),
-    applying multi-head attention to both and producing an output tensor with the same 
+    applying multi-head attention to both and producing an output tensor with the same
     dimension as the input tensor 'x'.
 
     Args:
@@ -522,19 +522,19 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             which can help reduce computational overhead.
         LFE_num_tokens (`int`, defaults to `32`):
             The number of tokens to use in the Local Facial Extractor (LFE).
-            This module is responsible for capturing high frequency representations 
+            This module is responsible for capturing high frequency representations
             of the face.
         LFE_output_dim (`int`, defaults to `768`):
             The output dimension of the Local Facial Extractor (LFE) module.
-            This dimension determines the size of the feature vectors produced 
+            This dimension determines the size of the feature vectors produced
             by the LFE module.
         LFE_heads (`int`, defaults to `12`):
             The number of attention heads used in the Local Facial Extractor (LFE) module.
-            More heads may improve the ability to capture diverse features, but 
+            More heads may improve the ability to capture diverse features, but
             can also increase computational complexity.
         local_face_scale (`float`, defaults to `1.0`):
-            A scaling factor used to adjust the importance of local facial features 
-            in the model. This can influence how strongly the model focuses on 
+            A scaling factor used to adjust the importance of local facial features
+            in the model. This can influence how strongly the model focuses on
             high frequency face-related content.
     """
 

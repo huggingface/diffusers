@@ -1,11 +1,17 @@
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torchvision.transforms.functional as F
-
-from torchvision.transforms import Normalize, Compose, RandomResizedCrop, InterpolationMode, ToTensor, Resize, \
-    CenterCrop
+from torchvision.transforms import (
+    CenterCrop,
+    Compose,
+    InterpolationMode,
+    Normalize,
+    RandomResizedCrop,
+    Resize,
+    ToTensor,
+)
 
 from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 

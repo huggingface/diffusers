@@ -1,20 +1,21 @@
-import os
 import logging
-from collections import OrderedDict
 import math
+import os
+from collections import OrderedDict
 from typing import Callable, Optional, Sequence
-import numpy as np
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 
+
 try:
-    from timm.models.layers import trunc_normal_
+    pass
 except:
-    from timm.layers import trunc_normal_
-    
-from .rope import VisionRotaryEmbedding, VisionRotaryEmbeddingFast
+    pass
+
 from .utils import to_2tuple
+
 
 if os.getenv('ENV_TYPE') == 'deepspeed':
     try:
@@ -327,7 +328,7 @@ class CustomAttention(nn.Module):
             attn = self.attn_drop(attn)
 
             x = torch.bmm(attn, v)
-            
+
         if self.head_scale is not None:
             x = x.view(B_q, self.num_heads, N_q, C_q) * self.head_scale
             x = x.view(-1, N_q, C_q)
@@ -427,7 +428,7 @@ class CustomTransformer(nn.Module):
         ])
 
     def get_cast_dtype(self) -> torch.dtype:
-        return self.resblocks[0].mlp.c_fc.weight.dtype 
+        return self.resblocks[0].mlp.c_fc.weight.dtype
 
     def forward(self, q: torch.Tensor, k: torch.Tensor = None, v: torch.Tensor = None, attn_mask: Optional[torch.Tensor] = None):
         if k is None and v is None:
@@ -548,7 +549,7 @@ class VisionTransformer(nn.Module):
         # setting a patch_dropout of 0. would mean it is disabled and this function would be the identity fn
         self.patch_dropout = PatchDropout(patch_dropout) if patch_dropout > 0. else nn.Identity()
         self.ln_pre = norm_layer(width)
-        
+
         self.transformer = Transformer(
             width,
             layers,
@@ -567,7 +568,7 @@ class VisionTransformer(nn.Module):
     def lock(self, unlocked_groups=0, freeze_bn_stats=False):
         for param in self.parameters():
             param.requires_grad = False
-        
+
         if unlocked_groups != 0:
             groups = [
                 [
@@ -671,7 +672,7 @@ class TextTransformer(nn.Module):
             norm_layer=norm_layer,
             xattn=xattn
         )
-        
+
         self.xattn = xattn
         self.ln_final = norm_layer(width)
         self.text_projection = nn.Parameter(torch.empty(width, output_dim))
@@ -702,7 +703,7 @@ class TextTransformer(nn.Module):
     @torch.jit.ignore
     def set_grad_checkpointing(self, enable=True):
         self.transformer.grad_checkpointing = enable
-    
+
     @torch.jit.ignore
     def no_weight_decay(self):
         # return {'positional_embedding', 'token_embedding'}

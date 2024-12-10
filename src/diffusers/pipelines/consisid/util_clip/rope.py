@@ -1,8 +1,10 @@
-from math import pi
-import torch
-from torch import nn
-from einops import rearrange, repeat
 import logging
+from math import pi
+
+import torch
+from einops import rearrange, repeat
+from torch import nn
+
 
 def broadcat(tensors, dim = -1):
     num_tensors = len(tensors)
@@ -60,7 +62,7 @@ class VisionRotaryEmbedding(nn.Module):
         freqs_w = torch.einsum('..., f -> ... f', t, freqs)
         freqs_w = repeat(freqs_w, '... n -> ... (n r)', r = 2)
 
-        freqs = broadcat((freqs_h[:, None, :], freqs_w[None, :, :]), dim = -1) 
+        freqs = broadcat((freqs_h[:, None, :], freqs_w[None, :, :]), dim = -1)
 
         self.register_buffer("freqs_cos", freqs.cos())
         self.register_buffer("freqs_sin", freqs.sin())

@@ -1,18 +1,17 @@
 import os
+
 import cv2
-import math
-import numpy as np
-from PIL import Image, ImageOps
-
-import torch
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms.functional import normalize, resize
-from diffusers.utils import load_image
-
 import insightface
-from insightface.app import FaceAnalysis
+import numpy as np
+import torch
 from facexlib.parsing import init_parsing_model
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
+from insightface.app import FaceAnalysis
+from PIL import Image, ImageOps
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms.functional import normalize, resize
+
+from diffusers.utils import load_image
 
 from .util_clip import create_model_and_transforms
 from .util_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
@@ -66,11 +65,32 @@ def to_gray(img):
 
 def process_face_embeddings(face_helper_1, clip_vision_model, face_helper_2, eva_transform_mean, eva_transform_std, app, device, weight_dtype, image, original_id_image=None, is_align_face=True):
     """
+    Process face embeddings from an image, extracting relevant features such as face embeddings,
+    landmarks, and parsed face features using a series of face detection and alignment tools.
+
     Args:
-        image: numpy rgb image, range [0, 255]
+        face_helper_1: Face helper object (first helper) for alignment and landmark detection.
+        clip_vision_model: Pre-trained CLIP vision model used for feature extraction.
+        face_helper_2: Face helper object (second helper) for embedding extraction.
+        eva_transform_mean: Mean values for image normalization before passing to EVA model.
+        eva_transform_std: Standard deviation values for image normalization before passing to EVA model.
+        app: Application instance used for face detection.
+        device: Device (CPU or GPU) where the computations will be performed.
+        weight_dtype: Data type of the weights for precision (e.g., `torch.float32`).
+        image: Input image in RGB format with pixel values in the range [0, 255].
+        original_id_image: (Optional) Original image for feature extraction if `is_align_face` is False.
+        is_align_face: Boolean flag indicating whether face alignment should be performed.
+
+    Returns:
+        Tuple:
+            - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding
+            - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
+            - return_face_features_image_2: Processed face features image after normalization and parsing.
+            - face_kps: Keypoints of the face detected in the image.
     """
+
     face_helper_1.clean_all()
-    image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # (724, 502, 3)
+    image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     # get antelopev2 embedding
     face_info = app.get(image_bgr)
     if len(face_info) > 0:
@@ -135,19 +155,42 @@ def process_face_embeddings(face_helper_1, clip_vision_model, face_helper_2, eva
 
 def process_face_embeddings_infer(face_helper_1, clip_vision_model, face_helper_2, eva_transform_mean, eva_transform_std, app, device, weight_dtype, img_file_path, is_align_face=True):
     """
+    Process face embeddings from an input image for inference, including alignment, feature extraction, and embedding concatenation.
+
     Args:
-        image: numpy rgb image, range [0, 255]
+        face_helper_1: Face helper object (first helper) for alignment and landmark detection.
+        clip_vision_model: Pre-trained CLIP vision model used for feature extraction.
+        face_helper_2: Face helper object (second helper) for embedding extraction.
+        eva_transform_mean: Mean values for image normalization before passing to EVA model.
+        eva_transform_std: Standard deviation values for image normalization before passing to EVA model.
+        app: Application instance used for face detection.
+        device: Device (CPU or GPU) where the computations will be performed.
+        weight_dtype: Data type of the weights for precision (e.g., `torch.float32`).
+        img_file_path: Path to the input image file (string) or a numpy array representing an image.
+        is_align_face: Boolean flag indicating whether face alignment should be performed (default: True).
+
+    Returns:
+        Tuple:
+            - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding.
+            - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
+            - image: Processed face image after feature extraction and alignment.
+            - face_kps: Keypoints of the face detected in the image.
     """
+
+    # Load and preprocess the input image
     if isinstance(img_file_path, str):
         image = np.array(load_image(image=img_file_path).convert("RGB"))
-    else:   
+    else:
         image = np.array(ImageOps.exif_transpose(Image.fromarray(img_file_path)).convert("RGB"))
-    
+
+    # Resize image to ensure the longer side is 1024 pixels
     image = resize_numpy_image_long(image, 1024)
     original_id_image = image
 
+    # Process the image to extract face embeddings and related features
     id_cond, id_vit_hidden, align_crop_face_image, face_kps = process_face_embeddings(face_helper_1, clip_vision_model, face_helper_2, eva_transform_mean, eva_transform_std, app, device, weight_dtype, image, original_id_image, is_align_face)
-    
+
+    # Convert the aligned cropped face image (torch tensor) to a numpy array
     tensor = align_crop_face_image.cpu().detach()
     tensor = tensor.squeeze()
     tensor = tensor.permute(1, 2, 0)
@@ -205,7 +248,7 @@ def prepare_face_models(model_path, device, dtype):
     # get local facial extractor part 2
     face_main_model = FaceAnalysis(name='antelopev2', root=os.path.join(model_path, "face_encoder"), providers=['CUDAExecutionProvider'])
     face_main_model.prepare(ctx_id=0, det_size=(640, 640))
-    
+
     # move face models to device
     face_helper_1.face_det.eval()
     face_helper_1.face_parse.eval()
@@ -213,5 +256,5 @@ def prepare_face_models(model_path, device, dtype):
     face_helper_1.face_det.to(device)
     face_helper_1.face_parse.to(device)
     face_clip_model.to(device, dtype=dtype)
-    
+
     return face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std
