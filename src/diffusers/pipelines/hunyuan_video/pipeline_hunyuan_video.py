@@ -554,16 +554,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         if len(rope_sizes) != target_ndim:
             rope_sizes = [1] * (target_ndim - len(rope_sizes)) + rope_sizes  # time axis
-        head_dim = self.transformer.config.hidden_size // self.transformer.config.heads_num
-        rope_dim_list = self.transformer.config.rope_dim_list
-        if rope_dim_list is None:
-            rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
-        assert (
-            sum(rope_dim_list) == head_dim
-        ), "sum(rope_dim_list) should equal to head_dim of attention layer"
         
         freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
-            rope_dim_list,
+            self.transformer.config.rope_dim_list,
             rope_sizes,
             theta=256,
             use_real=True,
@@ -861,6 +854,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
             else:
                 image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+
+            torch.save(image, "diffusers_latents_decoded.pt")
 
             if expand_temporal_dim or image.shape[2] == 1:
                 image = image.squeeze(2)

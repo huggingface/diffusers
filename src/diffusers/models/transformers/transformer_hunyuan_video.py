@@ -1019,10 +1019,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         patch_size: list = [1, 2, 2],
-        in_channels: int = 4,  # Should be VAE.config.latent_channels.
-        out_channels: int = None,
-        hidden_size: int = 3072,
-        heads_num: int = 24,
+        in_channels: int = 16,  # Should be VAE.config.latent_channels.
+        out_channels: int = 16,
+        num_attention_heads: int = 24,
+        attention_head_dim: int = 128,
         mlp_width_ratio: float = 4.0,
         mlp_act_type: str = "gelu_tanh",
         mm_double_blocks_depth: int = 20,
@@ -1031,12 +1031,13 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         qkv_bias: bool = True,
         qk_norm: bool = True,
         qk_norm_type: str = "rms",
-        guidance_embed: bool = False,  # For modulation.
+        guidance_embed: bool = True,
         text_states_dim: int = 4096,
         text_states_dim_2: int = 768,
     ):
         super().__init__()
 
+        inner_dim = num_attention_heads * attention_head_dim
         self.patch_size = patch_size
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
@@ -1044,39 +1045,34 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
 
-        if hidden_size % heads_num != 0:
-            raise ValueError(f"Hidden size {hidden_size} must be divisible by heads_num {heads_num}")
-        pe_dim = hidden_size // heads_num
-        if sum(rope_dim_list) != pe_dim:
-            raise ValueError(f"Got {rope_dim_list} but expected positional dim {pe_dim}")
-        self.hidden_size = hidden_size
-        self.heads_num = heads_num
+        if sum(rope_dim_list) != attention_head_dim:
+            raise ValueError(f"Got {rope_dim_list} but expected positional dim {attention_head_dim}")
 
         # image projection
-        self.img_in = PatchEmbed(self.patch_size, self.in_channels, self.hidden_size)
+        self.img_in = PatchEmbed(self.patch_size, self.in_channels, inner_dim)
 
         # text projection
-        self.txt_in = SingleTokenRefiner(text_states_dim, hidden_size, heads_num, depth=2)
+        self.txt_in = SingleTokenRefiner(text_states_dim, inner_dim, num_attention_heads, depth=2)
 
         # time modulation
-        self.time_in = TimestepEmbedder(self.hidden_size, get_activation_layer("silu"))
+        self.time_in = TimestepEmbedder(inner_dim, get_activation_layer("silu"))
 
         # text modulation
-        self.vector_in = MLPEmbedder(text_states_dim_2, self.hidden_size)
+        self.vector_in = MLPEmbedder(text_states_dim_2, inner_dim)
 
         # guidance modulation
         self.guidance_in = (
-            TimestepEmbedder(self.hidden_size, get_activation_layer("silu"))
+            TimestepEmbedder(inner_dim, get_activation_layer("silu"))
             if guidance_embed
             else None
         )
 
         # double blocks
-        self.double_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoDoubleStreamBlock(
-                    self.hidden_size,
-                    self.heads_num,
+                    inner_dim,
+                    num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
@@ -1088,11 +1084,11 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         )
 
         # single blocks
-        self.single_blocks = nn.ModuleList(
+        self.single_transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoSingleStreamBlock(
-                    self.hidden_size,
-                    self.heads_num,
+                    inner_dim,
+                    num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
@@ -1103,7 +1099,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         )
 
         self.final_layer = FinalLayer(
-            self.hidden_size,
+            inner_dim,
             self.patch_size,
             self.out_channels,
             get_activation_layer("silu"),
@@ -1154,7 +1150,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
-        for _, block in enumerate(self.double_blocks):
+        for _, block in enumerate(self.transformer_blocks):
             double_block_args = [
                 img,
                 txt,
@@ -1166,8 +1162,8 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         # Merge txt and img to pass through single stream blocks.
         x = torch.cat((img, txt), 1)
-        if len(self.single_blocks) > 0:
-            for _, block in enumerate(self.single_blocks):
+        if len(self.single_transformer_blocks) > 0:
+            for _, block in enumerate(self.single_transformer_blocks):
                 single_block_args = [
                     x,
                     vec,
