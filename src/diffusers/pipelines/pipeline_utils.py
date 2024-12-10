@@ -822,7 +822,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         dduf_entries = None
         if dduf_file:
-
             dduf_file_path = os.path.join(cached_folder, dduf_file)
             dduf_entries = read_dduf_file(dduf_file_path)
             # The reader contains already all the files needed, no need to check it again
