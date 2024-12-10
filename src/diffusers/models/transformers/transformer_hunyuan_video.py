@@ -27,48 +27,23 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models import ModelMixin
 
 
-try:
-    from flash_attn.flash_attn_interface import flash_attn_varlen_func
-except ImportError:
-    flash_attn_varlen_func = None
-
-
-MEMORY_LAYOUT = {
-    "flash": (
-        lambda x: x.view(x.shape[0] * x.shape[1], *x.shape[2:]),
-        lambda x: x,
-    ),
-    "torch": (
-        lambda x: x.transpose(1, 2),
-        lambda x: x.transpose(1, 2),
-    ),
-    "vanilla": (
-        lambda x: x.transpose(1, 2),
-        lambda x: x.transpose(1, 2),
-    ),
-}
-
-
 def attention(
     q,
     k,
     v,
-    mode="torch",
     drop_rate=0,
     attn_mask=None,
     causal=False,
 ):
-    pre_attn_layout, post_attn_layout = MEMORY_LAYOUT[mode]
-    q = pre_attn_layout(q)
-    k = pre_attn_layout(k)
-    v = pre_attn_layout(v)
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
 
-    if mode == "torch":
-        if attn_mask is not None and attn_mask.dtype != torch.bool:
-            attn_mask = attn_mask.to(q.dtype)
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal)
+    if attn_mask is not None and attn_mask.dtype != torch.bool:
+        attn_mask = attn_mask.to(q.dtype)
+    x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal)
 
-    x = post_attn_layout(x)
+    x = x.transpose(1, 2)
     b, s, a, d = x.shape
     out = x.reshape(b, s, -1)
     return out
@@ -593,7 +568,7 @@ class IndividualTokenRefinerBlock(nn.Module):
         k = self.self_attn_k_norm(k).to(v)
 
         # Self-Attention
-        attn = attention(q, k, v, mode="torch", attn_mask=attn_mask)
+        attn = attention(q, k, v, attn_mask=attn_mask)
 
         x = x + self.self_attn_proj(attn) * gate_msa.unsqueeze(1)
 
@@ -675,11 +650,8 @@ class SingleTokenRefiner(nn.Module):
         qk_norm: bool = False,
         qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        attn_mode: str = "torch",
     ):
         super().__init__()
-        self.attn_mode = attn_mode
-        assert self.attn_mode == "torch", "Only support 'torch' mode for token refiner."
 
         self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
 
