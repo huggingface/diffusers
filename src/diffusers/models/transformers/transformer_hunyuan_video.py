@@ -320,8 +320,6 @@ class RMSNorm(nn.Module):
         dim: int,
         elementwise_affine=True,
         eps: float = 1e-6,
-        device=None,
-        dtype=None,
     ):
         """
         Initialize the RMSNorm normalization layer.
@@ -335,11 +333,10 @@ class RMSNorm(nn.Module):
             weight (nn.Parameter): Learnable scaling parameter.
 
         """
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.eps = eps
         if elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(dim, **factory_kwargs))
+            self.weight = nn.Parameter(torch.ones(dim))
 
     def _norm(self, x):
         """
@@ -437,16 +434,10 @@ class ModulateDiT(nn.Module):
         hidden_size: int,
         factor: int,
         act_layer: Callable,
-        dtype=None,
-        device=None,
     ):
-        factory_kwargs = {"dtype": dtype, "device": device}
         super().__init__()
         self.act = act_layer()
-        self.linear = nn.Linear(hidden_size, factor * hidden_size, bias=True, **factory_kwargs)
-        # Zero-initialize the modulation
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
+        self.linear = nn.Linear(hidden_size, factor * hidden_size, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear(self.act(x))
@@ -465,10 +456,7 @@ class MLP(nn.Module):
         bias=True,
         drop=0.0,
         use_conv=False,
-        device=None,
-        dtype=None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         out_features = out_features or in_channels
         hidden_channels = hidden_channels or in_channels
@@ -476,11 +464,11 @@ class MLP(nn.Module):
         drop_probs = to_2tuple(drop)
         linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
 
-        self.fc1 = linear_layer(in_channels, hidden_channels, bias=bias[0], **factory_kwargs)
+        self.fc1 = linear_layer(in_channels, hidden_channels, bias=bias[0])
         self.act = act_layer()
         self.drop1 = nn.Dropout(drop_probs[0])
-        self.norm = norm_layer(hidden_channels, **factory_kwargs) if norm_layer is not None else nn.Identity()
-        self.fc2 = linear_layer(hidden_channels, out_features, bias=bias[1], **factory_kwargs)
+        self.norm = norm_layer(hidden_channels) if norm_layer is not None else nn.Identity()
+        self.fc2 = linear_layer(hidden_channels, out_features, bias=bias[1])
         self.drop2 = nn.Dropout(drop_probs[1])
 
     def forward(self, x):
@@ -497,12 +485,11 @@ class MLP(nn.Module):
 class MLPEmbedder(nn.Module):
     """copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py"""
 
-    def __init__(self, in_dim: int, hidden_dim: int, device=None, dtype=None):
-        factory_kwargs = {"device": device, "dtype": dtype}
+    def __init__(self, in_dim: int, hidden_dim: int):
         super().__init__()
-        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True, **factory_kwargs)
+        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True)
         self.silu = nn.SiLU()
-        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True, **factory_kwargs)
+        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
@@ -511,14 +498,13 @@ class MLPEmbedder(nn.Module):
 class FinalLayer(nn.Module):
     """The final layer of DiT."""
 
-    def __init__(self, hidden_size, patch_size, out_channels, act_layer, device=None, dtype=None):
-        factory_kwargs = {"device": device, "dtype": dtype}
+    def __init__(self, hidden_size, patch_size, out_channels, act_layer):
         super().__init__()
 
         # Just use LayerNorm for the final layer
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         if isinstance(patch_size, int):
-            self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True, **factory_kwargs)
+            self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
         else:
             self.linear = nn.Linear(
                 hidden_size,
@@ -531,11 +517,8 @@ class FinalLayer(nn.Module):
         # Here we don't distinguish between the modulate types. Just use the simple one.
         self.adaLN_modulation = nn.Sequential(
             act_layer(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
         )
-        # Zero-initialize the modulation
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
     def forward(self, x, c):
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
@@ -566,17 +549,14 @@ class PatchEmbed(nn.Module):
         norm_layer=None,
         flatten=True,
         bias=True,
-        dtype=None,
-        device=None,
     ):
-        factory_kwargs = {"dtype": dtype, "device": device}
         super().__init__()
         patch_size = to_2tuple(patch_size)
         self.patch_size = patch_size
         self.flatten = flatten
 
         self.proj = nn.Conv3d(
-            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias, **factory_kwargs
+            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias
         )
         nn.init.xavier_uniform_(self.proj.weight.view(self.proj.weight.size(0), -1))
         if bias:
@@ -599,12 +579,11 @@ class TextProjection(nn.Module):
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
-    def __init__(self, in_channels, hidden_size, act_layer, dtype=None, device=None):
-        factory_kwargs = {"dtype": dtype, "device": device}
+    def __init__(self, in_channels, hidden_size, act_layer):
         super().__init__()
-        self.linear_1 = nn.Linear(in_features=in_channels, out_features=hidden_size, bias=True, **factory_kwargs)
+        self.linear_1 = nn.Linear(in_features=in_channels, out_features=hidden_size, bias=True)
         self.act_1 = act_layer()
-        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True, **factory_kwargs)
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
 
     def forward(self, caption):
         hidden_states = self.linear_1(caption)
@@ -650,10 +629,7 @@ class TimestepEmbedder(nn.Module):
         frequency_embedding_size=256,
         max_period=10000,
         out_size=None,
-        dtype=None,
-        device=None,
     ):
-        factory_kwargs = {"dtype": dtype, "device": device}
         super().__init__()
         self.frequency_embedding_size = frequency_embedding_size
         self.max_period = max_period
@@ -661,9 +637,9 @@ class TimestepEmbedder(nn.Module):
             out_size = hidden_size
 
         self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True, **factory_kwargs),
+            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
             act_layer(),
-            nn.Linear(hidden_size, out_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, out_size, bias=True),
         )
         nn.init.normal_(self.mlp[0].weight, std=0.02)
         nn.init.normal_(self.mlp[2].weight, std=0.02)
@@ -685,43 +661,36 @@ class IndividualTokenRefinerBlock(nn.Module):
         qk_norm: bool = False,
         qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs)
-        self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
+        self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         qk_norm_layer = get_norm_layer(qk_norm_type)
         self.self_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
         self.self_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
-        self.self_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs)
+        self.self_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         act_layer = get_activation_layer(act_type)
         self.mlp = MLP(
             in_channels=hidden_size,
             hidden_channels=mlp_hidden_dim,
             act_layer=act_layer,
             drop=mlp_drop_rate,
-            **factory_kwargs,
         )
 
         self.adaLN_modulation = nn.Sequential(
             act_layer(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True, **factory_kwargs),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
         )
-        # Zero-initialize the modulation
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
     def forward(
         self,
@@ -761,10 +730,7 @@ class IndividualTokenRefiner(nn.Module):
         qk_norm: bool = False,
         qk_norm_type: str = "layer",
         qkv_bias: bool = True,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.blocks = nn.ModuleList(
             [
@@ -777,7 +743,6 @@ class IndividualTokenRefiner(nn.Module):
                     qk_norm=qk_norm,
                     qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
-                    **factory_kwargs,
                 )
                 for _ in range(depth)
             ]
@@ -793,7 +758,7 @@ class IndividualTokenRefiner(nn.Module):
         if mask is not None:
             batch_size = mask.shape[0]
             seq_len = mask.shape[1]
-            mask = mask.to(x.device)
+            mask = mask.to(x.device).bool()
             # batch_size x 1 x seq_len x seq_len
             self_attn_mask_1 = mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
             # batch_size x 1 x seq_len x seq_len
@@ -826,21 +791,18 @@ class SingleTokenRefiner(nn.Module):
         qk_norm_type: str = "layer",
         qkv_bias: bool = True,
         attn_mode: str = "torch",
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.attn_mode = attn_mode
         assert self.attn_mode == "torch", "Only support 'torch' mode for token refiner."
 
-        self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True, **factory_kwargs)
+        self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
 
         act_layer = get_activation_layer(act_type)
         # Build timestep embedding layer
-        self.t_embedder = TimestepEmbedder(hidden_size, act_layer, **factory_kwargs)
+        self.t_embedder = TimestepEmbedder(hidden_size, act_layer)
         # Build context embedding layer
-        self.c_embedder = TextProjection(in_channels, hidden_size, act_layer, **factory_kwargs)
+        self.c_embedder = TextProjection(in_channels, hidden_size, act_layer)
 
         self.individual_token_refiner = IndividualTokenRefiner(
             hidden_size=hidden_size,
@@ -852,7 +814,6 @@ class SingleTokenRefiner(nn.Module):
             qk_norm=qk_norm,
             qk_norm_type=qk_norm_type,
             qkv_bias=qkv_bias,
-            **factory_kwargs,
         )
 
     def forward(
@@ -861,6 +822,7 @@ class SingleTokenRefiner(nn.Module):
         t: torch.LongTensor,
         mask: Optional[torch.LongTensor] = None,
     ):
+        original_dtype = x.dtype
         timestep_aware_representations = self.t_embedder(t)
 
         if mask is None:
@@ -868,11 +830,12 @@ class SingleTokenRefiner(nn.Module):
         else:
             mask_float = mask.float().unsqueeze(-1)  # [b, s1, 1]
             context_aware_representations = (x * mask_float).sum(dim=1) / mask_float.sum(dim=1)
+            context_aware_representations = context_aware_representations.to(original_dtype)
+        
         context_aware_representations = self.c_embedder(context_aware_representations)
         c = timestep_aware_representations + context_aware_representations
 
         x = self.input_embedder(x)
-
         x = self.individual_token_refiner(x, c, mask)
 
         return x
@@ -894,10 +857,7 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         qk_norm: bool = True,
         qk_norm_type: str = "rms",
         qkv_bias: bool = False,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
 
         self.deterministic = False
@@ -908,61 +868,51 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         self.img_mod = ModulateDiT(
             hidden_size,
             factor=6,
-            act_layer=get_activation_layer("silu"),
-            **factory_kwargs,
+            act_layer=get_activation_layer("silu")
         )
-        self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
-        self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias, **factory_kwargs)
+        self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         qk_norm_layer = get_norm_layer(qk_norm_type)
         self.img_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
         self.img_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
-        self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs)
+        self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
-        self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.img_mlp = MLP(
             hidden_size,
             mlp_hidden_dim,
             act_layer=get_activation_layer(mlp_act_type),
             bias=True,
-            **factory_kwargs,
         )
 
         self.txt_mod = ModulateDiT(
             hidden_size,
             factor=6,
             act_layer=get_activation_layer("silu"),
-            **factory_kwargs,
         )
-        self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
-        self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias, **factory_kwargs)
+        self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         self.txt_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
         self.txt_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
-        self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias, **factory_kwargs)
+        self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
-        self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.txt_mlp = MLP(
             hidden_size,
             mlp_hidden_dim,
             act_layer=get_activation_layer(mlp_act_type),
             bias=True,
-            **factory_kwargs,
         )
-
-    def enable_deterministic(self):
-        self.deterministic = True
-
-    def disable_deterministic(self):
-        self.deterministic = False
 
     def forward(
         self,
@@ -1071,10 +1021,7 @@ class HunyuanVideoSingleStreamBlock(nn.Module):
         qk_norm: bool = True,
         qk_norm_type: str = "rms",
         qk_scale: float = None,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
 
         self.deterministic = False
@@ -1086,33 +1033,26 @@ class HunyuanVideoSingleStreamBlock(nn.Module):
         self.scale = qk_scale or head_dim**-0.5
 
         # qkv and mlp_in
-        self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + mlp_hidden_dim, **factory_kwargs)
+        self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + mlp_hidden_dim)
         # proj and mlp_out
-        self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size, **factory_kwargs)
+        self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
 
         qk_norm_layer = get_norm_layer(qk_norm_type)
         self.q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
         self.k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs) if qk_norm else nn.Identity()
+            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         )
 
-        self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         self.mlp_act = get_activation_layer(mlp_act_type)()
         self.modulation = ModulateDiT(
             hidden_size,
             factor=3,
             act_layer=get_activation_layer("silu"),
-            **factory_kwargs,
         )
-
-    def enable_deterministic(self):
-        self.deterministic = True
-
-    def disable_deterministic(self):
-        self.deterministic = False
 
     def forward(
         self,
@@ -1218,7 +1158,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        args: Any,
         patch_size: list = [1, 2, 2],
         in_channels: int = 4,  # Should be VAE.config.latent_channels.
         out_channels: int = None,
@@ -1233,12 +1172,9 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         qk_norm: bool = True,
         qk_norm_type: str = "rms",
         guidance_embed: bool = False,  # For modulation.
-        text_projection: str = "single_refiner",
-        use_attention_mask: bool = True,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        text_states_dim: int = 4096,
+        text_states_dim_2: int = 768,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
 
         self.patch_size = patch_size
@@ -1247,14 +1183,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.unpatchify_channels = self.out_channels
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
-
-        # Text projection. Default to linear projection.
-        # Alternative: TokenRefiner. See more details (LI-DiT): http://arxiv.org/abs/2406.11831
-        self.use_attention_mask = use_attention_mask
-        self.text_projection = text_projection
-
-        self.text_states_dim = args.text_states_dim
-        self.text_states_dim_2 = args.text_states_dim_2
 
         if hidden_size % heads_num != 0:
             raise ValueError(f"Hidden size {hidden_size} must be divisible by heads_num {heads_num}")
@@ -1265,30 +1193,20 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.heads_num = heads_num
 
         # image projection
-        self.img_in = PatchEmbed(self.patch_size, self.in_channels, self.hidden_size, **factory_kwargs)
+        self.img_in = PatchEmbed(self.patch_size, self.in_channels, self.hidden_size)
 
         # text projection
-        if self.text_projection == "linear":
-            self.txt_in = TextProjection(
-                self.text_states_dim,
-                self.hidden_size,
-                get_activation_layer("silu"),
-                **factory_kwargs,
-            )
-        elif self.text_projection == "single_refiner":
-            self.txt_in = SingleTokenRefiner(self.text_states_dim, hidden_size, heads_num, depth=2, **factory_kwargs)
-        else:
-            raise NotImplementedError(f"Unsupported text_projection: {self.text_projection}")
+        self.txt_in = SingleTokenRefiner(text_states_dim, hidden_size, heads_num, depth=2)
 
         # time modulation
-        self.time_in = TimestepEmbedder(self.hidden_size, get_activation_layer("silu"), **factory_kwargs)
+        self.time_in = TimestepEmbedder(self.hidden_size, get_activation_layer("silu"))
 
         # text modulation
-        self.vector_in = MLPEmbedder(self.text_states_dim_2, self.hidden_size, **factory_kwargs)
+        self.vector_in = MLPEmbedder(text_states_dim_2, self.hidden_size)
 
         # guidance modulation
         self.guidance_in = (
-            TimestepEmbedder(self.hidden_size, get_activation_layer("silu"), **factory_kwargs)
+            TimestepEmbedder(self.hidden_size, get_activation_layer("silu"))
             if guidance_embed
             else None
         )
@@ -1304,7 +1222,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     qk_norm=qk_norm,
                     qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
-                    **factory_kwargs,
                 )
                 for _ in range(mm_double_blocks_depth)
             ]
@@ -1320,7 +1237,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
                     qk_norm_type=qk_norm_type,
-                    **factory_kwargs,
                 )
                 for _ in range(mm_single_blocks_depth)
             ]
@@ -1331,20 +1247,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             self.patch_size,
             self.out_channels,
             get_activation_layer("silu"),
-            **factory_kwargs,
         )
-
-    def enable_deterministic(self):
-        for block in self.double_blocks:
-            block.enable_deterministic()
-        for block in self.single_blocks:
-            block.enable_deterministic()
-
-    def disable_deterministic(self):
-        for block in self.double_blocks:
-            block.disable_deterministic()
-        for block in self.single_blocks:
-            block.disable_deterministic()
 
     def forward(
         self,
@@ -1384,12 +1287,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         # Embed image and text.
         img = self.img_in(img)
-        if self.text_projection == "linear":
-            txt = self.txt_in(txt)
-        elif self.text_projection == "single_refiner":
-            txt = self.txt_in(txt, t, text_mask if self.use_attention_mask else None)
-        else:
-            raise NotImplementedError(f"Unsupported text_projection: {self.text_projection}")
+        txt = self.txt_in(txt, t, text_mask)
 
         txt_seq_len = txt.shape[1]
         img_seq_len = img.shape[1]
@@ -1457,28 +1355,3 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         imgs = x.reshape(shape=(x.shape[0], c, t * pt, h * ph, w * pw))
 
         return imgs
-
-    def params_count(self):
-        counts = {
-            "double": sum(
-                [
-                    sum(p.numel() for p in block.img_attn_qkv.parameters())
-                    + sum(p.numel() for p in block.img_attn_proj.parameters())
-                    + sum(p.numel() for p in block.img_mlp.parameters())
-                    + sum(p.numel() for p in block.txt_attn_qkv.parameters())
-                    + sum(p.numel() for p in block.txt_attn_proj.parameters())
-                    + sum(p.numel() for p in block.txt_mlp.parameters())
-                    for block in self.double_blocks
-                ]
-            ),
-            "single": sum(
-                [
-                    sum(p.numel() for p in block.linear1.parameters())
-                    + sum(p.numel() for p in block.linear2.parameters())
-                    for block in self.single_blocks
-                ]
-            ),
-            "total": sum(p.numel() for p in self.parameters()),
-        }
-        counts["attn+mlp"] = counts["double"] + counts["single"]
-        return counts

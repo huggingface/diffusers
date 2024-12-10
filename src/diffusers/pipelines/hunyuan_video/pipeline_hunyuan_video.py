@@ -20,20 +20,14 @@ import numpy as np
 import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     deprecate,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -162,47 +156,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         transformer: HunyuanVideoTransformer3DModel,
         scheduler: KarrasDiffusionSchedulers,
         text_encoder_2: Optional[TextEncoder] = None,
-        progress_bar_config: Dict[str, Any] = None,
-        args=None,
     ):
         super().__init__()
-
-        # ==========================================================================================
-        if progress_bar_config is None:
-            progress_bar_config = {}
-        if not hasattr(self, "_progress_bar_config"):
-            self._progress_bar_config = {}
-        self._progress_bar_config.update(progress_bar_config)
-
-        self.args = args
-        # ==========================================================================================
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -225,7 +180,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_attention_mask: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
         text_encoder: Optional[TextEncoder] = None,
         data_type: Optional[str] = "image",
@@ -266,17 +220,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         if text_encoder is None:
             text_encoder = self.text_encoder
 
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if not USE_PEFT_BACKEND:
-                adjust_lora_scale_text_encoder(text_encoder.model, lora_scale)
-            else:
-                scale_lora_layers(text_encoder.model, lora_scale)
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -285,14 +228,13 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: process multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, text_encoder.tokenizer)
-
             text_inputs = text_encoder.text2tokens(prompt, data_type=data_type)
 
             if clip_skip is None:
                 prompt_outputs = text_encoder.encode(text_inputs, data_type=data_type, device=device)
+                # TODO(aryan): Don't know why it doesn't work without this
+                torch.cuda.synchronize()
+                
                 prompt_embeds = prompt_outputs.hidden_state
             else:
                 prompt_outputs = text_encoder.encode(
@@ -359,10 +301,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: process multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, text_encoder.tokenizer)
-
             # max_length = prompt_embeds.shape[1]
             uncond_input = text_encoder.text2tokens(uncond_tokens, data_type=data_type)
 
@@ -389,11 +327,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
                 negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        if text_encoder is not None:
-            if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(text_encoder.model, lora_scale)
-
         return (
             prompt_embeds,
             negative_prompt_embeds,
@@ -419,19 +352,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             image = image.cpu().float()
         return image
 
-    def prepare_extra_func_kwargs(self, func, kwargs):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-        extra_step_kwargs = {}
-
-        for k, v in kwargs.items():
-            accepts = k in set(inspect.signature(func).parameters.keys())
-            if accepts:
-                extra_step_kwargs[k] = v
-        return extra_step_kwargs
-
     def check_inputs(
         self,
         prompt,
@@ -442,18 +362,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        vae_ver="88-4c-sd",
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if video_length is not None:
-            if "884" in vae_ver:
-                if video_length != 1 and (video_length - 1) % 4 != 0:
-                    raise ValueError(f"`video_length` has to be 1 or a multiple of 4 but is {video_length}.")
-            elif "888" in vae_ver:
-                if video_length != 1 and (video_length - 1) % 8 != 0:
-                    raise ValueError(f"`video_length` has to be 1 or a multiple of 8 but is {video_length}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -592,9 +503,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        height: int,
-        width: int,
-        video_length: int,
+        height: int = 720,
+        width: int = 1280,
+        video_length: int = 129,
         data_type: str = "video",
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -611,7 +522,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         negative_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
@@ -623,7 +533,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
-        vae_ver: str = "88-4c-sd",
         enable_tiling: bool = False,
         n_tokens: Optional[int] = None,
         embedded_guidance_scale: Optional[float] = None,
@@ -675,14 +584,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`HunyuanVideoPipelineOutput`] instead of a plain tuple.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
-                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
@@ -712,11 +617,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # 0. Default height and width to unet
-        # height = height or self.transformer.config.sample_size * self.vae_scale_factor
-        # width = width or self.transformer.config.sample_size * self.vae_scale_factor
-        # to deal with lora scaling and other possible forward hooks
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -727,13 +627,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
-            vae_ver=vae_ver,
         )
 
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
         self._clip_skip = clip_skip
-        self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
 
         # 2. Define call parameters
@@ -744,13 +642,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        device = self._execution_device
+        # TODO(aryan): No idea why it won't run without this
+        device = torch.device(self._execution_device)
 
         # 3. Encode input prompt
-        lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
-        )
-
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -766,7 +661,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             attention_mask=attention_mask,
             negative_prompt_embeds=negative_prompt_embeds,
             negative_attention_mask=negative_attention_mask,
-            lora_scale=lora_scale,
             clip_skip=self.clip_skip,
             data_type=data_type,
         )
@@ -786,7 +680,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 attention_mask=None,
                 negative_prompt_embeds=None,
                 negative_attention_mask=None,
-                lora_scale=lora_scale,
                 clip_skip=self.clip_skip,
                 text_encoder=self.text_encoder_2,
                 data_type=data_type,
@@ -810,26 +703,18 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
 
         # 4. Prepare timesteps
-        extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
-            self.scheduler.set_timesteps, {"n_tokens": n_tokens}
-        )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
             device,
             timesteps,
             sigmas,
-            **extra_set_timesteps_kwargs,
         )
 
-        if "884" in vae_ver:
-            video_length = (video_length - 1) // 4 + 1
-        elif "888" in vae_ver:
-            video_length = (video_length - 1) // 8 + 1
-        else:
-            video_length = video_length
+        video_length = (video_length - 1) // 4 + 1
 
         # 5. Prepare latent variables
+        target_dtype = torch.bfloat16  # Note(aryan): This has been hardcoded for now from the original repo
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -837,22 +722,17 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             height,
             width,
             video_length,
-            prompt_embeds.dtype,
+            target_dtype,
             device,
             generator,
             latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_func_kwargs(
-            self.scheduler.step,
-            {"generator": generator, "eta": eta},
-        )
-
-        target_dtype = PRECISION_TO_TYPE[self.args.precision]
-        autocast_enabled = (target_dtype != torch.float32) and not self.args.disable_autocast
-        vae_dtype = PRECISION_TO_TYPE[self.args.vae_precision]
-        vae_autocast_enabled = (vae_dtype != torch.float32) and not self.args.disable_autocast
+        prompt_embeds = prompt_embeds.to(target_dtype)
+        prompt_mask = prompt_mask.to(target_dtype)
+        if prompt_embeds_2 is not None:
+            prompt_embeds_2 = prompt_embeds_2.to(target_dtype)
+        vae_dtype = torch.float16  # Note(aryan): This has been hardcoded for now from the original repo
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -866,9 +746,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                t_expand = t.repeat(latent_model_input.shape[0])
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
+                
                 guidance_expand = (
                     torch.tensor(
                         [embedded_guidance_scale] * latent_model_input.shape[0],
@@ -880,19 +761,17 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     else None
                 )
 
-                # predict the noise residual
-                with torch.autocast(device_type="cuda", dtype=target_dtype, enabled=autocast_enabled):
-                    noise_pred = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
-                        latent_model_input,  # [2, 16, 33, 24, 42]
-                        t_expand,  # [2]
-                        text_states=prompt_embeds,  # [2, 256, 4096]
-                        text_mask=prompt_mask,  # [2, 256]
-                        text_states_2=prompt_embeds_2,  # [2, 768]
-                        freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
-                        freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
-                        guidance=guidance_expand,
-                        return_dict=True,
-                    )["x"]
+                noise_pred = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
+                    latent_model_input,  # [2, 16, 33, 24, 42]
+                    timestep,  # [2]
+                    text_states=prompt_embeds,  # [2, 256, 4096]
+                    text_mask=prompt_mask,  # [2, 256]
+                    text_states_2=prompt_embeds_2,  # [2, 768]
+                    freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
+                    freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
+                    guidance=guidance_expand,
+                    return_dict=True,
+                )["x"]
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
@@ -908,7 +787,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                torch.save(latents, f"latents_{i}.pt")
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -924,6 +805,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
+        latents = latents.to(vae_dtype)
         if not output_type == "latent":
             expand_temporal_dim = False
             if len(latents.shape) == 4:
@@ -941,12 +823,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             else:
                 latents = latents / self.vae.config.scaling_factor
 
-            with torch.autocast(device_type="cuda", dtype=vae_dtype, enabled=vae_autocast_enabled):
-                if enable_tiling:
-                    self.vae.enable_tiling()
-                    image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
-                else:
-                    image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            if enable_tiling:
+                self.vae.enable_tiling()
+                image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            else:
+                image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
 
             if expand_temporal_dim or image.shape[2] == 1:
                 image = image.squeeze(2)

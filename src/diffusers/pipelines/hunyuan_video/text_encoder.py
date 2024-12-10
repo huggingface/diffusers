@@ -14,20 +14,6 @@ PRECISION_TO_TYPE = {
     "bf16": torch.bfloat16,
 }
 
-MODEL_BASE = os.getenv("MODEL_BASE", "./ckpts")
-
-# Text Encoder
-TEXT_ENCODER_PATH = {
-    "clipL": f"{MODEL_BASE}/text_encoder_2",
-    "llm": f"{MODEL_BASE}/text_encoder",
-}
-
-# Tokenizer
-TOKENIZER_PATH = {
-    "clipL": f"{MODEL_BASE}/text_encoder_2",
-    "llm": f"{MODEL_BASE}/text_encoder",
-}
-
 
 def use_default(value, default):
     return value if value is not None else default
@@ -37,13 +23,10 @@ def load_text_encoder(
     text_encoder_type,
     text_encoder_precision=None,
     text_encoder_path=None,
-    logger=None,
     device=None,
 ):
     if text_encoder_path is None:
-        text_encoder_path = TEXT_ENCODER_PATH[text_encoder_type]
-    if logger is not None:
-        logger.info(f"Loading text encoder model ({text_encoder_type}) from: {text_encoder_path}")
+        raise ValueError("text_encoder_path must be provided.")
 
     if text_encoder_type == "clipL":
         text_encoder = CLIPTextModel.from_pretrained(text_encoder_path)
@@ -60,20 +43,15 @@ def load_text_encoder(
 
     text_encoder.requires_grad_(False)
 
-    if logger is not None:
-        logger.info(f"Text encoder to dtype: {text_encoder.dtype}")
-
     if device is not None:
         text_encoder = text_encoder.to(device)
 
     return text_encoder, text_encoder_path
 
 
-def load_tokenizer(tokenizer_type, tokenizer_path=None, padding_side="right", logger=None):
+def load_tokenizer(tokenizer_type, tokenizer_path=None, padding_side="right"):
     if tokenizer_path is None:
-        tokenizer_path = TOKENIZER_PATH[tokenizer_type]
-    if logger is not None:
-        logger.info(f"Loading tokenizer ({tokenizer_type}) from: {tokenizer_path}")
+        raise ValueError("tokenizer_path must be provided.")
 
     if tokenizer_type == "clipL":
         tokenizer = CLIPTokenizer.from_pretrained(tokenizer_path, max_length=77)
@@ -126,8 +104,6 @@ class TextEncoder(nn.Module):
         hidden_state_skip_layer: Optional[int] = None,
         apply_final_norm: bool = False,
         reproduce: bool = False,
-        logger=None,
-        device=None,
     ):
         super().__init__()
         self.text_encoder_type = text_encoder_type
@@ -145,7 +121,6 @@ class TextEncoder(nn.Module):
         self.hidden_state_skip_layer = hidden_state_skip_layer
         self.apply_final_norm = apply_final_norm
         self.reproduce = reproduce
-        self.logger = logger
 
         self.use_template = self.prompt_template is not None
         if self.use_template:
@@ -181,17 +156,15 @@ class TextEncoder(nn.Module):
             text_encoder_type=self.text_encoder_type,
             text_encoder_precision=self.precision,
             text_encoder_path=self.model_path,
-            logger=self.logger,
-            device=device,
+            device="cuda",
         )
         self.dtype = self.model.dtype
-        self.device = self.model.device
+        self.device = "cuda"
 
         self.tokenizer, self.tokenizer_path = load_tokenizer(
             tokenizer_type=self.tokenizer_type,
             tokenizer_path=self.tokenizer_path,
             padding_side="right",
-            logger=self.logger,
         )
 
     def __repr__(self):
@@ -295,8 +268,13 @@ class TextEncoder(nn.Module):
         hidden_state_skip_layer = use_default(hidden_state_skip_layer, self.hidden_state_skip_layer)
         do_sample = use_default(do_sample, not self.reproduce)
         attention_mask = batch_encoding["attention_mask"].to(device) if use_attention_mask else None
+        input_ids = batch_encoding["input_ids"].to(device)
+
+        # No idea why it doesn't work without this
+        torch.cuda.synchronize()
+        
         outputs = self.model(
-            input_ids=batch_encoding["input_ids"].to(device),
+            input_ids=input_ids,
             attention_mask=attention_mask,
             output_hidden_states=output_hidden_states or hidden_state_skip_layer is not None,
         )
