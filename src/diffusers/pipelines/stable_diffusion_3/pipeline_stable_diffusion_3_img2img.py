@@ -49,6 +49,7 @@ if is_torch_xla_available():
 else:
     XLA_AVAILABLE = False
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
