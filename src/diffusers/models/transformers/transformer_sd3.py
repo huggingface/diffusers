@@ -31,7 +31,7 @@ from ...models.modeling_utils import ModelMixin, load_model_dict_into_meta
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed, TimePerceiverResampler
+from ..embeddings import CombinedTimestepTextProjEmbeddings, IPAdapterTimeImageProjection, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
 
@@ -363,16 +363,31 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         self.set_attn_processor(attn_procs)
 
+        # Convert image_proj state dict to diffusers
+        image_proj_state_dict = {}
+        for key, value in state_dict["image_proj"].items():
+            for idx in range(4):
+                key = key.replace(f"layers.{idx}.0.norm1", f"layers.{idx}.ln0")
+                key = key.replace(f"layers.{idx}.0.norm2", f"layers.{idx}.ln1")
+                key = key.replace(f"layers.{idx}.0.to_q", f"layers.{idx}.attn.to_q")
+                key = key.replace(f"layers.{idx}.0.to_kv", f"layers.{idx}.attn.to_kv")
+                key = key.replace(f"layers.{idx}.0.to_out", f"layers.{idx}.attn.to_out.0")
+                key = key.replace(f"layers.{idx}.1.0", f"layers.{idx}.adaln_norm")
+                key = key.replace(f"layers.{idx}.1.1", f"layers.{idx}.ff.net.0.proj")
+                key = key.replace(f"layers.{idx}.1.3", f"layers.{idx}.ff.net.2")
+                key = key.replace(f"layers.{idx}.2.1", f"layers.{idx}.adaln_proj")
+            image_proj_state_dict[key] = value
+
         # Image projetion parameters
-        embed_dim = state_dict["image_proj"]["proj_in.weight"].shape[1]
-        output_dim = state_dict["image_proj"]["proj_out.weight"].shape[0]
-        hidden_dim = state_dict["image_proj"]["latents"].shape[2]
-        heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
-        num_queries = state_dict["image_proj"]["latents"].shape[1]
-        timestep_in_dim = state_dict["image_proj"]["time_embedding.linear_1.weight"].shape[1]
+        embed_dim = image_proj_state_dict["proj_in.weight"].shape[1]
+        output_dim = image_proj_state_dict["proj_out.weight"].shape[0]
+        hidden_dim = image_proj_state_dict["proj_in.weight"].shape[0]
+        heads = image_proj_state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
+        num_queries = image_proj_state_dict["latents"].shape[1]
+        timestep_in_dim = image_proj_state_dict["time_embedding.linear_1.weight"].shape[1]
 
         # Image projection
-        self.image_proj = TimePerceiverResampler(
+        self.image_proj = IPAdapterTimeImageProjection(
             embed_dim=embed_dim,
             output_dim=output_dim,
             hidden_dim=hidden_dim,
@@ -382,9 +397,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         ).to(device=self.device, dtype=self.dtype)
 
         if not low_cpu_mem_usage:
-            self.image_proj.load_state_dict(state_dict["image_proj"], strict=True)
+            self.image_proj.load_state_dict(image_proj_state_dict, strict=True)
         else:
-            load_model_dict_into_meta(self.image_proj, state_dict["image_proj"], device=self.device, dtype=self.dtype)
+            load_model_dict_into_meta(self.image_proj, image_proj_state_dict, device=self.device, dtype=self.dtype)
 
     def forward(
         self,

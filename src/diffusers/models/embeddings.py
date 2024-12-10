@@ -21,7 +21,7 @@ from torch import nn
 
 from ..utils import deprecate
 from .activations import FP32SiLU, get_activation
-from .attention_processor import Attention
+from .attention_processor import Attention, FusedAttnProcessor2_0
 
 
 def get_timestep_embedding(
@@ -2104,76 +2104,55 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         return out
 
 
-# Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
-class TimePerceiverAttention(nn.Module):
+class IPAdapterTimeImageProjectionBlock(nn.Module):
     def __init__(
         self,
-        *,
-        dim: int,
+        hidden_dim: int = 768,
         dim_head: int = 64,
-        heads: int = 8,
+        heads: int = 16,
+        ffn_ratio: float = 4,
     ) -> None:
         super().__init__()
+        from .attention import FeedForward
 
-        self.scale = dim_head**-0.5
-        self.dim_head = dim_head
-        self.heads = heads
-        inner_dim = dim_head * heads
+        self.ln0 = nn.LayerNorm(hidden_dim)
+        self.ln1 = nn.LayerNorm(hidden_dim)
+        self.attn = Attention(
+            query_dim=hidden_dim,
+            cross_attention_dim=hidden_dim,
+            dim_head=dim_head,
+            heads=heads,
+            bias=False,
+            out_bias=False,
+            processor=FusedAttnProcessor2_0(),
+        )
+        self.ff = FeedForward(hidden_dim, hidden_dim, activation_fn="gelu", mult=ffn_ratio, bias=False)
 
-        self.norm1 = nn.LayerNorm(dim)
-        self.norm2 = nn.LayerNorm(dim)
+        # AdaLayerNorm
+        self.adaln_silu = nn.SiLU()
+        self.adaln_proj = nn.Linear(hidden_dim, 4 * hidden_dim)
+        self.adaln_norm = nn.LayerNorm(hidden_dim)
 
-        self.to_q = nn.Linear(dim, inner_dim, bias=False)
-        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
-        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+        # Custom scale cannot be passed in constructor
+        self.attn.scale = 1 / math.sqrt(math.sqrt(dim_head))
+        self.attn.fuse_projections()
+        self.attn.to_k = None
+        self.attn.to_v = None
 
-    def forward(self, x, latents, shift=None, scale=None):
-        """
-        Args:
-            x (torch.Tensor): image features
-                shape (b, n1, D)
-            latent (torch.Tensor): latent features
-                shape (b, n2, D)
-        """
+    def forward(self, x, latents, timestep_emb):
+        shift_msa, scale_msa, shift_mlp, scale_mlp = self.adaln_proj(self.adaln_silu(timestep_emb))
 
-        def reshape_tensor(x, heads):
-            bs, length, _ = x.shape
-            # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
-            x = x.view(bs, length, heads, -1)
-            # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
-            x = x.transpose(1, 2)
-            # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
-            return x.reshape(bs, heads, length, -1)
+        x = self.ln0(x)
+        latents = self.ln1(latents) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+        latents = self.attn(x, latents) + latents
 
-        x = self.norm1(x)
-        latents = self.norm2(latents)
-
-        if shift is not None and scale is not None:
-            latents = latents * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-        b, l, _ = latents.shape
-
-        q = self.to_q(latents)
-        kv_input = torch.cat((x, latents), dim=-2)
-        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
-
-        q = reshape_tensor(q, self.heads)
-        k = reshape_tensor(k, self.heads)
-        v = reshape_tensor(v, self.heads)
-
-        # attention
-        scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
-        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
-        out = weight @ v
-
-        out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
-
-        return self.to_out(out)
+        residual = latents
+        latents = self.adaln_norm(latents) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        return self.ff(latents) + residual
 
 
 # Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
-class TimePerceiverResampler(nn.Module):
+class IPAdapterTimeImageProjection(nn.Module):
     def __init__(
         self,
         embed_dim: int = 1152,
@@ -2189,65 +2168,32 @@ class TimePerceiverResampler(nn.Module):
         timestep_freq_shift: int = 0,
     ) -> None:
         super().__init__()
-
         self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dim) / hidden_dim**0.5)
         self.proj_in = nn.Linear(embed_dim, hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-
-        ff_inner_dim = int(hidden_dim * ffn_ratio)
-        self.layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(
-                nn.ModuleList(
-                    [
-                        # msa
-                        TimePerceiverAttention(dim=hidden_dim, dim_head=dim_head, heads=heads),
-                        # ff
-                        nn.Sequential(
-                            nn.LayerNorm(hidden_dim),
-                            nn.Linear(hidden_dim, ff_inner_dim, bias=False),
-                            nn.GELU(),
-                            nn.Linear(ff_inner_dim, hidden_dim, bias=False),
-                        ),
-                        # adaLN
-                        nn.Sequential(nn.SiLU(), nn.Linear(hidden_dim, ff_inner_dim, bias=True)),
-                    ]
-                )
-            )
-
-        # Time
+        self.layers = nn.ModuleList(
+            [IPAdapterTimeImageProjectionBlock(hidden_dim, dim_head, heads, ffn_ratio) for _ in range(depth)]
+        )
         self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
         self.time_embedding = TimestepEmbedding(timestep_in_dim, hidden_dim, act_fn="silu")
 
-    def forward(self, x, timestep, need_temb=False):
+    def forward(self, x, timestep):
         timestep_emb = self.time_proj(timestep).to(dtype=x.dtype)
-        timestep_emb = self.time_embedding(timestep_emb, None)
+        timestep_emb = self.time_embedding(timestep_emb)
 
         latents = self.latents.repeat(x.size(0), 1, 1)
 
         x = self.proj_in(x)
         x = x + timestep_emb[:, None]
 
-        for attn, ff, adaLN_modulation in self.layers:
-            shift_msa, scale_msa, shift_mlp, scale_mlp = adaLN_modulation(timestep_emb).chunk(4, dim=1)
-            latents = attn(x, latents, shift_msa, scale_msa) + latents
-
-            res = latents
-            for idx_ff in range(len(ff)):
-                layer_ff = ff[idx_ff]
-                latents = layer_ff(latents)
-                if idx_ff == 0 and isinstance(layer_ff, nn.LayerNorm):  # adaLN
-                    latents = latents * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
-            latents = latents + res
+        for block in self.layers:
+            latents = block(x, latents, timestep_emb)
 
         latents = self.proj_out(latents)
         latents = self.norm_out(latents)
 
-        if need_temb:
-            return latents, timestep_emb
-        else:
-            return latents
+        return latents, timestep_emb
 
 
 class MultiIPAdapterImageProjection(nn.Module):
