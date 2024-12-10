@@ -5145,7 +5145,7 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
                 encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         # IP Adapter
-        if self.scale != 0 and ip_hidden_states is not None:
+        if ip_hidden_states is not None:
             # Norm image features
             norm_ip_hidden_states = self.norm_ip(ip_hidden_states, temb=temb)
 
