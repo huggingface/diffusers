@@ -45,7 +45,13 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import ConsisIDPipeline
+        >>> from diffusers.pipelines.consisid.util_consisid import prepare_face_models, process_face_embeddings_infer
         >>> from diffusers.utils import export_to_video, load_image
+
+        >>> face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("https://huggingface.co/BestWishYsh/ConsisID-preview", device="cuda", torch_dtype=torch.bfloat16)
+        >>> face_helper_1.face_det.to(device)
+        >>> face_helper_1.face_parse.to(device)
+        >>> face_clip_model.to(device, dtype=dtype)
 
         >>> pipe = ConsisIDPipeline.from_pretrained("https://huggingface.co/BestWishYsh/ConsisID-preview", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
@@ -54,7 +60,12 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image(
         ...     "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/1.png?raw=true"
         ... )
-        >>> video = pipe(image, prompt, use_dynamic_cfg=True)
+
+        >>> id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, device, dtype, img_file_path, is_align_face=True)
+        >>> is_kps = getattr(pipe.transformer.config, 'is_kps', False)
+        >>> kps_cond = face_kps if is_kps else None
+
+        >>> video = pipe(image=image, prompt=prompt, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=kps_cond)
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
 """
