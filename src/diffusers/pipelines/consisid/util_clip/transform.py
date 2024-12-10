@@ -17,14 +17,13 @@ from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 
 
 class ResizeMaxSize(nn.Module):
-
-    def __init__(self, max_size, interpolation=InterpolationMode.BICUBIC, fn='max', fill=0):
+    def __init__(self, max_size, interpolation=InterpolationMode.BICUBIC, fn="max", fill=0):
         super().__init__()
         if not isinstance(max_size, int):
             raise TypeError(f"Size should be int. Got {type(max_size)}")
         self.max_size = max_size
         self.interpolation = interpolation
-        self.fn = min if fn == 'min' else min
+        self.fn = min if fn == "min" else min
         self.fill = fill
 
     def forward(self, img):
@@ -38,12 +37,12 @@ class ResizeMaxSize(nn.Module):
             img = F.resize(img, new_size, self.interpolation)
             pad_h = self.max_size - new_size[0]
             pad_w = self.max_size - new_size[1]
-            img = F.pad(img, padding=[pad_w//2, pad_h//2, pad_w - pad_w//2, pad_h - pad_h//2], fill=self.fill)
+            img = F.pad(img, padding=[pad_w // 2, pad_h // 2, pad_w - pad_w // 2, pad_h - pad_h // 2], fill=self.fill)
         return img
 
 
 def _convert_to_rgb(image):
-    return image.convert('RGB')
+    return image.convert("RGB")
 
 
 # class CatGen(nn.Module):
@@ -64,12 +63,12 @@ def _convert_to_rgb(image):
 
 
 def image_transform(
-        image_size: int,
-        is_train: bool,
-        mean: Optional[Tuple[float, ...]] = None,
-        std: Optional[Tuple[float, ...]] = None,
-        resize_longest_max: bool = False,
-        fill_color: int = 0,
+    image_size: int,
+    is_train: bool,
+    mean: Optional[Tuple[float, ...]] = None,
+    std: Optional[Tuple[float, ...]] = None,
+    resize_longest_max: bool = False,
+    fill_color: int = 0,
 ):
     mean = mean or OPENAI_DATASET_MEAN
     if not isinstance(mean, (list, tuple)):
@@ -85,25 +84,27 @@ def image_transform(
 
     normalize = Normalize(mean=mean, std=std)
     if is_train:
-        return Compose([
-            RandomResizedCrop(image_size, scale=(0.9, 1.0), interpolation=InterpolationMode.BICUBIC),
-            _convert_to_rgb,
-            ToTensor(),
-            normalize,
-        ])
+        return Compose(
+            [
+                RandomResizedCrop(image_size, scale=(0.9, 1.0), interpolation=InterpolationMode.BICUBIC),
+                _convert_to_rgb,
+                ToTensor(),
+                normalize,
+            ]
+        )
     else:
         if resize_longest_max:
-            transforms = [
-                ResizeMaxSize(image_size, fill=fill_color)
-            ]
+            transforms = [ResizeMaxSize(image_size, fill=fill_color)]
         else:
             transforms = [
                 Resize(image_size, interpolation=InterpolationMode.BICUBIC),
                 CenterCrop(image_size),
             ]
-        transforms.extend([
-            _convert_to_rgb,
-            ToTensor(),
-            normalize,
-        ])
+        transforms.extend(
+            [
+                _convert_to_rgb,
+                ToTensor(),
+                normalize,
+            ]
+        )
         return Compose(transforms)

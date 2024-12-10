@@ -46,26 +46,44 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ConsisIDPipeline
         >>> from diffusers.pipelines.consisid.util_consisid import prepare_face_models, process_face_embeddings_infer
-        >>> from diffusers.utils import export_to_video, load_image
+        >>> from diffusers.utils import export_to_video
+        >>> from huggingface_hub import snapshot_download
 
-        >>> face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("https://huggingface.co/BestWishYsh/ConsisID-preview", device="cuda", torch_dtype=torch.bfloat16)
-        >>> face_helper_1.face_det.to(device)
-        >>> face_helper_1.face_parse.to(device)
-        >>> face_clip_model.to(device, dtype=dtype)
+        >>> snapshot_download(repo_id="BestWishYsh/ConsisID-preview", local_dir="BestWishYsh/ConsisID-preview")
 
-        >>> pipe = ConsisIDPipeline.from_pretrained("https://huggingface.co/BestWishYsh/ConsisID-preview", torch_dtype=torch.bfloat16)
+        >>> face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = (
+        ...     prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)
+        ... )
+        >>> pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A woman adorned with a delicate flower crown, is standing amidst a field of gently swaying wildflowers. Her eyes sparkle with a serene gaze, and a faint smile graces her lips, suggesting a moment of peaceful contentment. The shot is framed from the waist up, highlighting the gentle breeze lightly tousling her hair. The background reveals an expansive meadow under a bright blue sky, capturing the tranquility of a sunny afternoon."
-        >>> image = load_image(
-        ...     "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/1.png?raw=true"
-        ... )
+        >>> image = "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/1.png?raw=true"
 
-        >>> id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, device, dtype, img_file_path, is_align_face=True)
-        >>> is_kps = getattr(pipe.transformer.config, 'is_kps', False)
+        >>> id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(
+        ...     face_helper_1,
+        ...     face_clip_model,
+        ...     face_helper_2,
+        ...     eva_transform_mean,
+        ...     eva_transform_std,
+        ...     face_main_model,
+        ...     "cuda",
+        ...     torch.bfloat16,
+        ...     image,
+        ...     is_align_face=True,
+        ... )
+        >>> is_kps = getattr(pipe.transformer.config, "is_kps", False)
         >>> kps_cond = face_kps if is_kps else None
 
-        >>> video = pipe(image=image, prompt=prompt, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=kps_cond)
+        >>> video = pipe(
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     use_dynamic_cfg=False,
+        ...     id_vit_hidden=id_vit_hidden,
+        ...     id_cond=id_cond,
+        ...     kps_cond=kps_cond,
+        ...     generator=torch.Generator("cuda").manual_seed(42),
+        ... )
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
         ```
 """

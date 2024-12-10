@@ -177,9 +177,9 @@ def _convert_non_diffusers_lora_to_diffusers(state_dict, unet_name="unet", text_
             # Store DoRA scale if present.
             if dora_present_in_unet:
                 dora_scale_key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora.down."
-                unet_state_dict[
-                    diffusers_name.replace(dora_scale_key_to_replace, ".lora_magnitude_vector.")
-                ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                unet_state_dict[diffusers_name.replace(dora_scale_key_to_replace, ".lora_magnitude_vector.")] = (
+                    state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                )
 
         # Handle text encoder LoRAs.
         elif lora_name.startswith(("lora_te_", "lora_te1_", "lora_te2_")):
@@ -199,13 +199,13 @@ def _convert_non_diffusers_lora_to_diffusers(state_dict, unet_name="unet", text_
                     "_lora.down." if "_lora.down." in diffusers_name else ".lora_linear_layer."
                 )
                 if lora_name.startswith(("lora_te_", "lora_te1_")):
-                    te_state_dict[
-                        diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")
-                    ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                    te_state_dict[diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")] = (
+                        state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                    )
                 elif lora_name.startswith("lora_te2_"):
-                    te2_state_dict[
-                        diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")
-                    ] = state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                    te2_state_dict[diffusers_name.replace(dora_scale_key_to_replace_te, ".lora_magnitude_vector.")] = (
+                        state_dict.pop(key.replace("lora_down.weight", "dora_scale"))
+                    )
 
         # Store alpha if present.
         if lora_name_alpha in state_dict:

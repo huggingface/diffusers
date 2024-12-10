@@ -303,9 +303,9 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
 
         for i in range(down_block_layers[block]):
             # Convert resnets
-            new_state_dict[
-                f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.weight"
-            ] = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.0.weight")
+            new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.weight"] = (
+                encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.0.weight")
+            )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm1.norm_layer.bias"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.stack.0.bias"
             )
@@ -315,9 +315,9 @@ def convert_mochi_vae_state_dict_to_diffusers(encoder_ckpt_path, decoder_ckpt_pa
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.conv1.conv.bias"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.stack.2.bias"
             )
-            new_state_dict[
-                f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.weight"
-            ] = encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.3.weight")
+            new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.weight"] = (
+                encoder_state_dict.pop(f"layers.{block+4}.layers.{i+1}.stack.3.weight")
+            )
             new_state_dict[f"{prefix}down_blocks.{block}.resnets.{i}.norm2.norm_layer.bias"] = encoder_state_dict.pop(
                 f"layers.{block+4}.layers.{i+1}.stack.3.bias"
             )

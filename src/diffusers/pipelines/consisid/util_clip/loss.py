@@ -6,6 +6,7 @@ from torch.nn import functional as F
 try:
     import torch.distributed.nn
     from torch import distributed as dist
+
     has_distributed = True
 except ImportError:
     has_distributed = False
@@ -19,17 +20,11 @@ from timm.loss import LabelSmoothingCrossEntropy
 
 
 def gather_features(
-        image_features,
-        text_features,
-        local_loss=False,
-        gather_with_grad=False,
-        rank=0,
-        world_size=1,
-        use_horovod=False
+    image_features, text_features, local_loss=False, gather_with_grad=False, rank=0, world_size=1, use_horovod=False
 ):
-    assert has_distributed, 'torch.distributed did not import correctly, please use a PyTorch version with support.'
+    assert has_distributed, "torch.distributed did not import correctly, please use a PyTorch version with support."
     if use_horovod:
-        assert hvd is not None, 'Please install horovod'
+        assert hvd is not None, "Please install horovod"
         if gather_with_grad:
             all_image_features = hvd.allgather(image_features)
             all_text_features = hvd.allgather(text_features)
@@ -68,16 +63,15 @@ def gather_features(
 
 
 class ClipLoss(nn.Module):
-
     def __init__(
-            self,
-            local_loss=False,
-            gather_with_grad=False,
-            cache_labels=False,
-            rank=0,
-            world_size=1,
-            use_horovod=False,
-            smoothing=0.,
+        self,
+        local_loss=False,
+        gather_with_grad=False,
+        cache_labels=False,
+        rank=0,
+        world_size=1,
+        use_horovod=False,
+        smoothing=0.0,
     ):
         super().__init__()
         self.local_loss = local_loss
@@ -92,12 +86,18 @@ class ClipLoss(nn.Module):
         self.prev_num_logits = 0
         self.labels = {}
 
-    def forward(self, image_features, text_features, logit_scale=1.):
+    def forward(self, image_features, text_features, logit_scale=1.0):
         device = image_features.device
         if self.world_size > 1:
             all_image_features, all_text_features = gather_features(
-                image_features, text_features,
-                self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
+                image_features,
+                text_features,
+                self.local_loss,
+                self.gather_with_grad,
+                self.rank,
+                self.world_size,
+                self.use_horovod,
+            )
 
             if self.local_loss:
                 logits_per_image = logit_scale * image_features @ all_text_features.T
@@ -122,14 +122,11 @@ class ClipLoss(nn.Module):
 
         if self.label_smoothing_cross_entropy:
             total_loss = (
-                self.label_smoothing_cross_entropy(logits_per_image, labels) +
-                self.label_smoothing_cross_entropy(logits_per_text, labels)
-                ) / 2
+                self.label_smoothing_cross_entropy(logits_per_image, labels)
+                + self.label_smoothing_cross_entropy(logits_per_text, labels)
+            ) / 2
         else:
-            total_loss = (
-                F.cross_entropy(logits_per_image, labels) +
-                F.cross_entropy(logits_per_text, labels)
-                ) / 2
+            total_loss = (F.cross_entropy(logits_per_image, labels) + F.cross_entropy(logits_per_text, labels)) / 2
 
         acc = None
         i2t_acc = (logits_per_image.argmax(-1) == labels).sum() / len(logits_per_image)
