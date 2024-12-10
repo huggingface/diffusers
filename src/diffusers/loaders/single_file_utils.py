@@ -93,7 +93,10 @@ CHECKPOINT_KEY_NAMES = {
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
     "ltx-video": [
-        ("patchify_proj.weight", "transformer_blocks.27.scale_shift_table"),
+        (
+            "model.diffusion_model.patchify_proj.weight",
+            "model.diffusion_model.transformer_blocks.27.scale_shift_table",
+        ),
     ],
 }
 
@@ -2211,14 +2214,20 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
 
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
     TRANSFORMER_KEYS_RENAME_DICT = {
+        "model.diffusion_model.": "",
         "patchify_proj": "proj_in",
         "adaln_single": "time_embed",
         "q_norm": "norm_q",
         "k_norm": "norm_k",
     }
 
-    TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        "vae": remove_keys_,
+    }
 
     for key in list(converted_state_dict.keys()):
         new_key = key
@@ -2242,6 +2251,8 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
         state_dict.pop(key)
 
     VAE_KEYS_RENAME_DICT = {
+        # common
+        "vae.": "",
         # decoder
         "up_blocks.0": "mid_block",
         "up_blocks.1": "up_blocks.0",
@@ -2276,6 +2287,7 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
         "per_channel_statistics.channel": remove_keys_,
         "per_channel_statistics.mean-of-means": remove_keys_,
         "per_channel_statistics.mean-of-stds": remove_keys_,
+        "model.diffusion_model": remove_keys_,
     }
 
     for key in list(converted_state_dict.keys()):

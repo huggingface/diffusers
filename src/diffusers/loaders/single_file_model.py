@@ -86,9 +86,11 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "LTXTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
     },
     "AutoencoderKLLTX": {
         "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
+        "default_subfolder": "vae",
     },
 }
 
@@ -278,6 +280,7 @@ class FromOriginalModelMixin:
                 subfolder=subfolder,
                 local_files_only=local_files_only,
                 token=token,
+                revision=revision,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
