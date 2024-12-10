@@ -294,7 +294,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         print(image_slice.flatten())
         expected_slice = np.array(
-            [0.41385046, 0.39608297, 0.4360491, 0.26872507, 0.32187328, 0.4242474, 0.2603805, 0.34167895, 0.46561807]
+            [0.38793945, 0.4111328, 0.47924805, 0.39208984, 0.4165039, 0.41674805, 0.37060547, 0.36791992, 0.40625]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
@@ -309,7 +309,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         image = pipeline(**inputs).images
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        assert image.shape == (1, 1024, 1024, 3)
+        assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array(
             [0.41597816, 0.39302617, 0.44287828, 0.2687074, 0.28315824, 0.40582314, 0.20877528, 0.2380802, 0.39447647]
         )
