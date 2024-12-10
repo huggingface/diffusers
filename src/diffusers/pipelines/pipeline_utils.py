@@ -32,6 +32,7 @@ from huggingface_hub import (
     create_repo,
     hf_hub_download,
     model_info,
+    read_dduf_file,
     snapshot_download,
 )
 from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
@@ -53,7 +54,6 @@ from ..utils import (
     PushToHubMixin,
     is_accelerate_available,
     is_accelerate_version,
-    is_huggingface_hub_version,
     is_torch_npu_available,
     is_torch_version,
     is_transformers_version,
@@ -677,7 +677,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
             dduf_file(`str`, *optional*):
-                Load weights from the specified dduf file
+                Load weights from the specified dduf file.
 
         <Tip>
 
@@ -822,14 +822,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         dduf_entries = None
         if dduf_file:
-            if not is_huggingface_hub_version(">", "0.26.3"):
-                (">=", "0.17.0.dev0")
-                raise RuntimeError(
-                    "To load a dduf file, you need to install huggingface_hub>0.26.3. "
-                    "You can install it with the following: `pip install --upgrade huggingface_hub`."
-                )
-
-            from huggingface_hub import read_dduf_file
 
             dduf_file_path = os.path.join(cached_folder, dduf_file)
             dduf_entries = read_dduf_file(dduf_file_path)
@@ -845,6 +837,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # We retrieve the information by matching whether variant model checkpoints exist in the subfolders.
         # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
         # with variant being `"fp16"`.
+        # TODO: adapt logic for DDUF files (at the moment, scans the local directory which doesn't make sense)
         model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
         if len(model_variants) == 0 and variant is not None:
             error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
