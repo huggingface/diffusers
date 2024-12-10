@@ -686,33 +686,29 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
         image = image.to(device=self.device, dtype=self.dtype)
 
-        image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-        uncond_image_enc_hidden_states = self.image_encoder(
-            torch.zeros_like(image), output_hidden_states=True
-        ).hidden_states[-2]
-
-        return image_enc_hidden_states, uncond_image_enc_hidden_states
+        return self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
 
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
-            single_image_embeds, single_negative_image_embeds = self.encode_image(ip_adapter_image)
+            single_image_embeds = self.encode_image(ip_adapter_image)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.zeros_like(single_image_embeds)
         else:
-            for single_image_embeds in ip_adapter_image_embeds:
-                if do_classifier_free_guidance:
-                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                else:
-                    single_image_embeds = ip_adapter_image_embeds
+            if do_classifier_free_guidance:
+                single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+            else:
+                single_image_embeds = ip_adapter_image_embeds
 
-        single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+        image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
-            single_negative_image_embeds = torch.cat([single_negative_image_embeds] * num_images_per_prompt, dim=0)
-            single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
+            negative_image_embeds = torch.cat([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
 
-        return single_image_embeds.to(device=device)
+        return image_embeds.to(device=device)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
