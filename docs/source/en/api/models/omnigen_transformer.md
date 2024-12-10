@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # OmniGenTransformer2DModel
 
-A Transformer model accept multi-modal instruction to generate image from [OmniGen](https://github.com/VectorSpaceLab/OmniGen/).
+A Transformer model that accepts multimodal instructions to generate images for [OmniGen](https://github.com/VectorSpaceLab/OmniGen/).
 
 ## OmniGenTransformer2DModel
 
