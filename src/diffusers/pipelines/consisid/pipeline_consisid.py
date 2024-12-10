@@ -302,7 +302,7 @@ class ConsisIDPipeline(DiffusionPipeline):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-    # Copied from diffusers.pipelines.consisid.pipeline_consisID.ConsisIDPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
