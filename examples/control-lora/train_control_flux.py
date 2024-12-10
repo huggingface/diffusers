@@ -78,18 +78,12 @@ def log_validation(flux_transformer, args, accelerator, weight_dtype, step, is_f
             torch_dtype=weight_dtype,
         )
     else:
-        transformer = FluxTransformer2DModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="transformer", torch_dtype=weight_dtype
-        )
-        initial_channels = transformer.config.in_channels
+        transformer = FluxTransformer2DModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
         pipeline = FluxControlPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=transformer,
             torch_dtype=weight_dtype,
         )
-        assert (
-            pipeline.transformer.config.in_channels == initial_channels * 2
-        ), f"{pipeline.transformer.config.in_channels=}"
 
     pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
