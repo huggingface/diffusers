@@ -257,8 +257,8 @@ class StableDiffusionPipeline(
         ) < version.parse("0.9.0.dev0")
         self._is_unet_config_sample_size_int = isinstance(unet.config.sample_size, int)
         is_unet_sample_size_less_64 = (
-            hasattr(unet.config, "sample_size") 
-            and self._is_unet_config_sample_size_int 
+            hasattr(unet.config, "sample_size")
+            and self._is_unet_config_sample_size_int
             and unet.config.sample_size < 64
         )
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
