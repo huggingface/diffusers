@@ -952,7 +952,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         # 6. Prepare image embeddings
         # Either image is passed and ip_adapter is active
         # Or image_embeds are passed directly
-        if (ip_adapter_image is not None and self.is_ip_adapter_active()) or ip_adapter_image_embeds is not None:
+        if (ip_adapter_image is not None and self.is_ip_adapter_active) or ip_adapter_image_embeds is not None:
             ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
