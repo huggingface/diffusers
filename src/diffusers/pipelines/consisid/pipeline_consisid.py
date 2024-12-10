@@ -617,7 +617,7 @@ class ConsisIDPipeline(DiffusionPipeline):
         self.fusing_transformer = True
         self.transformer.fuse_qkv_projections()
 
-    # Copied from diffusers.pipelines.consisid.pipeline_consisid.ConsisIDPipeline.unfuse_qkv_projections
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.unfuse_qkv_projections
     def unfuse_qkv_projections(self) -> None:
         r"""Disable QKV projection fusion if enabled."""
         if not self.fusing_transformer:
