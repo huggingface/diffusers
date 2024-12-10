@@ -90,6 +90,19 @@ EXAMPLE_DOC_STRING = """
 
 
 def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255)]):
+    """
+    This function draws keypoints and the limbs connecting them on an image.
+
+    Parameters:
+    - image_pil (PIL.Image): Input image as a PIL object.
+    - kps (list of tuples): A list of keypoints where each keypoint is a tuple of (x, y) coordinates.
+    - color_list (list of tuples, optional): List of colors (in RGB format) for each keypoint. Default is a set of five
+      colors.
+
+    Returns:
+    - PIL.Image: Image with the keypoints and limbs drawn.
+    """
+
     stickwidth = 4
     limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
     kps = np.array(kps)
@@ -120,17 +133,23 @@ def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), 
     return out_img_pil
 
 
-def process_image(image, vae):
-    image_noise_sigma = torch.normal(mean=-3.0, std=0.5, size=(1,), device=image.device)
-    image_noise_sigma = torch.exp(image_noise_sigma).to(dtype=image.dtype)
-    noisy_image = torch.randn_like(image) * image_noise_sigma[:, None, None, None, None]
-    input_image = image + noisy_image
-    image_latent_dist = vae.encode(input_image).latent_dist
-    return image_latent_dist
-
-
 # Similar to diffusers.pipelines.hunyuandit.pipeline_hunyuandit.get_resize_crop_region_for_grid
 def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
+    """
+    This function calculates the resize and crop region for an image to fit a target width and height while preserving
+    the aspect ratio.
+
+    Parameters:
+    - src (tuple): A tuple containing the source image's height (h) and width (w).
+    - tgt_width (int): The target width to resize the image.
+    - tgt_height (int): The target height to resize the image.
+
+    Returns:
+    - tuple: Two tuples representing the crop region:
+        1. The top-left coordinates of the crop region.
+        2. The bottom-right coordinates of the crop region.
+    """
+
     tw = tgt_width
     th = tgt_height
     h, w = src
