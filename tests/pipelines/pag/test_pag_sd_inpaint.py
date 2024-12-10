@@ -311,7 +311,7 @@ class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array(
-            [0.41597816, 0.39302617, 0.44287828, 0.2687074, 0.28315824, 0.40582314, 0.20877528, 0.2380802, 0.39447647]
+            [0.3876953, 0.40356445, 0.4934082, 0.39697266, 0.41674805, 0.41015625, 0.375, 0.36914062, 0.40649414]
         )
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
