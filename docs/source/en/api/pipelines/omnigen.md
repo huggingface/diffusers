@@ -52,8 +52,6 @@ This pipeline was contributed by [staoxiao](https://github.com/staoxiao). The or
 
 ## Inference
 
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
-
 First, load the pipeline:
 
 ```python

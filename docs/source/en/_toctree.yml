@@ -51,8 +51,6 @@
     title: Text or image-to-video
   - local: using-diffusers/depth2img
     title: Depth-to-image
-  - local: using-diffusers/multimodal2img
-    title: Multimodal-to-image
   title: Generative tasks
 - sections:
   - local: using-diffusers/overview_techniques

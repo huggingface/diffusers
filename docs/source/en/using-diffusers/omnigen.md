@@ -303,6 +303,13 @@ Here are some guidelines to help you reduce computational costs when input multi
 
 ### Inference speed
 
+| Parameter                | Inference Time |
+|--------------------------|----------------|
+| use_kv_cache=True        | 90s            |
+| use_kv_cache=False       | 221s           |
+| max_input_image_size=1024| 90s            |
+| max_input_image_size=512 | 58s            |
+
 - `use_kv_cache=True`:   
    `use_kv_cache` will store key and value states of the input conditions to compute attention without redundant computations. 
     The default value is True, and OmniGen will offload the kv cache to cpu default.
@@ -314,17 +321,31 @@ Here are some guidelines to help you reduce computational costs when input multi
   - `max_input_image_size=1024`: the inference time is 1m30s.
   - `max_input_image_size=512`: the inference time is 58s.
 
+
+
+
+
+
 ### Memory 
+
+
+| Method                                      | Memory Usage |
+|---------------------------------------------|--------------|
+| pipe.to("cuda")                             | 31GB         |
+| pipe.enable_model_cpu_offload()             | 28GB         |
+| pipe.enable_transformer_block_cpu_offload() | 25GB         |
+| pipe.enable_sequential_cpu_offload()        | 11GB         |
 
 - `pipe.enable_model_cpu_offload()`:
   - Without enabling cpu offloading, memory usage is `31 GB`
   - With enabling cpu offloading, memory usage is `28 GB`
 
-- `offload_transformer_block=True`:
-  - offload transformer block to reduce memory usage
+- `pipe.enable_transformer_block_cpu_offload()`:
+  - Offload transformer block to reduce memory usage
   - When enabled, memory usage is under `25 GB`
 
 - `pipe.enable_sequential_cpu_offload()`:
-  - significantly reduce memory usage at the cost of slow inference
+  - Significantly reduce memory usage at the cost of slow inference
   - When enabled, memory usage is under `11 GB`
+
 
