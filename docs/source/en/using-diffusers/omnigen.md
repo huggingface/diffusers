@@ -301,7 +301,7 @@ However, when using input images, the computational cost increases.
 Here are some guidelines to help you reduce computational costs when input multiple images. The experiments are conducted on A800 GPU and input two images to OmniGen.
 
 
-### inference speed
+### Inference speed
 
 - `use_kv_cache=True`:   
    `use_kv_cache` will store key and value states of the input conditions to compute attention without redundant computations. 
