@@ -2212,10 +2212,9 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 
 def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
-    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
-
-    def remove_keys_(key: str, state_dict):
-        state_dict.pop(key)
+    converted_state_dict = {
+        key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "model.diffusion_model." in key
+    }
 
     TRANSFORMER_KEYS_RENAME_DICT = {
         "model.diffusion_model.": "",
@@ -2225,9 +2224,7 @@ def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         "k_norm": "norm_k",
     }
 
-    TRANSFORMER_SPECIAL_KEYS_REMAP = {
-        "vae": remove_keys_,
-    }
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
     for key in list(converted_state_dict.keys()):
         new_key = key
@@ -2245,7 +2242,7 @@ def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 
 def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
-    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae." in key}
 
     def remove_keys_(key: str, state_dict):
         state_dict.pop(key)
@@ -2287,7 +2284,6 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
         "per_channel_statistics.channel": remove_keys_,
         "per_channel_statistics.mean-of-means": remove_keys_,
         "per_channel_statistics.mean-of-stds": remove_keys_,
-        "model.diffusion_model": remove_keys_,
     }
 
     for key in list(converted_state_dict.keys()):

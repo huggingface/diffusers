@@ -21,6 +21,7 @@ from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
+from ...loaders import FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKLLTX
 from ...models.transformers import LTXTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -158,7 +159,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class LTXImageToVideoPipeline(DiffusionPipeline):
+class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for image-to-video generation.
 

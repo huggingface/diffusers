@@ -20,6 +20,7 @@ import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...loaders import FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKLLTX
 from ...models.transformers import LTXTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -139,7 +140,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class LTXPipeline(DiffusionPipeline):
+class LTXPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for text-to-video generation.
 
