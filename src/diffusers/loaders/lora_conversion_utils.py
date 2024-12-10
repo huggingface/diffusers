@@ -663,3 +663,248 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
         raise ValueError(f"`old_state_dict` should be at this point but has: {list(old_state_dict.keys())}.")
 
     return new_state_dict
+
+
+def _convert_non_diffusers_sd3_lora_to_diffusers(state_dict, prefix=None):
+    new_state_dict = {}
+
+    # in SD3 original implementation of AdaLayerNormContinuous, it split linear projection output into shift, scale;
+    # while in diffusers it split into scale, shift. Here we swap the linear projection weights in order to be able to use diffusers implementation
+    def swap_scale_shift(weight):
+        shift, scale = weight.chunk(2, dim=0)
+        new_weight = torch.cat([scale, shift], dim=0)
+        return new_weight
+
+    def calculate_scales(key):
+        lora_rank = state_dict[f"{key}.lora_down.weight"].shape[0]
+        alpha = state_dict.pop(key + ".alpha")
+        scale = alpha / lora_rank
+
+        # calculate scale_down and scale_up
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+
+        return scale_down, scale_up
+
+    def weight_is_sparse(key, rank, num_splits, up_weight):
+        dims = [up_weight.shape[0] // num_splits] * num_splits
+
+        is_sparse = False
+        requested_rank = rank
+        if rank % num_splits == 0:
+            requested_rank = rank // num_splits
+            is_sparse = True
+            i = 0
+            for j in range(len(dims)):
+                for k in range(len(dims)):
+                    if j == k:
+                        continue
+                    is_sparse = is_sparse and torch.all(
+                        up_weight[i : i + dims[j], k * requested_rank : (k + 1) * requested_rank] == 0
+                    )
+                i += dims[j]
+            if is_sparse:
+                logger.info(f"weight is sparse: {key}")
+
+        return is_sparse, requested_rank
+
+    # handle only transformer blocks for now.
+    layers = set()
+    for k in state_dict:
+        if "joint_blocks" in k:
+            idx = int(k.split("_", 4)[-1].split("_", 1)[0])
+            layers.add(idx)
+    num_layers = max(layers) + 1
+
+    for i in range(num_layers):
+        # norms
+        for diffusers_key, orig_key in [
+            (f"transformer_blocks.{i}.norm1.linear", f"lora_unet_joint_blocks_{i}_x_block_adaLN_modulation_1")
+        ]:
+            scale_down, scale_up = calculate_scales(orig_key)
+            new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+            )
+            new_state_dict[f"{diffusers_key}.lora_B.weight"] = state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+
+        if not (i == num_layers - 1):
+            for diffusers_key, orig_key in [
+                (
+                    f"transformer_blocks.{i}.norm1_context.linear",
+                    f"lora_unet_joint_blocks_{i}_context_block_adaLN_modulation_1",
+                )
+            ]:
+                scale_down, scale_up = calculate_scales(orig_key)
+                new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+                )
+                new_state_dict[f"{diffusers_key}.lora_B.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+                )
+        else:
+            for diffusers_key, orig_key in [
+                (
+                    f"transformer_blocks.{i}.norm1_context.linear",
+                    f"lora_unet_joint_blocks_{i}_context_block_adaLN_modulation_1",
+                )
+            ]:
+                scale_down, scale_up = calculate_scales(orig_key)
+                new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                    swap_scale_shift(state_dict.pop(f"{orig_key}.lora_down.weight")) * scale_down
+                )
+                new_state_dict[f"{diffusers_key}.lora_B.weight"] = (
+                    swap_scale_shift(state_dict.pop(f"{orig_key}.lora_up.weight")) * scale_up
+                )
+
+        # output projections
+        for diffusers_key, orig_key in [
+            (f"transformer_blocks.{i}.attn.to_out.0", f"lora_unet_joint_blocks_{i}_x_block_attn_proj")
+        ]:
+            scale_down, scale_up = calculate_scales(orig_key)
+            new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+            )
+            new_state_dict[f"{diffusers_key}.lora_B.weight"] = state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+        if not (i == num_layers - 1):
+            for diffusers_key, orig_key in [
+                (f"transformer_blocks.{i}.attn.to_add_out", f"lora_unet_joint_blocks_{i}_context_block_attn_proj")
+            ]:
+                scale_down, scale_up = calculate_scales(orig_key)
+                new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+                )
+                new_state_dict[f"{diffusers_key}.lora_B.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+                )
+
+        # ffs
+        for diffusers_key, orig_key in [
+            (f"transformer_blocks.{i}.ff.net.0.proj", f"lora_unet_joint_blocks_{i}_x_block_mlp_fc1")
+        ]:
+            scale_down, scale_up = calculate_scales(orig_key)
+            new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+            )
+            new_state_dict[f"{diffusers_key}.lora_B.weight"] = state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+
+        for diffusers_key, orig_key in [
+            (f"transformer_blocks.{i}.ff.net.2", f"lora_unet_joint_blocks_{i}_x_block_mlp_fc2")
+        ]:
+            scale_down, scale_up = calculate_scales(orig_key)
+            new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+            )
+            new_state_dict[f"{diffusers_key}.lora_B.weight"] = state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+
+        if not (i == num_layers - 1):
+            for diffusers_key, orig_key in [
+                (f"transformer_blocks.{i}.ff_context.net.0.proj", f"lora_unet_joint_blocks_{i}_context_block_mlp_fc1")
+            ]:
+                scale_down, scale_up = calculate_scales(orig_key)
+                new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+                )
+                new_state_dict[f"{diffusers_key}.lora_B.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+                )
+
+            for diffusers_key, orig_key in [
+                (f"transformer_blocks.{i}.ff_context.net.2", f"lora_unet_joint_blocks_{i}_context_block_mlp_fc2")
+            ]:
+                scale_down, scale_up = calculate_scales(orig_key)
+                new_state_dict[f"{diffusers_key}.lora_A.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_down.weight") * scale_down
+                )
+                new_state_dict[f"{diffusers_key}.lora_B.weight"] = (
+                    state_dict.pop(f"{orig_key}.lora_up.weight") * scale_up
+                )
+
+        # core transformer blocks.
+        # sample blocks.
+        scale_down, scale_up = calculate_scales(f"lora_unet_joint_blocks_{i}_x_block_attn_qkv")
+        is_sparse, requested_rank = weight_is_sparse(
+            key=f"lora_unet_joint_blocks_{i}_x_block_attn_qkv",
+            rank=state_dict[f"lora_unet_joint_blocks_{i}_x_block_attn_qkv.lora_down.weight"].shape[0],
+            num_splits=3,
+            up_weight=state_dict[f"lora_unet_joint_blocks_{i}_x_block_attn_qkv.lora_up.weight"],
+        )
+        num_splits = 3
+        sample_qkv_lora_down = (
+            state_dict.pop(f"lora_unet_joint_blocks_{i}_x_block_attn_qkv.lora_down.weight") * scale_down
+        )
+        sample_qkv_lora_up = state_dict.pop(f"lora_unet_joint_blocks_{i}_x_block_attn_qkv.lora_up.weight") * scale_up
+        dims = [sample_qkv_lora_up.shape[0] // num_splits] * num_splits  # 3 = num_splits
+        if not is_sparse:
+            for attn_k in ["to_q", "to_k", "to_v"]:
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_A.weight"] = sample_qkv_lora_down
+            for attn_k, v in zip(["to_q", "to_k", "to_v"], torch.split(sample_qkv_lora_up, dims, dim=0)):
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_B.weight"] = v
+        else:
+            # down_weight is chunked to each split
+            new_state_dict.update(
+                {
+                    f"transformer_blocks.{i}.attn.{k}.lora_A.weight": v
+                    for k, v in zip(["to_q", "to_k", "to_v"], torch.chunk(sample_qkv_lora_down, num_splits, dim=0))
+                }
+            )  # noqa: C416
+
+            # up_weight is sparse: only non-zero values are copied to each split
+            i = 0
+            for j, attn_k in enumerate(["to_q", "to_k", "to_v"]):
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_B.weight"] = sample_qkv_lora_up[
+                    i : i + dims[j], j * requested_rank : (j + 1) * requested_rank
+                ].contiguous()
+                i += dims[j]
+
+        # context blocks.
+        scale_down, scale_up = calculate_scales(f"lora_unet_joint_blocks_{i}_context_block_attn_qkv")
+        is_sparse, requested_rank = weight_is_sparse(
+            key=f"lora_unet_joint_blocks_{i}_context_block_attn_qkv",
+            rank=state_dict[f"lora_unet_joint_blocks_{i}_context_block_attn_qkv.lora_down.weight"].shape[0],
+            num_splits=3,
+            up_weight=state_dict[f"lora_unet_joint_blocks_{i}_context_block_attn_qkv.lora_up.weight"],
+        )
+        num_splits = 3
+        sample_qkv_lora_down = (
+            state_dict.pop(f"lora_unet_joint_blocks_{i}_context_block_attn_qkv.lora_down.weight") * scale_down
+        )
+        sample_qkv_lora_up = (
+            state_dict.pop(f"lora_unet_joint_blocks_{i}_context_block_attn_qkv.lora_up.weight") * scale_up
+        )
+        dims = [sample_qkv_lora_up.shape[0] // num_splits] * num_splits  # 3 = num_splits
+        if not is_sparse:
+            for attn_k in ["add_q_proj", "add_k_proj", "add_v_proj"]:
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_A.weight"] = sample_qkv_lora_down
+            for attn_k, v in zip(
+                ["add_q_proj", "add_k_proj", "add_v_proj"], torch.split(sample_qkv_lora_up, dims, dim=0)
+            ):
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_B.weight"] = v
+        else:
+            # down_weight is chunked to each split
+            new_state_dict.update(
+                {
+                    f"transformer_blocks.{i}.attn.{k}.lora_A.weight": v
+                    for k, v in zip(
+                        ["add_q_proj", "add_k_proj", "add_v_proj"],
+                        torch.chunk(sample_qkv_lora_down, num_splits, dim=0),
+                    )
+                }
+            )  # noqa: C416
+
+            # up_weight is sparse: only non-zero values are copied to each split
+            i = 0
+            for j, attn_k in enumerate(["add_q_proj", "add_k_proj", "add_v_proj"]):
+                new_state_dict[f"transformer_blocks.{i}.attn.{attn_k}.lora_B.weight"] = sample_qkv_lora_up[
+                    i : i + dims[j], j * requested_rank : (j + 1) * requested_rank
+                ].contiguous()
+                i += dims[j]
+
+    if len(state_dict) > 0:
+        raise ValueError(f"`state_dict` should be at this point but has: {list(state_dict.keys())}.")
+
+    prefix = prefix or "transformer"
+    new_state_dict = {f"{prefix}.{k}": v for k, v in new_state_dict.items()}
+    return new_state_dict
