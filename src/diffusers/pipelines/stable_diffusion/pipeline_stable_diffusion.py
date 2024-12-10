@@ -908,8 +908,8 @@ class StableDiffusionPipeline(
 
         # 0. Default height and width to unet
         if not height or not width:
-            height = self.unet.config.sample_size if self._is_unet_sample_size_int else self.unet.config.sample_size[0]
-            width = self.unet.config.sample_size if self._is_unet_sample_size_int else self.unet.config.sample_size[1]
+            height = self.unet.config.sample_size if self._is_unet_config_sample_size_int else self.unet.config.sample_size[0]
+            width = self.unet.config.sample_size if self._is_unet_config_sample_size_int else self.unet.config.sample_size[1]
             height, width = height * self.vae_scale_factor, width * self.vae_scale_factor
         # to deal with lora scaling and other possible forward hooks
 
