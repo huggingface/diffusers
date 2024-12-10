@@ -36,6 +36,7 @@ from .lora_base import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, LoraBaseMixin, _
 from .lora_conversion_utils import (
     _convert_kohya_flux_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
+    _convert_non_diffusers_sd3_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
@@ -1211,6 +1212,27 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
+        is_non_diffusers = any("lora_unet" in k for k in state_dict)
+        if is_non_diffusers:
+            has_only_transformer = all(k.startswith("lora_unet") for k in state_dict)
+            if not has_only_transformer:
+                state_dict = {k: v for k, v in state_dict.items() if k.startswith("lora_unet")}
+                logger.warning(
+                    "Some keys in the LoRA checkpoint are not related to transformer blocks and we will filter them out during loading. Please open a new issue with the LoRA checkpoint you are trying to load with a reproducible snippet - https://github.com/huggingface/diffusers/issues/new."
+                )
+
+            all_joint_blocks = all("joint_blocks" in k for k in state_dict)
+            if not all_joint_blocks:
+                raise ValueError(
+                    "LoRAs containing only transformer blocks are supported at this point. Please open a new issue with the LoRA checkpoint you are trying to load with a reproducible snippet - https://github.com/huggingface/diffusers/issues/new."
+                )
+
+            has_dual_attention_layers = any("attn2" in k for k in state_dict)
+            if has_dual_attention_layers:
+                raise ValueError("LoRA state dicts with dual attention layers are not supported.")
+
+            state_dict = _convert_non_diffusers_sd3_lora_to_diffusers(state_dict, prefix=cls.transformer_name)
+
         return state_dict
 
     def load_lora_weights(
@@ -1255,12 +1277,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        transformer_state_dict = {k: v for k, v in state_dict.items() if "transformer." in k}
+        transformer_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")}
         if len(transformer_state_dict) > 0:
             self.load_lora_into_transformer(
                 state_dict,
@@ -1271,8 +1292,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
             )
+        else:
+            logger.debug("No LoRA keys were found for the transformer.")
 
-        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
+        text_encoder_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.text_encoder_name}.")}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_state_dict,
@@ -1284,8 +1307,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
             )
+        else:
+            logger.debug("No LoRA keys were found for the first text encoder.")
 
-        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
+        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if k.startswith("text_encoder_2.")}
         if len(text_encoder_2_state_dict) > 0:
             self.load_lora_into_text_encoder(
                 text_encoder_2_state_dict,
@@ -1297,6 +1322,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 _pipeline=self,
                 low_cpu_mem_usage=low_cpu_mem_usage,
             )
+        else:
+            logger.debug("No LoRA keys were found for the second text encoder.")
 
     @classmethod
     def load_lora_into_transformer(
