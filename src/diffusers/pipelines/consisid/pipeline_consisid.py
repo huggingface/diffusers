@@ -512,7 +512,7 @@ class ConsisIDPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents, image_latents
 
-    # Copied from diffusers.pipelines.consisid.pipeline_consisid.ConsisIDPipeline.decode_latents
+    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.decode_latents
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / self.vae_scaling_factor_image * latents
