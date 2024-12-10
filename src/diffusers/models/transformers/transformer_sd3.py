@@ -357,7 +357,9 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             if not low_cpu_mem_usage:
                 attn_procs[name].load_state_dict(layer_state_dict[idx], strict=True)
             else:
-                load_model_dict_into_meta(attn_procs[name], layer_state_dict[idx], device=self.device, dtype=self.dtype)
+                load_model_dict_into_meta(
+                    attn_procs[name], layer_state_dict[idx], device=self.device, dtype=self.dtype
+                )
 
         self.set_attn_processor(attn_procs)
 
