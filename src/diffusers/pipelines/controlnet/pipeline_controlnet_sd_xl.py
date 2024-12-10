@@ -28,6 +28,8 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
+import copy
+
 from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -632,10 +634,13 @@ class StableDiffusionXLControlNetPipeline(
             else:
                 feature_extractor_input = self.image_processor.numpy_to_pil(image)
             safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image_original = copy.deepcopy(image)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
-        return image, has_nsfw_concept
+
+         #return images without safe checker   
+        return image_original, has_nsfw_concept
     
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
