@@ -239,6 +239,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
+        if dduf_file:
+            if not is_huggingface_hub_version(">", "0.26.3"):
+                raise RuntimeError(
+                    "In order to load a dduf file, you need to install huggingface_hub>0.26.3. "
+                    "You can install it with the following: `pip install --upgrade huggingface_hub"
+                )
+
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
         def is_saveable_module(name, value):
@@ -307,53 +314,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if dduf_file:
                 import shutil
-                import zipfile
 
-                def zipdir(dir_to_archive, zipf):
-                    """Archive a directory"""
-                    for root, dirs, files in os.walk(dir_to_archive):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            arcname = os.path.join(
-                                os.path.basename(dir_to_archive), os.path.relpath(file_path, start=dir_to_archive)
-                            )
-                            zipf.write(file_path, arcname=arcname)
+                from huggingface_hub import export_folder_as_dduf
 
                 dduf_file_path = os.path.join(save_directory, dduf_file)
-
-                if os.path.isdir(dduf_file_path):
-                    logger.warning(
-                        f"Removing the existing folder {dduf_file_path} so that we can save the DDUF archive."
-                    )
-                    shutil.rmtree(dduf_file_path)
-                if (
-                    os.path.exists(dduf_file_path)
-                    and os.path.isfile(dduf_file_path)
-                    and zipfile.is_zipfile(dduf_file_path)
-                ):
-                    # Open in append mode if the file exists
-                    mode = "a"
-                else:
-                    # Open in write mode to create it if it doesn't exist
-                    mode = "w"
-                with zipfile.ZipFile(dduf_file_path, mode=mode, compression=zipfile.ZIP_STORED) as zipf:
-                    dir_to_archive = os.path.join(save_directory, pipeline_component_name)
-                    if os.path.isdir(dir_to_archive):
-                        zipdir(dir_to_archive, zipf)
-                        shutil.rmtree(dir_to_archive)
+                dir_to_archive = os.path.join(save_directory, pipeline_component_name)
+                if os.path.isdir(dir_to_archive):
+                    export_folder_as_dduf(dduf_file_path, dir_to_archive, append=True, retain_base_folder=True)
+                    shutil.rmtree(dir_to_archive)
 
         # finally save the config
         self.save_config(save_directory)
 
         # Takes care of including the "model_index.json" inside the ZIP.
-        # TODO: Include a DDUF a metadata file.
         if dduf_file:
-            import zipfile
+            from huggingface_hub import add_entry_to_dduf
 
-            with zipfile.ZipFile(dduf_file_path, mode="a", compression=zipfile.ZIP_STORED) as zipf:
-                config_path = os.path.join(save_directory, self.config_name)
-                zipf.write(config_path, arcname=os.path.basename(config_path))
-                os.remove(config_path)
+            config_path = os.path.join(save_directory, self.config_name)
+            # add config.json to the root of the dduf_file_path
+            add_entry_to_dduf(dduf_file_path, self.config_name, content=config_path)
+            os.remove(config_path)
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
