@@ -351,9 +351,13 @@ class PAGGuider:
             )
 
     def reset_guider(self, pipeline):
-        if self.do_perturbed_attention_guidance:
+        if (
+            self.do_perturbed_attention_guidance
+            and hasattr(self, "original_attn_proc")
+            and self.original_attn_proc is not None
+        ):
             pipeline.unet.set_attn_processor(self.original_attn_proc)
-            pipeline.original_attn_proc = None
+            self.original_attn_proc = None
 
     def maybe_update_guider(self, pipeline, timestep):
         pass

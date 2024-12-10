@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Union, Type
+import traceback
+import warnings
 from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from tqdm.auto import tqdm
@@ -27,11 +28,8 @@ from ..utils import (
     logging,
 )
 from ..utils.hub_utils import validate_hf_hub_args
-from .auto_pipeline import _get_model
-from .pipeline_loading_utils import _fetch_class_library_tuple, _get_pipeline_class
+from .pipeline_loading_utils import _fetch_class_library_tuple
 from .pipeline_utils import DiffusionPipeline
-
-import warnings
 
 
 if is_accelerate_available():
@@ -99,10 +97,9 @@ class PipelineState:
 
 
 class PipelineBlock:
-    optional_components = []
-    required_components = []
-    required_auxiliaries = []
-    optional_auxiliaries = []
+    expected_components = []
+    expected_auxiliaries = []
+    expected_configs = []
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -117,88 +114,117 @@ class PipelineBlock:
     def intermediates_outputs(self) -> List[str]:
         return []
 
+    def update_states(self, **kwargs):
+        """
+        Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
+        each pipeline block, does not need to be updated by users. Logs if existing non-None states are being
+        overwritten.
+
+        Args:
+            **kwargs: Keyword arguments containing components, or configs to add/update.
+            e.g. pipeline_block.update_states(unet=unet1, vae=None)
+        """
+        # Add expected components
+        for component_name in self.expected_components:
+            if component_name in kwargs:
+                if component_name in self.components and self.components[component_name] is not None:
+                    if id(self.components[component_name]) != id(kwargs[component_name]):
+                        logger.info(
+                            f"Overwriting existing component '{component_name}' "
+                            f"(type: {type(self.components[component_name]).__name__}) "
+                            f"with new value (type: {type(kwargs[component_name]).__name__})"
+                        )
+                self.components[component_name] = kwargs.pop(component_name)
+
+        # Add expected configs
+        for config_name in self.expected_configs:
+            if config_name in kwargs:
+                if config_name in self.configs and self.configs[config_name] is not None:
+                    if self.configs[config_name] != kwargs[config_name]:
+                        logger.info(
+                            f"Overwriting existing config '{config_name}' "
+                            f"(value: {self.configs[config_name]}) "
+                            f"with new value ({kwargs[config_name]})"
+                        )
+                self.configs[config_name] = kwargs.pop(config_name)
+
     def __init__(self, **kwargs):
         self.components: Dict[str, Any] = {}
         self.auxiliaries: Dict[str, Any] = {}
         self.configs: Dict[str, Any] = {}
 
-        # Process kwargs
-        for key, value in kwargs.items():
-            if key in self.required_components or key in self.optional_components:
-                self.components[key] = value
-            elif key in self.required_auxiliaries or key in self.optional_auxiliaries:
-                self.auxiliaries[key] = value
-            else:
-                self.configs[key] = value
+        self.update_states(**kwargs)
 
-    @classmethod
-    def from_pipe(cls, pipe: DiffusionPipeline, **kwargs):
+    # YiYi notes, does pipeline block need "states"? it is not going to be used on its own
+    # TODO: address existing components -> overwrite or not? currently overwrite
+    def add_states_from_pipe(self, pipe: DiffusionPipeline, **kwargs):
         """
-        Create a PipelineBlock instance from a diffusion pipeline object.
+        add components/auxiliaries/configs from a diffusion pipeline object.
 
         Args:
             pipe: A `[DiffusionPipeline]` object.
+            **kwargs: Additional states to update, these take precedence over pipe values.
 
         Returns:
-            PipelineBlock: An instance initialized with the pipeline's components and configurations.
+            PipelineBlock: An instance loaded with the pipeline's components and configurations.
         """
-        # add components
-        expected_components = set(cls.required_components + cls.optional_components)
-        # - components that are passed in kwargs
-        components_to_add = {
-            component_name: kwargs.pop(component_name)
-            for component_name in expected_components
-            if component_name in kwargs
-        }
-        # - components that are in the pipeline
-        for component_name, component in pipe.components.items():
-            if component_name in expected_components and component_name not in components_to_add:
-                components_to_add[component_name] = component
+        states_to_update = {}
 
-        # add auxiliaries
-        expected_auxiliaries = set(cls.required_auxiliaries + cls.optional_auxiliaries)
-        # - auxiliaries that are passed in kwargs
-        auxiliaries_to_add = {k: kwargs.pop(k) for k in expected_auxiliaries if k in kwargs}
-        # - auxiliaries that are in the pipeline
-        for aux_name in expected_auxiliaries:
-            if hasattr(pipe, aux_name) and aux_name not in auxiliaries_to_add:
-                auxiliaries_to_add[aux_name] = getattr(pipe, aux_name)
-        block_kwargs = {**components_to_add, **auxiliaries_to_add}
+        # Get components - prefer kwargs over pipe values
+        for component_name in self.expected_components:
+            if component_name in kwargs:
+                states_to_update[component_name] = kwargs.pop(component_name)
+            elif component_name in pipe.components:
+                states_to_update[component_name] = pipe.components[component_name]
 
-        # add pipeline configs
-        init_params = inspect.signature(cls.__init__).parameters
-        # modules info are also registered in the config as tuples, e.g. {'tokenizer': ('transformers', 'CLIPTokenizer')}
-        # we need to exclude them for block_kwargs otherwise it will override the actual module
-        expected_configs = {
-            k
-            for k in pipe.config.keys()
-            if k in init_params and k not in expected_components and k not in expected_auxiliaries
-        }
+        # Get configs - prefer kwargs over pipe values
+        pipe_config = dict(pipe.config)
+        for config_name in self.expected_configs:
+            if config_name in kwargs:
+                states_to_update[config_name] = kwargs.pop(config_name)
+            elif config_name in pipe_config:
+                states_to_update[config_name] = pipe_config[config_name]
 
-        for config_name in expected_configs:
-            if config_name not in block_kwargs:
-                if config_name in kwargs:
-                    # - configs that are passed in kwargs
-                    block_kwargs[config_name] = kwargs.pop(config_name)
-                else:
-                    # - configs that are in the pipeline
-                    block_kwargs[config_name] = pipe.config[config_name]
+        # Update all states at once
+        self.update_states(**states_to_update)
 
-        # Add any remaining relevant pipeline attributes
-        for attr_name in dir(pipe):
-            if attr_name not in block_kwargs and attr_name in init_params:
-                block_kwargs[attr_name] = getattr(pipe, attr_name)
-
-        return cls(**block_kwargs)
+    @validate_hf_hub_args
+    def add_states_from_pretrained(self, pretrained_model_or_path, **kwargs):
+        base_pipeline = DiffusionPipeline.from_pretrained(pretrained_model_or_path, **kwargs)
+        self.add_states_from_pipe(base_pipeline, **kwargs)
 
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
         raise NotImplementedError("__call__ method must be implemented in subclasses")
 
     def __repr__(self):
         class_name = self.__class__.__name__
-        components = ", ".join(f"{k}={type(v).__name__}" for k, v in self.components.items())
-        auxiliaries = ", ".join(f"{k}={type(v).__name__}" for k, v in self.auxiliaries.items())
-        configs = ", ".join(f"{k}={v}" for k, v in self.configs.items())
+
+        # Components section
+        expected_components = set(getattr(self, "expected_components", []))
+        loaded_components = set(self.components.keys())
+        all_components = sorted(expected_components | loaded_components)
+        components = ", ".join(
+            f"{k}={type(self.components[k]).__name__}" if k in loaded_components else f"{k}" for k in all_components
+        )
+
+        # Auxiliaries section
+        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
+        loaded_auxiliaries = set(self.auxiliaries.keys())
+        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
+        auxiliaries = ", ".join(
+            f"{k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"{k}" for k in all_auxiliaries
+        )
+
+        # Configs section
+        expected_configs = set(getattr(self, "expected_configs", []))
+        loaded_configs = set(self.configs.keys())
+        all_configs = sorted(expected_configs | loaded_configs)
+        configs = ", ".join(f"{k}={self.configs[k]}" if k in loaded_configs else f"{k}" for k in all_configs)
+
+        # Single block shows itself
+        blocks = f"step={self.__class__.__name__}"
+
+        # Other information
         inputs = ", ".join(f"{name}={default}" for name, default in self.inputs)
         intermediates_inputs = ", ".join(self.intermediates_inputs)
         intermediates_outputs = ", ".join(self.intermediates_outputs)
@@ -208,6 +234,7 @@ class PipelineBlock:
             f"  components: {components}\n"
             f"  auxiliaries: {auxiliaries}\n"
             f"  configs: {configs}\n"
+            f"  blocks: {blocks}\n"
             f"  inputs: {inputs}\n"
             f"  intermediates_inputs: {intermediates_inputs}\n"
             f"  intermediates_outputs: {intermediates_outputs}\n"
@@ -217,9 +244,8 @@ class PipelineBlock:
 
 def combine_inputs(*input_lists: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]:
     """
-    Combines multiple lists of (name, default_value) tuples.
-    For duplicate inputs, updates only if current value is None and new value is not None.
-    Warns if multiple non-None default values exist for the same input.
+    Combines multiple lists of (name, default_value) tuples. For duplicate inputs, updates only if current value is
+    None and new value is not None. Warns if multiple non-None default values exist for the same input.
     """
     combined_dict = {}
     for inputs in input_lists:
@@ -238,163 +264,513 @@ def combine_inputs(*input_lists: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]
     return list(combined_dict.items())
 
 
+class MultiPipelineBlocks:
+    """
+    A class that combines multiple pipeline block classes into one. When used, it has same API and properties as
+    PipelineBlock. And it can be used in ModularPipelineBuilder as a single pipeline block.
+    """
 
-class AutoStep(PipelineBlock):
-    base_blocks = []     # list of block classes
-    trigger_inputs = []  # list of trigger inputs (None for default block)
-    required_components = []
-    optional_components = []
-    required_auxiliaries = []
-    optional_auxiliaries = []
-    
+    block_classes = []
+    block_names = []
+
+    @property
+    def expected_components(self):
+        expected_components = []
+        for block in self.blocks.values():
+            for component in block.expected_components:
+                if component not in expected_components:
+                    expected_components.append(component)
+        return expected_components
+
+    @property
+    def expected_auxiliaries(self):
+        expected_auxiliaries = []
+        for block in self.blocks.values():
+            for auxiliary in block.expected_auxiliaries:
+                if auxiliary not in expected_auxiliaries:
+                    expected_auxiliaries.append(auxiliary)
+        return expected_auxiliaries
+
+    @property
+    def expected_configs(self):
+        expected_configs = []
+        for block in self.blocks.values():
+            for config in block.expected_configs:
+                if config not in expected_configs:
+                    expected_configs.append(config)
+        return expected_configs
+
     def __init__(self, **kwargs):
-        self.blocks = []
-        
-        for block_cls, trigger in zip(self.base_blocks, self.trigger_inputs):
-            # Check components
-            missing_components = [
-                component for component in block_cls.required_components 
-                if component not in kwargs
-            ]
-            
-            # Check auxiliaries
-            missing_auxiliaries = [
-                auxiliary for auxiliary in block_cls.required_auxiliaries 
-                if auxiliary not in kwargs
-            ]
-            
-            if not missing_components and not missing_auxiliaries:
-                # Only get kwargs that the block's __init__ accepts
-                block_params = inspect.signature(block_cls.__init__).parameters
-                block_kwargs = {
-                    k: v for k, v in kwargs.items() 
-                    if k in block_params
-                }
-                self.blocks.append(block_cls(**block_kwargs))
-                
-                # Print message about trigger condition
-                if trigger is None:
-                    print(f"Added default block: {block_cls.__name__}")
-                else:
-                    print(f"Added block {block_cls.__name__} - will be dispatched if '{trigger}' input is not None")
-            else:
-                if trigger is None:
-                    print(f"Cannot add default block {block_cls.__name__}:")
-                else:
-                    print(f"Cannot add block {block_cls.__name__} (triggered by '{trigger}'):")
-                if missing_components:
-                    print(f"  - Missing components: {missing_components}")
-                if missing_auxiliaries:
-                    print(f"  - Missing auxiliaries: {missing_auxiliaries}")
-    
+        blocks = OrderedDict()
+        for block_prefix, block_cls in zip(self.block_prefixes, self.block_classes):
+            block_name = f"{block_prefix}_step" if block_prefix != "" else "step"
+            blocks[block_name] = block_cls(**kwargs)
+        self.blocks = blocks
+
+    # YiYi TODO: address the case where multiple blocks have the same component/auxiliary/config; give out warning etc
     @property
     def components(self):
         # Combine components from all blocks
         components = {}
-        for block in self.blocks:
+        for block_name, block in self.blocks.items():
             components.update(block.components)
         return components
-    
+
     @property
     def auxiliaries(self):
         # Combine auxiliaries from all blocks
         auxiliaries = {}
-        for block in self.blocks:
+        for block_name, block in self.blocks.items():
             auxiliaries.update(block.auxiliaries)
         return auxiliaries
-    
+
     @property
     def configs(self):
         # Combine configs from all blocks
         configs = {}
-        for block in self.blocks:
+        for block_name, block in self.blocks.items():
             configs.update(block.configs)
         return configs
-    
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return combine_inputs(*(block.inputs for block in self.blocks))
-    
+        raise NotImplementedError("inputs property must be implemented in subclasses")
+
     @property
     def intermediates_inputs(self) -> List[str]:
-        return list(set().union(*(
-            block.intermediates_inputs for block in self.blocks
-        )))
-    
+        raise NotImplementedError("intermediates_inputs property must be implemented in subclasses")
+
     @property
     def intermediates_outputs(self) -> List[str]:
-        return list(set().union(*(
-            block.intermediates_outputs for block in self.blocks
-        )))
-    
+        raise NotImplementedError("intermediates_outputs property must be implemented in subclasses")
+
     def __call__(self, pipeline, state):
-        # Check triggers in priority order
-        for idx, trigger in enumerate(self.trigger_inputs[:-1]):  # Skip last (None) trigger
-            if state.get_input(trigger) is not None:
-                return self.blocks[idx](pipeline, state)
-        # If no triggers match, use the default block (last one)
-        return self.blocks[-1](pipeline, state)
+        raise NotImplementedError("__call__ method must be implemented in subclasses")
+
+    def update_states(self, **kwargs):
+        """
+        Update states for each block with support for block-specific kwargs.
+
+        Args:
+            **kwargs: Can include both general kwargs (e.g., 'unet') and
+                     block-specific kwargs (e.g., 'img2img_step_unet')
+
+        Example:
+            pipeline.update_states(
+                img2img_step_unet=unet2, # Only for img2img_step step_unet=unet1, # Only for step vae=vae1 # For any
+                block that expects vae
+            )
+        """
+        for block_name, block in self.blocks.items():
+            # Prepare block-specific kwargs
+            if isinstance(block, PipelineBlock):
+                block_kwargs = {}
+
+                # Check for block-specific kwargs first (e.g., 'img2img_unet')
+                prefix = f"{block_name.replace('_step', '')}_"
+                for key, value in kwargs.items():
+                    if key.startswith(prefix):
+                        # Remove prefix and add to block kwargs
+                        block_kwargs[key[len(prefix) :]] = value
+
+                # For any expected component/auxiliary/config not found with prefix,
+                # fall back to general kwargs
+                for name in (
+                    block.expected_components
+                    +
+                    # block.expected_auxiliaries +
+                    block.expected_configs
+                ):
+                    if name not in block_kwargs:
+                        if name in kwargs:
+                            block_kwargs[name] = kwargs[name]
+            elif isinstance(block, MultiPipelineBlocks):
+                block_kwargs = kwargs
+            else:
+                raise ValueError(f"Unsupported block type: {type(block).__name__}")
+
+            # Update the block with its specific kwargs
+            block.update_states(**block_kwargs)
+
+    def add_states_from_pipe(self, pipe: DiffusionPipeline, **kwargs):
+        """
+        Load components from pipe with support for block-specific kwargs.
+
+        Args:
+            pipe: DiffusionPipeline object
+            **kwargs: Can include both general kwargs (e.g., 'unet') and
+                     block-specific kwargs (e.g., 'img2img_unet' for 'img2img_step')
+        """
+        for block_name, block in self.blocks.items():
+            # Handle different block types
+            if isinstance(block, PipelineBlock):
+                block_kwargs = {}
+
+                # Check for block-specific kwargs first (e.g., 'img2img_unet')
+                prefix = f"{block_name.replace('_step', '')}_"
+                for key, value in kwargs.items():
+                    if key.startswith(prefix):
+                        # Remove prefix and add to block kwargs
+                        block_kwargs[key[len(prefix) :]] = value
+
+                # For any expected component/auxiliary/config not found with prefix,
+                # fall back to general kwargs
+                for name in (
+                    block.expected_components
+                    +
+                    # block.expected_auxiliaries +
+                    block.expected_configs
+                ):
+                    if name not in block_kwargs:
+                        if name in kwargs:
+                            block_kwargs[name] = kwargs[name]
+            elif isinstance(block, MultiPipelineBlocks):
+                block_kwargs = kwargs
+            else:
+                raise ValueError(f"Unsupported block type: {type(block).__name__}")
+
+            # Load the block with its specific kwargs
+            block.add_states_from_pipe(pipe, **block_kwargs)
+
+    def add_states_from_pretrained(self, pretrained_model_or_path, **kwargs):
+        base_pipeline = DiffusionPipeline.from_pretrained(pretrained_model_or_path, **kwargs)
+        self.add_states_from_pipe(base_pipeline, **kwargs)
+
+    def __repr__(self):
+        class_name = self.__class__.__name__
+
+        # Components section
+        expected_components = set(getattr(self, "expected_components", []))
+        loaded_components = set(self.components.keys())
+        all_components = sorted(expected_components | loaded_components)
+        components_str = "  Components:\n" + "\n".join(
+            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
+            for k in all_components
+        )
+
+        # Auxiliaries section
+        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
+        loaded_auxiliaries = set(self.auxiliaries.keys())
+        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
+        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
+            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
+            for k in all_auxiliaries
+        )
+
+        # Configs section
+        expected_configs = set(getattr(self, "expected_configs", []))
+        loaded_configs = set(self.configs.keys())
+        all_configs = sorted(expected_configs | loaded_configs)
+        configs_str = "  Configs:\n" + "\n".join(
+            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
+        )
+
+        # Blocks section
+        blocks_str = "  Blocks:\n" + "\n".join(
+            f"    - {name}={block.__class__.__name__}" for name, block in self.blocks.items()
+        )
+
+        # Other information
+        inputs_str = "  Inputs:\n" + "\n".join(f"    - {name}={default}" for name, default in self.inputs)
+
+        intermediates_str = (
+            "  Intermediates:\n"
+            f"    - inputs: {', '.join(self.intermediates_inputs)}\n"
+            f"    - outputs: {', '.join(self.intermediates_outputs)}"
+        )
+
+        return (
+            f"{class_name}(\n"
+            f"{components_str}\n"
+            f"{auxiliaries_str}\n"
+            f"{configs_str}\n"
+            f"{blocks_str}\n"
+            f"{inputs_str}\n"
+            f"{intermediates_str}\n"
+            f")"
+        )
 
 
-def make_auto_step(pipeline_block_map: OrderedDict) -> Type[AutoStep]:
+class AutoPipelineBlocks(MultiPipelineBlocks):
     """
-    Creates a new AutoStep subclass with updated class attributes based on the pipeline block map.
-    
-    Args:
-        pipeline_block_map: OrderedDict mapping trigger inputs to pipeline block classes.
-                          Order determines priority (earlier entries take precedence).
-                          Must include None key for the default block.
+    A class that automatically selects which block to run based on trigger inputs.
+
+    Attributes:
+        block_classes: List of block classes to be used
+        block_prefixes: List of prefixes for each block
+        block_trigger_inputs: List of input names that trigger specific blocks, with None for default
     """
-    blocks = list(pipeline_block_map.values())
-    triggers = list(pipeline_block_map.keys())
-    
-    # Get all expected components (either required or optional by any block)
-    expected_components = []
-    for block in blocks:
-        for component in (block.required_components + block.optional_components):
-            if component not in expected_components:
-                expected_components.append(component)
-    
-    # A component is required if it's in required_components of all blocks
-    required_components = [
-        component for component in expected_components
-        if all(component in block.required_components for block in blocks)
-    ]
-    
-    # All other expected components are optional
-    optional_components = [
-        component for component in expected_components
-        if component not in required_components
-    ]
 
-    # Get all expected auxiliaries (either required or optional by any block)
-    expected_auxiliaries = []
-    for block in blocks:
-        for auxiliary in (block.required_auxiliaries + getattr(block, 'optional_auxiliaries', [])):
-            if auxiliary not in expected_auxiliaries:
-                expected_auxiliaries.append(auxiliary)
-    
-    # An auxiliary is required if it's in required_auxiliaries of all blocks
-    required_auxiliaries = [
-        auxiliary for auxiliary in expected_auxiliaries
-        if all(auxiliary in block.required_auxiliaries for block in blocks)
-    ]
-    
-    # All other expected auxiliaries are optional
-    optional_auxiliaries = [
-        auxiliary for auxiliary in expected_auxiliaries
-        if auxiliary not in required_auxiliaries
-    ]
+    block_classes = []
+    block_prefixes = []
+    block_trigger_inputs = []
 
-    # Create new class with updated attributes
-    return type('AutoStep', (AutoStep,), {
-        'base_blocks': blocks,
-        'trigger_inputs': triggers,
-        'required_components': required_components,
-        'optional_components': optional_components,
-        'required_auxiliaries': required_auxiliaries,
-        'optional_auxiliaries': optional_auxiliaries,
-    })
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.__post_init__()
+
+    def __post_init__(self):
+        """
+        Create mapping of trigger inputs directly to block objects. Validates that there is at most one default block
+        (None trigger).
+        """
+        # Check for at most one default block
+        default_blocks = [t for t in self.block_trigger_inputs if t is None]
+        if len(default_blocks) > 1:
+            raise ValueError(
+                f"Multiple default blocks specified in {self.__class__.__name__}. "
+                "Must include at most one None in block_trigger_inputs."
+            )
+
+        # Map trigger inputs to block objects
+        self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return combine_inputs(*(block.inputs for block in self.blocks.values()))
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        return list(set().union(*(block.intermediates_inputs for block in self.blocks.values())))
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return list(set().union(*(block.intermediates_outputs for block in self.blocks.values())))
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        # Find default block first (if any)
+        default_block = self.trigger_to_block_map.get(None)
+
+        # Check which trigger inputs are present
+        active_triggers = [
+            input_name
+            for input_name in self.block_trigger_inputs
+            if input_name is not None and state.get_input(input_name) is not None
+        ]
+
+        # If multiple triggers are active, raise error
+        if len(active_triggers) > 1:
+            trigger_names = [f"'{t}'" for t in active_triggers]
+            raise ValueError(
+                f"Multiple trigger inputs found ({', '.join(trigger_names)}). "
+                f"Only one trigger input can be provided for {self.__class__.__name__}."
+            )
+
+        # Get the block to run (use default if no triggers active)
+        block = self.trigger_to_block_map.get(active_triggers[0]) if active_triggers else default_block
+        if block is None:
+            logger.warning(f"No valid block found in {self.__class__.__name__}, skipping.")
+            return pipeline, state
+
+        try:
+            return block(pipeline, state)
+        except Exception as e:
+            error_msg = (
+                f"\nError in block: {block.__class__.__name__}\n"
+                f"Error details: {str(e)}\n"
+                f"Traceback:\n{traceback.format_exc()}"
+            )
+            logger.error(error_msg)
+            raise
+
+    def __repr__(self):
+        class_name = self.__class__.__name__
+
+        # Components section
+        expected_components = set(getattr(self, "expected_components", []))
+        loaded_components = set(self.components.keys())
+        all_components = sorted(expected_components | loaded_components)
+        components_str = "  Components:\n" + "\n".join(
+            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
+            for k in all_components
+        )
+
+        # Auxiliaries section
+        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
+        loaded_auxiliaries = set(self.auxiliaries.keys())
+        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
+        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
+            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
+            for k in all_auxiliaries
+        )
+
+        # Configs section
+        expected_configs = set(getattr(self, "expected_configs", []))
+        loaded_configs = set(self.configs.keys())
+        all_configs = sorted(expected_configs | loaded_configs)
+        configs_str = "  Configs:\n" + "\n".join(
+            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
+        )
+
+        # Blocks section with trigger information
+        blocks_str = "  Blocks:\n"
+        for name, block in self.blocks.items():
+            # Find trigger for this block
+            trigger = next((t for t, b in self.trigger_to_block_map.items() if b == block), None)
+            trigger_str = " (default)" if trigger is None else f" (triggered by: {trigger})"
+
+            blocks_str += f"    {name} ({block.__class__.__name__}){trigger_str}\n"
+
+            # Add inputs information
+            if hasattr(block, "inputs"):
+                inputs_str = ", ".join(f"{name}={default}" for name, default in block.inputs)
+                if inputs_str:
+                    blocks_str += f"       inputs: {inputs_str}\n"
+
+            # Add intermediates information
+            if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
+                intermediates_str = ""
+                if hasattr(block, "intermediates_inputs"):
+                    intermediates_str += f"{', '.join(block.intermediates_inputs)}"
+
+                if hasattr(block, "intermediates_outputs"):
+                    if intermediates_str:
+                        intermediates_str += " -> "
+                    intermediates_str += f"{', '.join(block.intermediates_outputs)}"
+
+                if intermediates_str:
+                    blocks_str += f"       intermediates: {intermediates_str}\n"
+            blocks_str += "\n"
+
+        # Pipeline interface information
+        inputs_str = "  PipelineBlock Interface:\n"
+        inputs_str += "    Inputs:\n" + "\n".join(f"      - {name}={default}" for name, default in self.inputs)
+
+        intermediates_str = (
+            "\n    Intermediates:\n"
+            f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
+            f"      - outputs: {', '.join(self.intermediates_outputs)}"
+        )
+
+        return (
+            f"{class_name}(\n"
+            f"{components_str}\n"
+            f"{auxiliaries_str}\n"
+            f"{configs_str}\n"
+            f"{blocks_str}\n"
+            f"{inputs_str}"
+            f"{intermediates_str}\n"
+            f")"
+        )
+
+
+class SequentialPipelineBlocks(MultiPipelineBlocks):
+    """
+    A class that combines multiple pipeline block classes into one. When called, it will call each block in sequence.
+    """
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return combine_inputs(*(block.inputs for block in self.blocks.values()))
+
+    @property
+    def intermediates_inputs(self) -> List[str]:
+        inputs = set()
+        outputs = set()
+
+        # Go through all blocks in order
+        for block in self.blocks.values():
+            # Add inputs that aren't in outputs yet
+            inputs.update(input_name for input_name in block.intermediates_inputs if input_name not in outputs)
+            # Add this block's outputs
+            outputs.update(block.intermediates_outputs)
+
+        return list(inputs)
+
+    @property
+    def intermediates_outputs(self) -> List[str]:
+        return list(set().union(*(block.intermediates_outputs for block in self.blocks.values())))
+
+    @torch.no_grad()
+    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+        for block_name, block in self.blocks.items():
+            try:
+                pipeline, state = block(pipeline, state)
+            except Exception as e:
+                error_msg = (
+                    f"\nError in block: ({block_name}, {block.__class__.__name__})\n"
+                    f"Error details: {str(e)}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+                logger.error(error_msg)
+                raise
+        return pipeline, state
+
+    def __repr__(self):
+        class_name = self.__class__.__name__
+
+        # Components section
+        expected_components = set(getattr(self, "expected_components", []))
+        loaded_components = set(self.components.keys())
+        all_components = sorted(expected_components | loaded_components)
+        components_str = "  Components:\n" + "\n".join(
+            f"    - {k}={type(self.components[k]).__name__}" if k in loaded_components else f"    - {k}"
+            for k in all_components
+        )
+
+        # Auxiliaries section
+        expected_auxiliaries = set(getattr(self, "expected_auxiliaries", []))
+        loaded_auxiliaries = set(self.auxiliaries.keys())
+        all_auxiliaries = sorted(expected_auxiliaries | loaded_auxiliaries)
+        auxiliaries_str = "  Auxiliaries:\n" + "\n".join(
+            f"    - {k}={type(self.auxiliaries[k]).__name__}" if k in loaded_auxiliaries else f"    - {k}"
+            for k in all_auxiliaries
+        )
+
+        # Configs section
+        expected_configs = set(getattr(self, "expected_configs", []))
+        loaded_configs = set(self.configs.keys())
+        all_configs = sorted(expected_configs | loaded_configs)
+        configs_str = "  Configs:\n" + "\n".join(
+            f"    - {k}={self.configs[k]}" if k in loaded_configs else f"    - {k}" for k in all_configs
+        )
+
+        # Detailed blocks section with data flow
+        blocks_str = "  Blocks:\n"
+        for i, (name, block) in enumerate(self.blocks.items()):
+            blocks_str += f"    {i}. {name} ({block.__class__.__name__})\n"
+
+            # Add inputs information
+            if hasattr(block, "inputs"):
+                inputs_str = ", ".join(f"{name}={default}" for name, default in block.inputs)
+                blocks_str += f"       inputs: {inputs_str}\n"
+
+            # Add intermediates information
+            if hasattr(block, "intermediates_inputs") or hasattr(block, "intermediates_outputs"):
+                intermediates_str = ""
+                if hasattr(block, "intermediates_inputs"):
+                    intermediates_str += f"{', '.join(block.intermediates_inputs)}"
+
+                if hasattr(block, "intermediates_outputs"):
+                    if intermediates_str:
+                        intermediates_str += " -> "
+                    intermediates_str += f"{', '.join(block.intermediates_outputs)}"
+
+                if intermediates_str:
+                    blocks_str += f"       intermediates: {intermediates_str}\n"
+            blocks_str += "\n"
+
+        # Pipeline interface information
+        inputs_str = "  PipelineBlock Interface:\n"
+        inputs_str += "    Inputs:\n" + "\n".join(f"      - {name}={default}" for name, default in self.inputs)
+
+        intermediates_str = (
+            "\n    Intermediates:\n"
+            f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
+            f"      - outputs: {', '.join(self.intermediates_outputs)}"
+        )
+
+        return (
+            f"{class_name}(\n"
+            f"{components_str}\n"
+            f"{auxiliaries_str}\n"
+            f"{configs_str}\n"
+            f"{blocks_str}\n"
+            f"{inputs_str}"
+            f"{intermediates_str}\n"
+            f")"
+        )
 
 
 class ModularPipelineBuilder(ConfigMixin):
@@ -662,30 +1038,6 @@ class ModularPipelineBuilder(ConfigMixin):
             configs_to_add.update(block.configs)
             auxiliaries_to_add.update(block.auxiliaries)
 
-        # Validate all required components and auxiliaries after consolidation
-        for block in pipeline_blocks:
-            for required_component in block.required_components:
-                if (
-                    not hasattr(self, required_component)
-                    and required_component not in components_to_add
-                    or getattr(self, required_component, None) is None
-                    and components_to_add.get(required_component) is None
-                ):
-                    raise ValueError(
-                        f"Cannot add block {block.__class__.__name__}: Required component {required_component} not found in pipeline"
-                    )
-
-            for required_auxiliary in block.required_auxiliaries:
-                if (
-                    not hasattr(self, required_auxiliary)
-                    and required_auxiliary not in auxiliaries_to_add
-                    or getattr(self, required_auxiliary, None) is None
-                    and auxiliaries_to_add.get(required_auxiliary) is None
-                ):
-                    raise ValueError(
-                        f"Cannot add block {block.__class__.__name__}: Required auxiliary {required_auxiliary} not found in pipeline"
-                    )
-
         # Process all items in batches
         if components_to_add:
             self.register_modules(**components_to_add)
@@ -720,95 +1072,6 @@ class ModularPipelineBuilder(ConfigMixin):
         # Remove the old blocks
         self.remove_blocks(indices_to_remove)
 
-    @classmethod
-    @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_or_path, **kwargs):
-        # (1) create the base pipeline
-        cache_dir = kwargs.pop("cache_dir", None)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        token = kwargs.pop("token", None)
-        local_files_only = kwargs.pop("local_files_only", False)
-        revision = kwargs.pop("revision", None)
-
-        load_config_kwargs = {
-            "cache_dir": cache_dir,
-            "force_download": force_download,
-            "proxies": proxies,
-            "token": token,
-            "local_files_only": local_files_only,
-            "revision": revision,
-        }
-
-        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
-        base_pipeline_class_name = config["_class_name"]
-        base_pipeline_class = _get_pipeline_class(cls, config)
-
-        kwargs = {**load_config_kwargs, **kwargs}
-        base_pipeline = base_pipeline_class.from_pretrained(pretrained_model_or_path, **kwargs)
-
-        # (2) map the base pipeline to pipeline blocks
-        modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[_get_model(base_pipeline_class_name)]
-        modular_pipeline_class = _get_pipeline_class(cls, config=None, class_name=modular_pipeline_class_name)
-
-        # (3) create the pipeline blocks
-        pipeline_blocks = [
-            block_class.from_pipe(base_pipeline) for block_class in modular_pipeline_class.default_pipeline_blocks
-        ]
-
-        # (4) create the builder
-        builder = modular_pipeline_class()
-        builder.add_blocks(pipeline_blocks)
-
-        return builder
-
-    @classmethod
-    def from_pipe(cls, pipeline, **kwargs):
-        base_pipeline_class_name = pipeline.__class__.__name__
-        modular_pipeline_class_name = MODULAR_PIPELINE_MAPPING[_get_model(base_pipeline_class_name)]
-        modular_pipeline_class = _get_pipeline_class(cls, config=None, class_name=modular_pipeline_class_name)
-
-        pipeline_blocks = []
-        # Create each block, passing only unused items that the block expects
-        for block_class in modular_pipeline_class.default_pipeline_blocks:
-            expected_components = set(block_class.required_components + block_class.optional_components)
-            expected_auxiliaries = set(block_class.required_auxiliaries + block_class.optional_auxiliaries)
-
-            # Get init parameters to check for expected configs
-            init_params = inspect.signature(block_class.__init__).parameters
-            expected_configs = {
-                k for k in init_params if k not in expected_components and k not in expected_auxiliaries
-            }
-
-            block_kwargs = {}
-
-            for key, value in kwargs.items():
-                if key in expected_components or key in expected_auxiliaries or key in expected_configs:
-                    block_kwargs[key] = value
-
-            # Create the block with filtered kwargs
-            block = block_class.from_pipe(pipeline, **block_kwargs)
-            pipeline_blocks.append(block)
-
-        # Create and setup the builder
-        builder = modular_pipeline_class()
-        builder.add_blocks(pipeline_blocks)
-
-        # Warn about unused kwargs
-        unused_kwargs = {
-            k: v
-            for k, v in kwargs.items()
-            if not any(
-                k in block.components or k in block.auxiliaries or k in block.configs for block in pipeline_blocks
-            )
-        }
-        if unused_kwargs:
-            logger.warning(
-                f"The following items were passed but not used by any pipeline block: {list(unused_kwargs.keys())}"
-            )
-
-        return builder
-
     def run_blocks(self, state: PipelineState = None, **kwargs):
         """
         Run one or more blocks in sequence, optionally you can pass a previous pipeline state.
@@ -821,18 +1084,21 @@ class ModularPipelineBuilder(ConfigMixin):
 
         default_params = self.default_call_parameters
 
-        # user can pass the intermediate of the first block
+        # Add inputs to state, using defaults if not provided in the kwargs or the state
+        # if same input already in the state, will override it if provided in the kwargs
+
+        for name, default in default_params.items():
+            if name in input_params:
+                if name not in self.pipeline_blocks[0].intermediates_inputs:
+                    state.add_input(name, input_params.pop(name))
+                else:
+                    state.add_input(name, input_params[name])
+            elif name not in state.inputs:
+                state.add_input(name, default)
+
         for name in self.pipeline_blocks[0].intermediates_inputs:
             if name in input_params:
                 state.add_intermediate(name, input_params.pop(name))
-
-        # Add inputs to state, using defaults if not provided in the kwargs or the state
-        # if same input already in the state, will override it if provided in the kwargs
-        for name, default in default_params.items():
-            if name in input_params:
-                state.add_input(name, input_params.pop(name))
-            elif name not in state.inputs:
-                state.add_input(name, default)
 
         # Warn about unexpected inputs
         if len(input_params) > 0:
@@ -873,8 +1139,12 @@ class ModularPipelineBuilder(ConfigMixin):
             for block in self.pipeline_blocks:
                 try:
                     pipeline, state = block(self, state)
-                except Exception:
-                    error_msg = f"Error in block: ({block.__class__.__name__}):\n"
+                except Exception as e:
+                    error_msg = (
+                        f"\nError in block: ({block.__class__.__name__}):\n"
+                        f"Error details: {str(e)}\n"
+                        f"Stack trace:\n{traceback.format_exc()}"
+                    )
                     logger.error(error_msg)
                     raise
 
