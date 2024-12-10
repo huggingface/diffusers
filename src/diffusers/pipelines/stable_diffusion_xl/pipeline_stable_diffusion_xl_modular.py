@@ -926,6 +926,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
                 noise_pred = pipeline.guider.apply_guidance(
                     noise_pred,
                     timestep=t,
+                    latents=latents,
                 )
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -1213,7 +1214,7 @@ class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
                     return_dict=False,
                 )[0]
                 # perform guidance
-                noise_pred = pipeline.guider.apply_guidance(noise_pred, timestep=t)
+                noise_pred = pipeline.guider.apply_guidance(noise_pred, timestep=t, latents=latents)
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = pipeline.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
