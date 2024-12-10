@@ -12,14 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import importlib
 import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from huggingface_hub import ModelCard, model_info
@@ -41,11 +39,12 @@ from ..utils import (
     logging,
 )
 from ..utils.torch_utils import is_compiled_module
+from .transformers_loading_utils import load_tokenizer_from_dduf, load_transformers_model_from_dduf
 
 
 if is_transformers_available():
     import transformers
-    from transformers import PreTrainedModel
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
     from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
@@ -664,7 +663,7 @@ def load_sub_model(
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
 
-    load_method = getattr(class_obj, load_method_name)
+    load_method = _get_load_method(class_obj, load_method_name, is_dduf=dduf_entries is not None)
 
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
@@ -748,6 +747,22 @@ def load_sub_model(
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
     return loaded_sub_model
+
+
+def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) -> Callable:
+    """
+    Return the method to load the sub model.
+
+    In practice, this method will return the `"from_pretrained"` (or `load_method_name`) method of the class object
+    except if loading from a DDUF checkpoint. In that case, transformers models and tokenizers have a specific loading
+    method that we need to use (won't use `from_pretrained`).
+    """
+    if is_dduf:
+        if issubclass(class_obj, PreTrainedTokenizerBase):
+            return lambda *args, **kwargs: load_tokenizer_from_dduf(class_obj, *args, **kwargs)
+        if issubclass(class_obj, PreTrainedModel):
+            return lambda *args, **kwargs: load_transformers_model_from_dduf(class_obj, *args, **kwargs)
+    return getattr(class_obj, load_method_name)
 
 
 def _fetch_class_library_tuple(module):
