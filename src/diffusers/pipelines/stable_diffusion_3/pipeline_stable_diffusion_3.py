@@ -950,7 +950,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         # 6. Prepare image embeddings
-        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+        # Either image is passed and ip_adapter is active
+        # Or image_embeds are passed directly
+        if (ip_adapter_image is not None and self.is_ip_adapter_active()) or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
@@ -970,7 +972,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+                if image_embeds is not None:
                     ip_hidden_states, temb = self.transformer.image_proj(
                         image_embeds,
                         timestep.to(dtype=latents.dtype),

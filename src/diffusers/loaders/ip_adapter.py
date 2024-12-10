@@ -356,6 +356,24 @@ class IPAdapterMixin:
 class SD3IPAdapterMixin:
     """Mixin for handling StableDiffusion 3 IP Adapters."""
 
+    @property
+    def is_ip_adapter_active(self) -> bool:
+        r"""Checks if any ip_adapter attention processor have scale > 0.
+
+        IP-Adapter scale controls the influence of the image prompt versus text prompt. When this value is set to 0,
+        image is irrelevant.
+
+        Returns:
+            `bool`: True when ip_adapter is loaded and any ip_adapter layer scale > 0.
+        """
+        scales = [
+            attn_proc.scale
+            for attn_proc in self.transformer.attn_processors.values()
+            if isinstance(attn_proc, IPAdapterJointAttnProcessor2_0)
+        ]
+
+        return len(scales) > 0 and any(scale > 0 for scale in scales)
+
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
