@@ -626,7 +626,6 @@ class ConsisIDPipeline(DiffusionPipeline):
             self.transformer.unfuse_qkv_projections()
             self.fusing_transformer = False
 
-    # Copied from diffusers.pipelines.consisid.pipeline_consisid.ConsisIDPipeline._prepare_rotary_positional_embeddings
     def _prepare_rotary_positional_embeddings(
         self,
         height: int,
