@@ -86,11 +86,9 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "LTXTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
-        "config_mapping_fn": lambda *_, **__: {},
     },
     "AutoencoderKLLTX": {
         "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
-        "config_mapping_fn": lambda *_, **__: {},
     },
 }
 
@@ -229,7 +227,7 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if original_config is not None:
+        if original_config:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
             else:
