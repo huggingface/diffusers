@@ -80,7 +80,7 @@ EXAMPLE_DOC_STRING = """
         ...     image_latents=image_latents,
         ...     latent_image_ids=latent_image_ids,
         ...     start_timestep=0,
-        ...     stop_timestep=.38,
+        ...     stop_timestep=.25,
         ...     num_inference_steps=28,
         ...     eta=0.9,
         ... ).images[0]
