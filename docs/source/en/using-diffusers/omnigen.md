@@ -295,7 +295,7 @@ image
 
 ## Optimization when inputting multiple images 
 
-For text-to-image task, OmniGen requires minimal memory and time costs (9G memory and 31s for a 1024*1024 image on A800 GPU). 
+For text-to-image task, OmniGen requires minimal memory and time costs (9GB memory and 31s for a 1024*1024 image on A800 GPU). 
 However, when using input images, the computational cost increases. 
 
 Here are some guidelines to help you reduce computational costs when input multiple images. The experiments are conducted on A800 GPU and input two images to OmniGen.
