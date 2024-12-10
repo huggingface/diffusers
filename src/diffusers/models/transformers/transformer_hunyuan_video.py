@@ -23,8 +23,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.models import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ..modeling_utils import ModelMixin
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 def attention(
@@ -47,22 +48,6 @@ def attention(
     b, s, a, d = x.shape
     out = x.reshape(b, s, -1)
     return out
-
-
-def _ntuple(n):
-    def parse(x):
-        if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
-            x = tuple(x)
-            if len(x) == 1:
-                x = tuple(itertools.repeat(x[0], n))
-            return x
-        return tuple(itertools.repeat(x, n))
-
-    return parse
-
-
-to_1tuple = _ntuple(1)
-to_2tuple = _ntuple(2)
 
 
 def get_activation_layer(act_type):
@@ -324,16 +309,14 @@ class MLP(nn.Module):
         super().__init__()
         out_features = out_features or in_channels
         hidden_channels = hidden_channels or in_channels
-        bias = to_2tuple(bias)
-        drop_probs = to_2tuple(drop)
         linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
 
-        self.fc1 = linear_layer(in_channels, hidden_channels, bias=bias[0])
+        self.fc1 = linear_layer(in_channels, hidden_channels, bias=bias)
         self.act = act_layer()
-        self.drop1 = nn.Dropout(drop_probs[0])
+        self.drop1 = nn.Dropout(drop)
         self.norm = norm_layer(hidden_channels) if norm_layer is not None else nn.Identity()
-        self.fc2 = linear_layer(hidden_channels, out_features, bias=bias[1])
-        self.drop2 = nn.Dropout(drop_probs[1])
+        self.fc2 = linear_layer(hidden_channels, out_features, bias=bias)
+        self.drop2 = nn.Dropout(drop)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -415,15 +398,10 @@ class PatchEmbed(nn.Module):
         bias=True,
     ):
         super().__init__()
-        patch_size = to_2tuple(patch_size)
-        self.patch_size = patch_size
+        
+        patch_size = tuple(patch_size)
         self.flatten = flatten
-
         self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
-        nn.init.xavier_uniform_(self.proj.weight.view(self.proj.weight.size(0), -1))
-        if bias:
-            nn.init.zeros_(self.proj.bias)
-
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x):
@@ -965,8 +943,9 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        patch_size: list = [1, 2, 2],
-        in_channels: int = 16,  # Should be VAE.config.latent_channels.
+        patch_size: int = 2,
+        patch_size_t: int = 1,
+        in_channels: int = 16,
         out_channels: int = 16,
         num_attention_heads: int = 24,
         attention_head_dim: int = 128,
@@ -981,14 +960,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         guidance_embed: bool = True,
         text_states_dim: int = 4096,
         text_states_dim_2: int = 768,
-    ):
+    ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        self.patch_size = patch_size
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
-        self.unpatchify_channels = self.out_channels
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
 
@@ -996,7 +973,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             raise ValueError(f"Got {rope_dim_list} but expected positional dim {attention_head_dim}")
 
         # image projection
-        self.img_in = PatchEmbed(self.patch_size, self.in_channels, inner_dim)
+        self.img_in = PatchEmbed((patch_size_t, patch_size, patch_size), self.in_channels, inner_dim)
 
         # text projection
         self.txt_in = SingleTokenRefiner(text_states_dim, inner_dim, num_attention_heads, depth=2)
@@ -1010,7 +987,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         # guidance modulation
         self.guidance_in = TimestepEmbedder(inner_dim, get_activation_layer("silu")) if guidance_embed else None
 
-        # double blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoDoubleStreamBlock(
@@ -1026,7 +1002,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        # single blocks
         self.single_transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoSingleStreamBlock(
@@ -1043,100 +1018,82 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.final_layer = FinalLayer(
             inner_dim,
-            self.patch_size,
+            (patch_size_t, patch_size, patch_size),
             self.out_channels,
             get_activation_layer("silu"),
         )
 
     def forward(
         self,
-        x: torch.Tensor,
-        t: torch.Tensor,  # Should be in range(0, 1000).
-        text_states: torch.Tensor = None,
-        text_mask: torch.Tensor = None,  # Now we don't use it.
-        text_states_2: Optional[torch.Tensor] = None,  # Text embedding for modulation.
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,  # Should be in range(0, 1000).
+        encoder_hidden_states: torch.Tensor = None,
+        encoder_attention_mask: torch.Tensor = None,  # Now we don't use it.
+        encoder_hidden_states_2: Optional[torch.Tensor] = None,  # Text embedding for modulation.
         freqs_cos: Optional[torch.Tensor] = None,
         freqs_sin: Optional[torch.Tensor] = None,
-        guidance: torch.Tensor = None,  # Guidance for modulation, should be cfg_scale x 1000.
+        guidance: torch.Tensor = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        out = {}
-        img = x
-        txt = text_states
-        _, _, ot, oh, ow = x.shape
-        tt, th, tw = (
-            ot // self.patch_size[0],
-            oh // self.patch_size[1],
-            ow // self.patch_size[2],
-        )
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p = self.config.patch_size
+        p_t = self.config.patch_size_t
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p
+        post_patch_width = width // p
 
         # Prepare modulation vectors.
-        vec = self.time_in(t)
+        temb = self.time_in(timestep)
 
         # text modulation
-        vec = vec + self.vector_in(text_states_2)
+        temb = temb + self.vector_in(encoder_hidden_states_2)
 
         # guidance modulation
         if self.guidance_embed:
             if guidance is None:
                 raise ValueError("Didn't get guidance strength for guidance distilled model.")
 
-            # our timestep_embedding is merged into guidance_in(TimestepEmbedder)
-            vec = vec + self.guidance_in(guidance)
+            temb = temb + self.guidance_in(guidance)
 
         # Embed image and text.
-        img = self.img_in(img)
-        txt = self.txt_in(txt, t, text_mask)
+        hidden_states = self.img_in(hidden_states)
+        encoder_hidden_states = self.txt_in(encoder_hidden_states, timestep, encoder_attention_mask)
 
-        txt_seq_len = txt.shape[1]
-        img_seq_len = img.shape[1]
+        txt_seq_len = encoder_hidden_states.shape[1]
+        img_seq_len = hidden_states.shape[1]
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
-        # --------------------- Pass through DiT blocks ------------------------
         for _, block in enumerate(self.transformer_blocks):
             double_block_args = [
-                img,
-                txt,
-                vec,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
                 freqs_cis,
             ]
 
-            img, txt = block(*double_block_args)
+            hidden_states, encoder_hidden_states = block(*double_block_args)
 
-        # Merge txt and img to pass through single stream blocks.
-        x = torch.cat((img, txt), 1)
+        hidden_states = torch.cat((hidden_states, encoder_hidden_states), 1)
         if len(self.single_transformer_blocks) > 0:
             for _, block in enumerate(self.single_transformer_blocks):
                 single_block_args = [
-                    x,
-                    vec,
+                    hidden_states,
+                    temb,
                     txt_seq_len,
                     (freqs_cos, freqs_sin),
                 ]
 
-                x = block(*single_block_args)
+                hidden_states = block(*single_block_args)
 
-        img = x[:, :img_seq_len, ...]
+        hidden_states = hidden_states[:, :img_seq_len, ...]
 
-        # ---------------------------- Final layer ------------------------------
-        img = self.final_layer(img, vec)  # (N, T, patch_size ** 2 * out_channels)
+        hidden_states = self.final_layer(hidden_states, temb)
 
-        img = self.unpatchify(img, tt, th, tw)
-        if return_dict:
-            out["x"] = img
-            return out
-        return img
-
-    def unpatchify(self, x, t, h, w):
-        """
-        x: (N, T, patch_size**2 * C) imgs: (N, H, W, C)
-        """
-        c = self.unpatchify_channels
-        pt, ph, pw = self.patch_size
-        assert t * h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], t, h, w, c, pt, ph, pw))
-        x = torch.einsum("nthwcopq->nctohpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, t * pt, h * ph, w * pw))
-
-        return imgs
+        hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p)
+        hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
+        hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        
+        if not return_dict:
+            return (hidden_states,)
+        
+        return Transformer2DModelOutput(sample=hidden_states)

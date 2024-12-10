@@ -522,19 +522,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 emb = torch.cat(embs, dim=1)  # (WHD, D/2)
                 return emb
 
-        target_ndim = 3
-        ndim = 5 - 2
-        # 884
         latents_size = [(video_length - 1) // 4 + 1, height // 8, width // 8]
-
-        assert all(s % self.transformer.config.patch_size[idx] == 0 for idx, s in enumerate(latents_size)), (
-            f"Latent size(last {ndim} dimensions) should be divisible by patch size ({self.transformer.config.patch_size}), "
-            f"but got {latents_size}."
-        )
-        rope_sizes = [s // self.transformer.config.patch_size[idx] for idx, s in enumerate(latents_size)]
-
-        if len(rope_sizes) != target_ndim:
-            rope_sizes = [1] * (target_ndim - len(rope_sizes)) + rope_sizes  # time axis
+        rope_sizes = [latents_size[0] // self.transformer.config.patch_size_t, latents_size[1] // self.transformer.config.patch_size, latents_size[2] // self.transformer.config.patch_size]
 
         freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
             self.transformer.config.rope_dim_list,
@@ -779,17 +768,17 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     * 1000.0
                 )
 
-                noise_pred = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
-                    latents,  # [2, 16, 33, 24, 42]
-                    timestep,  # [2]
-                    text_states=prompt_embeds,  # [2, 256, 4096]
-                    text_mask=prompt_mask,  # [2, 256]
-                    text_states_2=prompt_embeds_2,  # [2, 768]
-                    freqs_cos=image_rotary_emb[0],  # [seqlen, head_dim]
-                    freqs_sin=image_rotary_emb[1],  # [seqlen, head_dim]
+                noise_pred = self.transformer(
+                    hidden_states=latents,
+                    timestep=timestep,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_mask,
+                    encoder_hidden_states_2=prompt_embeds_2,
+                    freqs_cos=image_rotary_emb[0],
+                    freqs_sin=image_rotary_emb[1],
                     guidance=guidance_expand,
-                    return_dict=True,
-                )["x"]
+                    return_dict=False,
+                )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
