@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -25,7 +25,6 @@ from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     BaseOutput,
-    deprecate,
     logging,
     replace_example_docstring,
 )
@@ -189,13 +188,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         if text_encoder is None:
             text_encoder = self.text_encoder
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
         if prompt_embeds is None:
             text_inputs = text_encoder.text2tokens(prompt, data_type=data_type)
 
@@ -203,7 +195,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_outputs = text_encoder.encode(text_inputs, data_type=data_type, device=device)
                 # TODO(aryan): Don't know why it doesn't work without this
                 torch.cuda.synchronize()
-                
+
                 prompt_embeds = prompt_outputs.hidden_state
             else:
                 prompt_outputs = text_encoder.encode(
@@ -359,7 +351,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             emb = torch.nn.functional.pad(emb, (0, 1))
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
-    
+
     def get_rotary_pos_embed(self, video_length, height, width):
         def _to_tuple(x, dim=2):
             if isinstance(x, int):
@@ -369,15 +361,15 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             else:
                 raise ValueError(f"Expected length {dim} or int, but got {x}")
 
-
         def get_meshgrid_nd(start, *args, dim=2):
             """
             Get n-D meshgrid with start, stop and num.
 
             Args:
-                start (int or tuple): If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop,
-                    step is 1; If len(args) == 2, start is start, args[0] is stop, args[1] is num. For n-dim, start/stop/num
-                    should be int or n-tuple. If n-tuple is provided, the meshgrid will be stacked following the dim order in
+                start (int or tuple):
+                    If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If
+                    len(args) == 2, start is start, args[0] is stop, args[1] is num. For n-dim, start/stop/num should
+                    be int or n-tuple. If n-tuple is provided, the meshgrid will be stacked following the dim order in
                     n-tuples.
                 *args: See above.
                 dim (int): Dimension of the meshgrid. Defaults to 2.
@@ -423,12 +415,12 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             interpolation_factor: float = 1.0,
         ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
             """
-            Precompute the frequency tensor for complex exponential (cis) with given dimensions.
-            (Note: `cis` means `cos + i * sin`, where i is the imaginary unit.)
+            Precompute the frequency tensor for complex exponential (cis) with given dimensions. (Note: `cis` means
+            `cos + i * sin`, where i is the imaginary unit.)
 
-            This function calculates a frequency tensor with complex exponential using the given dimension 'dim'
-            and the end index 'end'. The 'theta' parameter scales the frequencies.
-            The returned tensor contains complex values in complex64 data type.
+            This function calculates a frequency tensor with complex exponential using the given dimension 'dim' and
+            the end index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex
+            values in complex64 data type.
 
             Args:
                 dim (int): Dimension of the frequency tensor.
@@ -439,8 +431,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 theta_rescale_factor (float, optional): Rescale factor for theta. Defaults to 1.0.
 
             Returns:
-                freqs_cis: Precomputed frequency tensor with complex exponential. [S, D/2]
-                freqs_cos, freqs_sin: Precomputed frequency tensor with real and imaginary parts separately. [S, D]
+                freqs_cis: Precomputed frequency tensor with complex exponential. [S, D/2] freqs_cos, freqs_sin:
+                Precomputed frequency tensor with real and imaginary parts separately. [S, D]
             """
             if isinstance(pos, int):
                 pos = torch.arange(pos).float()
@@ -450,9 +442,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             if theta_rescale_factor != 1.0:
                 theta *= theta_rescale_factor ** (dim / (dim - 2))
 
-            freqs = 1.0 / (
-                theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim)
-            )  # [D/2]
+            freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
             # assert interpolation_factor == 1.0, f"interpolation_factor: {interpolation_factor}"
             freqs = torch.outer(pos * interpolation_factor, freqs)  # [S, D/2]
             if use_real:
@@ -460,11 +450,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
                 return freqs_cos, freqs_sin
             else:
-                freqs_cis = torch.polar(
-                    torch.ones_like(freqs), freqs
-                )  # complex64     # [S, D/2]
+                freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
                 return freqs_cis
-
 
         def get_nd_rotary_pos_embed(
             rope_dim_list,
@@ -481,12 +468,14 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             Args:
                 rope_dim_list (list of int): Dimension of each rope. len(rope_dim_list) should equal to n.
                     sum(rope_dim_list) should equal to head_dim of attention layer.
-                start (int | tuple of int | list of int): If len(args) == 0, start is num; If len(args) == 1, start is start,
-                    args[0] is stop, step is 1; If len(args) == 2, start is start, args[0] is stop, args[1] is num.
+                start (int | tuple of int | list of int):
+                    If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If
+                    len(args) == 2, start is start, args[0] is stop, args[1] is num.
                 *args: See above.
                 theta (float): Scaling factor for frequency computation. Defaults to 10000.0.
-                use_real (bool): If True, return real part and imaginary part separately. Otherwise, return complex numbers.
-                    Some libraries such as TensorRT does not support complex64 data type. So it is useful to provide a real
+                use_real (bool):
+                    If True, return real part and imaginary part separately. Otherwise, return complex numbers. Some
+                    libraries such as TensorRT does not support complex64 data type. So it is useful to provide a real
                     part and an imaginary part separately.
                 theta_rescale_factor (float): Rescale factor for theta. Defaults to 1.0.
 
@@ -494,9 +483,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 pos_embed (torch.Tensor): [HW, D/2]
             """
 
-            grid = get_meshgrid_nd(
-                start, *args, dim=len(rope_dim_list)
-            )  # [3, W, H, D] / [2, W, H]
+            grid = get_meshgrid_nd(start, *args, dim=len(rope_dim_list))  # [3, W, H, D] / [2, W, H]
 
             if isinstance(theta_rescale_factor, int) or isinstance(theta_rescale_factor, float):
                 theta_rescale_factor = [theta_rescale_factor] * len(rope_dim_list)
@@ -534,27 +521,21 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             else:
                 emb = torch.cat(embs, dim=1)  # (WHD, D/2)
                 return emb
-        
-        
+
         target_ndim = 3
         ndim = 5 - 2
         # 884
         latents_size = [(video_length - 1) // 4 + 1, height // 8, width // 8]
 
-        assert all(
-            s % self.transformer.config.patch_size[idx] == 0
-            for idx, s in enumerate(latents_size)
-        ), (
+        assert all(s % self.transformer.config.patch_size[idx] == 0 for idx, s in enumerate(latents_size)), (
             f"Latent size(last {ndim} dimensions) should be divisible by patch size ({self.transformer.config.patch_size}), "
             f"but got {latents_size}."
         )
-        rope_sizes = [
-            s // self.transformer.config.patch_size[idx] for idx, s in enumerate(latents_size)
-        ]
+        rope_sizes = [s // self.transformer.config.patch_size[idx] for idx, s in enumerate(latents_size)]
 
         if len(rope_sizes) != target_ndim:
             rope_sizes = [1] * (target_ndim - len(rope_sizes)) + rope_sizes  # time axis
-        
+
         freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
             self.transformer.config.rope_dim_list,
             rope_sizes,
@@ -562,7 +543,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             use_real=True,
             theta_rescale_factor=1,
         )
-        
+
         return freqs_cos, freqs_sin
 
     @property
@@ -572,10 +553,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
     @property
     def clip_skip(self):
         return self._clip_skip
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
 
     @property
     def num_timesteps(self):
@@ -609,11 +586,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         return_dict: bool = True,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
-            Union[
-                Callable[[int, int, Dict], None],
-                PipelineCallback,
-                MultiPipelineCallbacks
-            ]
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         enable_tiling: bool = False,
@@ -647,11 +620,12 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 will be used.
             guidance_scale (`float`, defaults to `6.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen Paper](https://arxiv.org/pdf/2205.11487.pdf).
-                Guidance scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate
-                images that are closely linked to the text `prompt`, usually at the expense of lower image quality.
-                Note that the only available HunyuanVideo model is CFG-distilled, which means that traditional guidance
-                between unconditional and conditional latent is not applied.
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality. Note that the only available HunyuanVideo model is
+                CFG-distilled, which means that traditional guidance between unconditional and conditional latent is
+                not applied.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -797,8 +771,13 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                
-                guidance_expand = torch.tensor([guidance_scale] * latents.shape[0], dtype=torch.float32, device=device).to(target_dtype) * 1000.0
+
+                guidance_expand = (
+                    torch.tensor([guidance_scale] * latents.shape[0], dtype=torch.float32, device=device).to(
+                        target_dtype
+                    )
+                    * 1000.0
+                )
 
                 noise_pred = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
                     latents,  # [2, 16, 33, 24, 42]
@@ -825,7 +804,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

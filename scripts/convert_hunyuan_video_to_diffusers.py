@@ -72,6 +72,7 @@ def get_args():
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the model in.")
     return parser.parse_args()
 
+
 DTYPE_MAPPING = {
     "fp32": torch.float32,
     "fp16": torch.float16,
@@ -91,6 +92,4 @@ if __name__ == "__main__":
     if args.transformer_ckpt_path is not None:
         transformer = convert_transformer(args.transformer_ckpt_path)
         if not args.save_pipeline:
-            transformer.save_pretrained(
-                args.output_path, safe_serialization=True, max_shard_size="5GB"
-            )
+            transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

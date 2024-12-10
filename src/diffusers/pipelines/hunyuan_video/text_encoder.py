@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -272,7 +271,7 @@ class TextEncoder(nn.Module):
 
         # No idea why it doesn't work without this
         torch.cuda.synchronize()
-        
+
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,

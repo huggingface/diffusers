@@ -16,7 +16,7 @@ import collections.abc
 import itertools
 import math
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -57,7 +57,6 @@ def attention(
     drop_rate=0,
     attn_mask=None,
     causal=False,
-    batch_size=1,
 ):
     pre_attn_layout, post_attn_layout = MEMORY_LAYOUT[mode]
     q = pre_attn_layout(q)
@@ -445,9 +444,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.flatten = flatten
 
-        self.proj = nn.Conv3d(
-            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias
-        )
+        self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
         nn.init.xavier_uniform_(self.proj.weight.view(self.proj.weight.size(0), -1))
         if bias:
             nn.init.zeros_(self.proj.bias)
@@ -719,7 +716,7 @@ class SingleTokenRefiner(nn.Module):
             mask_float = mask.float().unsqueeze(-1)  # [b, s1, 1]
             context_aware_representations = (x * mask_float).sum(dim=1) / mask_float.sum(dim=1)
             context_aware_representations = context_aware_representations.to(original_dtype)
-        
+
         context_aware_representations = self.c_embedder(context_aware_representations)
         c = timestep_aware_representations + context_aware_representations
 
@@ -753,21 +750,13 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         head_dim = hidden_size // heads_num
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
-        self.img_mod = ModulateDiT(
-            hidden_size,
-            factor=6,
-            act_layer=get_activation_layer("silu")
-        )
+        self.img_mod = ModulateDiT(hidden_size, factor=6, act_layer=get_activation_layer("silu"))
         self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.img_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
-        self.img_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
+        self.img_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
+        self.img_attn_k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -786,12 +775,8 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
-        self.txt_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
-        self.txt_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
+        self.txt_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
+        self.txt_attn_k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
         self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -856,23 +841,22 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         q = torch.cat((img_q, txt_q), dim=1)
         k = torch.cat((img_k, txt_k), dim=1)
         v = torch.cat((img_v, txt_v), dim=1)
-        attn = attention(
-            q,
-            k,
-            v,
-            batch_size=img_k.shape[0],
-        )
+        attn = attention(q, k, v)
 
         img_attn, txt_attn = attn[:, : img.shape[1]], attn[:, img.shape[1] :]
 
         # Calculate the img bloks.
         img = img + self.img_attn_proj(img_attn) * img_mod1_gate.unsqueeze(1)
-        img = img + self.img_mlp(modulate(self.img_norm2(img), shift=img_mod2_shift, scale=img_mod2_scale)) * img_mod2_gate.unsqueeze(1)
+        img = img + self.img_mlp(
+            modulate(self.img_norm2(img), shift=img_mod2_shift, scale=img_mod2_scale)
+        ) * img_mod2_gate.unsqueeze(1)
 
         # Calculate the txt bloks.
         txt = txt + self.txt_attn_proj(txt_attn) * txt_mod1_gate.unsqueeze(1)
-        txt = txt + self.txt_mlp(modulate(self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale)) * txt_mod2_gate.unsqueeze(1)
-        
+        txt = txt + self.txt_mlp(
+            modulate(self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale)
+        ) * txt_mod2_gate.unsqueeze(1)
+
         return img, txt
 
 
@@ -909,12 +893,8 @@ class HunyuanVideoSingleStreamBlock(nn.Module):
         self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
 
         qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
-        self.k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
+        self.q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
+        self.k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
 
         self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
@@ -954,12 +934,7 @@ class HunyuanVideoSingleStreamBlock(nn.Module):
             q = torch.cat((img_q, txt_q), dim=1)
             k = torch.cat((img_k, txt_k), dim=1)
 
-        attn = attention(
-            q,
-            k,
-            v,
-            batch_size=x.shape[0],
-        )
+        attn = attention(q, k, v)
 
         # Compute activation in mlp stream, cat again and run second linear layer.
         output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
@@ -1061,11 +1036,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.vector_in = MLPEmbedder(text_states_dim_2, inner_dim)
 
         # guidance modulation
-        self.guidance_in = (
-            TimestepEmbedder(inner_dim, get_activation_layer("silu"))
-            if guidance_embed
-            else None
-        )
+        self.guidance_in = TimestepEmbedder(inner_dim, get_activation_layer("silu")) if guidance_embed else None
 
         # double blocks
         self.transformer_blocks = nn.ModuleList(
