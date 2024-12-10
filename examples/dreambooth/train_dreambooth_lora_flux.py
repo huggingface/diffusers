@@ -742,7 +742,6 @@ class DreamBoothDataset(Dataset):
                     raise ValueError(
                         f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
-                    
             dataset["train"] = dataset["train"].cast_column(image_column, Image(decode=True))
             instance_images = dataset["train"][image_column]
 
@@ -770,7 +769,6 @@ class DreamBoothDataset(Dataset):
 
             instance_images = [Image.open(path) for path in list(Path(instance_data_root).iterdir())]
             self.custom_instance_prompts = None
-        
         self.instance_images = []
         for img in instance_images:
             self.instance_images.extend(itertools.repeat(img, repeats))
@@ -786,7 +784,6 @@ class DreamBoothDataset(Dataset):
             ]
         )
         for image in self.instance_images:
-            
             image = exif_transpose(image)
             if not image.mode == "RGB":
                 image = image.convert("RGB")
