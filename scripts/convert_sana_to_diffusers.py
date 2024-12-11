@@ -38,6 +38,7 @@ ckpt_ids = [
 def main(args):
     ckpt_id = ckpt_ids[0]
     cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
+    
     if args.orig_ckpt_path is None:
         snapshot_download(
             repo_id=ckpt_id,
@@ -52,6 +53,7 @@ def main(args):
         )
     else:
         file_path = args.orig_ckpt_path
+    
     all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
@@ -96,8 +98,8 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(
             f"blocks.{depth}.scale_shift_table"
         )
+        
         # Linear Attention is all you need 🤘
-
         # Self attention.
         q, k, v = torch.chunk(state_dict.pop(f"blocks.{depth}.attn.qkv.weight"), 3, dim=0)
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_q.weight"] = q
@@ -156,27 +158,20 @@ def main(args):
     # Transformer
     with CTX():
         transformer = SanaTransformer2DModel(
-            num_attention_heads=model_kwargs[args.model_type]["num_attention_heads"],
-            attention_head_dim=model_kwargs[args.model_type]["attention_head_dim"],
-            num_cross_attention_heads=model_kwargs[args.model_type]["num_cross_attention_heads"],
-            cross_attention_head_dim=model_kwargs[args.model_type]["cross_attention_head_dim"],
             in_channels=32,
             out_channels=32,
+            num_attention_heads=model_kwargs[args.model_type]["num_attention_heads"],
+            attention_head_dim=model_kwargs[args.model_type]["attention_head_dim"],
             num_layers=model_kwargs[args.model_type]["num_layers"],
+            num_cross_attention_heads=model_kwargs[args.model_type]["num_cross_attention_heads"],
+            cross_attention_head_dim=model_kwargs[args.model_type]["cross_attention_head_dim"],
             cross_attention_dim=model_kwargs[args.model_type]["cross_attention_dim"],
             attention_bias=False,
             sample_size=32,
             patch_size=1,
-            upcast_attention=False,
-            norm_type="ada_norm_single",
             norm_elementwise_affine=False,
             norm_eps=1e-6,
-            use_additional_conditions=False,
             caption_channels=2304,
-            use_caption_norm=True,
-            caption_norm_scale_factor=0.1,
-            attention_type="default",
-            use_pe=False,
             expand_ratio=2.5,
         )
     if is_accelerate_available():
@@ -203,24 +198,17 @@ def main(args):
                 attrs=["bold"],
             )
         )
-        transformer.to(weight_dtype).save_pretrained(os.path.join(args.dump_path, "transformer"))
+        transformer.save_pretrained(os.path.join(args.dump_path, "transformer"), safe_serialization=True, max_shard_size="5GB", variant=variant)
     else:
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        ae = AutoencoderDC.from_pretrained(
-            "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",
-            torch_dtype=torch.bfloat16,
-        ).to(device)
+        ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",)
 
         # Text Encoder
         text_encoder_model_path = "google/gemma-2-2b-it"
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_model_path)
         tokenizer.padding_side = "right"
-        text_encoder = (
-            AutoModelForCausalLM.from_pretrained(text_encoder_model_path, torch_dtype=torch.bfloat16)
-            .get_decoder()
-            .to(device)
-        )
+        text_encoder = AutoModelForCausalLM.from_pretrained(text_encoder_model_path).get_decoder()
 
         # Scheduler
         if args.scheduler_type == "flow-dpm_solver":
@@ -234,9 +222,6 @@ def main(args):
         else:
             raise ValueError(f"Scheduler type {args.scheduler_type} is not supported")
 
-        # transformer
-        transformer.to(device).to(weight_dtype)
-
         pipe = SanaPipeline(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
@@ -244,17 +229,20 @@ def main(args):
             vae=ae,
             scheduler=scheduler,
         )
+        pipe.save_pretrained(args.dump_path, safe_serialization=True, max_shard_size="5GB", variant=variant)
 
-        image = pipe(
-            "a dog",
-            height=1024,
-            width=1024,
-            guidance_scale=5.0,
-        )[0]
 
-        image[0].save("sana.png")
+DTYPE_MAPPING = {
+    "fp32": torch.float32,
+    "fp16": torch.float16,
+    "bf16": torch.bfloat16,
+}
 
-        pipe.save_pretrained(args.dump_path)
+VARIANT_MAPPING = {
+    "fp32": None,
+    "fp16": "fp16",
+    "bf16": "bf16",
+}
 
 
 if __name__ == "__main__":
@@ -279,6 +267,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipelien elemets in one.")
+    parser.add_argument("--dtype", default="fp32", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")
 
     args = parser.parse_args()
 
@@ -302,6 +291,7 @@ if __name__ == "__main__":
     }
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    weight_dtype = torch.float16
+    weight_dtype = DTYPE_MAPPING[args.dtype]
+    variant = VARIANT_MAPPING[args.dtype]
 
     main(args)

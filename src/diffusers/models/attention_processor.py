@@ -5358,76 +5358,46 @@ class SanaLinearAttnProcessor2_0:
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        *args,
-        **kwargs,
     ) -> torch.Tensor:
-        if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
-            deprecate("scale", "1.0.0", deprecation_message)
-
-        residual = hidden_states
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
         input_ndim = hidden_states.ndim
+        original_dtype = hidden_states.dtype
 
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
+        batch_size, _, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
 
-        query = attn.to_q(hidden_states)
-
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
+        query = attn.to_q(hidden_states)
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
 
-        dtype = query.dtype
-
         query = query.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
         key = key.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1).transpose(-1, -2)
         value = value.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
 
-        query = self.kernel_func(query)  # B, h, h_d, N
+        query = self.kernel_func(query)
         key = self.kernel_func(key)
 
-        # need torch.float
         query, key, value = query.float(), key.float(), value.float()
 
         value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
-        vk = torch.matmul(value, key)
-        hidden_states = torch.matmul(vk, query)
+        scores = torch.matmul(value, key)
+        hidden_states = torch.matmul(scores, query)
 
         if hidden_states.dtype in [torch.float16, torch.bfloat16]:
             hidden_states = hidden_states.float()
+        
         hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
-
         hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
-        hidden_states = hidden_states.to(dtype)
+        hidden_states = hidden_states.to(original_dtype)
 
-        # linear proj
         hidden_states = attn.to_out[0](hidden_states)
-        # dropout
         hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
 
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
