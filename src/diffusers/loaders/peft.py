@@ -257,6 +257,11 @@ class PeftAdapterMixin:
                 state_dict = {}
 
         if len(state_dict) > 0:
+            if prefix is None:
+                component_name = "unet" if "UNet" in self.__class__.__name__ else "transformer"
+            else:
+                component_name = prefix
+            logger.info(f"Loading {component_name}.")
             if adapter_name in getattr(self, "peft_config", {}):
                 raise ValueError(
                     f"Adapter name {adapter_name} already in use in the model - please select a new adapter name."

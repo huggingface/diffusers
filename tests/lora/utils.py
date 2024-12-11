@@ -1898,11 +1898,7 @@ class PeftLoraLoaderMixinTests:
         original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
-        logger = (
-            logging.get_logger("diffusers.loaders.lora_pipeline")
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules
-            else logging.get_logger("diffusers.loaders.peft")
-        )
+        logger = logging.get_logger("diffusers.loaders.peft")
         logger.setLevel(logging.INFO)
 
         with CaptureLogger(logger) as cap_logger:
@@ -1911,3 +1907,22 @@ class PeftLoraLoaderMixinTests:
 
         self.assertTrue(cap_logger.out.startswith("No LoRA keys found in the provided state dict"))
         self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
+
+        # test only for text encoder
+        for lora_module in self.pipeline_class._lora_loadable_modules:
+            if "text_encoder" in lora_module:
+                text_encoder = getattr(pipe, lora_module)
+                if lora_module == "text_encoder":
+                    prefix = text_encoder
+                elif lora_module == "text_encoder_2":
+                    prefix = "text_encoder_2"
+
+                logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+                logger.setLevel(logging.INFO)
+
+                with CaptureLogger(logger) as cap_logger:
+                    self.pipeline_class.load_lora_into_text_encoder(
+                        no_op_state_dict, network_alphas=None, text_encoder=text_encoder, prefix=prefix
+                    )
+
+                self.assertTrue(cap_logger.out.startswith("No LoRA keys found in the provided state dict"))
