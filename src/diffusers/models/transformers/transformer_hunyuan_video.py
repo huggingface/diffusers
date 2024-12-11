@@ -42,28 +42,6 @@ def attention(q, k, v, attn_mask=None):
     return out
 
 
-def get_activation_layer(act_type):
-    """get activation layer
-
-    Args:
-        act_type (str): the activation type
-
-    Returns:
-        torch.nn.functional: the activation layer
-    """
-    if act_type == "gelu":
-        return lambda: nn.GELU()
-    elif act_type == "gelu_tanh":
-        # Approximate `tanh` requires torch >= 1.13
-        return lambda: nn.GELU(approximate="tanh")
-    elif act_type == "relu":
-        return nn.ReLU
-    elif act_type == "silu":
-        return nn.SiLU
-    else:
-        raise ValueError(f"Unknown activation type: {act_type}")
-
-
 def reshape_for_broadcast(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     x: torch.Tensor,
@@ -289,24 +267,21 @@ class IndividualTokenRefinerBlock(nn.Module):
         heads_num,
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qkv_bias: bool = True,
     ):
         super().__init__()
         self.heads_num = heads_num
-        head_dim = hidden_size // heads_num
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         self.self_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
-        act_layer = get_activation_layer(act_type)
 
         self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
 
         self.adaLN_modulation = nn.Sequential(
-            act_layer(),
+            nn.SiLU(),
             nn.Linear(hidden_size, 2 * hidden_size, bias=True),
         )
 
@@ -341,7 +316,6 @@ class IndividualTokenRefiner(nn.Module):
         depth,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qkv_bias: bool = True,
     ):
         super().__init__()
@@ -352,7 +326,6 @@ class IndividualTokenRefiner(nn.Module):
                     heads_num=heads_num,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_drop_rate=mlp_drop_rate,
-                    act_type=act_type,
                     qkv_bias=qkv_bias,
                 )
                 for _ in range(depth)
@@ -397,18 +370,16 @@ class SingleTokenRefiner(nn.Module):
         depth,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        act_type: str = "silu",
         qkv_bias: bool = True,
     ):
         super().__init__()
 
         self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
 
-        act_layer = get_activation_layer(act_type)
         # Build timestep embedding layer
-        self.t_embedder = TimestepEmbedder(hidden_size, act_layer)
+        self.t_embedder = TimestepEmbedder(hidden_size, nn.SiLU)
         # Build context embedding layer
-        self.c_embedder = TextProjection(in_channels, hidden_size, act_layer)
+        self.c_embedder = TextProjection(in_channels, hidden_size, nn.SiLU)
 
         self.individual_token_refiner = IndividualTokenRefiner(
             hidden_size=hidden_size,
@@ -416,7 +387,6 @@ class SingleTokenRefiner(nn.Module):
             depth=depth,
             mlp_width_ratio=mlp_width_ratio,
             mlp_drop_rate=mlp_drop_rate,
-            act_type=act_type,
             qkv_bias=qkv_bias,
         )
 
@@ -451,7 +421,6 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         hidden_size: int,
         heads_num: int,
         mlp_width_ratio: float = 4.0,
-        mlp_act_type: str = "gelu_tanh",
         qk_norm: str = "rms_norm",
     ):
         super().__init__()
@@ -468,7 +437,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         self.q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
 
-        self.mlp_act = get_activation_layer(mlp_act_type)()
+        self.act_mlp = nn.GELU(approximate="tanh")
         self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type="layer_norm")
 
     def forward(
@@ -497,7 +466,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
 
         attn = attention(q, k, v)
 
-        output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
+        output = self.linear2(torch.cat((attn, self.act_mlp(mlp)), 2))
         output = hidden_states + output * gate.unsqueeze(1)
         return output
 
@@ -648,7 +617,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         num_attention_heads: int = 24,
         attention_head_dim: int = 128,
         mlp_width_ratio: float = 4.0,
-        mlp_act_type: str = "gelu_tanh",
         mm_double_blocks_depth: int = 20,
         mm_single_blocks_depth: int = 40,
         rope_dim_list: List[int] = [16, 56, 56],
@@ -675,13 +643,13 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.txt_in = SingleTokenRefiner(text_states_dim, inner_dim, num_attention_heads, depth=2)
 
         # time modulation
-        self.time_in = TimestepEmbedder(inner_dim, get_activation_layer("silu"))
+        self.time_in = TimestepEmbedder(inner_dim, nn.SiLU)
 
         # text modulation
         self.vector_in = MLPEmbedder(text_states_dim_2, inner_dim)
 
         # guidance modulation
-        self.guidance_in = TimestepEmbedder(inner_dim, get_activation_layer("silu")) if guidance_embed else None
+        self.guidance_in = TimestepEmbedder(inner_dim, nn.SiLU)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -702,7 +670,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     inner_dim,
                     num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
-                    mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
                 )
                 for _ in range(mm_single_blocks_depth)
