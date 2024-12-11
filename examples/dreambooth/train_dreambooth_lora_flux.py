@@ -742,6 +742,7 @@ class DreamBoothDataset(Dataset):
                     raise ValueError(
                         f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
+            # force casting for an image column to decode when this isn't the default
             dataset["train"] = dataset["train"].cast_column(image_column, Image(decode=True))
             instance_images = dataset["train"][image_column]
 
