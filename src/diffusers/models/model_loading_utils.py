@@ -128,7 +128,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_entries=None):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
@@ -139,7 +139,13 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            return safetensors.torch.load_file(checkpoint_file, device="cpu")
+            if dduf_entries:
+                # tensors are loaded on cpu
+                with dduf_entries[checkpoint_file].as_mmap() as mm:
+                    return safetensors.torch.load(mm)
+            else:
+                return safetensors.torch.load_file(checkpoint_file, device="cpu")
+
         else:
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             return torch.load(
@@ -274,6 +280,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
+    dduf_entries=None,
 ):
     if is_local:
         index_file = Path(
@@ -299,6 +306,7 @@ def _fetch_index_file(
                 subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
+                dduf_entries=dduf_entries,
             )
             index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
@@ -350,6 +358,7 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
+    dduf_entries=None,
 ):
     if is_local:
         index_file = Path(
@@ -390,6 +399,7 @@ def _fetch_index_file_legacy(
                     subfolder=None,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
+                    dduf_entries=dduf_entries,
                 )
                 index_file = Path(index_file)
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
