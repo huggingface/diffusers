@@ -623,7 +623,7 @@ class LattePipeline(DiffusionPipeline):
         clean_caption: bool = True,
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
-        decode_chunk_size: Optional[int] = None,
+        decode_chunk_size: int = 14,
     ) -> Union[LattePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -719,6 +719,7 @@ class LattePipeline(DiffusionPipeline):
             negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Default height and width to transformer
@@ -780,6 +781,7 @@ class LattePipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -836,8 +838,10 @@ class LattePipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        if not output_type == "latents":
-            video = self.decode_latents(latents, video_length, decode_chunk_size=14)
+        self._current_timestep = None
+
+        if not output_type == "latent":
+            video = self.decode_latents(latents, video_length, decode_chunk_size=decode_chunk_size)
             video = self.video_processor.postprocess_video(video=video, output_type=output_type)
         else:
             video = latents
