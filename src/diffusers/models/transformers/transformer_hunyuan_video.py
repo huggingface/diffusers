@@ -246,27 +246,6 @@ def get_norm_layer(norm_layer):
         raise NotImplementedError(f"Norm layer {norm_layer} is not implemented")
 
 
-def modulate(x, shift=None, scale=None):
-    """modulate by shift and scale
-
-    Args:
-        x (torch.Tensor): input tensor.
-        shift (torch.Tensor, optional): shift tensor. Defaults to None.
-        scale (torch.Tensor, optional): scale tensor. Defaults to None.
-
-    Returns:
-        torch.Tensor: the output tensor after modulate.
-    """
-    if scale is None and shift is None:
-        return x
-    elif shift is None:
-        return x * (1 + scale.unsqueeze(1))
-    elif scale is None:
-        return x + shift.unsqueeze(1)
-    else:
-        return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-
 class MLPEmbedder(nn.Module):
     """copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py"""
 
@@ -595,9 +574,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
         self.mlp_hidden_dim = mlp_hidden_dim
 
-        # qkv and mlp_in
         self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + mlp_hidden_dim)
-        # proj and mlp_out
         self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
 
         qk_norm_layer = get_norm_layer(qk_norm_type)
@@ -617,14 +594,12 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         
         qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
-
         q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
 
         # Apply QK-Norm if needed.
         q = self.q_norm(q).to(v)
         k = self.k_norm(k).to(v)
 
-        # Apply RoPE if needed.
         if image_rotary_emb is not None:
             img_q, txt_q = q[:, :-txt_len, :, :], q[:, -txt_len:, :, :]
             img_k, txt_k = k[:, :-txt_len, :, :], k[:, -txt_len:, :, :]
@@ -635,7 +610,6 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
 
         attn = attention(q, k, v)
 
-        # Compute activation in mlp stream, cat again and run second linear layer.
         output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
         output = hidden_states + output * gate.unsqueeze(1)
         return output
@@ -683,31 +657,10 @@ class HunyuanVideoTransformerBlock(nn.Module):
         temb: torch.Tensor,
         freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # (
-        #     shift_msa,
-        #     scale_msa,
-        #     gate_msa,
-        #     shift_mlp,
-        #     scale_mlp,
-        #     gate_mlp,
-        # ) = self.img_mod(temb).chunk(6, dim=-1)
-        # (
-        #     c_shift_msa,
-        #     c_scale_msa,
-        #     c_gate_msa,
-        #     c_shift_mlp,
-        #     c_scale_mlp,
-        #     c_gate_mlp,
-        # ) = self.txt_mod(temb).chunk(6, dim=-1)
-
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-
-        # # Prepare image for attention.
-        # img_modulated = self.norm1(hidden_states)
-        # img_modulated = modulate(img_modulated, shift=shift_msa, scale=scale_msa)
         
         img_qkv = self.img_attn_qkv(norm_hidden_states)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
@@ -722,18 +675,12 @@ class HunyuanVideoTransformerBlock(nn.Module):
                 img_qq.shape == img_q.shape and img_kk.shape == img_k.shape
             ), f"img_kk: {img_qq.shape}, img_q: {img_q.shape}, img_kk: {img_kk.shape}, img_k: {img_k.shape}"
             img_q, img_k = img_qq, img_kk
-
-        # Prepare txt for attention.
-        # txt_modulated = self.norm1_context(encoder_hidden_states)
-        # txt_modulated = modulate(txt_modulated, shift=c_shift_msa, scale=c_scale_msa)
         
         txt_qkv = self.txt_attn_qkv(norm_encoder_hidden_states)
         txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
-        # Apply QK-Norm if needed.
         txt_q = self.txt_attn_q_norm(txt_q).to(txt_v)
         txt_k = self.txt_attn_k_norm(txt_k).to(txt_v)
 
-        # Run actual attention.
         q = torch.cat((img_q, txt_q), dim=1)
         k = torch.cat((img_k, txt_k), dim=1)
         v = torch.cat((img_v, txt_v), dim=1)
