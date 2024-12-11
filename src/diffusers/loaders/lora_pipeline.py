@@ -2313,7 +2313,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
                 module_weight = module.weight.data
-                module_bias = module.bias.data if hasattr(module, "bias") else None
+                module_bias = module.bias.data if module.bias is not None else None
                 bias = module_bias is not None
 
                 lora_A_weight_name = f"{name}.lora_A.weight"
