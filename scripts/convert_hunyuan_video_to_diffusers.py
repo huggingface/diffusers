@@ -14,6 +14,37 @@ def remap_norm_scale_shift_(key, state_dict):
     state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
 
 
+def remap_single_transformer_blocks_(key, state_dict):
+    hidden_size = 3072
+
+    if "linear1.weight" in key:
+        linear1_weight = state_dict.pop(key)
+        split_size = (hidden_size, hidden_size, hidden_size, linear1_weight.size(0) - 3 * hidden_size)
+        q, k, v, mlp = torch.split(linear1_weight, split_size, dim=0)
+        new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(".linear1.weight")
+        state_dict[f"{new_key}.attn.to_q.weight"] = q
+        state_dict[f"{new_key}.attn.to_k.weight"] = k
+        state_dict[f"{new_key}.attn.to_v.weight"] = v
+        state_dict[f"{new_key}.proj_mlp.weight"] = mlp
+        
+    elif "linear1.bias" in key:
+        linear1_bias = state_dict.pop(key)
+        split_size = (hidden_size, hidden_size, hidden_size, linear1_bias.size(0) - 3 * hidden_size)
+        q_bias, k_bias, v_bias, mlp_bias = torch.split(linear1_bias, split_size, dim=0)
+        new_key = key.replace("single_blocks", "single_transformer_blocks").removesuffix(".linear1.bias")
+        state_dict[f"{new_key}.attn.to_q.bias"] = q_bias
+        state_dict[f"{new_key}.attn.to_k.bias"] = k_bias
+        state_dict[f"{new_key}.attn.to_v.bias"] = v_bias
+        state_dict[f"{new_key}.proj_mlp.bias"] = mlp_bias
+    
+    else:
+        new_key = key.replace("single_blocks", "single_transformer_blocks")
+        new_key = new_key.replace("linear2", "proj_out")
+        new_key = new_key.replace("q_norm", "attn.norm_q")
+        new_key = new_key.replace("k_norm", "attn.norm_k")
+        state_dict[new_key] = state_dict.pop(key)
+
+
 TRANSFORMER_KEYS_RENAME_DICT = {
     # "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
     # "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
@@ -22,7 +53,6 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     # "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
     # "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
     "double_blocks": "transformer_blocks",
-    "single_blocks": "single_transformer_blocks",
     "img_mod.linear": "norm1.linear",
     "img_norm1": "norm1.norm",
     "img_norm2": "norm2",
@@ -41,6 +71,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
+    "single_blocks": remap_single_transformer_blocks_,
 }
 
 VAE_KEYS_RENAME_DICT = {}

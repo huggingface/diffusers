@@ -250,14 +250,22 @@ class Attention(nn.Module):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             if self.context_pre_only is not None:
                 self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+        else:
+            self.add_q_proj = None
+            self.add_k_proj = None
+            self.add_v_proj = None
 
         if not self.pre_only:
             self.to_out = nn.ModuleList([])
             self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
             self.to_out.append(nn.Dropout(dropout))
+        else:
+            self.to_out = None
 
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_context_dim, bias=out_bias)
+        else:
+            self.to_add_out = None
 
         if qk_norm is not None and added_kv_proj_dim is not None:
             if qk_norm == "fp32_layer_norm":

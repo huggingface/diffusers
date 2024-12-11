@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,7 @@ from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
+from ..attention_processor import Attention
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, RMSNorm
@@ -150,6 +151,102 @@ def apply_rotary_emb(
         xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3).type_as(xk)
 
     return xq_out, xk_out
+
+
+class HunyuanVideoAttnProcessor2_0:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("HunyuanVideoAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size, _, _ = hidden_states.shape
+
+        if attn.add_q_proj is None and encoder_hidden_states is not None:
+            hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
+
+            if attn.add_q_proj is None and encoder_hidden_states is not None:
+                query = torch.cat([
+                    apply_rotary_emb(query[:, :, :-encoder_hidden_states.shape[1]], image_rotary_emb),
+                    query[:, :, -encoder_hidden_states.shape[1]:],
+                ], dim=2)
+                key = torch.cat([
+                    apply_rotary_emb(key[:, :, :-encoder_hidden_states.shape[1]], image_rotary_emb),
+                    key[:, :, -encoder_hidden_states.shape[1]:],
+                ], dim=2)
+            else:
+                query = apply_rotary_emb(query, image_rotary_emb)
+                key = apply_rotary_emb(key, image_rotary_emb)
+        
+        if attn.add_q_proj is not None and encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
+            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
+            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, :-encoder_hidden_states.shape[1]],
+                hidden_states[:, -encoder_hidden_states.shape[1]:],
+            )
+
+            if not attn.pre_only:
+                hidden_states = attn.to_out[0](hidden_states)
+                hidden_states = attn.to_out[1](hidden_states)
+
+            if attn.context_pre_only is not None and not attn.context_pre_only:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        return hidden_states, encoder_hidden_states
 
 
 class MLPEmbedder(nn.Module):
@@ -418,57 +515,88 @@ class SingleTokenRefiner(nn.Module):
 class HunyuanVideoSingleTransformerBlock(nn.Module):
     def __init__(
         self,
-        hidden_size: int,
-        heads_num: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
         mlp_width_ratio: float = 4.0,
         qk_norm: str = "rms_norm",
     ):
         super().__init__()
 
-        self.hidden_size = hidden_size
-        self.heads_num = heads_num
-        head_dim = hidden_size // heads_num
+        hidden_size = num_attention_heads * attention_head_dim
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
+        
+        self.hidden_size = hidden_size
+        self.heads_num = num_attention_heads
         self.mlp_hidden_dim = mlp_hidden_dim
 
-        self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + mlp_hidden_dim)
-        self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
+        self.attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            out_dim=hidden_size,
+            bias=True,
+            processor=HunyuanVideoAttnProcessor2_0(),
+            qk_norm="rms_norm",
+            eps=1e-6,
+            pre_only=True,
+        )
 
-        self.q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-        self.k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-
-        self.act_mlp = nn.GELU(approximate="tanh")
         self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type="layer_norm")
+        self.proj_mlp = nn.Linear(hidden_size, self.mlp_hidden_dim)
+        self.act_mlp = nn.GELU(approximate="tanh")
+        self.proj_out = nn.Linear(hidden_size + self.mlp_hidden_dim, hidden_size)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         txt_len: int,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+        text_seq_length = encoder_hidden_states.shape[1]
+        hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
         
-        qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
-        q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
+        residual = hidden_states
+        
+        norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+        mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+        
+        norm_hidden_states, norm_encoder_hidden_states = norm_hidden_states[:, :-text_seq_length, :], norm_hidden_states[:, -text_seq_length:, :]
+        
+        # qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
+        # q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
 
-        # Apply QK-Norm if needed.
-        q = self.q_norm(q).to(v)
-        k = self.k_norm(k).to(v)
+        # # Apply QK-Norm if needed.
+        # q = self.q_norm(q).to(v)
+        # k = self.k_norm(k).to(v)
 
-        if image_rotary_emb is not None:
-            img_q, txt_q = q[:, :-txt_len, :, :], q[:, -txt_len:, :, :]
-            img_k, txt_k = k[:, :-txt_len, :, :], k[:, -txt_len:, :, :]
-            img_qq, img_kk = apply_rotary_emb(img_q, img_k, image_rotary_emb, head_first=False)
-            img_q, img_k = img_qq, img_kk
-            q = torch.cat((img_q, txt_q), dim=1)
-            k = torch.cat((img_k, txt_k), dim=1)
+        # if image_rotary_emb is not None:
+        #     img_q, txt_q = q[:, :-txt_len, :, :], q[:, -txt_len:, :, :]
+        #     img_k, txt_k = k[:, :-txt_len, :, :], k[:, -txt_len:, :, :]
+        #     img_qq, img_kk = apply_rotary_emb(img_q, img_k, image_rotary_emb, head_first=False)
+        #     img_q, img_k = img_qq, img_kk
+        #     q = torch.cat((img_q, txt_q), dim=1)
+        #     k = torch.cat((img_k, txt_k), dim=1)
 
-        attn = attention(q, k, v)
+        # attn = attention(q, k, v)
+        # output = self.linear2(torch.cat((attn, self.act_mlp(mlp)), 2))
+        # output = hidden_states + output * gate.unsqueeze(1)
 
-        output = self.linear2(torch.cat((attn, self.act_mlp(mlp)), 2))
-        output = hidden_states + output * gate.unsqueeze(1)
-        return output
+        attn_output, context_attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            image_rotary_emb=image_rotary_emb,
+        )
+        attn_output = torch.cat([attn_output, context_attn_output], dim=1)
+
+        hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
+        hidden_states = gate.unsqueeze(1) * self.proj_out(hidden_states)
+        hidden_states = hidden_states + residual
+
+        hidden_states, encoder_hidden_states = hidden_states[:, :-text_seq_length, :], hidden_states[:, -text_seq_length:, :]
+        return hidden_states, encoder_hidden_states
 
 
 class HunyuanVideoTransformerBlock(nn.Module):
@@ -478,7 +606,6 @@ class HunyuanVideoTransformerBlock(nn.Module):
         heads_num: int,
         mlp_width_ratio: float,
         qk_norm: str = "rms_norm",
-        qkv_bias: bool = False,
     ):
         super().__init__()
 
@@ -488,15 +615,15 @@ class HunyuanVideoTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
         self.norm1_context = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
 
-        self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
+        self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3)
         self.img_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.img_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-        self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
+        self.img_attn_proj = nn.Linear(hidden_size, hidden_size)
 
-        self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
+        self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3)
         self.txt_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.txt_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-        self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
+        self.txt_attn_proj = nn.Linear(hidden_size, hidden_size)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="gelu-approximate")
@@ -620,7 +747,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         mm_double_blocks_depth: int = 20,
         mm_single_blocks_depth: int = 40,
         rope_dim_list: List[int] = [16, 56, 56],
-        qkv_bias: bool = True,
         qk_norm: str = "rms_norm",
         guidance_embed: bool = True,
         text_states_dim: int = 4096,
@@ -658,7 +784,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
                     qk_norm=qk_norm,
-                    qkv_bias=qkv_bias,
                 )
                 for _ in range(mm_double_blocks_depth)
             ]
@@ -667,8 +792,8 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.single_transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoSingleTransformerBlock(
-                    inner_dim,
                     num_attention_heads,
+                    attention_head_dim,
                     mlp_width_ratio=mlp_width_ratio,
                     qk_norm=qk_norm,
                 )
@@ -728,20 +853,17 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             ]
 
             hidden_states, encoder_hidden_states = block(*double_block_args)
-
-        hidden_states = torch.cat((hidden_states, encoder_hidden_states), dim=1)
         
         for block in self.single_transformer_blocks:
             single_block_args = [
                 hidden_states,
+                encoder_hidden_states,
                 temb,
                 txt_seq_len,
                 (freqs_cos, freqs_sin),
             ]
 
-            hidden_states = block(*single_block_args)
-
-        hidden_states = hidden_states[:, :img_seq_len, ...]
+            hidden_states, encoder_hidden_states = block(*single_block_args)
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
