@@ -835,7 +835,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
         scheduler_types = expected_types["scheduler"][0]
-        if isinstance(scheduler_types, enum.EnumType):
+        if isinstance(scheduler_types, enum.EnumMeta):
             scheduler_types = list(scheduler_types)
         else:
             scheduler_types = [str(scheduler_types)]
