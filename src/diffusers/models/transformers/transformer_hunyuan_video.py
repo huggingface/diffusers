@@ -19,7 +19,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version
@@ -27,132 +26,7 @@ from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, RMSNorm
-
-
-def attention(q, k, v, attn_mask=None):
-    q = q.transpose(1, 2)
-    k = k.transpose(1, 2)
-    v = v.transpose(1, 2)
-
-    if attn_mask is not None and attn_mask.dtype != torch.bool:
-        attn_mask = attn_mask.to(q.dtype)
-    x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0, is_causal=False)
-
-    x = x.transpose(1, 2)
-    b, s, a, d = x.shape
-    out = x.reshape(b, s, -1)
-    return out
-
-
-def reshape_for_broadcast(
-    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
-    x: torch.Tensor,
-    head_first=False,
-):
-    """
-    Reshape frequency tensor for broadcasting it with another tensor.
-
-    This function reshapes the frequency tensor to have the same shape as the target tensor 'x' for the purpose of
-    broadcasting the frequency tensor during element-wise operations.
-
-    Notes:
-        When using FlashMHAModified, head_first should be False. When using Attention, head_first should be True.
-
-    Args:
-        freqs_cis (Union[torch.Tensor, Tuple[torch.Tensor]]): Frequency tensor to be reshaped.
-        x (torch.Tensor): Target tensor for broadcasting compatibility.
-        head_first (bool): head dimension first (except batch dim) or not.
-
-    Returns:
-        torch.Tensor: Reshaped frequency tensor.
-
-    Raises:
-        AssertionError: If the frequency tensor doesn't match the expected shape. AssertionError: If the target tensor
-        'x' doesn't have the expected number of dimensions.
-    """
-    ndim = x.ndim
-    assert 0 <= 1 < ndim
-
-    if isinstance(freqs_cis, tuple):
-        # freqs_cis: (cos, sin) in real space
-        if head_first:
-            assert freqs_cis[0].shape == (
-                x.shape[-2],
-                x.shape[-1],
-            ), f"freqs_cis shape {freqs_cis[0].shape} does not match x shape {x.shape}"
-            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        else:
-            assert freqs_cis[0].shape == (
-                x.shape[1],
-                x.shape[-1],
-            ), f"freqs_cis shape {freqs_cis[0].shape} does not match x shape {x.shape}"
-            shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis[0].view(*shape), freqs_cis[1].view(*shape)
-    else:
-        # freqs_cis: values in complex space
-        if head_first:
-            assert freqs_cis.shape == (
-                x.shape[-2],
-                x.shape[-1],
-            ), f"freqs_cis shape {freqs_cis.shape} does not match x shape {x.shape}"
-            shape = [d if i == ndim - 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        else:
-            assert freqs_cis.shape == (
-                x.shape[1],
-                x.shape[-1],
-            ), f"freqs_cis shape {freqs_cis.shape} does not match x shape {x.shape}"
-            shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-        return freqs_cis.view(*shape)
-
-
-def rotate_half(x):
-    x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-
-
-def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-    head_first: bool = False,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Apply rotary embeddings to input tensors using the given frequency tensor.
-
-    This function applies rotary embeddings to the given query 'xq' and key 'xk' tensors using the provided frequency
-    tensor 'freqs_cis'. The input tensors are reshaped as complex numbers, and the frequency tensor is reshaped for
-    broadcasting compatibility. The resulting tensors contain rotary embeddings and are returned as real tensors.
-
-    Args:
-        xq (torch.Tensor): Query tensor to apply rotary embeddings. [B, S, H, D]
-        xk (torch.Tensor): Key tensor to apply rotary embeddings.   [B, S, H, D]
-        freqs_cis (torch.Tensor or tuple): Precomputed frequency tensor for complex exponential.
-        head_first (bool): head dimension first (except batch dim) or not.
-
-    Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
-
-    """
-    xk_out = None
-    if isinstance(freqs_cis, tuple):
-        cos, sin = reshape_for_broadcast(freqs_cis, xq, head_first)  # [S, D]
-        cos, sin = cos.to(xq.device), sin.to(xq.device)
-        # real * cos - imag * sin
-        # imag * cos + real * sin
-        xq_out = (xq.float() * cos + rotate_half(xq.float()) * sin).type_as(xq)
-        xk_out = (xk.float() * cos + rotate_half(xk.float()) * sin).type_as(xk)
-    else:
-        # view_as_complex will pack [..., D/2, 2](real) to [..., D/2](complex)
-        xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))  # [B, S, H, D//2]
-        freqs_cis = reshape_for_broadcast(freqs_cis, xq_, head_first).to(xq.device)  # [S, D//2] --> [1, S, 1, D//2]
-        # (real, imag) * (cos, sin) = (real * cos - imag * sin, imag * cos + real * sin)
-        # view_as_real will expand [..., D/2](complex) to [..., D/2, 2](real)
-        xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3).type_as(xq)
-        xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))  # [B, S, H, D//2]
-        xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3).type_as(xk)
-
-    return xq_out, xk_out
+from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
 
 class HunyuanVideoAttnProcessor2_0:
@@ -359,18 +233,25 @@ class TimestepEmbedder(nn.Module):
 class IndividualTokenRefinerBlock(nn.Module):
     def __init__(
         self,
-        hidden_size,
         num_attention_heads: int,
+        attention_head_dim: int,
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
         qkv_bias: bool = True,
     ) -> None:
         super().__init__()
-        self.heads_num = num_attention_heads
+
+        hidden_size = num_attention_heads * attention_head_dim
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
-        self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
-        self.self_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
+
+        self.attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            bias=True,
+        )
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
 
@@ -389,16 +270,15 @@ class IndividualTokenRefinerBlock(nn.Module):
     ) -> torch.Tensor:
         gate_msa, gate_mlp = self.adaLN_modulation(temb).chunk(2, dim=1)
 
-        norm_x = self.norm1(hidden_states)
-        qkv = self.self_attn_qkv(norm_x)
-        q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
+        norm_hidden_states = self.norm1(hidden_states)
 
-        # Self-Attention
-        attn = attention(q, k, v, attn_mask=attention_mask)
+        attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=None,
+            attention_mask=attention_mask,
+        )
+        hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
 
-        hidden_states = hidden_states + self.self_attn_proj(attn) * gate_msa.unsqueeze(1)
-
-        # FFN Layer
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states)) * gate_mlp.unsqueeze(1)
 
         return hidden_states
@@ -407,24 +287,25 @@ class IndividualTokenRefinerBlock(nn.Module):
 class IndividualTokenRefiner(nn.Module):
     def __init__(
         self,
-        hidden_size,
-        heads_num,
-        depth,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        num_layers: int,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
         qkv_bias: bool = True,
     ):
         super().__init__()
-        self.blocks = nn.ModuleList(
+
+        self.refiner_blocks = nn.ModuleList(
             [
                 IndividualTokenRefinerBlock(
-                    hidden_size=hidden_size,
-                    num_attention_heads=heads_num,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_drop_rate=mlp_drop_rate,
                     qkv_bias=qkv_bias,
                 )
-                for _ in range(depth)
+                for _ in range(num_layers)
             ]
         )
 
@@ -444,9 +325,9 @@ class IndividualTokenRefiner(nn.Module):
             self_attn_mask = (self_attn_mask_1 & self_attn_mask_2).bool()
             self_attn_mask[:, :, :, 0] = True
 
-        for block in self.blocks:
+        for block in self.refiner_blocks:
             hidden_states = block(hidden_states, temb, self_attn_mask)
-        
+
         return hidden_states
 
 
@@ -454,26 +335,25 @@ class SingleTokenRefiner(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        hidden_size: int,
         num_attention_heads: int,
-        depth: int,
+        attention_head_dim: int,
+        num_layers: int,
         mlp_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
         qkv_bias: bool = True,
     ):
         super().__init__()
 
-        self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
+        hidden_size = num_attention_heads * attention_head_dim
 
-        # Build timestep embedding layer
+        self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size, nn.SiLU)
-        # Build context embedding layer
         self.c_embedder = TextProjection(in_channels, hidden_size, nn.SiLU)
 
-        self.individual_token_refiner = IndividualTokenRefiner(
-            hidden_size=hidden_size,
-            heads_num=num_attention_heads,
-            depth=depth,
+        self.token_refiner = IndividualTokenRefiner(
+            num_attention_heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
+            num_layers=num_layers,
             mlp_width_ratio=mlp_ratio,
             mlp_drop_rate=mlp_drop_rate,
             qkv_bias=qkv_bias,
@@ -481,27 +361,27 @@ class SingleTokenRefiner(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,
-        t: torch.LongTensor,
-        mask: Optional[torch.LongTensor] = None,
-    ):
-        original_dtype = x.dtype
-        timestep_aware_representations = self.t_embedder(t)
+        hidden_states: torch.Tensor,
+        timestep: torch.LongTensor,
+        attention_mask: Optional[torch.LongTensor] = None,
+    ) -> torch.Tensor:
+        original_dtype = hidden_states.dtype
+        temb = self.t_embedder(timestep)
 
-        if mask is None:
-            context_aware_representations = x.mean(dim=1)
+        if attention_mask is None:
+            pooled_projections = hidden_states.mean(dim=1)
         else:
-            mask_float = mask.float().unsqueeze(-1)  # [b, s1, 1]
-            context_aware_representations = (x * mask_float).sum(dim=1) / mask_float.sum(dim=1)
-            context_aware_representations = context_aware_representations.to(original_dtype)
+            mask_float = attention_mask.float().unsqueeze(-1)  # [b, s1, 1]
+            pooled_projections = (hidden_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
+            pooled_projections = pooled_projections.to(original_dtype)
 
-        context_aware_representations = self.c_embedder(context_aware_representations)
-        c = timestep_aware_representations + context_aware_representations
+        pooled_projections = self.c_embedder(pooled_projections)
+        emb = temb + pooled_projections
 
-        x = self.input_embedder(x)
-        x = self.individual_token_refiner(x, c, mask)
+        hidden_states = self.input_embedder(hidden_states)
+        hidden_states = self.token_refiner(hidden_states, emb, attention_mask)
 
-        return x
+        return hidden_states
 
 
 class HunyuanVideoSingleTransformerBlock(nn.Module):
@@ -623,13 +503,13 @@ class HunyuanVideoTransformerBlock(nn.Module):
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-        
+
         img_attn, txt_attn = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             image_rotary_emb=freqs_cis,
         )
-        
+
         hidden_states = hidden_states + img_attn * gate_msa.unsqueeze(1)
         encoder_hidden_states = encoder_hidden_states + txt_attn * c_gate_msa.unsqueeze(1)
 
@@ -657,6 +537,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         attention_head_dim: int = 128,
         num_layers: int = 20,
         num_single_layers: int = 40,
+        num_refiner_layers: int = 2,
         mlp_ratio: float = 4.0,
         patch_size: int = 2,
         patch_size_t: int = 1,
@@ -676,7 +557,9 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.img_in = PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
 
         # text projection
-        self.txt_in = SingleTokenRefiner(text_embed_dim, inner_dim, num_attention_heads, depth=2)
+        self.txt_in = SingleTokenRefiner(
+            text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
+        )
 
         # time modulation
         self.time_in = TimestepEmbedder(inner_dim, nn.SiLU)
@@ -689,7 +572,9 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.transformer_blocks = nn.ModuleList(
             [
-                HunyuanVideoTransformerBlock(num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm)
+                HunyuanVideoTransformerBlock(
+                    num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
+                )
                 for _ in range(num_layers)
             ]
         )

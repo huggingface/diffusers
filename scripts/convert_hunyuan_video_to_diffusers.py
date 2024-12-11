@@ -30,6 +30,14 @@ def remap_txt_attn_qkv_(key, state_dict):
     state_dict[key.replace("txt_attn_qkv", "attn.add_v_proj")] = to_v
 
 
+def remap_self_attn_qkv_(key, state_dict):
+    weight = state_dict.pop(key)
+    to_q, to_k, to_v = weight.chunk(3, dim=0)
+    state_dict[key.replace("self_attn_qkv", "attn.to_q")] = to_q
+    state_dict[key.replace("self_attn_qkv", "attn.to_k")] = to_k
+    state_dict[key.replace("self_attn_qkv", "attn.to_v")] = to_v
+
+
 def remap_single_transformer_blocks_(key, state_dict):
     hidden_size = 3072
 
@@ -69,6 +77,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     # "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
     # "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
     "double_blocks": "transformer_blocks",
+    "individual_token_refiner.blocks": "token_refiner.refiner_blocks",
     "img_attn_q_norm": "attn.norm_q",
     "img_attn_k_norm": "attn.norm_k",
     "img_attn_proj": "attn.to_out.0",
@@ -83,6 +92,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "txt_norm1": "norm1.norm",
     "txt_norm2": "norm2_context",
     "txt_mlp": "ff_context",
+    "self_attn_proj": "attn.to_out.0",
     "modulation.linear": "norm.linear",
     "pre_norm": "norm.norm",
     "final_layer.norm_final": "norm_out.norm",
@@ -95,6 +105,7 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
     "img_attn_qkv": remap_img_attn_qkv_,
     "txt_attn_qkv": remap_txt_attn_qkv_,
+    "self_attn_qkv": remap_self_attn_qkv_,
     "single_blocks": remap_single_transformer_blocks_,
 }
 
