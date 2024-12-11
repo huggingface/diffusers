@@ -523,7 +523,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 return emb
 
         latents_size = [(video_length - 1) // 4 + 1, height // 8, width // 8]
-        rope_sizes = [latents_size[0] // self.transformer.config.patch_size_t, latents_size[1] // self.transformer.config.patch_size, latents_size[2] // self.transformer.config.patch_size]
+        rope_sizes = [
+            latents_size[0] // self.transformer.config.patch_size_t,
+            latents_size[1] // self.transformer.config.patch_size,
+            latents_size[2] // self.transformer.config.patch_size,
+        ]
 
         freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
             self.transformer.config.rope_dim_list,

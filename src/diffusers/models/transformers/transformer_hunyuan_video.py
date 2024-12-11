@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -23,17 +22,12 @@ from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
-from ..modeling_utils import ModelMixin
 from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
 
 
-def attention(
-    q,
-    k,
-    v,
-    attn_mask=None
-):
+def attention(q, k, v, attn_mask=None):
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
@@ -327,7 +321,7 @@ class PatchEmbed(nn.Module):
         bias=True,
     ):
         super().__init__()
-        
+
         patch_size = tuple(patch_size)
         self.flatten = flatten
         self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, bias=bias)
@@ -432,7 +426,6 @@ class IndividualTokenRefinerBlock(nn.Module):
         super().__init__()
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
-        mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
@@ -447,7 +440,7 @@ class IndividualTokenRefinerBlock(nn.Module):
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         act_layer = get_activation_layer(act_type)
-        
+
         self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
 
         self.adaLN_modulation = nn.Sequential(
@@ -613,7 +606,6 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         hidden_size: int,
         heads_num: int,
         mlp_width_ratio: float,
-        mlp_act_type: str = "gelu_tanh",
         qk_norm: bool = True,
         qk_norm_type: str = "rms",
         qkv_bias: bool = False,
@@ -623,7 +615,6 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         self.deterministic = False
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
-        mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
         self.img_mod = ModulateDiT(hidden_size, factor=6, act_layer=get_activation_layer("silu"))
         self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -907,7 +898,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     inner_dim,
                     num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
-                    mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
                     qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
@@ -1000,11 +990,13 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p)
+        hidden_states = hidden_states.reshape(
+            batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p
+        )
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
-        
+
         if not return_dict:
             return (hidden_states,)
-        
+
         return Transformer2DModelOutput(sample=hidden_states)

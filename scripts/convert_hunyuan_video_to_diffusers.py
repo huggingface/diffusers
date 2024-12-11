@@ -26,7 +26,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "final_layer.norm_final": "norm_out.norm",
     "final_layer.linear": "proj_out",
     "fc1": "net.0.proj",
-    "fc2": "net.2"
+    "fc2": "net.2",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
