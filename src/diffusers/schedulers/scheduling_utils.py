@@ -46,6 +46,7 @@ class KarrasDiffusionSchedulers(Enum):
     UniPCMultistepScheduler = 13
     DPMSolverSDEScheduler = 14
     EDMEulerScheduler = 15
+    LCMScheduler = 16
 
 
 AysSchedules = {
