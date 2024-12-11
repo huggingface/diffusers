@@ -74,7 +74,7 @@ class IPAdapterMixin:
                 list is passed, it should have the same length as `weight_name`.
             weight_name (`str` or `List[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
-                `weight_name`.
+                `subfolder`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
                 The subfolder location of the image encoder within a larger model repository on the Hub or locally.
                 Pass `None` to not load the image encoder. If the image encoder is located in a folder inside
@@ -187,7 +187,7 @@ class IPAdapterMixin:
                 state_dict = pretrained_model_name_or_path_or_dict
 
             keys = list(state_dict.keys())
-            if keys != ["image_proj", "ip_adapter"]:
+            if "image_proj" not in keys and "ip_adapter" not in keys:
                 raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
             state_dicts.append(state_dict)

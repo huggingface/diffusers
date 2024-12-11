@@ -27,6 +27,7 @@ _import_structure = {}
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
@@ -44,6 +45,7 @@ if is_torch_available():
     ]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
+    _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
@@ -89,6 +91,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .adapter import MultiAdapter, T2IAdapter
         from .autoencoders import (
             AsymmetricAutoencoderKL,
+            AutoencoderDC,
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
@@ -101,6 +104,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .controlnets import (
             ControlNetModel,
+            ControlNetUnionModel,
             ControlNetXSAdapter,
             FluxControlNetModel,
             FluxMultiControlNetModel,
