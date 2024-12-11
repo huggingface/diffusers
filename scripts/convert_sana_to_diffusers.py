@@ -38,7 +38,7 @@ ckpt_ids = [
 def main(args):
     ckpt_id = ckpt_ids[0]
     cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
-    
+
     if args.orig_ckpt_path is None:
         snapshot_download(
             repo_id=ckpt_id,
@@ -53,7 +53,7 @@ def main(args):
         )
     else:
         file_path = args.orig_ckpt_path
-    
+
     all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
@@ -98,7 +98,7 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(
             f"blocks.{depth}.scale_shift_table"
         )
-        
+
         # Linear Attention is all you need 🤘
         # Self attention.
         q, k, v = torch.chunk(state_dict.pop(f"blocks.{depth}.attn.qkv.weight"), 3, dim=0)
@@ -182,8 +182,9 @@ def main(args):
     try:
         state_dict.pop("y_embedder.y_embedding")
         state_dict.pop("pos_embed")
-    except:
-        pass
+    except KeyError:
+        print("y_embedder.y_embedding or pos_embed not found in the state_dict")
+
     assert len(state_dict) == 0, f"State dict is not empty, {state_dict.keys()}"
 
     num_model_params = sum(p.numel() for p in transformer.parameters())
@@ -198,11 +199,15 @@ def main(args):
                 attrs=["bold"],
             )
         )
-        transformer.save_pretrained(os.path.join(args.dump_path, "transformer"), safe_serialization=True, max_shard_size="5GB", variant=variant)
+        transformer.save_pretrained(
+            os.path.join(args.dump_path, "transformer"), safe_serialization=True, max_shard_size="5GB", variant=variant
+        )
     else:
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",)
+        ae = AutoencoderDC.from_pretrained(
+            "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",
+        )
 
         # Text Encoder
         text_encoder_model_path = "google/gemma-2-2b-it"

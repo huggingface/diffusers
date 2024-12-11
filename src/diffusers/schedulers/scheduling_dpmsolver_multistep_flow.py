@@ -45,8 +45,8 @@ class FlowDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sampling, and `solver_order=3` for unconditional sampling. This affects the number of model outputs stored
             and used in multistep updates.
         prediction_type (`str`, defaults to "flow_prediction"):
-            Prediction type of the scheduler function; must be `flow_prediction` for this scheduler, which predicts
-            the flow of the diffusion process.
+            Prediction type of the scheduler function; must be `flow_prediction` for this scheduler, which predicts the
+            flow of the diffusion process.
         flow_shift (`float`, *optional*, defaults to 1.0):
             A factor used to adjust the sigmas in the noise schedule. It modifies the step sizes during the sampling
             process.

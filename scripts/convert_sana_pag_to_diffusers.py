@@ -187,8 +187,9 @@ def main(args):
     try:
         state_dict.pop("y_embedder.y_embedding")
         state_dict.pop("pos_embed")
-    except:
-        pass
+    except KeyError:
+        print("y_embedder.y_embedding or pos_embed not found in the state_dict")
+
     assert len(state_dict) == 0, f"State dict is not empty, {state_dict.keys()}"
 
     num_model_params = sum(p.numel() for p in transformer.parameters())

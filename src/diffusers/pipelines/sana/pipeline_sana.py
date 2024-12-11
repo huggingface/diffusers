@@ -27,7 +27,6 @@ from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -59,9 +58,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaPipeline
 
         >>> # You can replace the checkpoint id with "Sana_1600M_1024px/Sana_1600M_1024px" too.
-        >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Sana_1600M_1024px/Sana_1600M_1024px", torch_dtype=torch.float16
-        ... )
+        >>> pipe = SanaPipeline.from_pretrained("Sana_1600M_1024px/Sana_1600M_1024px", torch_dtype=torch.float16)
         >>> # Enable memory optimizations.
         >>> # pipe.enable_model_cpu_offload()
 
@@ -171,7 +168,9 @@ class SanaPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = (
-            2 ** (len(self.vae.config.encoder_block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 32
+            2 ** (len(self.vae.config.encoder_block_out_channels) - 1)
+            if hasattr(self, "vae") and self.vae is not None
+            else 32
         )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
@@ -650,13 +649,13 @@ class SanaPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.sana.pipeline_output.SanaPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.sana.pipeline_output.SanaPipelineOutput`] is returned, otherwise a `tuple` is
-                returned where the first element is a list with the generated images
+                If `return_dict` is `True`, [`~pipelines.sana.pipeline_output.SanaPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list with the generated images
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
-        
+
         # 1. Check inputs. Raise error if not correct
         if use_resolution_binning:
             if self.transformer.config.sample_size == 64:
@@ -778,6 +777,17 @@ class SanaPipeline(DiffusionPipeline):
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

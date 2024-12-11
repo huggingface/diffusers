@@ -8,5 +8,4 @@ from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_tiny import AutoencoderTiny
 from .consistency_decoder_vae import ConsistencyDecoderVAE
-from .autoencoder_dc import AutoencoderDC
 from .vq_model import VQModel

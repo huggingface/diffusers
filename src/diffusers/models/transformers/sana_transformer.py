@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import torch
 from torch import nn
@@ -25,7 +24,6 @@ from ..attention_processor import (
     Attention,
     AttentionProcessor,
     AttnProcessor2_0,
-    SanaMultiscaleLinearAttention,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
@@ -135,7 +133,7 @@ class SanaTransformerBlock(nn.Module):
             mlp_ratio=mlp_ratio,
         )
 
-        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim ** 0.5)
+        self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
     def forward(
         self,
@@ -152,7 +150,7 @@ class SanaTransformerBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
         ).chunk(6, dim=1)
-        
+
         # 2. Self Attention
         norm_hidden_states = self.norm1(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
@@ -258,9 +256,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         )
 
         # 2. Caption Embedding
-        self.caption_projection = PixArtAlphaTextProjection(
-            in_features=caption_channels, hidden_size=inner_dim
-        )
+        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
         self.caption_norm = RMSNorm(inner_dim, eps=1e-5)
 
         # 3. Transformer blocks
@@ -285,7 +281,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 4. Output blocks
         self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-        
+
         self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
 
@@ -401,12 +397,12 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-        
+
         encoder_hidden_states = self.caption_norm(encoder_hidden_states)
 
         # 2. Transformer blocks
         use_reentrant = is_torch_version("<=", "1.11.0")
-        
+
         def create_block_forward(block):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 return lambda *inputs: torch.utils.checkpoint.checkpoint(
@@ -430,16 +426,23 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)
         ).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states)
-        
+
         # 4. Modulation
         hidden_states = hidden_states * (1 + scale) + shift
         hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
-        hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, self.config.patch_size, self.config.patch_size, -1)
+        hidden_states = hidden_states.reshape(
+            batch_size, post_patch_height, post_patch_width, self.config.patch_size, self.config.patch_size, -1
+        )
         hidden_states = hidden_states.permute(0, 5, 1, 3, 2, 4)
         output = hidden_states.reshape(
-            shape=(batch_size, -1, post_patch_height * self.config.patch_size, post_patch_width * self.config.patch_size)
+            shape=(
+                batch_size,
+                -1,
+                post_patch_height * self.config.patch_size,
+                post_patch_width * self.config.patch_size,
+            )
         )
 
         if not return_dict:

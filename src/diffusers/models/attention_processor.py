@@ -5359,12 +5359,9 @@ class SanaLinearAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        input_ndim = hidden_states.ndim
         original_dtype = hidden_states.dtype
 
-        batch_size, _, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -5391,7 +5388,7 @@ class SanaLinearAttnProcessor2_0:
 
         if hidden_states.dtype in [torch.float16, torch.bfloat16]:
             hidden_states = hidden_states.float()
-        
+
         hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
         hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
         hidden_states = hidden_states.to(original_dtype)

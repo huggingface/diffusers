@@ -12,28 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import inspect
 import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, Gemma2ForCausalLM, Gemma2Config, GemmaTokenizer
+from transformers import Gemma2Config, Gemma2ForCausalLM, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
-    torch_device
-)
+from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-    to_np
-)
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
@@ -114,7 +104,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=1,
             num_key_value_heads=2,
             vocab_size=8,
-            attn_implementation='eager',
+            attn_implementation="eager",
         )
         text_encoder = Gemma2ForCausalLM(text_encoder_config)
         tokenizer = GemmaTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
