@@ -894,10 +894,9 @@ def prepare_rotary_positional_embeddings(
         crops_coords=grid_crops_coords,
         grid_size=(grid_height, grid_width),
         temporal_size=num_frames,
+        device=device,
     )
 
-    freqs_cos = freqs_cos.to(device=device)
-    freqs_sin = freqs_sin.to(device=device)
     return freqs_cos, freqs_sin
 
 
