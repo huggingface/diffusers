@@ -1802,6 +1802,17 @@ class PipelineFastTests(unittest.TestCase):
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
 
+    def test_wrong_model(self):
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", text_encoder=tokenizer
+            )
+
+        assert "Expected" in str(error_context.exception)
+        assert "text_encoder" in str(error_context.exception)
+        assert "CLIPTokenizer" in str(error_context.exception)
+
 
 @slow
 @require_torch_gpu
