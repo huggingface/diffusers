@@ -974,9 +974,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
                 if ip_adapter_image_embeds is not None:
                     ip_hidden_states, temb = self.transformer.image_proj(
-                        ip_adapter_image_embeds,
-                        timestep.to(dtype=latents.dtype),
-                        need_temb=True,
+                        ip_adapter_image_embeds, timestep.to(dtype=latents.dtype)
                     )
 
                     image_prompt_embeds = {"ip_hidden_states": ip_hidden_states, "temb": temb}

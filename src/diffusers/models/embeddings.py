@@ -2133,18 +2133,20 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         self.adaln_proj = nn.Linear(hidden_dim, 4 * hidden_dim)
         self.adaln_norm = nn.LayerNorm(hidden_dim)
 
-        # Custom scale cannot be passed in constructor
+        # Set scale and fuse KV
         self.attn.scale = 1 / math.sqrt(math.sqrt(dim_head))
         self.attn.fuse_projections()
         self.attn.to_k = None
         self.attn.to_v = None
 
     def forward(self, x, latents, timestep_emb):
-        shift_msa, scale_msa, shift_mlp, scale_mlp = self.adaln_proj(self.adaln_silu(timestep_emb))
+        emb = self.adaln_proj(self.adaln_silu(timestep_emb))
+        shift_msa, scale_msa, shift_mlp, scale_mlp = emb.chunk(4, dim=1)
 
+        residual = latents
         x = self.ln0(x)
         latents = self.ln1(latents) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        latents = self.attn(x, latents) + latents
+        latents = self.attn(latents, torch.cat((x, latents), dim=-2)) + residual
 
         residual = latents
         latents = self.adaln_norm(latents) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
