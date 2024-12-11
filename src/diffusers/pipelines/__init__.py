@@ -163,6 +163,9 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
         ]
     )
     _import_structure["pag"].extend(
@@ -175,6 +178,7 @@ else:
             "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusionPAGPipeline",
             "StableDiffusionPAGImg2ImgPipeline",
+            "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
@@ -497,6 +501,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
         )
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
@@ -597,6 +604,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGImg2ImgPipeline,
+            StableDiffusionPAGInpaintPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGImg2ImgPipeline,
             StableDiffusionXLControlNetPAGPipeline,
