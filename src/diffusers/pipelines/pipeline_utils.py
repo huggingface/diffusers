@@ -834,12 +834,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
-        scheduler_types = expected_types["scheduler"][0]
-        if isinstance(scheduler_types, enum.EnumMeta):
-            scheduler_types = list(scheduler_types)
-        else:
-            scheduler_types = [str(scheduler_types)]
-        scheduler_types = [str(scheduler).split(".")[-1].strip("'>") for scheduler in scheduler_types]
+        scheduler_types = None
+        if "scheduler" in expected_types:
+            scheduler_types = expected_types["scheduler"][0]
+            if isinstance(scheduler_types, enum.EnumMeta):
+                scheduler_types = list(scheduler_types)
+            else:
+                scheduler_types = [str(scheduler_types)]
+            scheduler_types = [str(scheduler).split(".")[-1].strip("'>") for scheduler in scheduler_types]
 
         for key, (_, expected_class_name) in zip(init_dict.keys(), init_dict.values()):
             if key not in passed_class_obj:
@@ -847,7 +849,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             class_name = passed_class_obj[key].__class__.__name__
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
             expected_class_name = expected_class_name[4:] if expected_class_name.startswith("Flax") else expected_class_name            
-            if key == "scheduler" and class_name not in scheduler_types:
+            if key == "scheduler" and scheduler_types is not None and class_name not in scheduler_types:
                 raise ValueError(f"Expected {scheduler_types} for {key}, got {class_name}.")
             elif key != "scheduler" and class_name != expected_class_name:
                 raise ValueError(f"Expected {expected_class_name} for {key}, got {class_name}.")
