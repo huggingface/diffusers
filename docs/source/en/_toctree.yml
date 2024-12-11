@@ -268,6 +268,8 @@
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuan_video_transformer_3d
+        title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
@@ -310,6 +312,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoder_kl_hunyuan_video
+        title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
