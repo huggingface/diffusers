@@ -340,6 +340,15 @@ if _imageio_available:
         _imageio_available = False
 
 
+_is_torchao_available = importlib.util.find_spec("torchao") is not None
+if _is_torchao_available:
+    try:
+        _torchao_version = importlib_metadata.version("torchao")
+        logger.debug(f"Successfully import torchao version {_torchao_version}")
+    except importlib_metadata.PackageNotFoundError:
+        _is_torchao_available = False
+
+
 def is_torch_available():
     return _torch_available
 
@@ -458,6 +467,10 @@ def is_sentencepiece_available():
 
 def is_imageio_available():
     return _imageio_available
+
+
+def is_torchao_available():
+    return _is_torchao_available
 
 
 # docstyle-ignore
@@ -593,6 +606,11 @@ IMAGEIO_IMPORT_ERROR = """
 {0} requires the imageio library and ffmpeg but it was not found in your environment. You can install it with pip: `pip install imageio imageio-ffmpeg`
 """
 
+# docstyle-ignore
+TORCHAO_IMPORT_ERROR = """
+{0} requires the torchao library but it was not found in your environment. You can install it with pip: `pip install torchao`
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -618,6 +636,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("bitsandbytes", (is_bitsandbytes_available, BITSANDBYTES_IMPORT_ERROR)),
         ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
         ("imageio", (is_imageio_available, IMAGEIO_IMPORT_ERROR)),
+        ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
     ]
 )
 
