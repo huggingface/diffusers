@@ -12,8 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import os
+import contextlib
 import tempfile
 from typing import TYPE_CHECKING, Dict
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from transformers import PreTrainedModel, PreTrainedTokenizer
 
 if is_transformers_available():
-    from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizer
+    from transformers import PreTrainedModel, PreTrainedTokenizer
 
 if is_safetensors_available():
     import safetensors.torch
@@ -66,15 +66,12 @@ def load_transformers_model_from_dduf(
         raise EnvironmentError(
             f"Could not find a config.json file for component {name} in DDUF file (contains {dduf_entries.keys()})."
         )
-    config = PretrainedConfig(**json.loads(config_file.read_text()))
 
-    model = cls(config)
     weight_files = [
         entry
         for entry_name, entry in dduf_entries.items()
         if entry_name.startswith(f"{name}/") and entry_name.endswith(".safetensors")
     ]
-
     if not weight_files:
         raise EnvironmentError(
             f"Could not find any weight file for component {name} in DDUF file (contains {dduf_entries.keys()})."
@@ -84,11 +81,17 @@ def load_transformers_model_from_dduf(
             "Safetensors is not available, cannot load model from DDUF. Please `pip install safetensors`."
         )
 
-    # TODO: use kwargs (torch_dtype, device_map, max_memory, offload_folder, offload_state_dict, use_safetensors, low_cpu_mem_usage)
-    # TODO: is there something else we should take care of?
-    for entry in weight_files:
-        with entry.as_mmap() as mm:
-            state_dict = safetensors.torch.load(mm)
-            model.load_state_dict(state_dict)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_config_file = os.path.join(tmp_dir, "config.json")
+        with open(tmp_config_file, "w") as f:
+            f.write(config_file.read_text())
 
-    return model
+        with contextlib.ExitStack() as stack:
+            state_dict = {
+                key: tensor
+                for entry in weight_files  # loop over safetensors files
+                for key, tensor in safetensors.torch.load(  # load tensors from mmap-ed bytes
+                    stack.enter_context(entry.as_mmap())  # use enter_context to close the mmap when done
+                ).items()
+            }
+            return cls.from_pretrained(tmp_dir, state_dict=state_dict, **kwargs)
