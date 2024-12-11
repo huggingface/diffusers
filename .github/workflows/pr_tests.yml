@@ -234,3 +234,67 @@ jobs:
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
+
+  run_lora_tests:
+    needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+
+    name: LoRA tests with PEFT main
+
+    runs-on:
+      group: aws-general-8-plus
+
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        # TODO (sayakpaul, DN6): revisit `--no-deps`
+        python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
+        python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run fast PyTorch LoRA tests with PEFT
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_peft_main \
+          tests/lora/
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_models_lora_peft_main \
+          tests/models/ -k "lora"
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_lora_failures_short.txt
+        cat reports/tests_models_lora_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: pr_main_test_reports
+        path: reports
+
