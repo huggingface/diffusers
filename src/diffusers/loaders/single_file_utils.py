@@ -81,8 +81,14 @@ CHECKPOINT_KEY_NAMES = {
     "open_clip_sd3": "text_encoders.clip_g.transformer.text_model.embeddings.position_embedding.weight",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
-    "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
-    "sd35_large": "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
+    "sd3": [
+        "joint_blocks.0.context_block.adaLN_modulation.1.bias",
+        "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    ],
+    "sd35_large": [
+        "joint_blocks.37.x_block.mlp.fc1.weight",
+        "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
+    ],
     "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.0.pos_encoder.pe",
     "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
@@ -529,13 +535,20 @@ def infer_diffusers_model_type(checkpoint):
     ):
         model_type = "stable_cascade_stage_b"
 
-    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["sd3"]].shape[-1] == 9216:
-        if checkpoint["model.diffusion_model.pos_embed"].shape[1] == 36864:
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd3"]) and any(
+        checkpoint[key].shape[-1] == 9216 if key in checkpoint else False for key in CHECKPOINT_KEY_NAMES["sd3"]
+    ):
+        if "model.diffusion_model.pos_embed" in checkpoint:
+            key = "model.diffusion_model.pos_embed"
+        else:
+            key = "pos_embed"
+
+        if checkpoint[key].shape[1] == 36864:
             model_type = "sd3"
-        elif checkpoint["model.diffusion_model.pos_embed"].shape[1] == 147456:
+        elif checkpoint[key].shape[1] == 147456:
             model_type = "sd35_medium"
 
-    elif CHECKPOINT_KEY_NAMES["sd35_large"] in checkpoint:
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd35_large"]):
         model_type = "sd35_large"
 
     elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
