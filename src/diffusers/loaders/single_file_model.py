@@ -219,7 +219,7 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if original_config:
+        if original_config is not None:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
             else:
@@ -243,7 +243,7 @@ class FromOriginalModelMixin:
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
         else:
-            if config:
+            if config is not None:
                 if isinstance(config, str):
                     default_pretrained_model_config_name = config
                 else:
@@ -270,6 +270,7 @@ class FromOriginalModelMixin:
                 subfolder=subfolder,
                 local_files_only=local_files_only,
                 token=token,
+                revision=revision,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
