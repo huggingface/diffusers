@@ -26,7 +26,7 @@ def remap_single_transformer_blocks_(key, state_dict):
         state_dict[f"{new_key}.attn.to_k.weight"] = k
         state_dict[f"{new_key}.attn.to_v.weight"] = v
         state_dict[f"{new_key}.proj_mlp.weight"] = mlp
-        
+
     elif "linear1.bias" in key:
         linear1_bias = state_dict.pop(key)
         split_size = (hidden_size, hidden_size, hidden_size, linear1_bias.size(0) - 3 * hidden_size)
@@ -36,7 +36,7 @@ def remap_single_transformer_blocks_(key, state_dict):
         state_dict[f"{new_key}.attn.to_k.bias"] = k_bias
         state_dict[f"{new_key}.attn.to_v.bias"] = v_bias
         state_dict[f"{new_key}.proj_mlp.bias"] = mlp_bias
-    
+
     else:
         new_key = key.replace("single_blocks", "single_transformer_blocks")
         new_key = new_key.replace("linear2", "proj_out")

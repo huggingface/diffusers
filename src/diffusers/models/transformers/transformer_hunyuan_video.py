@@ -156,7 +156,9 @@ def apply_rotary_emb(
 class HunyuanVideoAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("HunyuanVideoAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                "HunyuanVideoAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+            )
 
     def __call__(
         self,
@@ -186,18 +188,24 @@ class HunyuanVideoAttnProcessor2_0:
             from ..embeddings import apply_rotary_emb
 
             if attn.add_q_proj is None and encoder_hidden_states is not None:
-                query = torch.cat([
-                    apply_rotary_emb(query[:, :, :-encoder_hidden_states.shape[1]], image_rotary_emb),
-                    query[:, :, -encoder_hidden_states.shape[1]:],
-                ], dim=2)
-                key = torch.cat([
-                    apply_rotary_emb(key[:, :, :-encoder_hidden_states.shape[1]], image_rotary_emb),
-                    key[:, :, -encoder_hidden_states.shape[1]:],
-                ], dim=2)
+                query = torch.cat(
+                    [
+                        apply_rotary_emb(query[:, :, : -encoder_hidden_states.shape[1]], image_rotary_emb),
+                        query[:, :, -encoder_hidden_states.shape[1] :],
+                    ],
+                    dim=2,
+                )
+                key = torch.cat(
+                    [
+                        apply_rotary_emb(key[:, :, : -encoder_hidden_states.shape[1]], image_rotary_emb),
+                        key[:, :, -encoder_hidden_states.shape[1] :],
+                    ],
+                    dim=2,
+                )
             else:
                 query = apply_rotary_emb(query, image_rotary_emb)
                 key = apply_rotary_emb(key, image_rotary_emb)
-        
+
         if attn.add_q_proj is not None and encoder_hidden_states is not None:
             encoder_query = attn.add_q_proj(encoder_hidden_states)
             encoder_key = attn.add_k_proj(encoder_hidden_states)
@@ -224,8 +232,8 @@ class HunyuanVideoAttnProcessor2_0:
 
         if encoder_hidden_states is not None:
             hidden_states, encoder_hidden_states = (
-                hidden_states[:, :-encoder_hidden_states.shape[1]],
-                hidden_states[:, -encoder_hidden_states.shape[1]:],
+                hidden_states[:, : -encoder_hidden_states.shape[1]],
+                hidden_states[:, -encoder_hidden_states.shape[1] :],
             )
 
             if not attn.pre_only:
@@ -513,7 +521,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
 
         hidden_size = num_attention_heads * attention_head_dim
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
-        
+
         self.hidden_size = hidden_size
         self.heads_num = num_attention_heads
         self.mlp_hidden_dim = mlp_hidden_dim
@@ -546,14 +554,17 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
-        
+
         residual = hidden_states
-        
+
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
-        
-        norm_hidden_states, norm_encoder_hidden_states = norm_hidden_states[:, :-text_seq_length, :], norm_hidden_states[:, -text_seq_length:, :]
-        
+
+        norm_hidden_states, norm_encoder_hidden_states = (
+            norm_hidden_states[:, :-text_seq_length, :],
+            norm_hidden_states[:, -text_seq_length:, :],
+        )
+
         # qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
         # q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
 
@@ -584,7 +595,10 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         hidden_states = gate.unsqueeze(1) * self.proj_out(hidden_states)
         hidden_states = hidden_states + residual
 
-        hidden_states, encoder_hidden_states = hidden_states[:, :-text_seq_length, :], hidden_states[:, -text_seq_length:, :]
+        hidden_states, encoder_hidden_states = (
+            hidden_states[:, :-text_seq_length, :],
+            hidden_states[:, -text_seq_length:, :],
+        )
         return hidden_states, encoder_hidden_states
 
 
@@ -631,7 +645,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-        
+
         img_qkv = self.img_attn_qkv(norm_hidden_states)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
         # Apply QK-Norm if needed
@@ -645,7 +659,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
                 img_qq.shape == img_q.shape and img_kk.shape == img_k.shape
             ), f"img_kk: {img_qq.shape}, img_q: {img_q.shape}, img_kk: {img_kk.shape}, img_k: {img_k.shape}"
             img_q, img_k = img_qq, img_kk
-        
+
         txt_qkv = self.txt_attn_qkv(norm_encoder_hidden_states)
         txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
         txt_q = self.txt_attn_q_norm(txt_q).to(txt_v)
@@ -830,7 +844,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = self.txt_in(encoder_hidden_states, timestep, encoder_attention_mask)
 
         txt_seq_len = encoder_hidden_states.shape[1]
-        img_seq_len = hidden_states.shape[1]
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         for _, block in enumerate(self.transformer_blocks):
@@ -842,7 +855,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             ]
 
             hidden_states, encoder_hidden_states = block(*double_block_args)
-        
+
         for block in self.single_transformer_blocks:
             single_block_args = [
                 hidden_states,
