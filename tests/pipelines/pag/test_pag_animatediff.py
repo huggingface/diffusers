@@ -19,7 +19,7 @@ from diffusers import (
 )
 from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import torch_device
+from diffusers.utils.testing_utils import require_accelerator, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
@@ -218,7 +218,7 @@ class AnimateDiffPAGPipelineFastTests(
             expected_slice = np.array([0.5295, 0.3947, 0.5300, 0.4864, 0.4518, 0.5315, 0.5440, 0.4775, 0.5538])
         return super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @require_accelerator
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -234,14 +234,14 @@ class AnimateDiffPAGPipelineFastTests(
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
-        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+        output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
+        self.assertTrue(np.isnan(to_np(output_device)).sum() == 0)
 
     def test_to_dtype(self):
         components = self.get_dummy_components()

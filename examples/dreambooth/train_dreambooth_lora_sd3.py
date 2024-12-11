@@ -86,6 +86,15 @@ def save_model_card(
     validation_prompt=None,
     repo_folder=None,
 ):
+    if "large" in base_model:
+        model_variant = "SD3.5-Large"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3.5-large/blob/main/LICENSE.md"
+        variant_tags = ["sd3.5-large", "sd3.5", "sd3.5-diffusers"]
+    else:
+        model_variant = "SD3"
+        license_url = "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE.md"
+        variant_tags = ["sd3", "sd3-diffusers"]
+
     widget_dict = []
     if images is not None:
         for i, image in enumerate(images):
@@ -95,7 +104,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# SD3 DreamBooth LoRA - {repo_id}
+# {model_variant} DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -120,7 +129,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-3-medium-diffusers', torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained({base_model}, torch_dtype=torch.float16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
@@ -135,7 +144,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
 
 ## License
 
-Please adhere to the licensing terms as described [here](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/LICENSE).
+Please adhere to the licensing terms as described [here]({license_url}).
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
@@ -151,10 +160,10 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "diffusers-training",
         "diffusers",
         "lora",
-        "sd3",
-        "sd3-diffusers",
         "template:sd-lora",
     ]
+
+    tags += variant_tags
 
     model_card = populate_model_card(model_card, tags=tags)
     model_card.save(os.path.join(repo_folder, "README.md"))
@@ -560,6 +569,25 @@ def parse_args(input_args=None):
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
     parser.add_argument(
         "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
+    )
+
+    parser.add_argument(
+        "--lora_layers",
+        type=str,
+        default=None,
+        help=(
+            "The transformer block layers to apply LoRA training on. Please specify the layers in a comma seperated string."
+            "For examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md"
+        ),
+    )
+    parser.add_argument(
+        "--lora_blocks",
+        type=str,
+        default=None,
+        help=(
+            "The transformer blocks to apply LoRA training on. Please specify the block numbers in a comma seperated manner."
+            'E.g. - "--lora_blocks 12,30" will result in lora training of transformer blocks 12 and 30. For more examples refer to https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_SD3.md'
+        ),
     )
 
     parser.add_argument(
@@ -1213,13 +1241,31 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_one.gradient_checkpointing_enable()
             text_encoder_two.gradient_checkpointing_enable()
+    if args.lora_layers is not None:
+        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+    else:
+        target_modules = [
+            "attn.add_k_proj",
+            "attn.add_q_proj",
+            "attn.add_v_proj",
+            "attn.to_add_out",
+            "attn.to_k",
+            "attn.to_out.0",
+            "attn.to_q",
+            "attn.to_v",
+        ]
+    if args.lora_blocks is not None:
+        target_blocks = [int(block.strip()) for block in args.lora_blocks.split(",")]
+        target_modules = [
+            f"transformer_blocks.{block}.{module}" for block in target_blocks for module in target_modules
+        ]
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=target_modules,
     )
     transformer.add_adapter(transformer_lora_config)
 
@@ -1248,10 +1294,13 @@ def main(args):
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
-                elif isinstance(model, type(unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):  # or text_encoder_two
+                    # both text encoders are of the same class, so we check hidden size to distinguish between the two
+                    hidden_size = unwrap_model(model).config.hidden_size
+                    if hidden_size == 768:
+                        text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    elif hidden_size == 1280:
+                        text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1422,7 +1471,6 @@ def main(args):
 
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             betas=(args.adam_beta1, args.adam_beta2),
             beta3=args.prodigy_beta3,
             weight_decay=args.adam_weight_decay,

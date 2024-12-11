@@ -66,7 +66,6 @@ from ..utils.torch_utils import is_compiled_module
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
 
-
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
     CONNECTED_PIPES_KEYS,
@@ -229,7 +228,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -388,6 +387,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         device = device or device_arg
+        pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -410,10 +410,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
-            raise ValueError(
-                "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
-            )
+        if device and torch.device(device).type == "cuda":
+            if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
+                raise ValueError(
+                    "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
+                )
+            # PR: https://github.com/huggingface/accelerate/pull/3223/
+            elif pipeline_has_bnb and is_accelerate_version("<", "1.1.0.dev0"):
+                raise ValueError(
+                    "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+                )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
@@ -1552,6 +1558,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         return numpy_to_pil(images)
 
+    @torch.compiler.disable
     def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}

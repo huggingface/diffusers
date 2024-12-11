@@ -55,6 +55,8 @@
 - sections:
   - local: using-diffusers/overview_techniques
     title: Overview
+  - local: using-diffusers/create_a_server
+    title: Create a server
   - local: training/distributed_inference
     title: Distributed inference
   - local: using-diffusers/merge_loras
@@ -188,6 +190,8 @@
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
       title: Habana Gaudi
+    - local: optimization/neuron
+      title: AWS Neuron
     title: Optimized hardware
   title: Accelerate inference and reduce memory
 - sections:
@@ -248,8 +252,12 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       title: ControlNets
     - sections:
+      - local: api/models/allegro_transformer3d
+        title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
       - local: api/models/cogvideox_transformer3d
@@ -266,6 +274,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/mochi_transformer3d
+        title: MochiTransformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -298,10 +308,16 @@
     - sections:
       - local: api/models/autoencoderkl
         title: AutoencoderKL
+      - local: api/models/autoencoderkl_allegro
+        title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_mochi
+        title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
+      - local: api/models/autoencoder_dc
+        title: AutoencoderDC
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
       - local: api/models/autoencoder_oobleck
@@ -316,6 +332,8 @@
     sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/allegro
+      title: Allegro
     - local: api/pipelines/amused
       title: aMUSEd
     - local: api/pipelines/animatediff
@@ -352,6 +370,8 @@
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
       title: ControlNet-XS with Stable Diffusion XL
+    - local: api/pipelines/controlnet_union
+      title: ControlNetUnion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -392,6 +412,8 @@
       title: Lumina-T2X
     - local: api/pipelines/marigold
       title: Marigold
+    - local: api/pipelines/mochi
+      title: Mochi
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm

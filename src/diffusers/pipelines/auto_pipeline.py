@@ -61,10 +61,12 @@ from .lumina import LuminaText2ImgPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
+    StableDiffusion3PAGImg2ImgPipeline,
     StableDiffusion3PAGPipeline,
     StableDiffusionControlNetPAGInpaintPipeline,
     StableDiffusionControlNetPAGPipeline,
     StableDiffusionPAGImg2ImgPipeline,
+    StableDiffusionPAGInpaintPipeline,
     StableDiffusionPAGPipeline,
     StableDiffusionXLControlNetPAGImg2ImgPipeline,
     StableDiffusionXLControlNetPAGPipeline,
@@ -129,6 +131,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion", StableDiffusionImg2ImgPipeline),
         ("stable-diffusion-xl", StableDiffusionXLImg2ImgPipeline),
         ("stable-diffusion-3", StableDiffusion3Img2ImgPipeline),
+        ("stable-diffusion-3-pag", StableDiffusion3PAGImg2ImgPipeline),
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
@@ -158,6 +161,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
         ("flux-controlnet", FluxControlNetInpaintPipeline),
+        ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
     ]
 )
 

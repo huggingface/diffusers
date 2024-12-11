@@ -1,4 +1,3 @@
-import gc
 import unittest
 
 import numpy as np
@@ -13,11 +12,9 @@ from diffusers import (
     FluxTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import (
     PipelineTesterMixin,
@@ -223,69 +220,30 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_flux_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
 
-@slow
-@require_torch_gpu
-class FluxControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
-    pipeline_class = FluxControlNetImg2ImgPipeline
-    repo_id = "black-forest-labs/FLUX.1-schnell"
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    def get_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
-        image = torch.randn(1, 3, 64, 64).to(device)
-        control_image = torch.randn(1, 3, 64, 64).to(device)
-
-        return {
-            "prompt": "A photo of a cat",
-            "image": image,
-            "control_image": control_image,
-            "num_inference_steps": 2,
-            "guidance_scale": 5.0,
-            "controlnet_conditioning_scale": 1.0,
-            "strength": 0.8,
-            "output_type": "np",
-            "generator": generator,
-        }
-
-    @unittest.skip("We cannot run inference on this model with the current CI hardware")
-    def test_flux_controlnet_img2img_inference(self):
-        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.bfloat16)
-        pipe.enable_model_cpu_offload()
-
-        inputs = self.get_inputs(torch_device)
-
-        image = pipe(**inputs).images[0]
-        image_slice = image[0, :10, :10]
-        expected_slice = np.array(
-            [
-                [0.36132812, 0.30004883, 0.25830078],
-                [0.36669922, 0.31103516, 0.23754883],
-                [0.34814453, 0.29248047, 0.23583984],
-                [0.35791016, 0.30981445, 0.23999023],
-                [0.36328125, 0.31274414, 0.2607422],
-                [0.37304688, 0.32177734, 0.26171875],
-                [0.3671875, 0.31933594, 0.25756836],
-                [0.36035156, 0.31103516, 0.2578125],
-                [0.3857422, 0.33789062, 0.27563477],
-                [0.3701172, 0.31982422, 0.265625],
-            ],
-            dtype=np.float32,
-        )
-
-        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
-
-        assert max_diff < 1e-4
+        height_width_pairs = [(32, 32), (72, 56)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+            inputs.update(
+                {
+                    "control_image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "image": randn_tensor(
+                        (1, 3, height, width),
+                        device=torch_device,
+                        dtype=torch.float16,
+                    ),
+                    "height": height,
+                    "width": width,
+                }
+            )
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
