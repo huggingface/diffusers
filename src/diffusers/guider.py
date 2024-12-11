@@ -530,8 +530,8 @@ class APGGuider:
         eta: float = 1.0,
     ):
         """
-        Based on the findings of [Eliminating Oversaturation and Artifacts of High Guidance Scales
-        in Diffusion Models](https://arxiv.org/pdf/2410.02416)
+        Based on the findings of [Eliminating Oversaturation and Artifacts of High Guidance Scales in Diffusion
+        Models](https://arxiv.org/pdf/2410.02416)
         """
         diff = pred_cond - pred_uncond
         if momentum_buffer is not None:

@@ -529,7 +529,7 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(PipelineBlock):
 
 
 class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
-    expected_components = ["vae", "scheduler"]
+    expected_components = ["scheduler"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -551,8 +551,8 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["latents"]
 
-    def __init__(self, vae=None, scheduler=None):
-        super().__init__(vae=vae, scheduler=scheduler)
+    def __init__(self, scheduler=None):
+        super().__init__(scheduler=scheduler)
 
     @staticmethod
     def check_inputs(pipeline, height, width):
@@ -609,7 +609,6 @@ class StableDiffusionXLPrepareLatentsStep(PipelineBlock):
 
 
 class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
-    expected_components = ["unet"]
     expected_configs = ["requires_aesthetics_score"]
 
     @property
@@ -636,8 +635,8 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
 
-    def __init__(self, unet=None, requires_aesthetics_score=False):
-        super().__init__(unet=unet, requires_aesthetics_score=requires_aesthetics_score)
+    def __init__(self, requires_aesthetics_score=False):
+        super().__init__(requires_aesthetics_score=requires_aesthetics_score)
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
@@ -713,8 +712,6 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(PipelineBlock):
 
 
 class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
-    expected_components = ["unet"]
-
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
@@ -737,8 +734,8 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(PipelineBlock):
     def intermediates_outputs(self) -> List[str]:
         return ["add_time_ids", "negative_add_time_ids", "timestep_cond"]
 
-    def __init__(self, unet=None):
-        super().__init__(unet=unet)
+    def __init__(self):
+        super().__init__()
 
     @torch.no_grad()
     def __call__(self, pipeline: DiffusionPipeline, state: PipelineState) -> PipelineState:
