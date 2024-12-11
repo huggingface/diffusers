@@ -47,6 +47,8 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    FlowMatchEulerDiscreteScheduler,
+    FluxPipeline,
     LMSDiscreteScheduler,
     ModelMixin,
     PNDMScheduler,
@@ -1812,6 +1814,28 @@ class PipelineFastTests(unittest.TestCase):
         assert "Expected" in str(error_context.exception)
         assert "text_encoder" in str(error_context.exception)
         assert "CLIPTokenizer" in str(error_context.exception)
+
+    def test_wrong_model_scheduler_type(self):
+        scheduler = EulerDiscreteScheduler.from_pretrained("hf-internal-testing/tiny-flux-pipe", subfolder="scheduler")
+        with self.assertRaises(ValueError) as error_context:
+            _ = FluxPipeline.from_pretrained(
+                "hf-internal-testing/tiny-flux-pipe", scheduler=scheduler
+            )
+
+        assert "Expected" in str(error_context.exception)
+        assert "scheduler" in str(error_context.exception)
+        assert "EulerDiscreteScheduler" in str(error_context.exception)
+
+    def test_wrong_model_scheduler_enum(self):
+        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained("hf-internal-testing/diffusers-stable-diffusion-tiny-all", subfolder="scheduler")
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", scheduler=scheduler
+            )
+
+        assert "Expected" in str(error_context.exception)
+        assert "scheduler" in str(error_context.exception)
+        assert "FlowMatchEulerDiscreteScheduler" in str(error_context.exception)
 
 
 @slow
