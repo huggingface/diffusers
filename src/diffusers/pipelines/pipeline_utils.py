@@ -239,13 +239,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
-        if dduf_file:
-            if not is_huggingface_hub_version(">", "0.26.3"):
-                raise RuntimeError(
-                    "In order to load a dduf file, you need to install huggingface_hub>0.26.3. "
-                    "You can install it with the following: `pip install --upgrade huggingface_hub"
-                )
-
         expected_modules, optional_kwargs = self._get_signature_keys(self)
 
         def is_saveable_module(name, value):

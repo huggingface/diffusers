@@ -12,12 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import contextlib
+import os
 import tempfile
 from typing import TYPE_CHECKING, Dict
 
 from huggingface_hub import DDUFEntry
+from tqdm import tqdm
 
 from ..utils import is_safetensors_available, is_transformers_available
 
@@ -33,23 +34,26 @@ if is_safetensors_available():
 
 
 def load_tokenizer_from_dduf(
-    cls: "PreTrainedTokenizer", name: str, dduf_entries: Dict[str, DDUFEntry]
+    cls: "PreTrainedTokenizer", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedTokenizer":
     """
     Load a tokenizer from a DDUF archive.
 
-    In practice, `transformers` do not provide a way to load a tokenizer from a DDUF archive. This function is a workaround
-    by extracting the tokenizer files from the DDUF archive and loading the tokenizer from the extracted files. There is an
-    extra cost of extracting the files, but of limited impact as the tokenizer files are usually small-ish.
+    In practice, `transformers` do not provide a way to load a tokenizer from a DDUF archive. This function is a
+    workaround by extracting the tokenizer files from the DDUF archive and loading the tokenizer from the extracted
+    files. There is an extra cost of extracting the files, but of limited impact as the tokenizer files are usually
+    small-ish.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         for entry_name, entry in dduf_entries.items():
             if entry_name.startswith(name + "/"):
                 tmp_entry_path = os.path.join(tmp_dir, *entry_name.split("/"))
+                # need to create intermediary directory if they don't exist
+                os.makedirs(os.path.dirname(tmp_entry_path), exist_ok=True)
                 with open(tmp_entry_path, "wb") as f:
                     with entry.as_mmap() as mm:
                         f.write(mm)
-        return cls.from_pretrained(tmp_dir, **kwargs)
+        return cls.from_pretrained(os.path.dirname(tmp_entry_path), **kwargs)
 
 
 def load_transformers_model_from_dduf(
@@ -85,13 +89,19 @@ def load_transformers_model_from_dduf(
         tmp_config_file = os.path.join(tmp_dir, "config.json")
         with open(tmp_config_file, "w") as f:
             f.write(config_file.read_text())
-
+        # TODO: I feel like it is easier if we pass the config file directly. Otherwise, if we pass 
+        # pretrained_model_name_or_path, we will need to do more checks in transformers. 
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(tmp_config_file)
+        state_dict = {}
         with contextlib.ExitStack() as stack:
-            state_dict = {
-                key: tensor
-                for entry in weight_files  # loop over safetensors files
-                for key, tensor in safetensors.torch.load(  # load tensors from mmap-ed bytes
-                    stack.enter_context(entry.as_mmap())  # use enter_context to close the mmap when done
-                ).items()
-            }
-            return cls.from_pretrained(tmp_dir, state_dict=state_dict, **kwargs)
+            for entry in tqdm(weight_files, desc="Loading state_dict"):  # Loop over safetensors files
+                # Memory-map the safetensors file
+                mmap = stack.enter_context(entry.as_mmap())
+                # Load tensors from the memory-mapped file
+                tensors = safetensors.torch.load(mmap)
+                # Update the state dictionary with tensors
+                state_dict.update(tensors)
+            return cls.from_pretrained(
+                pretrained_model_name_or_path=None, config=config, state_dict=state_dict, **kwargs
+            )
