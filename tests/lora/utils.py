@@ -1885,3 +1885,29 @@ class PeftLoraLoaderMixinTests:
 
             _, _, inputs = self.get_dummy_inputs()
             _ = pipe(**inputs)[0]
+
+    def test_logs_info_when_no_lora_keys_found(self):
+        scheduler_cls = self.scheduler_classes[0]
+        # Skip text encoder check for now as that is handled with `transformers`.
+        components, _, _ = self.get_dummy_components(scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
+        logger = (
+            logging.get_logger("diffusers.loaders.lora_pipeline")
+            if "text_encoder" in self.pipeline_class._lora_loadable_modules
+            else logging.get_logger("diffusers.loaders.peft")
+        )
+        logger.setLevel(logging.INFO)
+
+        with CaptureLogger(logger) as cap_logger:
+            pipe.load_lora_weights(no_op_state_dict)
+        out_after_lora_attempt = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertTrue(cap_logger.out.startswith("No LoRA keys found in the provided state dict"))
+        self.assertTrue(np.allclose(original_out, out_after_lora_attempt, atol=1e-5, rtol=1e-5))
