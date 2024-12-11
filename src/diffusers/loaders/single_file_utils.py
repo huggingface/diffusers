@@ -2314,10 +2314,13 @@ def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
             new_key = new_key.replace(replace_key, rename_key)
         converted_state_dict[new_key] = converted_state_dict.pop(key)
 
-    for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
-        if special_key not in key:
-            continue
-        handler_fn_inplace(key, converted_state_dict)
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
 
 
 def convert_autoencoder_dc_checkpoint_to_diffusers(checkpoint, **kwargs):
