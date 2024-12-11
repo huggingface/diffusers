@@ -848,7 +848,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
             class_name = passed_class_obj[key].__class__.__name__
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-            expected_class_name = expected_class_name[4:] if expected_class_name.startswith("Flax") else expected_class_name            
+            expected_class_name = (
+                expected_class_name[4:] if expected_class_name.startswith("Flax") else expected_class_name
+            )
             if key == "scheduler" and scheduler_types is not None and class_name not in scheduler_types:
                 raise ValueError(f"Expected {scheduler_types} for {key}, got {class_name}.")
             elif key != "scheduler" and class_name != expected_class_name:
