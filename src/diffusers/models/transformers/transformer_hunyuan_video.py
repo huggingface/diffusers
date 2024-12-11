@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import collections.abc
-import itertools
 import math
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -26,15 +24,14 @@ from einops import rearrange
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..modeling_outputs import Transformer2DModelOutput
+from ..normalization import AdaLayerNormContinuous
 
 
 def attention(
     q,
     k,
     v,
-    drop_rate=0,
-    attn_mask=None,
-    causal=False,
+    attn_mask=None
 ):
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
@@ -42,7 +39,7 @@ def attention(
 
     if attn_mask is not None and attn_mask.dtype != torch.bool:
         attn_mask = attn_mask.to(q.dtype)
-    x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal)
+    x = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0, is_causal=False)
 
     x = x.transpose(1, 2)
     b, s, a, d = x.shape
@@ -342,38 +339,6 @@ class MLPEmbedder(nn.Module):
         return self.out_layer(self.silu(self.in_layer(x)))
 
 
-class FinalLayer(nn.Module):
-    """The final layer of DiT."""
-
-    def __init__(self, hidden_size, patch_size, out_channels, act_layer):
-        super().__init__()
-
-        # Just use LayerNorm for the final layer
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        if isinstance(patch_size, int):
-            self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        else:
-            self.linear = nn.Linear(
-                hidden_size,
-                patch_size[0] * patch_size[1] * patch_size[2] * out_channels,
-                bias=True,
-            )
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
-
-        # Here we don't distinguish between the modulate types. Just use the simple one.
-        self.adaLN_modulation = nn.Sequential(
-            act_layer(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
-        )
-
-    def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = modulate(self.norm_final(x), shift=shift, scale=scale)
-        x = self.linear(x)
-        return x
-
-
 class PatchEmbed(nn.Module):
     """2D Image to Patch Embedding
 
@@ -620,7 +585,7 @@ class SingleTokenRefiner(nn.Module):
         self,
         in_channels,
         hidden_size,
-        heads_num,
+        num_attention_heads,
         depth,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
@@ -641,7 +606,7 @@ class SingleTokenRefiner(nn.Module):
 
         self.individual_token_refiner = IndividualTokenRefiner(
             hidden_size=hidden_size,
-            heads_num=heads_num,
+            heads_num=num_attention_heads,
             depth=depth,
             mlp_width_ratio=mlp_width_ratio,
             mlp_drop_rate=mlp_drop_rate,
@@ -964,8 +929,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        self.in_channels = in_channels
-        self.out_channels = in_channels if out_channels is None else out_channels
+        out_channels = out_channels or in_channels
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
 
@@ -973,7 +937,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             raise ValueError(f"Got {rope_dim_list} but expected positional dim {attention_head_dim}")
 
         # image projection
-        self.img_in = PatchEmbed((patch_size_t, patch_size, patch_size), self.in_channels, inner_dim)
+        self.img_in = PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
 
         # text projection
         self.txt_in = SingleTokenRefiner(text_states_dim, inner_dim, num_attention_heads, depth=2)
@@ -1016,12 +980,8 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.final_layer = FinalLayer(
-            inner_dim,
-            (patch_size_t, patch_size, patch_size),
-            self.out_channels,
-            get_activation_layer("silu"),
-        )
+        self.norm_out = AdaLayerNormContinuous(inner_dim, inner_dim, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(inner_dim, patch_size_t * patch_size * patch_size * out_channels)
 
     def forward(
         self,
@@ -1087,7 +1047,8 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         hidden_states = hidden_states[:, :img_seq_len, ...]
 
-        hidden_states = self.final_layer(hidden_states, temb)
+        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(batch_size, post_patch_num_frames, post_patch_height, post_patch_width, -1, p_t, p, p)
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)

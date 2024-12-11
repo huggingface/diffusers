@@ -7,6 +7,13 @@ from accelerate import init_empty_weights
 from diffusers import HunyuanVideoTransformer3DModel
 
 
+def remap_norm_scale_shift_(key, state_dict):
+    weight = state_dict.pop(key)
+    shift, scale = weight.chunk(2, dim=0)
+    new_weight = torch.cat([scale, shift], dim=0)
+    state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
+
+
 TRANSFORMER_KEYS_RENAME_DICT = {
     # "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
     # "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
@@ -16,9 +23,13 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     # "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
     "double_blocks": "transformer_blocks",
     "single_blocks": "single_transformer_blocks",
+    "final_layer.norm_final": "norm_out.norm",
+    "final_layer.linear": "proj_out"
 }
 
-TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
+}
 
 VAE_KEYS_RENAME_DICT = {}
 
