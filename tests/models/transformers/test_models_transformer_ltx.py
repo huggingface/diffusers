@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import LTXTransformer3DModel
+from diffusers import LTXVideoTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..test_modeling_common import ModelTesterMixin
@@ -27,7 +27,7 @@ enable_full_determinism()
 
 
 class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = LTXTransformer3DModel
+    model_class = LTXVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
 
@@ -79,5 +79,5 @@ class LTXTransformerTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"LTXTransformer3DModel"}
+        expected_set = {"LTXVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)

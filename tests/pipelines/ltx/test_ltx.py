@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXTransformer3DModel
+from diffusers import AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXVideoTransformer3DModel
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -49,7 +49,7 @@ class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = LTXTransformer3DModel(
+        transformer = LTXVideoTransformer3DModel(
             in_channels=8,
             out_channels=8,
             patch_size=1,
@@ -62,7 +62,7 @@ class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        vae = AutoencoderKLLTX(
+        vae = AutoencoderKLLTXVideo(
             latent_channels=8,
             block_out_channels=(8, 8, 8, 8),
             spatio_temporal_scaling=(True, True, False, False),

@@ -107,7 +107,7 @@ class AutoencoderKLCogVideoX(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class AutoencoderKLLTX(metaclass=DummyObject):
+class AutoencoderKLLTXVideo(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -407,7 +407,7 @@ class LatteTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class LTXTransformer3DModel(metaclass=DummyObject):
+class LTXVideoTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

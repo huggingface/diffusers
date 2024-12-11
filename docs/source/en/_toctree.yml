@@ -272,8 +272,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
-      - local: api/models/ltx_transformer3d
-        title: LTXTransformer3DModel
+      - local: api/models/ltx_video_transformer3d
+        title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/pixart_transformer2d
@@ -312,8 +312,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
-      - local: api/models/autoencoderkl_ltx
-        title: AutoencoderKLLTX
+      - local: api/models/autoencoderkl_ltx_video
+        title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
@@ -408,7 +408,7 @@
       title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
-    - local: api/pipelines/ltx
+    - local: api/pipelines/ltx_video
       title: LTX
     - local: api/pipelines/lumina
       title: Lumina-T2X

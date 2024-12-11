@@ -84,11 +84,11 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
-    "LTXTransformer3DModel": {
+    "LTXVideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
-    "AutoencoderKLLTX": {
+    "AutoencoderKLLTXVideo": {
         "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
         "default_subfolder": "vae",
     },

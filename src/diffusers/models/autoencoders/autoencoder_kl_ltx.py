@@ -717,7 +717,7 @@ class LTXDecoder3d(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
     [LTX](https://huggingface.co/Lightricks/LTX-Video).
@@ -900,7 +900,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.use_framewise_encoding:
             # TODO(aryan): requires investigation
             raise NotImplementedError(
-                "Frame-wise encoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                "Frame-wise encoding has not been implemented for AutoencoderKLLTXVideo, at the moment, due to "
                 "quality issues caused by splitting inference across frame dimension. If you believe this "
                 "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
             )
@@ -947,7 +947,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.use_framewise_decoding:
             # TODO(aryan): requires investigation
             raise NotImplementedError(
-                "Frame-wise decoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                "Frame-wise decoding has not been implemented for AutoencoderKLLTXVideo, at the moment, due to "
                 "quality issues caused by splitting inference across frame dimension. If you believe this "
                 "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
             )
@@ -1032,7 +1032,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 if self.use_framewise_encoding:
                     # TODO(aryan): requires investigation
                     raise NotImplementedError(
-                        "Frame-wise encoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                        "Frame-wise encoding has not been implemented for AutoencoderKLLTXVideo, at the moment, due to "
                         "quality issues caused by splitting inference across frame dimension. If you believe this "
                         "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
                     )
@@ -1096,7 +1096,7 @@ class AutoencoderKLLTX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 if self.use_framewise_decoding:
                     # TODO(aryan): requires investigation
                     raise NotImplementedError(
-                        "Frame-wise decoding has not been implemented for AutoencoderKLLTX, at the moment, due to "
+                        "Frame-wise decoding has not been implemented for AutoencoderKLLTXVideo, at the moment, due to "
                         "quality issues caused by splitting inference across frame dimension. If you believe this "
                         "should be possible, please submit a PR to https://github.com/huggingface/diffusers/pulls."
                     )

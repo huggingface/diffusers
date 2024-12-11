@@ -28,17 +28,17 @@ Loading the original LTX Video checkpoints is also possible with [`~ModelMixin.f
 
 ```python
 import torch
-from diffusers import AutoencoderKLLTX, LTXImageToVideoPipeline, LTXTransformer3DModel
+from diffusers import AutoencoderKLLTXVideo, LTXImageToVideoPipeline, LTXVideoTransformer3DModel
 
 single_file_url = "https://huggingface.co/Lightricks/LTX-Video/ltx-video-2b-v0.9.safetensors"
-transformer = LTXTransformer3DModel.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
-vae = AutoencoderKLLTX.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
+transformer = LTXVideoTransformer3DModel.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
+vae = AutoencoderKLLTXVideo.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
 pipe = LTXImageToVideoPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, vae=vae, torch_dtype=torch.bfloat16)
 
 # ... inference code ...
 ```
 
-Alternative, the pipeline can be used to load the weights with [~FromSingleFileMixin.from_single_file`].
+Alternatively, the pipeline can be used to load the weights with [~FromSingleFileMixin.from_single_file`].
 
 ```python
 import torch

@@ -22,8 +22,8 @@ from transformers import T5EncoderModel, T5TokenizerFast
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin
-from ...models.autoencoders import AutoencoderKLLTX
-from ...models.transformers import LTXTransformer3DModel
+from ...models.autoencoders import AutoencoderKLLTXVideo
+from ...models.transformers import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -166,11 +166,11 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin):
     Reference: https://github.com/Lightricks/LTX-Video
 
     Args:
-        transformer ([`LTXTransformer3DModel`]):
+        transformer ([`LTXVideoTransformer3DModel`]):
             Conditional Transformer architecture to denoise the encoded video latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKLLTX`]):
+        vae ([`AutoencoderKLLTXVideo`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
@@ -190,10 +190,10 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKLLTX,
+        vae: AutoencoderKLLTXVideo,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
-        transformer: LTXTransformer3DModel,
+        transformer: LTXVideoTransformer3DModel,
     ):
         super().__init__()
 

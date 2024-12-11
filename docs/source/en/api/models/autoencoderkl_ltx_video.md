@@ -9,21 +9,21 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# AutoencoderKLLTX
+# AutoencoderKLLTXVideo
 
 The 3D variational autoencoder (VAE) model with KL loss used in [LTX](https://huggingface.co/Lightricks/LTX-Video) was introduced by Lightricks.
 
 The model can be loaded with the following code snippet.
 
 ```python
-from diffusers import AutoencoderKLLTX
+from diffusers import AutoencoderKLLTXVideo
 
-vae = AutoencoderKLLTX.from_pretrained("TODO/TODO", subfolder="vae", torch_dtype=torch.float32).to("cuda")
+vae = AutoencoderKLLTXVideo.from_pretrained("TODO/TODO", subfolder="vae", torch_dtype=torch.float32).to("cuda")
 ```
 
-## AutoencoderKLLTX
+## AutoencoderKLLTXVideo
 
-[[autodoc]] AutoencoderKLLTX
+[[autodoc]] AutoencoderKLLTXVideo
     - decode
     - encode
     - all

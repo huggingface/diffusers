@@ -9,21 +9,21 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# LTXTransformer3DModel
+# LTXVideoTransformer3DModel
 
 A Diffusion Transformer model for 3D data from [LTX](https://huggingface.co/Lightricks/LTX-Video) was introduced by Lightricks.
 
 The model can be loaded with the following code snippet.
 
 ```python
-from diffusers import LTXTransformer3DModel
+from diffusers import LTXVideoTransformer3DModel
 
-transformer = LTXTransformer3DModel.from_pretrained("TODO/TODO", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
+transformer = LTXVideoTransformer3DModel.from_pretrained("TODO/TODO", subfolder="transformer", torch_dtype=torch.bfloat16).to("cuda")
 ```
 
-## LTXTransformer3DModel
+## LTXVideoTransformer3DModel
 
-[[autodoc]] LTXTransformer3DModel
+[[autodoc]] LTXVideoTransformer3DModel
 
 ## Transformer2DModelOutput
 

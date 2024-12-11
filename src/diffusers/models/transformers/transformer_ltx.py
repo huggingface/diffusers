@@ -267,7 +267,7 @@ class LTXTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class LTXTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in [LTX](https://huggingface.co/Lightricks/LTX-Video).
 

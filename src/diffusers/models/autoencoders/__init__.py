@@ -3,7 +3,7 @@ from .autoencoder_dc import AutoencoderDC
 from .autoencoder_kl import AutoencoderKL
 from .autoencoder_kl_allegro import AutoencoderKLAllegro
 from .autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
-from .autoencoder_kl_ltx import AutoencoderKLLTX
+from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_oobleck import AutoencoderOobleck

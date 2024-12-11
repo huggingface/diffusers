@@ -5,7 +5,7 @@ import torch
 from safetensors.torch import load_file
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKLLTX, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXTransformer3DModel
+from diffusers import AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXVideoTransformer3DModel
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -83,7 +83,7 @@ def convert_transformer(
     PREFIX_KEY = ""
 
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    transformer = LTXTransformer3DModel().to(dtype=dtype)
+    transformer = LTXVideoTransformer3DModel().to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[len(PREFIX_KEY) :]
@@ -103,7 +103,7 @@ def convert_transformer(
 
 def convert_vae(ckpt_path: str, dtype: torch.dtype):
     original_state_dict = get_state_dict(load_file(ckpt_path))
-    vae = AutoencoderKLLTX().to(dtype=dtype)
+    vae = AutoencoderKLLTXVideo().to(dtype=dtype)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -166,14 +166,14 @@ if __name__ == "__main__":
         assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
 
     if args.transformer_ckpt_path is not None:
-        transformer: LTXTransformer3DModel = convert_transformer(args.transformer_ckpt_path, dtype)
+        transformer: LTXVideoTransformer3DModel = convert_transformer(args.transformer_ckpt_path, dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(
                 args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant
             )
 
     if args.vae_ckpt_path is not None:
-        vae: AutoencoderKLLTX = convert_vae(args.vae_ckpt_path, dtype)
+        vae: AutoencoderKLLTXVideo = convert_vae(args.vae_ckpt_path, dtype)
         if not args.save_pipeline:
             vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB", variant=variant)
 
