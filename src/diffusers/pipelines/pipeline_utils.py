@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import enum
 import fnmatch
 import importlib
 import inspect
@@ -811,6 +812,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # in this case they are already instantiated in `kwargs`
         # extract them here
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        expected_types = pipeline_class._get_signature_types()
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
@@ -832,13 +834,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+        scheduler_types = expected_types["scheduler"][0]
+        if isinstance(scheduler_types, enum.EnumType):
+            scheduler_types = list(scheduler_types)
+        else:
+            scheduler_types = [str(scheduler_types)]
+        scheduler_types = [str(scheduler).split(".")[-1].strip("'>") for scheduler in scheduler_types]
 
         for key, (_, expected_class_name) in zip(init_dict.keys(), init_dict.values()):
-            if key not in passed_class_obj or key == "scheduler":
+            if key not in passed_class_obj:
                 continue
             class_name = passed_class_obj[key].__class__.__name__
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-            if class_name != expected_class_name:
+            if key == "scheduler" and class_name not in scheduler_types:
+                raise ValueError(f"Expected {scheduler_types} for {key}, got {class_name}.")
+            elif key != "scheduler" and class_name != expected_class_name:
                 raise ValueError(f"Expected {expected_class_name} for {key}, got {class_name}.")
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
