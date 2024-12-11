@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import LTXImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
 
-        >>> pipe = LTXImageToVideoPipeline.from_pretrained("a-r-r-o-w/LTX-Video-diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = LTXImageToVideoPipeline.from_pretrained("Lightricks/LTX-Video", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> image = load_image(
