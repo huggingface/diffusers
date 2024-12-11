@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 
 from ...models import UNet2DConditionModel, VQModel
-from ...schedulers import DDPMScheduler
+from ...schedulers import DDPMScheduler, UnCLIPScheduler
 from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -83,7 +83,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        scheduler: DDPMScheduler,
+        scheduler: Union[DDPMScheduler, UnCLIPScheduler],
         movq: VQModel,
     ):
         super().__init__()

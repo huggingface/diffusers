@@ -5,7 +5,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...models import PriorTransformer
-from ...schedulers import UnCLIPScheduler
+from ...schedulers import DDPMScheduler, UnCLIPScheduler
 from ...utils import (
     logging,
     replace_example_docstring,
@@ -114,7 +114,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModelWithProjection,
         text_encoder: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
-        scheduler: UnCLIPScheduler,
+        scheduler: Union[DDPMScheduler, UnCLIPScheduler],
         image_processor: CLIPImageProcessor,
     ):
         super().__init__()
