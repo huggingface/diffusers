@@ -842,9 +842,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
-        keys = list(state_dict.keys())
-        only_text_encoder = all(key.startswith(cls.text_encoder_name) for key in keys)
-        if not only_text_encoder:
+        if any(k.startswith(f"{cls.unet_name}.") for k in state_dict):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
             unet.load_lora_adapter(
@@ -1007,6 +1005,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -1516,6 +1519,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
@@ -2146,6 +2154,11 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
 
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
+
     @classmethod
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
@@ -2579,6 +2592,11 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 elif is_sequential_cpu_offload:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
+
+        else:
+            logger.info(
+                f"No LoRA keys found in the provided state dict for {text_encoder.__class__.__name__}. Please open an issue if you think this is unexpected - https://github.com/huggingface/diffusers/issues/new."
+            )
 
     @classmethod
     def save_lora_weights(
