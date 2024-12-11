@@ -22,7 +22,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, _UnionGenericAlias
 
 import numpy as np
 import PIL.Image
@@ -836,11 +836,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
         scheduler_types = None
         if "scheduler" in expected_types:
-            scheduler_types = expected_types["scheduler"][0]
-            if isinstance(scheduler_types, enum.EnumMeta):
-                scheduler_types = list(scheduler_types)
-            else:
-                scheduler_types = [str(scheduler_types)]
+            scheduler_types = []
+            for scheduler_type in expected_types["scheduler"]:
+                if isinstance(scheduler_type, enum.EnumMeta):
+                    scheduler_types.extend(list(scheduler_type))
+                else:
+                    scheduler_types.extend([str(scheduler_type)])
             scheduler_types = [str(scheduler).split(".")[-1].strip("'>") for scheduler in scheduler_types]
 
         for key, (_, expected_class_name) in zip(init_dict.keys(), init_dict.values()):
