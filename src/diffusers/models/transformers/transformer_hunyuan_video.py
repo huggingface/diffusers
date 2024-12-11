@@ -24,7 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero
+from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
 
 def attention(q, k, v, attn_mask=None):
@@ -265,23 +265,6 @@ def modulate(x, shift=None, scale=None):
         return x + shift.unsqueeze(1)
     else:
         return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-
-class ModulateDiT(nn.Module):
-    """Modulation layer for DiT."""
-
-    def __init__(
-        self,
-        hidden_size: int,
-        factor: int,
-        act_layer: Callable,
-    ):
-        super().__init__()
-        self.act = act_layer()
-        self.linear = nn.Linear(hidden_size, factor * hidden_size, bias=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.linear(self.act(x))
 
 
 class MLPEmbedder(nn.Module):
@@ -595,12 +578,6 @@ class SingleTokenRefiner(nn.Module):
 
 
 class HunyuanVideoSingleTransformerBlock(nn.Module):
-    """
-    A DiT block with parallel linear layers as described in https://arxiv.org/abs/2302.05442 and adapted modulation
-    interface. Also refer to (SD3): https://arxiv.org/abs/2403.03206
-                  (Flux.1): https://github.com/black-forest-labs/flux
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -624,28 +601,22 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
 
         qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        self.k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-
-        self.pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
+        self.k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
 
         self.mlp_act = get_activation_layer(mlp_act_type)()
-        self.modulation = ModulateDiT(
-            hidden_size,
-            factor=3,
-            act_layer=get_activation_layer("silu"),
-        )
+        self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type="layer_norm")
 
     def forward(
         self,
-        x: torch.Tensor,
-        vec: torch.Tensor,
+        hidden_states: torch.Tensor,
+        temb: torch.Tensor,
         txt_len: int,
-        freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        shift_msa, scale_msa, gate_msa = self.modulation(vec).chunk(3, dim=-1)
-        x_mod = modulate(self.pre_norm(x), shift=shift_msa, scale=scale_msa)
-        qkv, mlp = torch.split(self.linear1(x_mod), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
+        norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+        
+        qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
 
         q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
 
@@ -654,13 +625,10 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         k = self.k_norm(k).to(v)
 
         # Apply RoPE if needed.
-        if freqs_cis is not None:
+        if image_rotary_emb is not None:
             img_q, txt_q = q[:, :-txt_len, :, :], q[:, -txt_len:, :, :]
             img_k, txt_k = k[:, :-txt_len, :, :], k[:, -txt_len:, :, :]
-            img_qq, img_kk = apply_rotary_emb(img_q, img_k, freqs_cis, head_first=False)
-            assert (
-                img_qq.shape == img_q.shape and img_kk.shape == img_k.shape
-            ), f"img_kk: {img_qq.shape}, img_q: {img_q.shape}, img_kk: {img_kk.shape}, img_k: {img_k.shape}"
+            img_qq, img_kk = apply_rotary_emb(img_q, img_k, image_rotary_emb, head_first=False)
             img_q, img_k = img_qq, img_kk
             q = torch.cat((img_q, txt_q), dim=1)
             k = torch.cat((img_k, txt_k), dim=1)
@@ -669,7 +637,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
 
         # Compute activation in mlp stream, cat again and run second linear layer.
         output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
-        output = x + output * gate_msa.unsqueeze(1)
+        output = hidden_states + output * gate.unsqueeze(1)
         return output
 
 
@@ -685,25 +653,17 @@ class HunyuanVideoTransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.deterministic = False
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
 
-        self.img_mod = ModulateDiT(hidden_size, factor=6, act_layer=get_activation_layer("silu"))
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.norm1 = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
+        self.norm1_context = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
 
         self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         qk_norm_layer = get_norm_layer(qk_norm_type)
         self.img_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
         self.img_attn_k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
         self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
-
-        self.txt_mod = ModulateDiT(
-            hidden_size,
-            factor=6,
-            act_layer=get_activation_layer("silu"),
-        )
-        self.norm1_context = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
         self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
         self.txt_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
@@ -723,27 +683,33 @@ class HunyuanVideoTransformerBlock(nn.Module):
         temb: torch.Tensor,
         freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        (
-            shift_msa,
-            scale_msa,
-            gate_msa,
-            shift_mlp,
-            scale_mlp,
-            gate_mlp,
-        ) = self.img_mod(temb).chunk(6, dim=-1)
-        (
-            c_shift_msa,
-            c_scale_msa,
-            c_gate_msa,
-            c_shift_mlp,
-            c_scale_mlp,
-            c_gate_mlp,
-        ) = self.txt_mod(temb).chunk(6, dim=-1)
+        # (
+        #     shift_msa,
+        #     scale_msa,
+        #     gate_msa,
+        #     shift_mlp,
+        #     scale_mlp,
+        #     gate_mlp,
+        # ) = self.img_mod(temb).chunk(6, dim=-1)
+        # (
+        #     c_shift_msa,
+        #     c_scale_msa,
+        #     c_gate_msa,
+        #     c_shift_mlp,
+        #     c_scale_mlp,
+        #     c_gate_mlp,
+        # ) = self.txt_mod(temb).chunk(6, dim=-1)
 
-        # Prepare image for attention.
-        img_modulated = self.norm1(hidden_states)
-        img_modulated = modulate(img_modulated, shift=shift_msa, scale=scale_msa)
-        img_qkv = self.img_attn_qkv(img_modulated)
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+            encoder_hidden_states, emb=temb
+        )
+
+        # # Prepare image for attention.
+        # img_modulated = self.norm1(hidden_states)
+        # img_modulated = modulate(img_modulated, shift=shift_msa, scale=scale_msa)
+        
+        img_qkv = self.img_attn_qkv(norm_hidden_states)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
         # Apply QK-Norm if needed
         img_q = self.img_attn_q_norm(img_q).to(img_v)
@@ -758,9 +724,10 @@ class HunyuanVideoTransformerBlock(nn.Module):
             img_q, img_k = img_qq, img_kk
 
         # Prepare txt for attention.
-        txt_modulated = self.norm1_context(encoder_hidden_states)
-        txt_modulated = modulate(txt_modulated, shift=c_shift_msa, scale=c_scale_msa)
-        txt_qkv = self.txt_attn_qkv(txt_modulated)
+        # txt_modulated = self.norm1_context(encoder_hidden_states)
+        # txt_modulated = modulate(txt_modulated, shift=c_shift_msa, scale=c_scale_msa)
+        
+        txt_qkv = self.txt_attn_qkv(norm_encoder_hidden_states)
         txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
         # Apply QK-Norm if needed.
         txt_q = self.txt_attn_q_norm(txt_q).to(txt_v)
@@ -774,17 +741,19 @@ class HunyuanVideoTransformerBlock(nn.Module):
 
         img_attn, txt_attn = attn[:, : hidden_states.shape[1]], attn[:, hidden_states.shape[1] :]
 
-        # Calculate the img bloks.
         hidden_states = hidden_states + self.img_attn_proj(img_attn) * gate_msa.unsqueeze(1)
-        hidden_states = hidden_states + self.ff(
-            modulate(self.norm2(hidden_states), shift=shift_mlp, scale=scale_mlp)
-        ) * gate_mlp.unsqueeze(1)
-
-        # Calculate the txt bloks.
         encoder_hidden_states = encoder_hidden_states + self.txt_attn_proj(txt_attn) * c_gate_msa.unsqueeze(1)
-        encoder_hidden_states = encoder_hidden_states + self.ff_context(
-            modulate(self.norm2_context(encoder_hidden_states), shift=c_shift_mlp, scale=c_scale_mlp)
-        ) * c_gate_mlp.unsqueeze(1)
+
+        norm_hidden_states = self.norm2(hidden_states)
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        ff_output = self.ff(norm_hidden_states)
+        ff_output = gate_mlp.unsqueeze(1) * ff_output
+        hidden_states = hidden_states + ff_output
+
+        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
 
         return hidden_states, encoder_hidden_states
 
@@ -964,17 +933,17 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
             hidden_states, encoder_hidden_states = block(*double_block_args)
 
-        hidden_states = torch.cat((hidden_states, encoder_hidden_states), 1)
-        if len(self.single_transformer_blocks) > 0:
-            for _, block in enumerate(self.single_transformer_blocks):
-                single_block_args = [
-                    hidden_states,
-                    temb,
-                    txt_seq_len,
-                    (freqs_cos, freqs_sin),
-                ]
+        hidden_states = torch.cat((hidden_states, encoder_hidden_states), dim=1)
+        
+        for block in self.single_transformer_blocks:
+            single_block_args = [
+                hidden_states,
+                temb,
+                txt_seq_len,
+                (freqs_cos, freqs_sin),
+            ]
 
-                hidden_states = block(*single_block_args)
+            hidden_states = block(*single_block_args)
 
         hidden_states = hidden_states[:, :img_seq_len, ...]
 
