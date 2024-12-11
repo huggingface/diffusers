@@ -833,6 +833,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
+        for key, (_, expected_class_name) in zip(init_dict.keys(), init_dict.values()):
+            if key not in passed_class_obj:
+                continue
+            class_name = passed_class_obj[key].__class__.__name__
+            if class_name != expected_class_name:
+                raise ValueError(f"Expected {expected_class_name} for {key}, got {class_name}.")
+
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
             raise NotImplementedError(
