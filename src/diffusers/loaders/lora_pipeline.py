@@ -1863,6 +1863,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
                 "To get a comprehensive list of parameter names that were modified, enable debug logging."
             )
+        transformer_lora_state_dict = self._maybe_expand_lora_state_dict(transformer=transformer, lora_state_dict=transformer_lora_state_dict)
 
         if len(transformer_lora_state_dict) > 0:
             self.load_lora_into_transformer(
@@ -2372,6 +2373,32 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     logger.info(f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}.")
 
         return has_param_with_shape_update
+
+    @classmethod
+    def _maybe_expand_lora_state_dict(cls, transformer, lora_state_dict):
+        expanded_module_names = set()
+        transformer_state_dict = transformer.state_dict()
+        lora_module_names = set([k.replace(".lora_A.weight", "") for k in lora_state_dict if "lora_A" in k])
+        lora_module_names = sorted(lora_module_names)
+        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
+
+        for k in lora_module_names:
+            base_param_name = f"{k.replace(f'{cls.transformer_name}.', '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(f'{cls.transformer_name}.', '')}.weight"
+            base_weight_param = transformer_state_dict[base_param_name]
+            lora_A_param = lora_state_dict[f"{k}.lora_A.weight"]
+            # lora_B_param = lora_state_dict[f"{k}.lora_B.weight"]
+
+            if base_weight_param.shape[1] > lora_A_param.shape[1]:
+                shape = (lora_A_param.shape[0], base_weight_param.shape[1])
+                expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
+                expanded_state_dict_weight[:, :lora_A_param.shape[1]].copy_(lora_A_param)
+                lora_state_dict[f"{k}.lora_A.weight"] = expanded_state_dict_weight
+                expanded_module_names.add(k)
+
+        if expanded_module_names:
+            logger.info(f"Found some LoRA modules for which the weights were expanded: {expanded_module_names}. Please open an issue if you think this was unexpected - https://github.com/huggingface/diffusers/issues/new.")
+        return lora_state_dict
+
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
