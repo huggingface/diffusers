@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -21,8 +22,9 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import is_torch_version
 from ..attention import FeedForward
-from ..attention_processor import Attention
+from ..attention_processor import Attention, AttentionProcessor
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, RMSNorm
@@ -514,13 +516,13 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         self,
         num_attention_heads: int,
         attention_head_dim: int,
-        mlp_width_ratio: float = 4.0,
+        mlp_ratio: float = 4.0,
         qk_norm: str = "rms_norm",
     ):
         super().__init__()
 
         hidden_size = num_attention_heads * attention_head_dim
-        mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
 
         self.hidden_size = hidden_size
         self.heads_num = num_attention_heads
@@ -549,7 +551,6 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        txt_len: int,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.shape[1]
@@ -564,25 +565,6 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
             norm_hidden_states[:, :-text_seq_length, :],
             norm_hidden_states[:, -text_seq_length:, :],
         )
-
-        # qkv, mlp = torch.split(self.linear1(norm_hidden_states), [3 * self.hidden_size, self.mlp_hidden_dim], dim=-1)
-        # q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
-
-        # # Apply QK-Norm if needed.
-        # q = self.q_norm(q).to(v)
-        # k = self.k_norm(k).to(v)
-
-        # if image_rotary_emb is not None:
-        #     img_q, txt_q = q[:, :-txt_len, :, :], q[:, -txt_len:, :, :]
-        #     img_k, txt_k = k[:, :-txt_len, :, :], k[:, -txt_len:, :, :]
-        #     img_qq, img_kk = apply_rotary_emb(img_q, img_k, image_rotary_emb, head_first=False)
-        #     img_q, img_k = img_qq, img_kk
-        #     q = torch.cat((img_q, txt_q), dim=1)
-        #     k = torch.cat((img_k, txt_k), dim=1)
-
-        # attn = attention(q, k, v)
-        # output = self.linear2(torch.cat((attn, self.act_mlp(mlp)), 2))
-        # output = hidden_states + output * gate.unsqueeze(1)
 
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
@@ -607,7 +589,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         self,
         hidden_size: int,
         heads_num: int,
-        mlp_width_ratio: float,
+        mlp_ratio: float,
         qk_norm: str = "rms_norm",
     ):
         super().__init__()
@@ -629,10 +611,10 @@ class HunyuanVideoTransformerBlock(nn.Module):
         self.txt_attn_proj = nn.Linear(hidden_size, hidden_size)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.ff = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="gelu-approximate")
+        self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
 
         self.norm2_context = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.ff_context = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="gelu-approximate")
+        self.ff_context = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
 
     def forward(
         self,
@@ -690,70 +672,23 @@ class HunyuanVideoTransformerBlock(nn.Module):
 
 
 class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
-    """
-    HunyuanVideo Transformer backbone
-
-    Inherited from ModelMixin and ConfigMixin for compatibility with diffusers' sampler StableDiffusionPipeline.
-
-    Reference: [1] Flux.1: https://github.com/black-forest-labs/flux [2] MMDiT: http://arxiv.org/abs/2403.03206
-
-    Parameters ---------- args: argparse.Namespace
-        The arguments parsed by argparse.
-    patch_size: list
-        The size of the patch.
-    in_channels: int
-        The number of input channels.
-    out_channels: int
-        The number of output channels.
-    hidden_size: int
-        The hidden size of the transformer backbone.
-    heads_num: int
-        The number of attention heads.
-    mlp_width_ratio: float
-        The ratio of the hidden size of the MLP in the transformer block.
-    mlp_act_type: str
-        The activation function of the MLP in the transformer block.
-    depth_double_blocks: int
-        The number of transformer blocks in the double blocks.
-    depth_single_blocks: int
-        The number of transformer blocks in the single blocks.
-    rope_dim_list: list
-        The dimension of the rotary embedding for t, h, w.
-    qkv_bias: bool
-        Whether to use bias in the qkv linear layer.
-    qk_norm: bool
-        Whether to use qk norm.
-    qk_norm_type: str
-        The type of qk norm.
-    guidance_embed: bool
-        Whether to use guidance embedding for distillation.
-    text_projection: str
-        The type of the text projection, default is single_refiner.
-    use_attention_mask: bool
-        Whether to use attention mask for text encoder.
-    dtype: torch.dtype
-        The dtype of the model.
-    device: torch.device
-        The device of the model.
-    """
-
     @register_to_config
     def __init__(
         self,
-        patch_size: int = 2,
-        patch_size_t: int = 1,
         in_channels: int = 16,
         out_channels: int = 16,
         num_attention_heads: int = 24,
         attention_head_dim: int = 128,
-        mlp_width_ratio: float = 4.0,
-        mm_double_blocks_depth: int = 20,
-        mm_single_blocks_depth: int = 40,
+        num_layers: int = 20,
+        num_single_layers: int = 40,
+        mlp_ratio: float = 4.0,
+        patch_size: int = 2,
+        patch_size_t: int = 1,
         rope_dim_list: List[int] = [16, 56, 56],
         qk_norm: str = "rms_norm",
         guidance_embed: bool = True,
-        text_states_dim: int = 4096,
-        text_states_dim_2: int = 768,
+        text_embed_dim: int = 4096,
+        text_embed_dim_2: int = 768,
     ) -> None:
         super().__init__()
 
@@ -762,50 +697,105 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
 
-        if sum(rope_dim_list) != attention_head_dim:
-            raise ValueError(f"Got {rope_dim_list} but expected positional dim {attention_head_dim}")
-
         # image projection
         self.img_in = PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
 
         # text projection
-        self.txt_in = SingleTokenRefiner(text_states_dim, inner_dim, num_attention_heads, depth=2)
+        self.txt_in = SingleTokenRefiner(text_embed_dim, inner_dim, num_attention_heads, depth=2)
 
         # time modulation
         self.time_in = TimestepEmbedder(inner_dim, nn.SiLU)
 
         # text modulation
-        self.vector_in = MLPEmbedder(text_states_dim_2, inner_dim)
+        self.vector_in = MLPEmbedder(text_embed_dim_2, inner_dim)
 
         # guidance modulation
         self.guidance_in = TimestepEmbedder(inner_dim, nn.SiLU)
 
         self.transformer_blocks = nn.ModuleList(
             [
-                HunyuanVideoTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    mlp_width_ratio=mlp_width_ratio,
-                    qk_norm=qk_norm,
-                )
-                for _ in range(mm_double_blocks_depth)
+                HunyuanVideoTransformerBlock(inner_dim, num_attention_heads, mlp_ratio=mlp_ratio, qk_norm=qk_norm)
+                for _ in range(num_layers)
             ]
         )
 
         self.single_transformer_blocks = nn.ModuleList(
             [
                 HunyuanVideoSingleTransformerBlock(
-                    num_attention_heads,
-                    attention_head_dim,
-                    mlp_width_ratio=mlp_width_ratio,
-                    qk_norm=qk_norm,
+                    num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
                 )
-                for _ in range(mm_single_blocks_depth)
+                for _ in range(num_single_layers)
             ]
         )
 
         self.norm_out = AdaLayerNormContinuous(inner_dim, inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size_t * patch_size * patch_size * out_channels)
+
+        self.gradient_checkpointing = False
+
+    @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if hasattr(module, "gradient_checkpointing"):
+            module.gradient_checkpointing = value
 
     def forward(
         self,
@@ -843,29 +833,23 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         hidden_states = self.img_in(hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states, timestep, encoder_attention_mask)
 
-        txt_seq_len = encoder_hidden_states.shape[1]
+        use_reentrant = is_torch_version(">=", "1.11.0")
+        block_forward = (
+            partial(torch.utils.checkpoint.checkpoint, use_reentrant=use_reentrant)
+            if torch.is_grad_enabled() and self.gradient_checkpointing
+            else lambda x: x
+        )
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         for _, block in enumerate(self.transformer_blocks):
-            double_block_args = [
-                hidden_states,
-                encoder_hidden_states,
-                temb,
-                freqs_cis,
-            ]
-
-            hidden_states, encoder_hidden_states = block(*double_block_args)
+            hidden_states, encoder_hidden_states = block_forward(block)(
+                hidden_states, encoder_hidden_states, temb, freqs_cis
+            )
 
         for block in self.single_transformer_blocks:
-            single_block_args = [
-                hidden_states,
-                encoder_hidden_states,
-                temb,
-                txt_seq_len,
-                (freqs_cos, freqs_sin),
-            ]
-
-            hidden_states, encoder_hidden_states = block(*single_block_args)
+            hidden_states, encoder_hidden_states = block_forward(block)(
+                hidden_states, encoder_hidden_states, temb, freqs_cis
+            )
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
