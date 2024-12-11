@@ -25,7 +25,6 @@ from ..utils import (
     is_torchsde_available,
 )
 
-
 _dummy_modules = {}
 _import_structure = {}
 
@@ -40,8 +39,12 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
     _import_structure["scheduling_amused"] = ["AmusedScheduler"]
-    _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
-    _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
+    _import_structure["scheduling_consistency_decoder"] = [
+        "ConsistencyDecoderScheduler"
+    ]
+    _import_structure["scheduling_consistency_models"] = [
+        "CMStochasticIterativeScheduler"
+    ]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_cogvideox"] = ["CogVideoXDDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
@@ -51,18 +54,34 @@ else:
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
-    _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
-    _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
-    _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
-    _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_dpmsolver_multistep"] = [
+        "DPMSolverMultistepScheduler"
+    ]
+    _import_structure["scheduling_dpmsolver_multistep_inverse"] = [
+        "DPMSolverMultistepInverseScheduler"
+    ]
+    _import_structure["scheduling_dpmsolver_singlestep"] = [
+        "DPMSolverSinglestepScheduler"
+    ]
+    _import_structure["scheduling_edm_dpmsolver_multistep"] = [
+        "EDMDPMSolverMultistepScheduler"
+    ]
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
-    _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
+    _import_structure["scheduling_euler_ancestral_discrete"] = [
+        "EulerAncestralDiscreteScheduler"
+    ]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
-    _import_structure["scheduling_flow_match_euler_discrete"] = ["FlowMatchEulerDiscreteScheduler"]
-    _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
+    _import_structure["scheduling_flow_match_euler_discrete"] = [
+        "FlowMatchEulerDiscreteScheduler"
+    ]
+    _import_structure["scheduling_flow_match_heun_discrete"] = [
+        "FlowMatchHeunDiscreteScheduler"
+    ]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
-    _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
+    _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = [
+        "KDPM2AncestralDiscreteScheduler"
+    ]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
@@ -72,8 +91,13 @@ else:
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
-    _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
+    _import_structure["scheduling_utils"] = [
+        "AysSchedules",
+        "KarrasDiffusionSchedulers",
+        "SchedulerMixin",
+    ]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
+    _import_structure["scheduling_meissonic"] = ["MeissonicScheduler"]
 
 try:
     if not is_flax_available():
@@ -86,7 +110,9 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
     _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
-    _import_structure["scheduling_dpmsolver_multistep_flax"] = ["FlaxDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_dpmsolver_multistep_flax"] = [
+        "FlaxDPMSolverMultistepScheduler"
+    ]
     _import_structure["scheduling_euler_discrete_flax"] = ["FlaxEulerDiscreteScheduler"]
     _import_structure["scheduling_karras_ve_flax"] = ["FlaxKarrasVeScheduler"]
     _import_structure["scheduling_lms_discrete_flax"] = ["FlaxLMSDiscreteScheduler"]
@@ -120,7 +146,9 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_torch_and_torchsde_objects))
 
 else:
-    _import_structure["scheduling_cosine_dpmsolver_multistep"] = ["CosineDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_cosine_dpmsolver_multistep"] = [
+        "CosineDPMSolverMultistepScheduler"
+    ]
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -152,19 +180,26 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_deis_multistep import DEISMultistepScheduler
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
-        from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
+        from .scheduling_dpmsolver_multistep_inverse import (
+            DPMSolverMultistepInverseScheduler,
+        )
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
         from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
-        from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
+        from .scheduling_flow_match_euler_discrete import (
+            FlowMatchEulerDiscreteScheduler,
+        )
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
         from .scheduling_ipndm import IPNDMScheduler
-        from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
+        from .scheduling_k_dpm_2_ancestral_discrete import (
+            KDPM2AncestralDiscreteScheduler,
+        )
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
         from .scheduling_lcm import LCMScheduler
+        from .scheduling_meissonic import MeissonicScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler
@@ -172,7 +207,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
-        from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
+        from .scheduling_utils import (
+            AysSchedules,
+            KarrasDiffusionSchedulers,
+            SchedulerMixin,
+        )
         from .scheduling_vq_diffusion import VQDiffusionScheduler
 
     try:
@@ -210,12 +249,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_torchsde_objects import *  # noqa F403
     else:
-        from .scheduling_cosine_dpmsolver_multistep import CosineDPMSolverMultistepScheduler
+        from .scheduling_cosine_dpmsolver_multistep import (
+            CosineDPMSolverMultistepScheduler,
+        )
         from .scheduling_dpmsolver_sde import DPMSolverSDEScheduler
 
 else:
     import sys
 
-    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+    sys.modules[__name__] = _LazyModule(
+        __name__, globals()["__file__"], _import_structure, module_spec=__spec__
+    )
     for name, value in _dummy_modules.items():
         setattr(sys.modules[__name__], name, value)
