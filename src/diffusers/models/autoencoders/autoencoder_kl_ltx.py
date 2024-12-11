@@ -28,7 +28,6 @@ from ..normalization import RMSNorm
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
-# Adapted from diffusers.models.autoencoders.autoencoder_kl_cogvideox.CogVideoXCausalConv3d
 class LTXCausalConv3d(nn.Module):
     def __init__(
         self,
