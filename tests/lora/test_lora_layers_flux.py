@@ -479,7 +479,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         # Test the opposite case where the first lora has the correct input features and the second lora has expanded input features.
         # This should raise a runtime error on input shapes being incompatible. But it doesn't. This is because PEFT renames the
         # original layers as `base_layer` and the lora layers with the adapter names. This makes our logic to check if a lora
-        # weight is compatible with the current model incorrect. This should be addressed when attempting support for
+        # weight is compatible with the current model inadequate. This should be addressed when attempting support for
         # https://github.com/huggingface/diffusers/issues/10180 (TODO)
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
