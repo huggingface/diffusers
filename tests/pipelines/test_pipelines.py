@@ -1811,7 +1811,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert "Expected" in str(error_context.exception)
         assert "text_encoder" in str(error_context.exception)
-        assert f"{tokenizer.__class__.__name}" in str(error_context.exception)
+        assert "CLIPTokenizer" in str(error_context.exception)
 
 
 @slow
