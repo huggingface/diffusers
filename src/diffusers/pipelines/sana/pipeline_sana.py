@@ -319,7 +319,6 @@ class SanaPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -537,6 +536,8 @@ class SanaPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
 
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     @torch.no_grad()
