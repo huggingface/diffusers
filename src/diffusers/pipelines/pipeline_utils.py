@@ -834,9 +834,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         for key, (_, expected_class_name) in zip(init_dict.keys(), init_dict.values()):
-            if key not in passed_class_obj:
+            if key not in passed_class_obj or key == "scheduler":
                 continue
             class_name = passed_class_obj[key].__class__.__name__
+            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
             if class_name != expected_class_name:
                 raise ValueError(f"Expected {expected_class_name} for {key}, got {class_name}.")
 
