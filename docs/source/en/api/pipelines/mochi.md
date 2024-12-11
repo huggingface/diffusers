@@ -31,6 +31,12 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.m
   - all
   - __call__
 
+## MochiVideoToVideoPiepeline
+
+[[autodoc]] MochiVideoToVideoPiepeline
+  - all
+  - __call__
+
 ## MochiPipelineOutput
 
 [[autodoc]] pipelines.mochi.pipeline_output.MochiPipelineOutput

@@ -269,6 +269,8 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         time_embed_dim: int = 256,
         activation_fn: str = "swiglu",
         max_sequence_length: int = 256,
+        sample_height: int = 60,
+        sample_width: int = 106,
     ) -> None:
         super().__init__()
 
