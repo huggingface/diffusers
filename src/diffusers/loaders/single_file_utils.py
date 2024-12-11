@@ -93,6 +93,7 @@ CHECKPOINT_KEY_NAMES = {
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
+    "autoencoder-dc-sana": "encoder.project_in.conv.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -572,9 +573,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["autoencoder-dc"] in checkpoint:
         encoder_key = "encoder.project_in.conv.conv.bias"
-        decoder_key = "decoder.project_out.op_list.0.weight"
+        decoder_key = "decoder.project_in.main.conv.weight"
 
-        if checkpoint[encoder_key].shape[-1] == 128 and checkpoint[decoder_key].shape[1] == 32:
+        if CHECKPOINT_KEY_NAMES["autoencoder-dc-sana"] in checkpoint:
             model_type = "autoencoder-dc-f32c32-sana"
 
         elif checkpoint[encoder_key].shape[-1] == 64 and checkpoint[decoder_key].shape[1] == 32:
@@ -2276,7 +2277,8 @@ def convert_autoencoder_dc_checkpoint_to_diffusers(checkpoint, **kwargs):
         "qkv.conv.weight": remap_qkv_,
         "proj.conv.weight": remap_proj_conv_,
     }
-    AE_KEYS_RENAME_DICT.update(AE_F32C32_F64C128_F128C512_KEYS)
+    if "encoder.project_in.conv.bias" not in converted_state_dict:
+        AE_KEYS_RENAME_DICT.update(AE_F32C32_F64C128_F128C512_KEYS)
 
     for key in list(converted_state_dict.keys()):
         new_key = key[:]
