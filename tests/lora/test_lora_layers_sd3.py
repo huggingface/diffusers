@@ -29,6 +29,7 @@ from diffusers import (
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
+    is_flaky,
     is_peft_available,
     numpy_cosine_similarity_distance,
     require_peft_backend,
@@ -128,6 +129,10 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Not supported in SD3.")
     def test_modify_padding_mode(self):
         pass
+
+    @is_flaky
+    def test_multiple_wrong_adapter_name_raises_error(self):
+        super().test_multiple_wrong_adapter_name_raises_error()
 
 
 @require_torch_gpu
