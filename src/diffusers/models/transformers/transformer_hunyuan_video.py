@@ -24,7 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, RMSNorm
 
 
 def attention(q, k, v, attn_mask=None):
@@ -174,78 +174,6 @@ def apply_rotary_emb(
     return xq_out, xk_out
 
 
-class RMSNorm(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        elementwise_affine=True,
-        eps: float = 1e-6,
-    ):
-        """
-        Initialize the RMSNorm normalization layer.
-
-        Args:
-            dim (int): The dimension of the input tensor.
-            eps (float, optional): A small value added to the denominator for numerical stability. Default is 1e-6.
-
-        Attributes:
-            eps (float): A small value added to the denominator for numerical stability.
-            weight (nn.Parameter): Learnable scaling parameter.
-
-        """
-        super().__init__()
-        self.eps = eps
-        if elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(dim))
-
-    def _norm(self, x):
-        """
-        Apply the RMSNorm normalization to the input tensor.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The normalized tensor.
-
-        """
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-    def forward(self, x):
-        """
-        Forward pass through the RMSNorm layer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The output tensor after applying RMSNorm.
-
-        """
-        output = self._norm(x.float()).type_as(x)
-        if hasattr(self, "weight"):
-            output = output * self.weight
-        return output
-
-
-def get_norm_layer(norm_layer):
-    """
-    Get the normalization layer.
-
-    Args:
-        norm_layer (str): The type of normalization layer.
-
-    Returns:
-        norm_layer (nn.Module): The normalization layer.
-    """
-    if norm_layer == "layer":
-        return nn.LayerNorm
-    elif norm_layer == "rms":
-        return RMSNorm
-    else:
-        raise NotImplementedError(f"Norm layer {norm_layer} is not implemented")
-
-
 class MLPEmbedder(nn.Module):
     """copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py"""
 
@@ -260,19 +188,6 @@ class MLPEmbedder(nn.Module):
 
 
 class PatchEmbed(nn.Module):
-    """2D Image to Patch Embedding
-
-    Image to Patch Embedding using Conv2d
-
-    A convolution based approach to patchifying a 2D image w/ embedding projection.
-
-    Based on the impl in https://github.com/google-research/vision_transformer
-
-    Hacked together by / Copyright 2020 Ross Wightman
-
-    Remove the _assert function in forward function to be compatible with multi-resolution images.
-    """
-
     def __init__(
         self,
         patch_size=16,
@@ -298,12 +213,6 @@ class PatchEmbed(nn.Module):
 
 
 class TextProjection(nn.Module):
-    """
-    Projects text embeddings. Also handles dropout for classifier-free guidance.
-
-    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
-    """
-
     def __init__(self, in_channels, hidden_size, act_layer):
         super().__init__()
         self.linear_1 = nn.Linear(in_features=in_channels, out_features=hidden_size, bias=True)
@@ -381,8 +290,6 @@ class IndividualTokenRefinerBlock(nn.Module):
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
         act_type: str = "silu",
-        qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
     ):
         super().__init__()
@@ -391,13 +298,6 @@ class IndividualTokenRefinerBlock(nn.Module):
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         self.self_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
-        qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.self_attn_q_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
-        self.self_attn_k_norm = (
-            qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6) if qk_norm else nn.Identity()
-        )
         self.self_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
@@ -421,9 +321,6 @@ class IndividualTokenRefinerBlock(nn.Module):
         norm_x = self.norm1(x)
         qkv = self.self_attn_qkv(norm_x)
         q, k, v = rearrange(qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
-        # Apply QK-Norm if needed
-        q = self.self_attn_q_norm(q).to(v)
-        k = self.self_attn_k_norm(k).to(v)
 
         # Self-Attention
         attn = attention(q, k, v, attn_mask=attn_mask)
@@ -445,8 +342,6 @@ class IndividualTokenRefiner(nn.Module):
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
         act_type: str = "silu",
-        qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
     ):
         super().__init__()
@@ -458,8 +353,6 @@ class IndividualTokenRefiner(nn.Module):
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_drop_rate=mlp_drop_rate,
                     act_type=act_type,
-                    qk_norm=qk_norm,
-                    qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
                 )
                 for _ in range(depth)
@@ -505,8 +398,6 @@ class SingleTokenRefiner(nn.Module):
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
         act_type: str = "silu",
-        qk_norm: bool = False,
-        qk_norm_type: str = "layer",
         qkv_bias: bool = True,
     ):
         super().__init__()
@@ -526,8 +417,6 @@ class SingleTokenRefiner(nn.Module):
             mlp_width_ratio=mlp_width_ratio,
             mlp_drop_rate=mlp_drop_rate,
             act_type=act_type,
-            qk_norm=qk_norm,
-            qk_norm_type=qk_norm_type,
             qkv_bias=qkv_bias,
         )
 
@@ -563,8 +452,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         heads_num: int,
         mlp_width_ratio: float = 4.0,
         mlp_act_type: str = "gelu_tanh",
-        qk_norm: bool = True,
-        qk_norm_type: str = "rms",
+        qk_norm: str = "rms_norm",
     ):
         super().__init__()
 
@@ -577,9 +465,8 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         self.linear1 = nn.Linear(hidden_size, hidden_size * 3 + mlp_hidden_dim)
         self.linear2 = nn.Linear(hidden_size + mlp_hidden_dim, hidden_size)
 
-        qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
-        self.k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
+        self.q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
+        self.k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
 
         self.mlp_act = get_activation_layer(mlp_act_type)()
         self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type="layer_norm")
@@ -621,8 +508,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         hidden_size: int,
         heads_num: int,
         mlp_width_ratio: float,
-        qk_norm: bool = True,
-        qk_norm_type: str = "rms",
+        qk_norm: str = "rms_norm",
         qkv_bias: bool = False,
     ):
         super().__init__()
@@ -634,14 +520,13 @@ class HunyuanVideoTransformerBlock(nn.Module):
         self.norm1_context = AdaLayerNormZero(hidden_size, norm_type="layer_norm")
 
         self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
-        qk_norm_layer = get_norm_layer(qk_norm_type)
-        self.img_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
-        self.img_attn_k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
+        self.img_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
+        self.img_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=qkv_bias)
-        self.txt_attn_q_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
-        self.txt_attn_k_norm = qk_norm_layer(head_dim, elementwise_affine=True, eps=1e-6)
+        self.txt_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
+        self.txt_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -768,8 +653,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         mm_single_blocks_depth: int = 40,
         rope_dim_list: List[int] = [16, 56, 56],
         qkv_bias: bool = True,
-        qk_norm: bool = True,
-        qk_norm_type: str = "rms",
+        qk_norm: str = "rms_norm",
         guidance_embed: bool = True,
         text_states_dim: int = 4096,
         text_states_dim_2: int = 768,
@@ -806,7 +690,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     num_attention_heads,
                     mlp_width_ratio=mlp_width_ratio,
                     qk_norm=qk_norm,
-                    qk_norm_type=qk_norm_type,
                     qkv_bias=qkv_bias,
                 )
                 for _ in range(mm_double_blocks_depth)
@@ -821,7 +704,6 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_act_type=mlp_act_type,
                     qk_norm=qk_norm,
-                    qk_norm_type=qk_norm_type,
                 )
                 for _ in range(mm_single_blocks_depth)
             ]
