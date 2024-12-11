@@ -13,24 +13,30 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange
 from transformers import (
-    BaseImageProcessor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    PreTrainedModel,
     T5EncoderModel,
     T5TokenizerFast,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, SD3IPAdapterMixin, SD3LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKL
-from ...models.transformers import SD3Transformer2DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, SD3LoraLoaderMixin
+from diffusers.models.autoencoders import AutoencoderKL
+from diffusers.models.embeddings import TimestepEmbedding, Timesteps
+from diffusers.models.normalization import RMSNorm
+from diffusers.models.transformers import SD3Transformer2DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion_3.pipeline_output import StableDiffusion3PipelineOutput
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import (
     USE_PEFT_BACKEND,
     is_torch_xla_available,
     logging,
@@ -38,9 +44,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import StableDiffusion3PipelineOutput
+from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -70,6 +74,381 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# FFN
+def FeedForward(dim, mult=4):
+    inner_dim = int(dim * mult)
+    return nn.Sequential(
+        nn.LayerNorm(dim),
+        nn.Linear(dim, inner_dim, bias=False),
+        nn.GELU(),
+        nn.Linear(inner_dim, dim, bias=False),
+    )
+
+
+def reshape_tensor(x, heads):
+    bs, length, width = x.shape
+    # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
+    x = x.view(bs, length, heads, -1)
+    # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
+    x = x.transpose(1, 2)
+    # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
+    x = x.reshape(bs, heads, length, -1)
+    return x
+
+
+class PerceiverAttention(nn.Module):
+    def __init__(self, *, dim, dim_head=64, heads=8):
+        super().__init__()
+        self.scale = dim_head**-0.5
+        self.dim_head = dim_head
+        self.heads = heads
+        inner_dim = dim_head * heads
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+
+    def forward(self, x, latents, shift=None, scale=None):
+        """
+        Args:
+            x (torch.Tensor): image features
+                shape (b, n1, D)
+            latent (torch.Tensor): latent features
+                shape (b, n2, D)
+        """
+        x = self.norm1(x)
+        latents = self.norm2(latents)
+
+        if shift is not None and scale is not None:
+            latents = latents * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+        b, l, _ = latents.shape
+
+        q = self.to_q(latents)
+        kv_input = torch.cat((x, latents), dim=-2)
+        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
+
+        q = reshape_tensor(q, self.heads)
+        k = reshape_tensor(k, self.heads)
+        v = reshape_tensor(v, self.heads)
+
+        # attention
+        scale = 1 / math.sqrt(math.sqrt(self.dim_head))
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        out = weight @ v
+
+        out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
+
+        return self.to_out(out)
+
+
+# modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+class TimeResampler(nn.Module):
+    def __init__(
+        self,
+        dim=1024,
+        depth=8,
+        dim_head=64,
+        heads=16,
+        num_queries=8,
+        embedding_dim=768,
+        output_dim=1024,
+        ff_mult=4,
+        timestep_in_dim=320,
+        timestep_flip_sin_to_cos=True,
+        timestep_freq_shift=0,
+    ):
+        super().__init__()
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, dim) / dim**0.5)
+
+        self.proj_in = nn.Linear(embedding_dim, dim)
+
+        self.proj_out = nn.Linear(dim, output_dim)
+        self.norm_out = nn.LayerNorm(output_dim)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        # msa
+                        PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
+                        # ff
+                        FeedForward(dim=dim, mult=ff_mult),
+                        # adaLN
+                        nn.Sequential(nn.SiLU(), nn.Linear(dim, 4 * dim, bias=True)),
+                    ]
+                )
+            )
+
+        # time
+        self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
+        self.time_embedding = TimestepEmbedding(timestep_in_dim, dim, act_fn="silu")
+
+        # adaLN
+        # self.adaLN_modulation = nn.Sequential(
+        #     nn.SiLU(),
+        #     nn.Linear(timestep_out_dim, 6 * timestep_out_dim, bias=True)
+        # )
+
+    def forward(self, x, timestep, need_temb=False):
+        timestep_emb = self.embedding_time(x, timestep)  # bs, dim
+
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+        x = x + timestep_emb[:, None]
+
+        for attn, ff, adaLN_modulation in self.layers:
+            shift_msa, scale_msa, shift_mlp, scale_mlp = adaLN_modulation(timestep_emb).chunk(4, dim=1)
+            latents = attn(x, latents, shift_msa, scale_msa) + latents
+
+            res = latents
+            for idx_ff in range(len(ff)):
+                layer_ff = ff[idx_ff]
+                latents = layer_ff(latents)
+                if idx_ff == 0 and isinstance(layer_ff, nn.LayerNorm):  # adaLN
+                    latents = latents * (1 + scale_mlp.unsqueeze(1)) + shift_mlp.unsqueeze(1)
+            latents = latents + res
+
+            # latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        latents = self.norm_out(latents)
+
+        if need_temb:
+            return latents, timestep_emb
+        else:
+            return latents
+
+    def embedding_time(self, sample, timestep):
+        # 1. time
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps.expand(sample.shape[0])
+
+        t_emb = self.time_proj(timesteps)
+
+        # timesteps does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=sample.dtype)
+
+        emb = self.time_embedding(t_emb, None)
+        return emb
+
+
+class AdaLayerNorm(nn.Module):
+    """
+    Norm layer adaptive layer norm zero (adaLN-Zero).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        num_embeddings (`int`): The size of the embeddings dictionary.
+    """
+
+    def __init__(self, embedding_dim: int, time_embedding_dim=None, mode="normal"):
+        super().__init__()
+
+        self.silu = nn.SiLU()
+
+        num_params = 2 if mode == "normal" else 6
+        self.linear = nn.Linear(time_embedding_dim or embedding_dim, num_params * embedding_dim, bias=True)
+        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
+        self.mode = mode
+
+    def forward(
+        self,
+        x,
+        hidden_dtype=None,
+        emb=None,
+    ):
+        emb = self.linear(self.silu(emb))
+        if self.mode == "normal":
+            shift_msa, scale_msa = emb.chunk(2, dim=1)
+            x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+            return x
+
+        elif self.mode == "zero":
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
+            x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
+            return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
+class JointIPAttnProcessor(torch.nn.Module):
+    """Attention processor used typically in processing the SD3-like self-attention projections."""
+
+    def __init__(
+        self,
+        hidden_size=None,
+        cross_attention_dim=None,
+        ip_hidden_states_dim=None,
+        ip_encoder_hidden_states_dim=None,
+        head_dim=None,
+        timesteps_emb_dim=1280,
+    ):
+        super().__init__()
+
+        self.norm_ip = AdaLayerNorm(ip_hidden_states_dim, time_embedding_dim=timesteps_emb_dim)
+        self.to_k_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(ip_hidden_states_dim, hidden_size, bias=False)
+        self.norm_q = RMSNorm(head_dim, 1e-6)
+        self.norm_k = RMSNorm(head_dim, 1e-6)
+        self.norm_ip_k = RMSNorm(head_dim, 1e-6)
+
+    def __call__(
+        self,
+        attn,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        emb_dict=None,
+        *args,
+        **kwargs,
+    ) -> torch.FloatTensor:
+        residual = hidden_states
+
+        batch_size = hidden_states.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+        img_query = query
+        img_key = key
+        img_value = value
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # `context` projections.
+        if encoder_hidden_states is not None:
+            encoder_hidden_states_query_proj = attn.add_q_proj(encoder_hidden_states)
+            encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+            encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_hidden_states_query_proj = encoder_hidden_states_query_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_key_proj = encoder_hidden_states_key_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+            encoder_hidden_states_value_proj = encoder_hidden_states_value_proj.view(
+                batch_size, -1, attn.heads, head_dim
+            ).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_hidden_states_query_proj = attn.norm_added_q(encoder_hidden_states_query_proj)
+            if attn.norm_added_k is not None:
+                encoder_hidden_states_key_proj = attn.norm_added_k(encoder_hidden_states_key_proj)
+
+            query = torch.cat([query, encoder_hidden_states_query_proj], dim=2)
+            key = torch.cat([key, encoder_hidden_states_key_proj], dim=2)
+            value = torch.cat([value, encoder_hidden_states_value_proj], dim=2)
+
+        hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if encoder_hidden_states is not None:
+            # Split the attention outputs.
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, : residual.shape[1]],
+                hidden_states[:, residual.shape[1] :],
+            )
+            if not attn.context_pre_only:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        # IPadapter
+        ip_hidden_states = emb_dict.get("ip_hidden_states", None)
+        ip_hidden_states = self.get_ip_hidden_states(
+            attn,
+            img_query,
+            ip_hidden_states,
+            img_key,
+            img_value,
+            None,
+            None,
+            emb_dict["temb"],
+        )
+        if ip_hidden_states is not None:
+            hidden_states = hidden_states + ip_hidden_states * emb_dict.get("scale", 1.0)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if encoder_hidden_states is not None:
+            return hidden_states, encoder_hidden_states
+        else:
+            return hidden_states
+
+    def get_ip_hidden_states(
+        self, attn, query, ip_hidden_states, img_key=None, img_value=None, text_key=None, text_value=None, temb=None
+    ):
+        if ip_hidden_states is None:
+            return None
+
+        if not hasattr(self, "to_k_ip") or not hasattr(self, "to_v_ip"):
+            return None
+
+        # norm ip input
+        norm_ip_hidden_states = self.norm_ip(ip_hidden_states, emb=temb)
+
+        # to k and v
+        ip_key = self.to_k_ip(norm_ip_hidden_states)
+        ip_value = self.to_v_ip(norm_ip_hidden_states)
+
+        # reshape
+        query = rearrange(query, "b l (h d) -> b h l d", h=attn.heads)
+        img_key = rearrange(img_key, "b l (h d) -> b h l d", h=attn.heads)
+        img_value = rearrange(img_value, "b l (h d) -> b h l d", h=attn.heads)
+        ip_key = rearrange(ip_key, "b l (h d) -> b h l d", h=attn.heads)
+        ip_value = rearrange(ip_value, "b l (h d) -> b h l d", h=attn.heads)
+
+        # norm
+        query = self.norm_q(query)
+        img_key = self.norm_k(img_key)
+        ip_key = self.norm_ip_k(ip_key)
+
+        # cat img
+        key = torch.cat([img_key, ip_key], dim=2)
+        value = torch.cat([img_value, ip_value], dim=2)
+
+        #
+        ip_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
+        ip_hidden_states = rearrange(ip_hidden_states, "b h l d -> b l (h d)")
+        ip_hidden_states = ip_hidden_states.to(query.dtype)
+        return ip_hidden_states
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -79,7 +458,7 @@ def retrieve_timesteps(
     sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    r"""
+    """
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -130,7 +509,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
+class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingleFileMixin):
     r"""
     Args:
         transformer ([`SD3Transformer2DModel`]):
@@ -162,14 +541,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        image_encoder (`PreTrainedModel`, *optional*):
-            Pre-trained Vision Model for IP Adapter.
-        feature_extractor (`BaseImageProcessor`, *optional*):
-            Image processor for IP Adapter.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
-    _optional_components = ["image_encoder", "feature_extractor"]
+    _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "negative_pooled_prompt_embeds"]
 
     def __init__(
@@ -183,8 +558,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        image_encoder: PreTrainedModel = None,
-        feature_extractor: BaseImageProcessor = None,
     ):
         super().__init__()
 
@@ -198,8 +571,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             tokenizer_3=tokenizer_3,
             transformer=transformer,
             scheduler=scheduler,
-            image_encoder=image_encoder,
-            feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
@@ -212,9 +583,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
             else 128
-        )
-        self.patch_size = (
-            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
         )
 
     def _get_t5_prompt_embeds(
@@ -538,14 +906,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        if (
-            height % (self.vae_scale_factor * self.patch_size) != 0
-            or width % (self.vae_scale_factor * self.patch_size) != 0
-        ):
-            raise ValueError(
-                f"`height` and `width` have to be divisible by {self.vae_scale_factor * self.patch_size} but are {height} and {width}."
-                f"You can use height {height - height % (self.vae_scale_factor * self.patch_size)} and width {width - width % (self.vae_scale_factor * self.patch_size)}."
-            )
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -653,10 +1015,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         return self._guidance_scale
 
     @property
-    def skip_guidance_layers(self):
-        return self._skip_guidance_layers
-
-    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -679,36 +1037,72 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     def interrupt(self):
         return self._interrupt
 
-    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
-    def encode_image(self, image):
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+    @torch.inference_mode()
+    def init_ipadapter(self, ip_adapter_path, image_encoder_path, nb_token, output_dim=2432):
+        from transformers import SiglipImageProcessor, SiglipVisionModel
 
-        image = image.to(device=self.device, dtype=self.dtype)
+        state_dict = torch.load(ip_adapter_path, map_location="cpu")
 
-        return self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+        device, dtype = self.transformer.device, self.transformer.dtype
+        image_encoder = SiglipVisionModel.from_pretrained(image_encoder_path)
+        image_processor = SiglipImageProcessor.from_pretrained(image_encoder_path)
+        image_encoder.eval()
+        image_encoder.to(device, dtype=dtype)
+        self.image_encoder = image_encoder
+        self.clip_image_processor = image_processor
 
-    # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
-    def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
-    ):
-        if ip_adapter_image_embeds is None:
-            single_image_embeds = self.encode_image(ip_adapter_image)
-            if do_classifier_free_guidance:
-                single_negative_image_embeds = torch.zeros_like(single_image_embeds)
-        else:
-            if do_classifier_free_guidance:
-                single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-            else:
-                single_image_embeds = ip_adapter_image_embeds
+        sample_class = TimeResampler
+        image_proj_model = sample_class(
+            dim=1280,
+            depth=4,
+            dim_head=64,
+            heads=20,
+            num_queries=nb_token,
+            embedding_dim=1152,
+            output_dim=output_dim,
+            ff_mult=4,
+            timestep_in_dim=320,
+            timestep_flip_sin_to_cos=True,
+            timestep_freq_shift=0,
+        )
+        image_proj_model.eval()
+        image_proj_model.to(device, dtype=dtype)
+        key_name = image_proj_model.load_state_dict(state_dict["image_proj"], strict=False)
+        print(f"=> loading image_proj_model: {key_name}")
 
-        image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+        self.image_proj_model = image_proj_model
 
-        if do_classifier_free_guidance:
-            negative_image_embeds = torch.cat([single_negative_image_embeds] * num_images_per_prompt, dim=0)
-            image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
+        attn_procs = {}
+        transformer = self.transformer
+        for idx_name, name in enumerate(transformer.attn_processors.keys()):
+            hidden_size = transformer.config.attention_head_dim * transformer.config.num_attention_heads
+            ip_hidden_states_dim = transformer.config.attention_head_dim * transformer.config.num_attention_heads
+            ip_encoder_hidden_states_dim = transformer.config.caption_projection_dim
 
-        return image_embeds.to(device=device)
+            attn_procs[name] = JointIPAttnProcessor(
+                hidden_size=hidden_size,
+                cross_attention_dim=transformer.config.caption_projection_dim,
+                ip_hidden_states_dim=ip_hidden_states_dim,
+                ip_encoder_hidden_states_dim=ip_encoder_hidden_states_dim,
+                head_dim=transformer.config.attention_head_dim,
+                timesteps_emb_dim=1280,
+            ).to(device, dtype=dtype)
+
+        self.transformer.set_attn_processor(attn_procs)
+        tmp_ip_layers = torch.nn.ModuleList(self.transformer.attn_processors.values())
+
+        key_name = tmp_ip_layers.load_state_dict(state_dict["ip_adapter"], strict=False)
+        print(f"=> loading ip_adapter: {key_name}")
+
+    @torch.inference_mode()
+    def encode_clip_image_emb(self, clip_image, device, dtype):
+        # clip
+        clip_image_tensor = self.clip_image_processor(images=clip_image, return_tensors="pt").pixel_values
+        clip_image_tensor = clip_image_tensor.to(device, dtype=dtype)
+        clip_image_embeds = self.image_encoder(clip_image_tensor, output_hidden_states=True).hidden_states[-2]
+        clip_image_embeds = torch.cat([torch.zeros_like(clip_image_embeds), clip_image_embeds], dim=0)
+
+        return clip_image_embeds
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -720,7 +1114,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
-        sigmas: Optional[List[float]] = None,
+        timesteps: List[int] = None,
         guidance_scale: float = 7.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
@@ -732,8 +1126,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -741,10 +1133,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
-        skip_guidance_layers: List[int] = None,
-        skip_layer_guidance_scale: float = 2.8,
-        skip_layer_guidance_stop: float = 0.2,
-        skip_layer_guidance_start: float = 0.01,
+        # ipa
+        clip_image=None,
+        ipadapter_scale=1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -766,10 +1157,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
-                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
-                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
-                will be used.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -809,18 +1200,12 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
-            ip_adapter_image (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
-                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
-                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] instead of
-                a plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                of a plain tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -835,22 +1220,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
-            skip_guidance_layers (`List[int]`, *optional*):
-                A list of integers that specify layers to skip during guidance. If not provided, all layers will be
-                used for guidance. If provided, the guidance will only be applied to the layers specified in the list.
-                Recommended value by StabiltyAI for Stable Diffusion 3.5 Medium is [7, 8, 9].
-            skip_layer_guidance_scale (`int`, *optional*): The scale of the guidance for the layers specified in
-                `skip_guidance_layers`. The guidance will be applied to the layers specified in `skip_guidance_layers`
-                with a scale of `skip_layer_guidance_scale`. The guidance will be applied to the rest of the layers
-                with a scale of `1`.
-            skip_layer_guidance_stop (`int`, *optional*): The step at which the guidance for the layers specified in
-                `skip_guidance_layers` will stop. The guidance will be applied to the layers specified in
-                `skip_guidance_layers` until the fraction specified in `skip_layer_guidance_stop`. Recommended value by
-                StabiltyAI for Stable Diffusion 3.5 Medium is 0.2.
-            skip_layer_guidance_start (`int`, *optional*): The step at which the guidance for the layers specified in
-                `skip_guidance_layers` will start. The guidance will be applied to the layers specified in
-                `skip_guidance_layers` from the fraction specified in `skip_layer_guidance_start`. Recommended value by
-                StabiltyAI for Stable Diffusion 3.5 Medium is 0.01.
 
         Examples:
 
@@ -882,7 +1251,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         self._guidance_scale = guidance_scale
-        self._skip_layer_guidance_scale = skip_layer_guidance_scale
         self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
@@ -896,6 +1264,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        dtype = self.transformer.dtype
 
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
@@ -925,14 +1294,15 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         if self.do_classifier_free_guidance:
-            if skip_guidance_layers is not None:
-                original_prompt_embeds = prompt_embeds
-                original_pooled_prompt_embeds = pooled_prompt_embeds
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
+        # 3. prepare clip emb
+        clip_image = clip_image.resize((max(clip_image.size), max(clip_image.size)))
+        clip_image_embeds = self.encode_clip_image_emb(clip_image, device, dtype)
+
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
@@ -949,19 +1319,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             latents,
         )
 
-        # 6. Prepare image embeddings
-        # Either image is passed and ip_adapter is active
-        # Or image_embeds are passed directly
-        if (ip_adapter_image is not None and self.is_ip_adapter_active) or ip_adapter_image_embeds is not None:
-            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image,
-                ip_adapter_image_embeds,
-                device,
-                batch_size * num_images_per_prompt,
-                self.do_classifier_free_guidance,
-            )
-
-        # 7. Denoising loop
+        # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -972,26 +1330,24 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                if ip_adapter_image_embeds is not None:
-                    ip_hidden_states, temb = self.transformer.image_proj(
-                        ip_adapter_image_embeds,
-                        timestep.to(dtype=latents.dtype),
-                        need_temb=True,
-                    )
+                image_prompt_embeds, timestep_emb = self.image_proj_model(
+                    clip_image_embeds, timestep.to(dtype=latents.dtype), need_temb=True
+                )
 
-                    image_prompt_embeds = {"ip_hidden_states": ip_hidden_states, "temb": temb}
-
-                    if self.joint_attention_kwargs is None:
-                        self._joint_attention_kwargs = image_prompt_embeds
-                    else:
-                        self._joint_attention_kwargs.update(**image_prompt_embeds)
+                joint_attention_kwargs = {
+                    "emb_dict": {
+                        "ip_hidden_states": image_prompt_embeds,
+                        "temb": timestep_emb,
+                        "scale": ipadapter_scale,
+                    }
+                }
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -999,27 +1355,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    should_skip_layers = (
-                        True
-                        if i > num_inference_steps * skip_layer_guidance_start
-                        and i < num_inference_steps * skip_layer_guidance_stop
-                        else False
-                    )
-                    if skip_guidance_layers is not None and should_skip_layers:
-                        timestep = t.expand(latents.shape[0])
-                        latent_model_input = latents
-                        noise_pred_skip_layers = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=original_prompt_embeds,
-                            pooled_projections=original_pooled_prompt_embeds,
-                            joint_attention_kwargs=self.joint_attention_kwargs,
-                            return_dict=False,
-                            skip_layers=skip_guidance_layers,
-                        )[0]
-                        noise_pred = (
-                            noise_pred + (noise_pred_text - noise_pred_skip_layers) * self._skip_layer_guidance_scale
-                        )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

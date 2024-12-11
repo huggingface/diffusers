@@ -71,7 +71,10 @@ if is_torch_available():
             "Mochi1LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
-        _import_structure["ip_adapter"] = ["IPAdapterMixin"]
+        _import_structure["ip_adapter"] = [
+            "IPAdapterMixin",
+            "SD3IPAdapterMixin",
+        ]
 
 _import_structure["peft"] = ["PeftAdapterMixin"]
 
@@ -83,7 +86,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils import AttnProcsLayers
 
         if is_transformers_available():
-            from .ip_adapter import IPAdapterMixin
+            from .ip_adapter import (
+                IPAdapterMixin,
+                SD3IPAdapterMixin,
+            )
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
