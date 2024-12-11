@@ -880,12 +880,10 @@ class RFInversionFluxPipeline(
                     v_t = -noise_pred
                     v_t_cond = (y_0 - latents) / (1 - t_i)
                     eta_t = eta if start_timestep <= i < stop_timestep else 0.0
-                    if start_timestep <= i < stop_timestep:
-                        # controlled vector field
-                        v_hat_t = v_t + eta * (v_t_cond - v_t)
-
-                    else:
-                        v_hat_t = v_t
+                    if decay_eta:
+                        eta_t = eta_t * (1 - i / num_inference_steps)  # Decay eta over the loop
+                        # eta_t = eta * (1 - i / num_inference_steps) ** 2
+                    v_hat_t = v_t + eta_t * (v_t_cond - v_t)
 
                     # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
                     latents = latents + v_hat_t * (sigmas[i] - sigmas[i + 1])
