@@ -24,7 +24,9 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "double_blocks": "transformer_blocks",
     "single_blocks": "single_transformer_blocks",
     "final_layer.norm_final": "norm_out.norm",
-    "final_layer.linear": "proj_out"
+    "final_layer.linear": "proj_out",
+    "fc1": "net.0.proj",
+    "fc2": "net.2"
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {

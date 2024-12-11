@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ..attention import FeedForward
 from ..modeling_utils import ModelMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..normalization import AdaLayerNormContinuous
@@ -289,43 +290,6 @@ class ModulateDiT(nn.Module):
         return self.linear(self.act(x))
 
 
-class MLP(nn.Module):
-    """MLP as used in Vision Transformer, MLP-Mixer and related networks"""
-
-    def __init__(
-        self,
-        in_channels,
-        hidden_channels=None,
-        out_features=None,
-        act_layer=nn.GELU,
-        norm_layer=None,
-        bias=True,
-        drop=0.0,
-        use_conv=False,
-    ):
-        super().__init__()
-        out_features = out_features or in_channels
-        hidden_channels = hidden_channels or in_channels
-        linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
-
-        self.fc1 = linear_layer(in_channels, hidden_channels, bias=bias)
-        self.act = act_layer()
-        self.drop1 = nn.Dropout(drop)
-        self.norm = norm_layer(hidden_channels) if norm_layer is not None else nn.Identity()
-        self.fc2 = linear_layer(hidden_channels, out_features, bias=bias)
-        self.drop2 = nn.Dropout(drop)
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop1(x)
-        x = self.norm(x)
-        x = self.fc2(x)
-        x = self.drop2(x)
-        return x
-
-
-#
 class MLPEmbedder(nn.Module):
     """copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py"""
 
@@ -483,12 +447,8 @@ class IndividualTokenRefinerBlock(nn.Module):
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         act_layer = get_activation_layer(act_type)
-        self.mlp = MLP(
-            in_channels=hidden_size,
-            hidden_channels=mlp_hidden_dim,
-            act_layer=act_layer,
-            drop=mlp_drop_rate,
-        )
+        
+        self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
 
         self.adaLN_modulation = nn.Sequential(
             act_layer(),
@@ -498,7 +458,7 @@ class IndividualTokenRefinerBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        c: torch.Tensor,  # timestep_aware_representations + context_aware_representations
+        c: torch.Tensor,
         attn_mask: torch.Tensor = None,
     ):
         gate_msa, gate_mlp = self.adaLN_modulation(c).chunk(2, dim=1)
@@ -675,12 +635,7 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.img_mlp = MLP(
-            hidden_size,
-            mlp_hidden_dim,
-            act_layer=get_activation_layer(mlp_act_type),
-            bias=True,
-        )
+        self.img_mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="gelu-approximate")
 
         self.txt_mod = ModulateDiT(
             hidden_size,
@@ -695,19 +650,14 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=qkv_bias)
 
         self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.txt_mlp = MLP(
-            hidden_size,
-            mlp_hidden_dim,
-            act_layer=get_activation_layer(mlp_act_type),
-            bias=True,
-        )
+        self.txt_mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="gelu-approximate")
 
     def forward(
         self,
-        img: torch.Tensor,
-        txt: torch.Tensor,
-        vec: torch.Tensor,
-        freqs_cis: tuple = None,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         (
             img_mod1_shift,
@@ -716,7 +666,7 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
             img_mod2_shift,
             img_mod2_scale,
             img_mod2_gate,
-        ) = self.img_mod(vec).chunk(6, dim=-1)
+        ) = self.img_mod(temb).chunk(6, dim=-1)
         (
             txt_mod1_shift,
             txt_mod1_scale,
@@ -724,10 +674,10 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
             txt_mod2_shift,
             txt_mod2_scale,
             txt_mod2_gate,
-        ) = self.txt_mod(vec).chunk(6, dim=-1)
+        ) = self.txt_mod(temb).chunk(6, dim=-1)
 
         # Prepare image for attention.
-        img_modulated = self.img_norm1(img)
+        img_modulated = self.img_norm1(hidden_states)
         img_modulated = modulate(img_modulated, shift=img_mod1_shift, scale=img_mod1_scale)
         img_qkv = self.img_attn_qkv(img_modulated)
         img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
@@ -744,7 +694,7 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
             img_q, img_k = img_qq, img_kk
 
         # Prepare txt for attention.
-        txt_modulated = self.txt_norm1(txt)
+        txt_modulated = self.txt_norm1(encoder_hidden_states)
         txt_modulated = modulate(txt_modulated, shift=txt_mod1_shift, scale=txt_mod1_scale)
         txt_qkv = self.txt_attn_qkv(txt_modulated)
         txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
@@ -758,21 +708,21 @@ class HunyuanVideoDoubleStreamBlock(nn.Module):
         v = torch.cat((img_v, txt_v), dim=1)
         attn = attention(q, k, v)
 
-        img_attn, txt_attn = attn[:, : img.shape[1]], attn[:, img.shape[1] :]
+        img_attn, txt_attn = attn[:, : hidden_states.shape[1]], attn[:, hidden_states.shape[1] :]
 
         # Calculate the img bloks.
-        img = img + self.img_attn_proj(img_attn) * img_mod1_gate.unsqueeze(1)
-        img = img + self.img_mlp(
-            modulate(self.img_norm2(img), shift=img_mod2_shift, scale=img_mod2_scale)
+        hidden_states = hidden_states + self.img_attn_proj(img_attn) * img_mod1_gate.unsqueeze(1)
+        hidden_states = hidden_states + self.img_mlp(
+            modulate(self.img_norm2(hidden_states), shift=img_mod2_shift, scale=img_mod2_scale)
         ) * img_mod2_gate.unsqueeze(1)
 
         # Calculate the txt bloks.
-        txt = txt + self.txt_attn_proj(txt_attn) * txt_mod1_gate.unsqueeze(1)
-        txt = txt + self.txt_mlp(
-            modulate(self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale)
+        encoder_hidden_states = encoder_hidden_states + self.txt_attn_proj(txt_attn) * txt_mod1_gate.unsqueeze(1)
+        encoder_hidden_states = encoder_hidden_states + self.txt_mlp(
+            modulate(self.txt_norm2(encoder_hidden_states), shift=txt_mod2_shift, scale=txt_mod2_scale)
         ) * txt_mod2_gate.unsqueeze(1)
 
-        return img, txt
+        return hidden_states, encoder_hidden_states
 
 
 class HunyuanVideoSingleStreamBlock(nn.Module):
@@ -986,10 +936,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        timestep: torch.Tensor,  # Should be in range(0, 1000).
-        encoder_hidden_states: torch.Tensor = None,
-        encoder_attention_mask: torch.Tensor = None,  # Now we don't use it.
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,  # Text embedding for modulation.
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
+        encoder_hidden_states_2: torch.Tensor,
         freqs_cos: Optional[torch.Tensor] = None,
         freqs_sin: Optional[torch.Tensor] = None,
         guidance: torch.Tensor = None,

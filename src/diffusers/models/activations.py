@@ -146,6 +146,18 @@ class SwiGLU(nn.Module):
         return hidden_states * self.activation(gate)
 
 
+class SiLU(nn.Module):
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
+        super().__init__()
+        
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
+        self.activation = nn.SiLU()
+    
+    def forward(self, hidden_states):
+        hidden_states = self.proj(hidden_states)
+        return self.activation(hidden_states)
+
+
 class ApproximateGELU(nn.Module):
     r"""
     The approximate form of the Gaussian Error Linear Unit (GELU). For more details, see section 2 of this
