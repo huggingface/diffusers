@@ -104,7 +104,7 @@ class PatchEmbed(nn.Module):
 
         self.use_pos_embed = use_pos_embed
         if self.use_pos_embed:
-            pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5))
+            pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5), output_type="pt")
             self.register_buffer("pos_embed", pos_embed.float().unsqueeze(0), persistent=False)
 
     def forward(self, latent):
