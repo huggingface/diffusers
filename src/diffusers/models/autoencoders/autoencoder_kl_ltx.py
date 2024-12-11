@@ -79,7 +79,6 @@ class LTXCausalConv3d(nn.Module):
         return hidden_states
 
 
-# Adapted from diffusers.models.autoencoders.autoencoder_kl_cogvideox.CogVideoXResnetBlock3d
 class LTXResnetBlock3d(nn.Module):
     r"""
     A 3D ResNet block used in the LTX model.
