@@ -23,7 +23,7 @@ Before starting please install gguf in your environment
 pip install -U gguf
 ```
 
-Since GGUF is a single file format, we will be using `from_single_file` to load the model and pass in the `GGUFQuantizationConfig` when loading the model.
+Since GGUF is a single file format, use [`~FromSingleFileMixin.from_single_file`] to load the model and pass in the [`GGUFQuantizationConfig`] when loading the model.
 
 When using GGUF checkpoints, the quantized weights remain in a low memory `dtype`, typically `torch.unint8` and are dynamically dequantized and cast to the configured `compute_dtype` when running a forward pass through each module in the model. The `GGUFQuantizationConfig` allows you to set the `compute_dtype` for the forward pass of each module. The functions used for dynamic dequantizatation are based on the great work done by [city96](https://github.com/city96/ComfyUI-GGUF)
 
