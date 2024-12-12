@@ -26,6 +26,7 @@ CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
     "Efficient-Large-Model/Sana_1600M_1024px_MultiLing",
+    "Efficient-Large-Model/Sana_1600M_1024px_BF16",
     "Efficient-Large-Model/Sana_1600M_512px_MultiLing",
     "Efficient-Large-Model/Sana_1600M_1024px",
     "Efficient-Large-Model/Sana_1600M_512px",
@@ -39,7 +40,7 @@ def main(args):
     ckpt_id = ckpt_ids[0]
     cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
 
-    if args.orig_ckpt_path is None:
+    if args.orig_ckpt_path is None or args.orig_ckpt_path in ckpt_ids:
         snapshot_download(
             repo_id=ckpt_id,
             cache_dir=cache_dir_path,
@@ -169,7 +170,7 @@ def main(args):
             caption_channels=2304,
             mlp_ratio=2.5,
             attention_bias=False,
-            sample_size=32,
+            sample_size=args.image_size // 32,
             patch_size=1,
             norm_elementwise_affine=False,
             norm_eps=1e-6,
@@ -191,6 +192,8 @@ def main(args):
     num_model_params = sum(p.numel() for p in transformer.parameters())
     print(f"Total number of transformer parameters: {num_model_params}")
 
+    transformer = transformer.to(weight_dtype)
+
     if not args.save_full_pipeline:
         print(
             colored(
@@ -200,7 +203,6 @@ def main(args):
                 attrs=["bold"],
             )
         )
-        transformer = transformer.to(weight_dtype)
         transformer.save_pretrained(
             os.path.join(args.dump_path, "transformer"), safe_serialization=True, max_shard_size="5GB", variant=variant
         )
