@@ -1,10 +1,8 @@
-import random
 import unittest
 
 import numpy as np
 import torch
 from PIL import Image
-
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
@@ -16,6 +14,7 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     torch_device,
 )
+
 from ..test_pipelines_common import (
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,
