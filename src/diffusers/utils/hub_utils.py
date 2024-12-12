@@ -297,13 +297,10 @@ def _get_model_file(
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
     if dduf_entries:
+        if subfolder is not None:
+            raise ValueError("DDUF file only allow for 1 level of directory. Please check the DDUF structure")
         if "/".join([pretrained_model_name_or_path, weights_name]) in dduf_entries:
             return "/".join([pretrained_model_name_or_path, weights_name])
-        elif (
-            subfolder is not None
-            and "/".join([pretrained_model_name_or_path, subfolder, weights_name]) in dduf_entries
-        ):
-            return "/".join([pretrained_model_name_or_path, subfolder, weights_name])
         else:
             raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
     elif os.path.isfile(pretrained_model_name_or_path):
