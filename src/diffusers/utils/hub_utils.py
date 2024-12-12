@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import json
 import os
 import re
 import sys
@@ -21,15 +22,16 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
     ModelCard,
     ModelCardData,
     create_repo,
-    get_full_repo_name,
     hf_hub_download,
+    model_info,
+    snapshot_download,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
@@ -66,7 +68,6 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
-
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
@@ -95,53 +96,90 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def create_model_card(args, model_name):
+def load_or_create_model_card(
+    repo_id_or_path: str = None,
+    token: Optional[str] = None,
+    is_pipeline: bool = False,
+    from_training: bool = False,
+    model_description: Optional[str] = None,
+    base_model: str = None,
+    prompt: Optional[str] = None,
+    license: Optional[str] = None,
+    widget: Optional[List[dict]] = None,
+    inference: Optional[bool] = None,
+) -> ModelCard:
+    """
+    Loads or creates a model card.
+
+    Args:
+        repo_id_or_path (`str`):
+            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+        token (`str`, *optional*):
+            Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more
+            details.
+        is_pipeline (`bool`):
+            Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
+        from_training: (`bool`): Boolean flag to denote if the model card is being created from a training script.
+        model_description (`str`, *optional*): Model description to add to the model card. Helpful when using
+            `load_or_create_model_card` from a training script.
+        base_model (`str`): Base model identifier (e.g., "stabilityai/stable-diffusion-xl-base-1.0"). Useful
+            for DreamBooth-like training.
+        prompt (`str`, *optional*): Prompt used for training. Useful for DreamBooth-like training.
+        license: (`str`, *optional*): License of the output artifact. Helpful when using
+            `load_or_create_model_card` from a training script.
+        widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
+        inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
+            `load_or_create_model_card` from a training script.
+    """
     if not is_jinja_available():
         raise ValueError(
             "Modelcard rendering is based on Jinja templates."
-            " Please make sure to have `jinja` installed before using `create_model_card`."
+            " Please make sure to have `jinja` installed before using `load_or_create_model_card`."
             " To install it, please run `pip install Jinja2`."
         )
 
-    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
-        return
+    try:
+        # Check if the model card is present on the remote repo
+        model_card = ModelCard.load(repo_id_or_path, token=token)
+    except (EntryNotFoundError, RepositoryNotFoundError):
+        # Otherwise create a model card from template
+        if from_training:
+            model_card = ModelCard.from_template(
+                card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
+                    license=license,
+                    library_name="diffusers",
+                    inference=inference,
+                    base_model=base_model,
+                    instance_prompt=prompt,
+                    widget=widget,
+                ),
+                template_path=MODEL_CARD_TEMPLATE_PATH,
+                model_description=model_description,
+            )
+        else:
+            card_data = ModelCardData()
+            component = "pipeline" if is_pipeline else "model"
+            if model_description is None:
+                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+            model_card = ModelCard.from_template(card_data, model_description=model_description)
 
-    hub_token = args.hub_token if hasattr(args, "hub_token") else None
-    repo_name = get_full_repo_name(model_name, token=hub_token)
+    return model_card
 
-    model_card = ModelCard.from_template(
-        card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
-            language="en",
-            license="apache-2.0",
-            library_name="diffusers",
-            tags=[],
-            datasets=args.dataset_name,
-            metrics=[],
-        ),
-        template_path=MODEL_CARD_TEMPLATE_PATH,
-        model_name=model_name,
-        repo_name=repo_name,
-        dataset_name=args.dataset_name if hasattr(args, "dataset_name") else None,
-        learning_rate=args.learning_rate,
-        train_batch_size=args.train_batch_size,
-        eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=(
-            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
-        ),
-        adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
-        adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
-        adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
-        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
-        lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
-        lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
-        ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
-        ema_power=args.ema_power if hasattr(args, "ema_power") else None,
-        ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
-        mixed_precision=args.mixed_precision,
-    )
 
-    card_path = os.path.join(args.output_dir, "README.md")
-    model_card.save(card_path)
+def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+    """Populates the `model_card` with library name and optional tags."""
+    if model_card.data.library_name is None:
+        model_card.data.library_name = "diffusers"
+
+    if tags is not None:
+        if isinstance(tags, str):
+            tags = [tags]
+        if model_card.data.tags is None:
+            model_card.data.tags = []
+        for tag in tags:
+            model_card.data.tags.append(tag)
+
+    return model_card
 
 
 def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
@@ -244,15 +282,14 @@ def _get_model_file(
     pretrained_model_name_or_path: Union[str, Path],
     *,
     weights_name: str,
-    subfolder: Optional[str],
-    cache_dir: Optional[str],
-    force_download: bool,
-    proxies: Optional[Dict],
-    resume_download: bool,
-    local_files_only: bool,
-    token: Optional[str],
-    user_agent: Union[Dict, str, None],
-    revision: Optional[str],
+    subfolder: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+    force_download: bool = False,
+    proxies: Optional[Dict] = None,
+    local_files_only: bool = False,
+    token: Optional[str] = None,
+    user_agent: Optional[Union[Dict, str]] = None,
+    revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
@@ -286,7 +323,6 @@ def _get_model_file(
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
-                    resume_download=resume_download,
                     local_files_only=local_files_only,
                     token=token,
                     user_agent=user_agent,
@@ -311,7 +347,6 @@ def _get_model_file(
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
-                resume_download=resume_download,
                 local_files_only=local_files_only,
                 token=token,
                 user_agent=user_agent,
@@ -320,42 +355,163 @@ def _get_model_file(
             )
             return model_file
 
-        except RepositoryNotFoundError:
+        except RepositoryNotFoundError as e:
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                 "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                 "token having permission to this repo with `token` or log in with `huggingface-cli "
                 "login`."
-            )
-        except RevisionNotFoundError:
+            ) from e
+        except RevisionNotFoundError as e:
             raise EnvironmentError(
                 f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
                 "this model name. Check the model page at "
                 f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-            )
-        except EntryNotFoundError:
+            ) from e
+        except EntryNotFoundError as e:
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
-            )
-        except HTTPError as err:
+            ) from e
+        except HTTPError as e:
             raise EnvironmentError(
-                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
-            )
-        except ValueError:
+                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
+            ) from e
+        except ValueError as e:
             raise EnvironmentError(
                 f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
                 f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
                 f" directory containing a file named {weights_name} or"
                 " \nCheckout your internet connection or see how to run the library in"
                 " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-            )
-        except EnvironmentError:
+            ) from e
+        except EnvironmentError as e:
             raise EnvironmentError(
                 f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
                 "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
+            ) from e
+
+
+# Adapted from
+# https://github.com/huggingface/transformers/blob/1360801a69c0b169e3efdbb0cd05d9a0e72bfb70/src/transformers/utils/hub.py#L976
+# Differences are in parallelization of shard downloads and checking if shards are present.
+
+
+def _check_if_shards_exist_locally(local_dir, subfolder, original_shard_filenames):
+    shards_path = os.path.join(local_dir, subfolder)
+    shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
+    for shard_file in shard_filenames:
+        if not os.path.exists(shard_file):
+            raise ValueError(
+                f"{shards_path} does not appear to have a file named {shard_file} which is "
+                "required according to the checkpoint index."
             )
+
+
+def _get_checkpoint_shard_files(
+    pretrained_model_name_or_path,
+    index_filename,
+    cache_dir=None,
+    proxies=None,
+    local_files_only=False,
+    token=None,
+    user_agent=None,
+    revision=None,
+    subfolder="",
+):
+    """
+    For a given model:
+
+    - download and cache all the shards of a sharded checkpoint if `pretrained_model_name_or_path` is a model ID on the
+      Hub
+    - returns the list of paths to all the shards, as well as some metadata.
+
+    For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
+    index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
+    """
+    if not os.path.isfile(index_filename):
+        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+
+    with open(index_filename, "r") as f:
+        index = json.loads(f.read())
+
+    original_shard_filenames = sorted(set(index["weight_map"].values()))
+    sharded_metadata = index["metadata"]
+    sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
+    sharded_metadata["weight_map"] = index["weight_map"].copy()
+    shards_path = os.path.join(pretrained_model_name_or_path, subfolder)
+
+    # First, let's deal with local folder.
+    if os.path.isdir(pretrained_model_name_or_path):
+        _check_if_shards_exist_locally(
+            pretrained_model_name_or_path, subfolder=subfolder, original_shard_filenames=original_shard_filenames
+        )
+        return shards_path, sharded_metadata
+
+    # At this stage pretrained_model_name_or_path is a model identifier on the Hub
+    allow_patterns = original_shard_filenames
+    if subfolder is not None:
+        allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
+
+    ignore_patterns = ["*.json", "*.md"]
+    if not local_files_only:
+        # `model_info` call must guarded with the above condition.
+        model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
+        for shard_file in original_shard_filenames:
+            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+            if not shard_file_present:
+                raise EnvironmentError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    "required according to the checkpoint index."
+                )
+
+        try:
+            # Load from URL
+            cached_folder = snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
+            )
+            if subfolder is not None:
+                cached_folder = os.path.join(cached_folder, subfolder)
+
+        # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
+        # we don't have to catch them here. We have also dealt with EntryNotFoundError.
+        except HTTPError as e:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
+                " again after checking your internet connection."
+            ) from e
+
+    # If `local_files_only=True`, `cached_folder` may not contain all the shard files.
+    elif local_files_only:
+        _check_if_shards_exist_locally(
+            local_dir=cache_dir, subfolder=subfolder, original_shard_filenames=original_shard_filenames
+        )
+        if subfolder is not None:
+            cached_folder = os.path.join(cache_dir, subfolder)
+
+    return cached_folder, sharded_metadata
+
+
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+    if filenames and folder:
+        raise ValueError("Both `filenames` and `folder` cannot be provided.")
+    if not filenames:
+        filenames = []
+        for _, _, files in os.walk(folder):
+            for file in files:
+                filenames.append(os.path.basename(file))
+    transformers_index_format = r"\d{5}-of-\d{5}"
+    variant_file_re = re.compile(rf".*-{transformers_index_format}\.{variant}\.[a-z]+$")
+    return any(variant_file_re.match(f) is not None for f in filenames)
 
 
 class PushToHubMixin:
@@ -408,7 +564,8 @@ class PushToHubMixin:
             commit_message (`str`, *optional*):
                 Message to commit while pushing. Default to `"Upload {object}"`.
             private (`bool`, *optional*):
-                Whether or not the repository created should be private.
+                Whether to make the repo private. If `None` (default), the repo will be public unless the
+                organization's default is private. This value is ignored if the repo already exists.
             token (`str`, *optional*):
                 The token to use as HTTP bearer authorization for remote files. The token generated when running
                 `huggingface-cli login` (stored in `~/.huggingface`).
@@ -435,6 +592,10 @@ class PushToHubMixin:
         """
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
+        # Create a new empty model card and eventually tag it
+        model_card = load_or_create_model_card(repo_id, token=token)
+        model_card = populate_model_card(model_card)
+
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
         if "Scheduler" not in self.__class__.__name__:
@@ -442,6 +603,9 @@ class PushToHubMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
+
+            # Update model card if needed:
+            model_card.save(os.path.join(tmpdir, "README.md"))
 
             return self._upload_folder(
                 tmpdir,

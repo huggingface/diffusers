@@ -24,6 +24,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             "beta_schedule": "linear",
             "solver_order": 2,
             "solver_type": "bh2",
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
@@ -179,6 +180,10 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_solver_order_and_type(self):
         for solver_type in ["bh1", "bh2"]:
             for order in [1, 2, 3]:
@@ -228,20 +233,29 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.1966) < 1e-3
 
     def test_fp16_support(self):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config(thresholding=True, dynamic_thresholding_ratio=0)
-        scheduler = scheduler_class(**scheduler_config)
+        for order in [1, 2, 3]:
+            for solver_type in ["bh1", "bh2"]:
+                for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                    scheduler_class = self.scheduler_classes[0]
+                    scheduler_config = self.get_scheduler_config(
+                        thresholding=True,
+                        dynamic_thresholding_ratio=0,
+                        prediction_type=prediction_type,
+                        solver_order=order,
+                        solver_type=solver_type,
+                    )
+                    scheduler = scheduler_class(**scheduler_config)
 
-        num_inference_steps = 10
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter.half()
-        scheduler.set_timesteps(num_inference_steps)
+                    num_inference_steps = 10
+                    model = self.dummy_model()
+                    sample = self.dummy_sample_deter.half()
+                    scheduler.set_timesteps(num_inference_steps)
 
-        for i, t in enumerate(scheduler.timesteps):
-            residual = model(sample, t)
-            sample = scheduler.step(residual, t, sample).prev_sample
+                    for i, t in enumerate(scheduler.timesteps):
+                        residual = model(sample, t)
+                        sample = scheduler.step(residual, t, sample).prev_sample
 
-        assert sample.dtype == torch.float16
+                    assert sample.dtype == torch.float16
 
     def test_full_loop_with_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -379,3 +393,9 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
 
         assert abs(result_sum.item() - 39.0870) < 1e-2, f" expected result sum 39.0870, but get {result_sum}"
         assert abs(result_mean.item() - 0.4072) < 1e-3, f" expected result mean 0.4072, but get {result_mean}"
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

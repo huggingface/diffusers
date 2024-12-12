@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -54,7 +54,7 @@ Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이
 ```python
  >>> image.save("generated_image.png")
 ```
-	
+
 아래 스페이스(데모 링크)를 이용해 보고, 추론 단계의 매개변수를 자유롭게 조절하여 이미지 품질에 어떤 영향을 미치는지 확인해 보세요!
 
 <iframe src="https://stevhliu-ddpm-butterflies-128.hf.space" frameborder="0" width="850" height="500"></iframe>

@@ -9,11 +9,11 @@ from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, PixArtAlphaPip
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/scripts/inference.py#L125
-interpolation_scale = {512: 1, 1024: 2}
+interpolation_scale = {256: 0.5, 512: 1, 1024: 2}
 
 
 def main(args):
-    all_state_dict = torch.load(args.orig_ckpt_path)
+    all_state_dict = torch.load(args.orig_ckpt_path, map_location="cpu")
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
@@ -22,7 +22,6 @@ def main(args):
     converted_state_dict["pos_embed.proj.bias"] = state_dict.pop("x_embedder.proj.bias")
 
     # Caption projection.
-    converted_state_dict["caption_projection.y_embedding"] = state_dict.pop("y_embedder.y_embedding")
     converted_state_dict["caption_projection.linear_1.weight"] = state_dict.pop("y_embedder.y_proj.fc1.weight")
     converted_state_dict["caption_projection.linear_1.bias"] = state_dict.pop("y_embedder.y_proj.fc1.bias")
     converted_state_dict["caption_projection.linear_2.weight"] = state_dict.pop("y_embedder.y_proj.fc2.weight")
@@ -155,6 +154,7 @@ def main(args):
 
     assert transformer.pos_embed.pos_embed is not None
     state_dict.pop("pos_embed")
+    state_dict.pop("y_embedder.y_embedding")
     assert len(state_dict) == 0, f"State dict is not empty, {state_dict.keys()}"
 
     num_model_params = sum(p.numel() for p in transformer.parameters())
@@ -187,7 +187,7 @@ if __name__ == "__main__":
         "--image_size",
         default=1024,
         type=int,
-        choices=[512, 1024],
+        choices=[256, 512, 1024],
         required=False,
         help="Image size of pretrained model, either 512 or 1024.",
     )

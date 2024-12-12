@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import tempfile
 import unittest
+from pathlib import Path
 
 from diffusers import (
     DDIMScheduler,
@@ -88,6 +90,14 @@ class SampleObject4(ConfigMixin):
         e=[1, 5],
         f=[5, 4],
     ):
+        pass
+
+
+class SampleObjectPaths(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(self, test_file_1=Path("foo/bar"), test_file_2=Path("foo bar\\bar")):
         pass
 
 
@@ -270,19 +280,27 @@ class ConfigTester(unittest.TestCase):
             config.save_config(tmpdirname)
 
             # now loading it with SampleObject2 should put f into `_use_default_values`
-            config = SampleObject2.from_config(tmpdirname)
+            config = SampleObject2.from_config(SampleObject2.load_config(tmpdirname))
 
-            assert "f" in config._use_default_values
-            assert config.f == [1, 3]
+            assert "f" in config.config._use_default_values
+            assert config.config.f == [1, 3]
 
         # now loading the config, should **NOT** use [1, 3] for `f`, but the default [1, 4] value
-        # **BECAUSE** it is part of `config._use_default_values`
+        # **BECAUSE** it is part of `config.config._use_default_values`
         new_config = SampleObject4.from_config(config.config)
-        assert new_config.f == [5, 4]
+        assert new_config.config.f == [5, 4]
 
         config.config._use_default_values.pop()
         new_config_2 = SampleObject4.from_config(config.config)
-        assert new_config_2.f == [1, 3]
+        assert new_config_2.config.f == [1, 3]
 
         # Nevertheless "e" should still be correctly loaded to [1, 3] from SampleObject2 instead of defaulting to [1, 5]
-        assert new_config_2.e == [1, 3]
+        assert new_config_2.config.e == [1, 3]
+
+    def test_check_path_types(self):
+        # Verify that we get a string returned from a WindowsPath or PosixPath (depending on system)
+        config = SampleObjectPaths()
+        json_string = config.to_json_string()
+        result = json.loads(json_string)
+        assert result["test_file_1"] == config.config.test_file_1.as_posix()
+        assert result["test_file_2"] == config.config.test_file_2.as_posix()

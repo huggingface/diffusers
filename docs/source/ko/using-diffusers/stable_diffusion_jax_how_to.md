@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -83,7 +83,7 @@ Flax는 함수형 프레임워크이므로 모델은 무상태(stateless)형이�
 ```python
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    revision="bf16",
+    variant="bf16",
     dtype=dtype,
 )
 ```

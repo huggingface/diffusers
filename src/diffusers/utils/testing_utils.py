@@ -1,5 +1,6 @@
 import functools
 import importlib
+import importlib.metadata
 import inspect
 import io
 import logging
@@ -14,7 +15,6 @@ import time
 import unittest
 import urllib.parse
 from contextlib import contextmanager
-from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -28,12 +28,15 @@ from packaging import version
 
 from .import_utils import (
     BACKENDS_MAPPING,
+    is_accelerate_available,
+    is_bitsandbytes_available,
     is_compel_available,
     is_flax_available,
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
+    is_timm_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -54,6 +57,7 @@ _required_transformers_version = is_transformers_available() and version.parse(
 ) > version.parse("4.33")
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
+BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
     import torch
@@ -106,10 +110,21 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
-def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+def print_tensor_test(
+    tensor,
+    limit_to_slices=None,
+    max_torch_print=None,
+    filename="test_corrections.txt",
+    expected_tensor_name="expected_slice",
+):
+    if max_torch_print:
+        torch.set_printoptions(threshold=10_000)
+
     test_name = os.environ.get("PYTEST_CURRENT_TEST")
     if not torch.is_tensor(tensor):
         tensor = torch.from_numpy(tensor)
+    if limit_to_slices:
+        tensor = tensor[0, -3:, -3:, -1]
 
     tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
     # format is usually:
@@ -118,7 +133,7 @@ def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_n
     test_file, test_class, test_fn = test_name.split("::")
     test_fn = test_fn.split()[0]
     with open(filename, "a") as f:
-        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
+        print("::".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
@@ -142,6 +157,22 @@ def get_tests_dir(append_path=None):
         return tests_dir
 
 
+# Taken from the following PR:
+# https://github.com/huggingface/accelerate/pull/1964
+def str_to_bool(value) -> int:
+    """
+    Converts a string representation of truth to `True` (1) or `False` (0). True values are `y`, `yes`, `t`, `true`,
+    `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    """
+    value = value.lower()
+    if value in ("y", "yes", "t", "true", "on", "1"):
+        return 1
+    elif value in ("n", "no", "f", "false", "off", "0"):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {value}")
+
+
 def parse_flag_from_env(key, default=False):
     try:
         value = os.environ[key]
@@ -151,7 +182,7 @@ def parse_flag_from_env(key, default=False):
     else:
         # KEY is set, convert it to True or False.
         try:
-            _value = strtobool(value)
+            _value = str_to_bool(value)
         except ValueError:
             # More values are supported, but let's keep the message simple.
             raise ValueError(f"If set, {key} must be yes or no.")
@@ -160,6 +191,7 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
+_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -198,6 +230,16 @@ def nightly(test_case):
     return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
 
 
+def is_torch_compile(test_case):
+    """
+    Decorator marking a test that runs compile tests in the diffusers CI.
+
+    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_compile_tests, "test is torch compile")(test_case)
+
+
 def require_torch(test_case):
     """
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
@@ -212,6 +254,18 @@ def require_torch_2(test_case):
     return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
         test_case
     )
+
+
+def require_torch_version_greater_equal(torch_version):
+    """Decorator marking a test that requires torch with a specific version or greater."""
+
+    def decorator(test_case):
+        correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
+        return unittest.skipUnless(
+            correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
+        )(test_case)
+
+    return decorator
 
 
 def require_torch_gpu(test_case):
@@ -229,6 +283,20 @@ def require_torch_accelerator(test_case):
     )
 
 
+def require_torch_multi_gpu(test_case):
+    """
+    Decorator marking a test that requires a multi-GPU setup (in PyTorch). These tests are skipped on a machine without
+    multiple GPUs. To run *only* the multi_gpu tests, assuming all test names contain multi_gpu: $ pytest -sv ./tests
+    -k "multi_gpu"
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+
+
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
     return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
@@ -241,6 +309,26 @@ def require_torch_accelerator_with_fp64(test_case):
     return unittest.skipUnless(_is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
         test_case
     )
+
+
+def require_big_gpu_with_torch_cuda(test_case):
+    """
+    Decorator marking a test that requires a bigger GPU (24GB) for execution. Some example pipelines: Flux, SD3, Cog,
+    etc.
+    """
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    if not torch.cuda.is_available():
+        return unittest.skip("test requires PyTorch CUDA")(test_case)
+
+    device_properties = torch.cuda.get_device_properties(0)
+    total_memory = device_properties.total_memory / (1024**3)
+    return unittest.skipUnless(
+        total_memory >= BIG_GPU_MEMORY, f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
+    )(test_case)
 
 
 def require_torch_accelerator_with_training(test_case):
@@ -285,6 +373,14 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
+def require_accelerator(test_case):
+    """
+    Decorator marking a test that requires a hardware accelerator backend. These tests are skipped when there are no
+    hardware accelerator available.
+    """
+    return unittest.skipUnless(torch_device != "cpu", "test requires a hardware accelerator")(test_case)
+
+
 def require_torchsde(test_case):
     """
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
@@ -298,6 +394,27 @@ def require_peft_backend(test_case):
     transformers.
     """
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
+
+
+def require_timm(test_case):
+    """
+    Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
+    """
+    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+
+
+def require_bitsandbytes(test_case):
+    """
+    Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
+    """
+    return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
+
+
+def require_accelerate(test_case):
+    """
+    Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
+    """
+    return unittest.skipUnless(is_accelerate_available(), "test requires accelerate")(test_case)
 
 
 def require_peft_version_greater(peft_version):
@@ -317,6 +434,48 @@ def require_peft_version_greater(peft_version):
     return decorator
 
 
+def require_transformers_version_greater(transformers_version):
+    """
+    Decorator marking a test that requires transformers with a specific version, this would require some specific
+    versions of PEFT and transformers.
+    """
+
+    def decorator(test_case):
+        correct_transformers_version = is_transformers_available() and version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse(transformers_version)
+        return unittest.skipUnless(
+            correct_transformers_version,
+            f"test requires transformers with the version greater than {transformers_version}",
+        )(test_case)
+
+    return decorator
+
+
+def require_accelerate_version_greater(accelerate_version):
+    def decorator(test_case):
+        correct_accelerate_version = is_accelerate_available() and version.parse(
+            version.parse(importlib.metadata.version("accelerate")).base_version
+        ) > version.parse(accelerate_version)
+        return unittest.skipUnless(
+            correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_bitsandbytes_version_greater(bnb_version):
+    def decorator(test_case):
+        correct_bnb_version = is_bitsandbytes_available() and version.parse(
+            version.parse(importlib.metadata.version("bitsandbytes")).base_version
+        ) > version.parse(bnb_version)
+        return unittest.skipUnless(
+            correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        )(test_case)
+
+    return decorator
+
+
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
@@ -324,13 +483,10 @@ def deprecate_after_peft_backend(test_case):
     return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
 
 
-def require_python39_or_higher(test_case):
-    def python39_available():
-        sys_info = sys.version_info
-        major, minor = sys_info.major, sys_info.minor
-        return major == 3 and minor >= 9
-
-    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
+def get_python_version():
+    sys_info = sys.version_info
+    major, minor = sys_info.major, sys_info.minor
+    return major, minor
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
@@ -853,6 +1009,8 @@ def _is_torch_fp64_available(device):
         return False
 
     import torch
+
+    device = torch.device(device)
 
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)

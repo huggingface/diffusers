@@ -49,7 +49,7 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
 from diffusers.utils.import_utils import is_xformers_available
@@ -299,8 +299,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--beta_dpo",
         type=int,
-        default=5000,
+        default=2500,
         help="DPO KL Divergence penalty.",
+    )
+    parser.add_argument(
+        "--loss_type",
+        type=str,
+        default="sigmoid",
+        help="DPO loss type. Can be one of 'sigmoid' (default), 'ipo', or 'cpo'",
     )
     parser.add_argument(
         "--learning_rate",
@@ -461,6 +467,12 @@ def encode_prompt(text_encoder, input_ids):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -471,6 +483,10 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -562,7 +578,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -588,7 +604,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            LoraLoaderMixin.save_lora_weights(
+            StableDiffusionLoraLoaderMixin.save_lora_weights(
                 output_dir,
                 unet_lora_layers=unet_lora_layers_to_save,
                 text_encoder_lora_layers=None,
@@ -605,8 +621,8 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas = StableDiffusionLoraLoaderMixin.lora_state_dict(input_dir)
+        StableDiffusionLoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -858,12 +874,19 @@ def main(args):
                 accelerator.unwrap_model(unet).enable_adapters()
 
                 # Final loss.
-                scale_term = -0.5 * args.beta_dpo
-                inside_term = scale_term * (model_diff - ref_diff)
-                loss = -1 * F.logsigmoid(inside_term.mean())
+                logits = ref_diff - model_diff
+                if args.loss_type == "sigmoid":
+                    loss = -1 * F.logsigmoid(args.beta_dpo * logits).mean()
+                elif args.loss_type == "hinge":
+                    loss = torch.relu(1 - args.beta_dpo * logits).mean()
+                elif args.loss_type == "ipo":
+                    losses = (logits - 1 / (2 * args.beta)) ** 2
+                    loss = losses.mean()
+                else:
+                    raise ValueError(f"Unknown loss type {args.loss_type}")
 
-                implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
-                implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)
+                implicit_acc = (logits > 0).sum().float() / logits.size(0)
+                implicit_acc += 0.5 * (logits == 0).sum().float() / logits.size(0)
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -928,7 +951,7 @@ def main(args):
         unet = unet.to(torch.float32)
         unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
-        LoraLoaderMixin.save_lora_weights(
+        StableDiffusionLoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir, unet_lora_layers=unet_lora_state_dict, text_encoder_lora_layers=None
         )
 

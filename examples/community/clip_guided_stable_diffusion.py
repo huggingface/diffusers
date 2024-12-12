@@ -10,12 +10,12 @@ from transformers import CLIPImageProcessor, CLIPModel, CLIPTextModel, CLIPToken
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 
 
@@ -51,7 +51,7 @@ def set_requires_grad(model, value):
         param.requires_grad = value
 
 
-class CLIPGuidedStableDiffusion(DiffusionPipeline):
+class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
     """CLIP guided stable diffusion based on the amazing repo by @crowsonkb and @Jack000
     - https://github.com/Jack000/glid-3-xl
     - https://github.dev/crowsonkb/k-diffusion
@@ -88,16 +88,6 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
 
         set_requires_grad(self.text_encoder, False)
         set_requires_grad(self.clip_model, False)
-
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        self.enable_attention_slicing(None)
 
     def freeze_vae(self):
         set_requires_grad(self.vae, False)
@@ -190,7 +180,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         num_cutouts: Optional[int] = 4,
         use_cutouts: Optional[bool] = True,
         generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):

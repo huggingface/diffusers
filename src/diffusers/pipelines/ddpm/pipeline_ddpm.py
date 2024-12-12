@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -101,10 +101,10 @@ class DDPMPipeline(DiffusionPipeline):
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
-            image = randn_tensor(image_shape, generator=generator)
+            image = randn_tensor(image_shape, generator=generator, dtype=self.unet.dtype)
             image = image.to(self.device)
         else:
-            image = randn_tensor(image_shape, generator=generator, device=self.device)
+            image = randn_tensor(image_shape, generator=generator, device=self.device, dtype=self.unet.dtype)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

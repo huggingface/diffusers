@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,9 +30,10 @@ class DDPMPipelineFastTests(unittest.TestCase):
     def dummy_uncond_unet(self):
         torch.manual_seed(0)
         model = UNet2DModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            norm_num_groups=4,
+            sample_size=8,
             in_channels=3,
             out_channels=3,
             down_block_types=("DownBlock2D", "AttnDownBlock2D"),
@@ -50,18 +51,16 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="np", return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array(
-            [9.956e-01, 5.785e-01, 4.675e-01, 9.930e-01, 0.0, 1.000, 1.199e-03, 2.648e-04, 5.101e-04]
-        )
+        assert image.shape == (1, 8, 8, 3)
+        expected_slice = np.array([0.0, 0.9996672, 0.00329116, 1.0, 0.9995991, 1.0, 0.0060907, 0.00115037, 0.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -75,15 +74,15 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
 
         generator = torch.manual_seed(0)
-        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="numpy")[0]
+        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="np")[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_eps_slice = image_eps[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, 8, 8, 3)
         tolerance = 1e-2 if torch_device != "mps" else 3e-2
         assert np.abs(image_slice.flatten() - image_eps_slice.flatten()).max() < tolerance
 
@@ -102,7 +101,7 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 

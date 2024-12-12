@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Conversion script for stable diffusion checkpoints which _only_ contain a controlnet. """
+"""Conversion script for stable diffusion checkpoints which _only_ contain a controlnet."""
 
 import argparse
 
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         default=512,
         type=int,
         help=(
-            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
+            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Diffusion v2"
             " Base. Use 768 for Stable Diffusion v2."
         ),
     )

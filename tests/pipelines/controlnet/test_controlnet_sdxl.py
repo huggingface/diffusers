@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import unittest
 
@@ -24,14 +25,22 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.models.unet_2d_blocks import UNetMidBlock2D
+from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_image,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
@@ -41,6 +50,7 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -52,6 +62,7 @@ enable_full_determinism()
 
 
 class StableDiffusionXLControlNetPipelineFastTests(
+    IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
@@ -179,6 +190,15 @@ class StableDiffusionXLControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
+    def test_ip_adapter(self, from_ssd1b=False, expected_pipe_slice=None):
+        if not from_ssd1b:
+            expected_pipe_slice = None
+            if torch_device == "cpu":
+                expected_pipe_slice = np.array(
+                    [0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054]
+                )
+        return super().test_ip_adapter(expected_pipe_slice=expected_pipe_slice)
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -274,7 +294,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # copied from test_stable_diffusion_xl.py
+    # Copied from test_stable_diffusion_xl.py
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components)
@@ -328,9 +348,8 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array(
-            [0.7330834, 0.590667, 0.5667336, 0.6029023, 0.5679491, 0.5968194, 0.4032986, 0.47612396, 0.5089609]
-        )
+
+        expected_slice = np.array([0.7335, 0.5866, 0.5623, 0.6242, 0.5751, 0.5999, 0.4091, 0.4590, 0.5054])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
@@ -351,9 +370,113 @@ class StableDiffusionXLControlNetPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.7799, 0.614, 0.6162, 0.7082, 0.6662, 0.5833, 0.4148, 0.5182, 0.4866])
+        expected_slice = np.array([0.7820, 0.6195, 0.6193, 0.7045, 0.6706, 0.5837, 0.4147, 0.5232, 0.4868])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    # Copied from test_stable_diffusion_xl.py:test_stable_diffusion_two_xl_mixture_of_denoiser_fast
+    # with `StableDiffusionXLControlNetPipeline` instead of `StableDiffusionXLPipeline`
+    def test_controlnet_sdxl_two_mixture_of_denoiser_fast(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLControlNetPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+
+        components_without_controlnet = {k: v for k, v in components.items() if k != "controlnet"}
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components_without_controlnet).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(
+            num_steps,
+            split,
+            scheduler_cls_orig,
+            expected_tss,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split, expected_tss))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = list(filter(lambda ts: ts < split, expected_tss))
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {
+                **inputs,
+                **{
+                    "denoising_end": 1.0 - (split / num_train_timesteps),
+                    "output_type": "latent",
+                },
+            }
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {
+                **inputs,
+                **{
+                    "denoising_start": 1.0 - (split / num_train_timesteps),
+                    "image": latents,
+                },
+            }
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        steps = 10
+        for split in [300, 700]:
+            for scheduler_cls_timesteps in [
+                (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (
+                    HeunDiscreteScheduler,
+                    [
+                        901.0,
+                        801.0,
+                        801.0,
+                        701.0,
+                        701.0,
+                        601.0,
+                        601.0,
+                        501.0,
+                        501.0,
+                        401.0,
+                        401.0,
+                        301.0,
+                        301.0,
+                        201.0,
+                        201.0,
+                        101.0,
+                        101.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
+                assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
 
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
@@ -387,7 +510,7 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -592,7 +715,7 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -768,6 +891,11 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -836,12 +964,18 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array(
-            [0.6831671, 0.5702532, 0.5459845, 0.6299793, 0.58563006, 0.6033695, 0.4493941, 0.46132287, 0.5035841]
-        )
+
+        expected_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
 
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
+    def test_ip_adapter(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.7212, 0.5890, 0.5491, 0.6425, 0.5970, 0.6091, 0.4418, 0.4556, 0.5032])
+
+        return super().test_ip_adapter(from_ssd1b=True, expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -859,7 +993,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.6850, 0.5135, 0.5545, 0.7033, 0.6617, 0.5971, 0.4165, 0.5480, 0.5070])
+        expected_slice = np.array([0.6787, 0.5117, 0.5558, 0.6963, 0.6571, 0.5928, 0.4121, 0.5468, 0.5057])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -885,7 +1019,7 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         )
 
         controlnet = ControlNetModel.from_unet(unet, conditioning_channels=4)
-        assert type(controlnet.mid_block) == UNetMidBlock2D
+        assert type(controlnet.mid_block) is UNetMidBlock2D
         assert controlnet.conditioning_channels == 4
 
     def get_dummy_components(self, time_cond_proj_dim=None):

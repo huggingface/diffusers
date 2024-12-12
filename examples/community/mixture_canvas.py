@@ -9,10 +9,10 @@ import torch
 from numpy import exp, pi, sqrt
 from torchvision.transforms.functional import resize
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
@@ -154,7 +154,7 @@ class Text2ImageRegion(DiffusionRegion):
 class Image2ImageRegion(DiffusionRegion):
     """Class defining a region where an image guided diffusion process is acting"""
 
-    reference_image: torch.FloatTensor = None
+    reference_image: torch.Tensor = None
     strength: float = 0.8  # Strength of the image
 
     def __post_init__(self):
@@ -264,7 +264,7 @@ class MaskWeightsBuilder:
         return torch.tile(torch.tensor(weights), (self.nbatch, self.latent_space_dim, 1, 1))
 
 
-class StableDiffusionCanvasPipeline(DiffusionPipeline):
+class StableDiffusionCanvasPipeline(DiffusionPipeline, StableDiffusionMixin):
     """Stable Diffusion pipeline that mixes several diffusers in the same canvas"""
 
     def __init__(
@@ -275,7 +275,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler],
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
         self.register_modules(

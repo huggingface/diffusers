@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -116,7 +116,7 @@ As you can see, this is already more complex than the DDPM pipeline which only c
 
 </Tip>
 
-Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint, and each component is stored in a separate subfolder:
+Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint, and each component is stored in a separate subfolder:
 
 ```py
 >>> from PIL import Image
@@ -273,7 +273,6 @@ Lastly, convert the image to a `PIL.Image` to see your generated image!
 ```py
 >>> image = (image / 2 + 0.5).clamp(0, 1).squeeze()
 >>> image = (image.permute(1, 2, 0) * 255).to(torch.uint8).cpu().numpy()
->>> images = (image * 255).round().astype("uint8")
 >>> image = Image.fromarray(image)
 >>> image
 ```

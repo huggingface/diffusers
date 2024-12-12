@@ -1,5 +1,5 @@
 <!---
-Copyright 2023 The HuggingFace Team. All rights reserved.
+Copyright 2024 The HuggingFace Team. All rights reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -42,7 +42,7 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 | [**Dreambooth**](./dreambooth) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)
 | [**ControlNet**](./controlnet) | ✅ | ✅ | -
 | [**InstructPix2Pix**](./instruct_pix2pix) | ✅ | ✅ | -
-| [**Reinforcement Learning for Control**](https://github.com/huggingface/diffusers/blob/main/examples/reinforcement_learning/run_diffusers_locomotion.py)                    | - | - | coming soon.
+| [**Reinforcement Learning for Control**](./reinforcement_learning)                    | - | - | coming soon.
 
 ## Community
 

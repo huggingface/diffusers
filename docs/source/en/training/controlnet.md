@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -88,7 +88,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -276,7 +276,7 @@ That's it! You don't need to add any additional parameters to your training comm
 <hfoption id="PyTorch">
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/save/model"
 
 accelerate launch train_controlnet.py \
@@ -349,7 +349,7 @@ control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"
 
 generator = torch.manual_seed(0)
-image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
+image = pipeline(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
 image.save("./output.png")
 ```
 

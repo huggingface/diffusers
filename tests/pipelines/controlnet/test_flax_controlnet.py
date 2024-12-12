@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ class FlaxControlNetPipelineIntegrationTests(unittest.TestCase):
             "lllyasviel/sd-controlnet-canny", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
         params["controlnet"] = controlnet_params
 
@@ -86,7 +86,7 @@ class FlaxControlNetPipelineIntegrationTests(unittest.TestCase):
             "lllyasviel/sd-controlnet-openpose", from_pt=True, dtype=jnp.bfloat16
         )
         pipe, params = FlaxStableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, from_pt=True, dtype=jnp.bfloat16
         )
         params["controlnet"] = controlnet_params
 

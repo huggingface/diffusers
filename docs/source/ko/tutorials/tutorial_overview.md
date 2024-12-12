@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 여러분은 이 튜토리얼을 통해 빠르게 생성하기 위해선 추론 파이프라인을 어떻게 사용해야 하는지, 그리고 라이브러리를 modular toolbox처럼 이용해서 여러분만의 diffusion system을 구축할 수 있도록 파이프라인을 분해하는 법을 배울 수 있습니다. 다음 단원에서는 여러분이 원하는 것을 생성하기 위해 자신만의 diffusion model을 학습하는 방법을 배우게 됩니다.
 
-튜토리얼을 완료한다면 여러분은 라이브러리를 직접 탐색하고, 자신의 프로젝트와 애플리케이션에 적용할 스킬들을 습득할 수 있을 겁니다. 
+튜토리얼을 완료한다면 여러분은 라이브러리를 직접 탐색하고, 자신의 프로젝트와 애플리케이션에 적용할 스킬들을 습득할 수 있을 겁니다.
 
 [Discord](https://discord.com/invite/JfAtkvEtRb)나 [포럼](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) 커뮤니티에 자유롭게 참여해서 다른 사용자와 개발자들과 교류하고 협업해 보세요!
 

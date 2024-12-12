@@ -10,7 +10,9 @@ from ..utils import (
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
+    is_sentencepiece_available,
     is_torch_available,
+    is_torch_npu_available,
     is_transformers_available,
 )
 
@@ -19,9 +21,14 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_hunyuandit": [],
+    "controlnet_sd3": [],
     "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
+    "ledits_pp": [],
+    "marigold": [],
+    "pag": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -48,6 +55,7 @@ else:
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
         "DiffusionPipeline",
+        "StableDiffusionMixin",
         "ImagePipelineOutput",
     ]
     _import_structure["deprecated"].extend(
@@ -108,8 +116,29 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["allegro"] = ["AllegroPipeline"]
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
-    _import_structure["animatediff"] = ["AnimateDiffPipeline"]
+    _import_structure["animatediff"] = [
+        "AnimateDiffPipeline",
+        "AnimateDiffControlNetPipeline",
+        "AnimateDiffSDXLPipeline",
+        "AnimateDiffSparseControlNetPipeline",
+        "AnimateDiffVideoToVideoPipeline",
+        "AnimateDiffVideoToVideoControlNetPipeline",
+    ]
+    _import_structure["flux"] = [
+        "FluxControlPipeline",
+        "FluxControlImg2ImgPipeline",
+        "FluxControlNetPipeline",
+        "FluxControlNetImg2ImgPipeline",
+        "FluxControlNetInpaintPipeline",
+        "FluxImg2ImgPipeline",
+        "FluxInpaintPipeline",
+        "FluxPipeline",
+        "FluxFillPipeline",
+        "FluxPriorReduxPipeline",
+        "ReduxImageEncoder",
+    ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -117,6 +146,13 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
+    _import_structure["cogvideo"] = [
+        "CogVideoXPipeline",
+        "CogVideoXImageToVideoPipeline",
+        "CogVideoXVideoToVideoPipeline",
+        "CogVideoXFunControlPipeline",
+    ]
+    _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["controlnet"].extend(
         [
             "BlipDiffusionControlNetPipeline",
@@ -126,6 +162,46 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
+        ]
+    )
+    _import_structure["pag"].extend(
+        [
+            "StableDiffusionControlNetPAGInpaintPipeline",
+            "AnimateDiffPAGPipeline",
+            "KolorsPAGPipeline",
+            "HunyuanDiTPAGPipeline",
+            "StableDiffusion3PAGPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
+            "StableDiffusionPAGPipeline",
+            "StableDiffusionPAGImg2ImgPipeline",
+            "StableDiffusionPAGInpaintPipeline",
+            "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionXLPAGPipeline",
+            "StableDiffusionXLPAGInpaintPipeline",
+            "StableDiffusionXLControlNetPAGImg2ImgPipeline",
+            "StableDiffusionXLControlNetPAGPipeline",
+            "StableDiffusionXLPAGImg2ImgPipeline",
+            "PixArtSigmaPAGPipeline",
+        ]
+    )
+    _import_structure["controlnet_xs"].extend(
+        [
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
+        ]
+    )
+    _import_structure["controlnet_hunyuandit"].extend(
+        [
+            "HunyuanDiTControlNetPipeline",
+        ]
+    )
+    _import_structure["controlnet_sd3"].extend(
+        [
+            "StableDiffusion3ControlNetPipeline",
+            "StableDiffusion3ControlNetInpaintingPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -136,6 +212,7 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
+    _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -166,11 +243,36 @@ else:
         "LatentConsistencyModelPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
+    _import_structure["ledits_pp"].extend(
+        [
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
+    _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
+    _import_structure["marigold"].extend(
+        [
+            "MarigoldDepthPipeline",
+            "MarigoldNormalsPipeline",
+        ]
+    )
+    _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
-    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
+    _import_structure["pia"] = ["PIAPipeline"]
+    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
+    _import_structure["stable_audio"] = [
+        "StableAudioProjectionModel",
+        "StableAudioPipeline",
+    ]
+    _import_structure["stable_cascade"] = [
+        "StableCascadeCombinedPipeline",
+        "StableCascadeDecoderPipeline",
+        "StableCascadePriorPipeline",
+    ]
     _import_structure["stable_diffusion"].extend(
         [
             "CLIPImageProjection",
@@ -187,6 +289,12 @@ else:
             "StableDiffusionLDM3DPipeline",
         ]
     )
+    _import_structure["aura_flow"] = ["AuraFlowPipeline"]
+    _import_structure["stable_diffusion_3"] = [
+        "StableDiffusion3Pipeline",
+        "StableDiffusion3Img2ImgPipeline",
+        "StableDiffusion3InpaintPipeline",
+    ]
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
     _import_structure["stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
@@ -216,6 +324,7 @@ else:
         "TextToVideoZeroSDXLPipeline",
         "VideoToVideoSDPipeline",
     ]
+    _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
     _import_structure["unidiffuser"] = [
         "ImageTextPipelineOutput",
@@ -269,6 +378,22 @@ else:
         "StableDiffusionKDiffusionPipeline",
         "StableDiffusionXLKDiffusionPipeline",
     ]
+
+try:
+    if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import (
+        dummy_torch_and_transformers_and_sentencepiece_objects,
+    )
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_sentencepiece_objects))
+else:
+    _import_structure["kolors"] = [
+        "KolorsPipeline",
+        "KolorsImg2ImgPipeline",
+    ]
+
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
@@ -324,6 +449,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioPipelineOutput,
             DiffusionPipeline,
             ImagePipelineOutput,
+            StableDiffusionMixin,
         )
 
     try:
@@ -340,15 +466,31 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .allegro import AllegroPipeline
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
-        from .animatediff import AnimateDiffPipeline
+        from .animatediff import (
+            AnimateDiffControlNetPipeline,
+            AnimateDiffPipeline,
+            AnimateDiffSDXLPipeline,
+            AnimateDiffSparseControlNetPipeline,
+            AnimateDiffVideoToVideoControlNetPipeline,
+            AnimateDiffVideoToVideoPipeline,
+        )
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
         )
+        from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .cogvideo import (
+            CogVideoXFunControlPipeline,
+            CogVideoXImageToVideoPipeline,
+            CogVideoXPipeline,
+            CogVideoXVideoToVideoPipeline,
+        )
+        from .cogview3 import CogView3PlusPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -357,6 +499,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
+        )
+        from .controlnet_hunyuandit import (
+            HunyuanDiTControlNetPipeline,
+        )
+        from .controlnet_sd3 import StableDiffusion3ControlNetInpaintingPipeline, StableDiffusion3ControlNetPipeline
+        from .controlnet_xs import (
+            StableDiffusionControlNetXSPipeline,
+            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
@@ -380,6 +533,21 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .flux import (
+            FluxControlImg2ImgPipeline,
+            FluxControlNetImg2ImgPipeline,
+            FluxControlNetInpaintPipeline,
+            FluxControlNetPipeline,
+            FluxControlPipeline,
+            FluxFillPipeline,
+            FluxImg2ImgPipeline,
+            FluxInpaintPipeline,
+            FluxPipeline,
+            FluxPriorReduxPipeline,
+            ReduxImageEncoder,
+        )
+        from .hunyuandit import HunyuanDiTPipeline
+        from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -410,11 +578,49 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .latte import LattePipeline
+        from .ledits_pp import (
+            LEditsPPDiffusionPipelineOutput,
+            LEditsPPInversionPipelineOutput,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL,
+        )
+        from .lumina import LuminaText2ImgPipeline
+        from .marigold import (
+            MarigoldDepthPipeline,
+            MarigoldNormalsPipeline,
+        )
+        from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
+        from .pag import (
+            AnimateDiffPAGPipeline,
+            HunyuanDiTPAGPipeline,
+            KolorsPAGPipeline,
+            PixArtSigmaPAGPipeline,
+            StableDiffusion3PAGImg2ImgPipeline,
+            StableDiffusion3PAGPipeline,
+            StableDiffusionControlNetPAGInpaintPipeline,
+            StableDiffusionControlNetPAGPipeline,
+            StableDiffusionPAGImg2ImgPipeline,
+            StableDiffusionPAGInpaintPipeline,
+            StableDiffusionPAGPipeline,
+            StableDiffusionXLControlNetPAGImg2ImgPipeline,
+            StableDiffusionXLControlNetPAGPipeline,
+            StableDiffusionXLPAGImg2ImgPipeline,
+            StableDiffusionXLPAGInpaintPipeline,
+            StableDiffusionXLPAGPipeline,
+        )
         from .paint_by_example import PaintByExamplePipeline
-        from .pixart_alpha import PixArtAlphaPipeline
+        from .pia import PIAPipeline
+        from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
+        from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
+        from .stable_cascade import (
+            StableCascadeCombinedPipeline,
+            StableCascadeDecoderPipeline,
+            StableCascadePriorPipeline,
+        )
         from .stable_diffusion import (
             CLIPImageProjection,
             StableDiffusionDepth2ImgPipeline,
@@ -427,6 +633,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionUpscalePipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
+        )
+        from .stable_diffusion_3 import (
+            StableDiffusion3Img2ImgPipeline,
+            StableDiffusion3InpaintPipeline,
+            StableDiffusion3Pipeline,
         )
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
@@ -497,6 +708,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .stable_diffusion_k_diffusion import (
                 StableDiffusionKDiffusionPipeline,
                 StableDiffusionXLKDiffusionPipeline,
+            )
+
+        try:
+            if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
+                raise OptionalDependencyNotAvailable()
+        except OptionalDependencyNotAvailable:
+            from ..utils.dummy_torch_and_transformers_and_sentencepiece_objects import *
+        else:
+            from .kolors import (
+                KolorsImg2ImgPipeline,
+                KolorsPipeline,
             )
 
         try:

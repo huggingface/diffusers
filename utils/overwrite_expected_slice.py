@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ def main(correct, fail=None):
 
     done_tests = defaultdict(int)
     for line in correct_lines:
-        file, class_name, test_name, correct_line = line.split(";")
+        file, class_name, test_name, correct_line = line.split("::")
         if test_failures is None or "::".join([file, class_name, test_name]) in test_failures:
             overwrite_file(file, class_name, test_name, correct_line, done_tests)
 

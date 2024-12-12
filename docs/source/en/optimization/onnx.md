@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -27,7 +27,7 @@ To load and run inference, use the [`~optimum.onnxruntime.ORTStableDiffusionPipe
 ```python
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = ORTStableDiffusionPipeline.from_pretrained(model_id, export=True)
 prompt = "sailing ship in storm by Leonardo da Vinci"
 image = pipeline(prompt).images[0]
@@ -44,7 +44,7 @@ To export the pipeline in the ONNX format offline and use it later for inference
 use the [`optimum-cli export`](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) command:
 
 ```bash
-optimum-cli export onnx --model runwayml/stable-diffusion-v1-5 sd_v15_onnx/
+optimum-cli export onnx --model stable-diffusion-v1-5/stable-diffusion-v1-5 sd_v15_onnx/
 ```
 
 Then to perform inference (you don't have to specify `export=True` again):

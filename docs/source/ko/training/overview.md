@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,13 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # 🧨 Diffusers 학습 예시
 
-이번 챕터에서는 다양한 유즈케이스들에 대한 예제 코드들을 통해 어떻게하면 효과적으로 `diffusers` 라이브러리를 사용할 수 있을까에 대해 알아보도록 하겠습니다. 
+이번 챕터에서는 다양한 유즈케이스들에 대한 예제 코드들을 통해 어떻게하면 효과적으로 `diffusers` 라이브러리를 사용할 수 있을까에 대해 알아보도록 하겠습니다.
 
 **Note**: 혹시 오피셜한 예시코드를 찾고 있다면, [여기](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)를 참고해보세요!
 
 여기서 다룰 예시들은 다음을 지향합니다.
 
-- **손쉬운 디펜던시 설치** (Self-contained) : 여기서 사용될 예시 코드들의 디펜던시 패키지들은 전부 `pip install` 명령어를 통해 설치 가능한 패키지들입니다. 또한 친절하게 `requirements.txt` 파일에 해당 패키지들이 명시되어 있어, `pip install -r requirements.txt`로 간편하게 해당 디펜던시들을 설치할 수 있습니다. 예시: [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py), [requirements.txt](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/requirements.txt) 
+- **손쉬운 디펜던시 설치** (Self-contained) : 여기서 사용될 예시 코드들의 디펜던시 패키지들은 전부 `pip install` 명령어를 통해 설치 가능한 패키지들입니다. 또한 친절하게 `requirements.txt` 파일에 해당 패키지들이 명시되어 있어, `pip install -r requirements.txt`로 간편하게 해당 디펜던시들을 설치할 수 있습니다. 예시: [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py), [requirements.txt](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/requirements.txt)
 - **손쉬운 수정** (Easy-to-tweak) : 저희는 가능하면 많은 유즈 케이스들을 제공하고자 합니다. 하지만 예시는 결국 그저 예시라는 점들 기억해주세요. 여기서 제공되는 예시코드들을 그저 단순히 복사-붙혀넣기하는 식으로는 여러분이 마주한 문제들을 손쉽게 해결할 순 없을 것입니다. 다시 말해 어느 정도는 여러분의 상황과 니즈에 맞춰 코드를 일정 부분 고쳐나가야 할 것입니다. 따라서 대부분의 학습 예시들은 데이터의 전처리 과정과 학습 과정에 대한 코드들을 함께 제공함으로써, 사용자가 니즈에 맞게 손쉬운 수정할 수 있도록 돕고 있습니다.
 - **입문자 친화적인** (Beginner-friendly) : 이번 챕터는 diffusion 모델과 `diffusers` 라이브러리에 대한 전반적인 이해를 돕기 위해 작성되었습니다. 따라서 diffusion 모델에 대한 최신 SOTA (state-of-the-art) 방법론들 가운데서도, 입문자에게는 많이 어려울 수 있다고 판단되면, 해당 방법론들은 여기서 다루지 않으려고 합니다.
 - **하나의 태스크만 포함할 것**(One-purpose-only): 여기서 다룰 예시들은 하나의 태스크만 포함하고 있어야 합니다. 물론 이미지 초해상화(super-resolution)와 이미지 보정(modification)과 같은 유사한 모델링 프로세스를 갖는 태스크들이 존재하겠지만, 하나의 예제에 하나의 태스크만을 담는 것이 더 이해하기 용이하다고 판단했기 때문입니다.
@@ -39,7 +39,7 @@ memory-efficient attention 연산을 수행하기 위해, 가능하면 [xFormers
 | Task | 🤗 Accelerate | 🤗 Datasets | Colab
 |---|---|:---:|:---:|
 | [**Unconditional Image Generation**](./unconditional_training) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-| [**Text-to-Image fine-tuning**](./text2image) | ✅ | ✅ | 
+| [**Text-to-Image fine-tuning**](./text2image) | ✅ | ✅ |
 | [**Textual Inversion**](./text_inversion) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
 | [**Dreambooth**](./dreambooth) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)
 | [**Training with LoRA**](./lora) | ✅ | - | - |

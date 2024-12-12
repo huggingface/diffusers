@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -338,7 +338,7 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
             assert abs(result_sum - 255.0714) < 1e-2
             assert abs(result_mean - 0.332124) < 1e-3
         else:
-            assert abs(result_sum - 255.1113) < 1e-2
+            assert abs(result_sum - 255.1113) < 1e-1
             assert abs(result_mean - 0.332176) < 1e-3
 
 

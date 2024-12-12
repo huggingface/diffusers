@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting",
+            "botp/stable-diffusion-v1-5-inpainting",
             revision="onnx",
             safety_checker=None,
             feature_extractor=None,
@@ -107,10 +107,10 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         lms_scheduler = LMSDiscreteScheduler.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", subfolder="scheduler", revision="onnx"
+            "botp/stable-diffusion-v1-5-inpainting", subfolder="scheduler", revision="onnx"
         )
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting",
+            "botp/stable-diffusion-v1-5-inpainting",
             revision="onnx",
             scheduler=lms_scheduler,
             safety_checker=None,

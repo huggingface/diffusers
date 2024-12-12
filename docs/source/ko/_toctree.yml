@@ -1,125 +1,193 @@
 - sections:
   - local: index
-    title: "🧨 Diffusers"
+    title: 🧨 Diffusers
   - local: quicktour
     title: "훑어보기"
   - local: stable_diffusion
     title: Stable Diffusion
   - local: installation
-    title: "설치"
-  title: "시작하기"
+    title: 설치
+  title: 시작하기
 - sections:
   - local: tutorials/tutorial_overview
     title: 개요
   - local: using-diffusers/write_own_pipeline
     title: 모델과 스케줄러 이해하기
-  - local: in_translation
-    title: AutoPipeline
+  - local: in_translation # tutorials/autopipeline
+    title: (번역중) AutoPipeline
   - local: tutorials/basic_training
     title: Diffusion 모델 학습하기
-  title: Tutorials
+  - local: in_translation # tutorials/using_peft_for_inference
+    title: (번역중) 추론을 위한 LoRAs 불러오기
+  - local: in_translation # tutorials/fast_diffusion
+    title: (번역중) Text-to-image diffusion 모델 추론 가속화하기
+  - local: in_translation  # tutorials/inference_with_big_models
+    title: (번역중) 큰 모델로 작업하기
+  title: 튜토리얼
 - sections:
-  - sections:
-    - local: using-diffusers/loading_overview
-      title: 개요
-    - local: using-diffusers/loading
-      title: 파이프라인, 모델, 스케줄러 불러오기
-    - local: using-diffusers/schedulers
-      title: 다른 스케줄러들을 가져오고 비교하기
-    - local: using-diffusers/custom_pipeline_overview
-      title: 커뮤니티 파이프라인 불러오기
-    - local: using-diffusers/using_safetensors
-      title: 세이프텐서 불러오기
-    - local: using-diffusers/other-formats
-      title: 다른 형식의 Stable Diffusion 불러오기
-    - local: in_translation
-      title: Hub에 파일 push하기
-    title: 불러오기 & 허브
-  - sections:
-    - local: using-diffusers/pipeline_overview
-      title: 개요
-    - local: using-diffusers/unconditional_image_generation
-      title: Unconditional 이미지 생성
-    - local: using-diffusers/conditional_image_generation
-      title: Text-to-image 생성
-    - local: using-diffusers/img2img
-      title: Text-guided image-to-image
-    - local: using-diffusers/inpaint
-      title: Text-guided 이미지 인페인팅
-    - local: using-diffusers/depth2img
-      title: Text-guided depth-to-image
-    - local: using-diffusers/textual_inversion_inference
-      title: Textual inversion
-    - local: training/distributed_inference
-      title: 여러 GPU를 사용한 분산 추론
-    - local: in_translation
-      title: Distilled Stable Diffusion 추론
-    - local: using-diffusers/reusing_seeds
-      title: Deterministic 생성으로 이미지 퀄리티 높이기
-    - local: using-diffusers/control_brightness
-      title: 이미지 밝기 조정하기
-    - local: using-diffusers/reproducibility
-      title: 재현 가능한 파이프라인 생성하기
-    - local: using-diffusers/custom_pipeline_examples
-      title: 커뮤니티 파이프라인들
-    - local: using-diffusers/contribute_pipeline
-      title: 커뮤티니 파이프라인에 기여하는 방법
-    - local: using-diffusers/stable_diffusion_jax_how_to
-      title: JAX/Flax에서의 Stable Diffusion
-    - local: using-diffusers/weighted_prompts
-      title: Weighting Prompts
-    title: 추론을 위한 파이프라인
-  - sections:
-    - local: training/overview
-      title: 개요
-    - local: training/create_dataset
-      title: 학습을 위한 데이터셋 생성하기
-    - local: training/adapt_a_model
-      title: 새로운 태스크에 모델 적용하기
+  - local: using-diffusers/loading
+    title: 파이프라인 불러오기
+  - local: using-diffusers/custom_pipeline_overview
+    title: 커뮤니티 파이프라인과 컴포넌트 불러오기
+  - local: using-diffusers/schedulers
+    title: 스케줄러와 모델 불러오기
+  - local: using-diffusers/other-formats
+    title: 모델 파일과 레이아웃
+  - local: using-diffusers/loading_adapters
+    title: 어댑터 불러오기
+  - local: using-diffusers/push_to_hub
+    title: 파일들을 Hub로 푸시하기
+  title: 파이프라인과 어댑터 불러오기
+- sections:
+  - local: using-diffusers/unconditional_image_generation
+    title: Unconditional 이미지 생성
+  - local: using-diffusers/conditional_image_generation
+    title: Text-to-image
+  - local: using-diffusers/img2img
+    title: Image-to-image
+  - local: using-diffusers/inpaint
+    title: 인페인팅
+  - local: in_translation # using-diffusers/text-img2vid
+    title: (번역중) Text 또는 image-to-video
+  - local: using-diffusers/depth2img
+    title: Depth-to-image
+  title: 생성 태스크
+- sections:
+  - local: in_translation # using-diffusers/overview_techniques
+    title: (번역중) 개요
+  - local: training/distributed_inference
+    title: 여러 GPU를 사용한 분산 추론
+  - local: in_translation # using-diffusers/merge_loras
+    title: (번역중) LoRA 병합
+  - local: in_translation # using-diffusers/scheduler_features
+    title: (번역중) 스케줄러 기능
+  - local: in_translation # using-diffusers/callback
+    title: (번역중) 파이프라인 콜백
+  - local: in_translation # using-diffusers/reusing_seeds
+    title: (번역중) 재현 가능한 파이프라인
+  - local: in_translation # using-diffusers/image_quality
+    title: (번역중) 이미지 퀄리티 조절하기
+  - local: using-diffusers/weighted_prompts
+    title: 프롬프트 기술
+  title: 추론 테크닉
+- sections:
+  - local: in_translation # advanced_inference/outpaint
+    title: (번역중) Outpainting
+  title: 추론 심화
+- sections:
+  - local: in_translation # using-diffusers/sdxl
+    title: (번역중) Stable Diffusion XL
+  - local: using-diffusers/sdxl_turbo
+    title: SDXL Turbo
+  - local: using-diffusers/kandinsky
+    title: Kandinsky
+  - local: in_translation # using-diffusers/ip_adapter
+    title: (번역중) IP-Adapter
+  - local: in_translation # using-diffusers/pag
+    title: (번역중) PAG
+  - local: in_translation # using-diffusers/controlnet
+    title: (번역중) ControlNet
+  - local: in_translation # using-diffusers/t2i_adapter
+    title: (번역중) T2I-Adapter
+  - local: in_translation # using-diffusers/inference_with_lcm
+    title: (번역중) Latent Consistency Model
+  - local: using-diffusers/textual_inversion_inference
+    title: Textual inversion
+  - local: using-diffusers/shap-e
+    title: Shap-E
+  - local: using-diffusers/diffedit
+    title: DiffEdit
+  - local: in_translation # using-diffusers/inference_with_tcd_lora
+    title: (번역중) Trajectory Consistency Distillation-LoRA
+  - local: using-diffusers/svd
+    title: Stable Video Diffusion
+  - local: in_translation # using-diffusers/marigold_usage
+    title: (번역중) Marigold 컴퓨터 비전
+  title: 특정 파이프라인 예시
+- sections:
+  - local: training/overview
+    title: 개요
+  - local: training/create_dataset
+    title: 학습을 위한 데이터셋 생성하기
+  - local: training/adapt_a_model
+    title: 새로운 태스크에 모델 적용하기
+  - isExpanded: false
+    sections:
     - local: training/unconditional_training
       title: Unconditional 이미지 생성
+    - local: training/text2image
+      title: Text-to-image
+    - local: in_translation # training/sdxl
+      title: (번역중) Stable Diffusion XL
+    - local: in_translation # training/kandinsky
+      title: (번역중) Kandinsky 2.2
+    - local: in_translation # training/wuerstchen
+      title: (번역중) Wuerstchen
+    - local: training/controlnet
+      title: ControlNet
+    - local: in_translation # training/t2i_adapters
+      title: (번역중) T2I-Adapters
+    - local: training/instructpix2pix
+      title: InstructPix2Pix
+    title: 모델
+  - isExpanded: false
+    sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
       title: DreamBooth
-    - local: training/text2image
-      title: Text-to-image
     - local: training/lora
-      title: Low-Rank Adaptation of Large Language Models (LoRA)
-    - local: training/controlnet
-      title: ControlNet
-    - local: training/instructpix2pix
-      title: InstructPix2Pix 학습
+      title: LoRA
     - local: training/custom_diffusion
       title: Custom Diffusion
-    title: Training
-  title: Diffusers 사용하기
+    - local: in_translation # training/lcm_distill
+      title: (번역중) Latent Consistency Distillation
+    - local: in_translation # training/ddpo
+      title: (번역중) DDPO 강화학습 훈련
+    title: 메서드
+  title: 학습
 - sections:
-  - local: optimization/opt_overview
-    title: 개요
   - local: optimization/fp16
-    title: 메모리와 속도
+    title: 추론 스피드업
+  - local: in_translation # optimization/memory
+    title: (번역중) 메모리 사용량 줄이기
   - local: optimization/torch2.0
-    title: Torch2.0 지원
+    title: PyTorch 2.0
   - local: optimization/xformers
     title: xFormers
-  - local: optimization/onnx
-    title: ONNX
-  - local: optimization/open_vino
-    title: OpenVINO
-  - local: optimization/coreml
-    title: Core ML
-  - local: optimization/mps
-    title: MPS
-  - local: optimization/habana
-    title: Habana Gaudi
   - local: optimization/tome
-    title: Token Merging
-  title: 최적화/특수 하드웨어
+    title: Token merging
+  - local: in_translation # optimization/deepcache
+    title: (번역중) DeepCache
+  - local: in_translation # optimization/tgate
+    title: (번역중) TGATE
+  - sections:
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: JAX/Flax
+    - local: optimization/onnx
+      title: ONNX
+    - local: optimization/open_vino
+      title: OpenVINO
+    - local: optimization/coreml
+      title: Core ML
+    title: 최적화된 모델 형식
+  - sections:
+    - local: optimization/mps
+      title: Metal Performance Shaders (MPS)
+    - local: optimization/habana
+      title: Habana Gaudi
+    title: 최적화된 하드웨어
+  title: 추론 가속화와 메모리 줄이기
 - sections:
+  - local: conceptual/philosophy
+    title: 철학
   - local: using-diffusers/controlling_generation
     title: 제어된 생성
-  - local: in_translation
+  - local: conceptual/contribution
+    title: 어떻게 기여하나요?
+  - local: conceptual/ethical_guidelines
+    title: Diffusers의 윤리적 가이드라인
+  - local: conceptual/evaluation
     title: Diffusion Models 평가하기
   title: 개념 가이드
 - sections:

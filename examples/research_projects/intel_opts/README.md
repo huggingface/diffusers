@@ -6,7 +6,7 @@ This aims to provide diffusers examples with Intel optimizations such as Bfloat1
 
 ## Accelerating the fine-tuning for textual inversion
 
-We accelereate the fine-tuning for textual inversion with Intel Extension for PyTorch. The [examples](textual_inversion) enable both single node and multi-node distributed training with Bfloat16 support on Intel Xeon Scalable Processor.
+We accelerate the fine-tuning for textual inversion with Intel Extension for PyTorch. The [examples](textual_inversion) enable both single node and multi-node distributed training with Bfloat16 support on Intel Xeon Scalable Processor.
 
 ## Accelerating the inference for Stable Diffusion using Bfloat16
 
@@ -29,7 +29,6 @@ export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:aut
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py
 # Launch with DPMSolverMultistepScheduler
 numactl --membind <node N> -C <cpu list> python python inference_bf16.py --dpm
-
 ```
 
 ## Accelerating the inference for Stable Diffusion using INT8
