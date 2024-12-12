@@ -70,10 +70,8 @@ prompt = "A woman adorned with a delicate flower crown, is standing amidst a fie
 image = "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/1.png?raw=true"
 
 id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, "cuda", torch.bfloat16, image, is_align_face=True)
-is_kps = getattr(pipe.transformer.config, 'is_kps', False)
-kps_cond = face_kps if is_kps else None
 
-video = pipe(image=image, prompt=prompt, num_inference_steps=50, guidance_scale=6.0, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=kps_cond, generator=torch.Generator("cuda").manual_seed(42))
+video = pipe(image=image, prompt=prompt, num_inference_steps=50, guidance_scale=6.0, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=face_kps, generator=torch.Generator("cuda").manual_seed(42))
 export_to_video(video.frames[0], "output.mp4", fps=8)
 ```
 

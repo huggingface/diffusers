@@ -72,8 +72,6 @@ EXAMPLE_DOC_STRING = """
         ...     image,
         ...     is_align_face=True,
         ... )
-        >>> is_kps = getattr(pipe.transformer.config, "is_kps", False)
-        >>> kps_cond = face_kps if is_kps else None
 
         >>> video = pipe(
         ...     image=image,
@@ -83,7 +81,7 @@ EXAMPLE_DOC_STRING = """
         ...     use_dynamic_cfg=False,
         ...     id_vit_hidden=id_vit_hidden,
         ...     id_cond=id_cond,
-        ...     kps_cond=kps_cond,
+        ...     kps_cond=face_kps,
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... )
         >>> export_to_video(video.frames[0], "output.mp4", fps=8)
@@ -833,6 +831,8 @@ class ConsisIDPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents
+        is_kps = getattr(self.transformer.config, "is_kps", False)
+        kps_cond = kps_cond if is_kps else None
         if kps_cond is not None:
             kps_cond = draw_kps(image, kps_cond)
             kps_cond = self.video_processor.preprocess(kps_cond, height=height, width=width).to(
