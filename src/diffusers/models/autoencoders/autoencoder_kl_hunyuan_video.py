@@ -25,10 +25,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import Attention, SpatialNorm
+from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaGroupNorm
 from .vae import BaseOutput, DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -84,6 +83,8 @@ class UpsampleCausal3D(nn.Module):
         self,
         in_channels: int,
         out_channels: Optional[int] = None,
+        kernel_size: int = 3,
+        stride: int = 1,
         bias: bool = True,
         upsample_factor: Tuple[float, float, float] = (2, 2, 2),
     ) -> None:
@@ -92,12 +93,12 @@ class UpsampleCausal3D(nn.Module):
         out_channels = out_channels or in_channels
         self.upsample_factor = upsample_factor
 
-        self.conv = CausalConv3d(in_channels, out_channels, 3, 1, bias=bias)
+        self.conv = CausalConv3d(in_channels, out_channels, kernel_size, stride, bias=bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         num_frames = hidden_states.size(2)
-        first_frame, other_frames = hidden_states.split((1, num_frames - 1), dim=2)
 
+        first_frame, other_frames = hidden_states.split((1, num_frames - 1), dim=2)
         first_frame = F.interpolate(
             first_frame.squeeze(2), scale_factor=self.upsample_factor[1:], mode="nearest"
         ).unsqueeze(2)
@@ -109,7 +110,6 @@ class UpsampleCausal3D(nn.Module):
             hidden_states = first_frame
 
         hidden_states = self.conv(hidden_states)
-
         return hidden_states
 
 
@@ -119,216 +119,103 @@ class DownsampleCausal3D(nn.Module):
         channels: int,
         out_channels: Optional[int] = None,
         padding: int = 1,
-        kernel_size=3,
-        bias=True,
+        kernel_size: int = 3,
+        bias: bool = True,
         stride=2,
-    ):
+    ) -> None:
         super().__init__()
-
         out_channels = out_channels or channels
 
-        self.conv = CausalConv3d(channels, out_channels, kernel_size=kernel_size, stride=stride, bias=bias)
+        self.conv = CausalConv3d(channels, out_channels, kernel_size, stride, padding, bias=bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.norm is not None:
-            hidden_states = self.norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-
         hidden_states = self.conv(hidden_states)
-
         return hidden_states
 
 
 class ResnetBlockCausal3D(nn.Module):
-    r"""
-    A Resnet block.
-    """
-
     def __init__(
         self,
-        *,
         in_channels: int,
         out_channels: Optional[int] = None,
-        conv_shortcut: bool = False,
         dropout: float = 0.0,
-        temb_channels: int = 512,
         groups: int = 32,
-        groups_out: Optional[int] = None,
-        pre_norm: bool = True,
         eps: float = 1e-6,
         non_linearity: str = "swish",
-        skip_time_act: bool = False,
-        time_embedding_norm: str = "default",
-        kernel: Optional[torch.Tensor] = None,
-        output_scale_factor: float = 1.0,
-        use_in_shortcut: Optional[bool] = None,
-        conv_shortcut_bias: bool = True,
-        conv_3d_out_channels: Optional[int] = None,
-    ):
+    ) -> None:
         super().__init__()
-        self.pre_norm = pre_norm
-        self.pre_norm = True
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.output_scale_factor = output_scale_factor
-        self.time_embedding_norm = time_embedding_norm
-        self.skip_time_act = skip_time_act
-
-        linear_cls = nn.Linear
-
-        if groups_out is None:
-            groups_out = groups
-
-        if self.time_embedding_norm == "ada_group":
-            self.norm1 = AdaGroupNorm(temb_channels, in_channels, groups, eps=eps)
-        elif self.time_embedding_norm == "spatial":
-            self.norm1 = SpatialNorm(in_channels, temb_channels)
-        else:
-            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
-        self.conv1 = CausalConv3d(in_channels, out_channels, kernel_size=3, stride=1)
-
-        if temb_channels is not None:
-            if self.time_embedding_norm == "default":
-                self.time_emb_proj = linear_cls(temb_channels, out_channels)
-            elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = linear_cls(temb_channels, 2 * out_channels)
-            elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
-                self.time_emb_proj = None
-            else:
-                raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
-        else:
-            self.time_emb_proj = None
-
-        if self.time_embedding_norm == "ada_group":
-            self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
-        elif self.time_embedding_norm == "spatial":
-            self.norm2 = SpatialNorm(out_channels, temb_channels)
-        else:
-            self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
-
-        self.dropout = torch.nn.Dropout(dropout)
-        conv_3d_out_channels = conv_3d_out_channels or out_channels
-        self.conv2 = CausalConv3d(out_channels, conv_3d_out_channels, kernel_size=3, stride=1)
+        out_channels = out_channels or in_channels
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.use_in_shortcut = self.in_channels != conv_3d_out_channels if use_in_shortcut is None else use_in_shortcut
+        self.norm1 = nn.GroupNorm(groups, in_channels, eps=eps, affine=True)
+        self.conv1 = CausalConv3d(in_channels, out_channels, 3, 1, 0)
+
+        self.norm2 = nn.GroupNorm(groups, out_channels, eps=eps, affine=True)
+        self.dropout = torch.nn.Dropout(dropout)
+        self.conv2 = CausalConv3d(out_channels, out_channels, 3, 1, 0)
 
         self.conv_shortcut = None
-        if self.use_in_shortcut:
-            self.conv_shortcut = CausalConv3d(
-                in_channels,
-                conv_3d_out_channels,
-                kernel_size=1,
-                stride=1,
-                bias=conv_shortcut_bias,
-            )
+        if in_channels != out_channels:
+            self.conv_shortcut = CausalConv3d(in_channels, out_channels, 1, 1, 0)
 
-    def forward(
-        self,
-        input_tensor: torch.Tensor,
-        temb: torch.Tensor,
-        scale: float = 1.0,
-    ) -> torch.Tensor:
-        hidden_states = input_tensor
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        residual = hidden_states
 
-        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
-            hidden_states = self.norm1(hidden_states, temb)
-        else:
-            hidden_states = self.norm1(hidden_states)
-
+        hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.conv1(hidden_states)
 
-        if self.time_emb_proj is not None:
-            if not self.skip_time_act:
-                temb = self.nonlinearity(temb)
-            temb = self.time_emb_proj(temb, scale)[:, :, None, None]
-
-        if temb is not None and self.time_embedding_norm == "default":
-            hidden_states = hidden_states + temb
-
-        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
-            hidden_states = self.norm2(hidden_states, temb)
-        else:
-            hidden_states = self.norm2(hidden_states)
-
-        if temb is not None and self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-            hidden_states = hidden_states * (1 + scale) + shift
-
+        hidden_states = self.norm2(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
-
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor)
+            residual = self.conv_shortcut(residual)
 
-        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-
-        return output_tensor
+        hidden_states = hidden_states + residual
+        return hidden_states
 
 
 class UNetMidBlockCausal3D(nn.Module):
-    """
-    A 3D UNet mid-block [`UNetMidBlockCausal3D`] with multiple residual blocks and optional attention blocks.
-    """
-
     def __init__(
         self,
         in_channels: int,
-        temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        attn_groups: Optional[int] = None,
-        resnet_pre_norm: bool = True,
         add_attention: bool = True,
         attention_head_dim: int = 1,
-        output_scale_factor: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
         self.add_attention = add_attention
 
-        if attn_groups is None:
-            attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
-
-        # there is always at least one resnet
+        # There is always at least one resnet
         resnets = [
             ResnetBlockCausal3D(
                 in_channels=in_channels,
                 out_channels=in_channels,
-                temb_channels=temb_channels,
                 eps=resnet_eps,
                 groups=resnet_groups,
                 dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
             )
         ]
         attentions = []
 
         for _ in range(num_layers):
             if self.add_attention:
-                # assert False, "Not implemented yet"
                 attentions.append(
                     Attention(
                         in_channels,
                         heads=in_channels // attention_head_dim,
                         dim_head=attention_head_dim,
-                        rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
-                        norm_num_groups=attn_groups,
-                        spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
+                        norm_num_groups=resnet_groups,
                         residual_connection=True,
                         bias=True,
                         upcast_softmax=True,
@@ -342,22 +229,18 @@ class UNetMidBlockCausal3D(nn.Module):
                 ResnetBlockCausal3D(
                     in_channels=in_channels,
                     out_channels=in_channels,
-                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
-        hidden_states = self.resnets[0](hidden_states, temb)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.resnets[0](hidden_states)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
                 B, C, T, H, W = hidden_states.shape
@@ -365,9 +248,9 @@ class UNetMidBlockCausal3D(nn.Module):
                 attention_mask = prepare_causal_attention_mask(
                     T, H * W, hidden_states.dtype, hidden_states.device, batch_size=B
                 )
-                hidden_states = attn(hidden_states, temb=temb, attention_mask=attention_mask)
+                hidden_states = attn(hidden_states, attention_mask=attention_mask)
                 hidden_states = rearrange(hidden_states, "b (f h w) c -> b c f h w", f=T, h=H, w=W)
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states)
 
         return hidden_states
 
@@ -380,11 +263,8 @@ class DownEncoderBlockCausal3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
         add_downsample: bool = True,
         downsample_stride: int = 2,
         downsample_padding: int = 1,
@@ -398,14 +278,10 @@ class DownEncoderBlockCausal3D(nn.Module):
                 ResnetBlockCausal3D(
                     in_channels=in_channels,
                     out_channels=out_channels,
-                    temb_channels=None,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -425,13 +301,13 @@ class DownEncoderBlockCausal3D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=None, scale=scale)
+            hidden_states = resnet(hidden_states)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale)
+                hidden_states = downsampler(hidden_states)
 
         return hidden_states
 
@@ -445,14 +321,10 @@ class UpDecoderBlockCausal3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         upsample_scale_factor=(2, 2, 2),
-        temb_channels: Optional[int] = None,
     ):
         super().__init__()
         resnets = []
@@ -464,14 +336,10 @@ class UpDecoderBlockCausal3D(nn.Module):
                 ResnetBlockCausal3D(
                     in_channels=input_channels,
                     out_channels=out_channels,
-                    temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -492,11 +360,9 @@ class UpDecoderBlockCausal3D(nn.Module):
 
         self.resolution_idx = resolution_idx
 
-    def forward(
-        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, scale: float = 1.0
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=temb, scale=scale)
+            hidden_states = resnet(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -563,10 +429,10 @@ class EncoderCausal3D(nn.Module):
                 in_channels=input_channel,
                 out_channels=output_channel,
                 add_downsample=bool(add_spatial_downsample or add_time_downsample),
-                downsample_stride=downsample_stride,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
+                downsample_stride=downsample_stride,
                 downsample_padding=0,
             )
 
@@ -576,11 +442,8 @@ class EncoderCausal3D(nn.Module):
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
-            output_scale_factor=1,
-            resnet_time_scale_shift="default",
             attention_head_dim=block_out_channels[-1],
             resnet_groups=norm_num_groups,
-            temb_channels=None,
             add_attention=mid_block_add_attention,
         )
 
@@ -652,18 +515,13 @@ class DecoderCausal3D(nn.Module):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
-        temb_channels = in_channels if norm_type == "spatial" else None
-
         # mid
         self.mid_block = UNetMidBlockCausal3D(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
-            output_scale_factor=1,
-            resnet_time_scale_shift="default" if norm_type == "group" else norm_type,
             attention_head_dim=block_out_channels[-1],
             resnet_groups=norm_num_groups,
-            temb_channels=temb_channels,
             add_attention=mid_block_add_attention,
         )
 
@@ -698,29 +556,19 @@ class DecoderCausal3D(nn.Module):
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                resnet_time_scale_shift=norm_type,
-                temb_channels=temb_channels,
             )
 
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
         # out
-        if norm_type == "spatial":
-            self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
-        else:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
         self.conv_out = CausalConv3d(block_out_channels[0], out_channels, kernel_size=3)
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self,
-        sample: torch.Tensor,
-        latent_embeds: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        r"""The forward method of the `DecoderCausal3D` class."""
+    def forward(self, sample: torch.Tensor) -> torch.Tensor:
         assert len(sample.shape) == 5, "The input tensor should have 5 dimensions"
 
         sample = self.conv_in(sample)
@@ -739,33 +587,27 @@ class DecoderCausal3D(nn.Module):
                 sample = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(up_block),
                     sample,
-                    latent_embeds,
                     use_reentrant=False,
                 )
             else:
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds
-                )
+                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
         else:
             # middle
-            sample = self.mid_block(sample, latent_embeds)
+            sample = self.mid_block(sample)
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(sample, latent_embeds)
+                sample = up_block(sample)
 
         # post-process
-        if latent_embeds is None:
-            sample = self.conv_norm_out(sample)
-        else:
-            sample = self.conv_norm_out(sample, latent_embeds)
+        sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
