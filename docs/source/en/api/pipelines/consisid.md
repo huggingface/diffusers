@@ -45,7 +45,7 @@ First, load the pipeline:
 ```python
 import torch
 from diffusers import ConsisIDPipeline
-from diffusers.pipelines.consisid.util_consisid import prepare_face_models, process_face_embeddings_infer
+from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
 from diffusers.utils import export_to_video
 from huggingface_hub import snapshot_download
 
@@ -79,17 +79,15 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
 
 ### Memory optimization
 
-ConsisID requires about 37 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/a-r-r-o-w/3959a03f15be5c9bd1fe545b09dfcc93) script.
+ConsisID requires about 43 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/SHYuanBest/bc4207c36f454f9e969adbb50eaf8258) script.
 
-- `pipe.enable_model_cpu_offload()`:
-  - Without enabling cpu offloading, memory usage is `33 GB`
-  - With enabling cpu offloading, memory usage is `19 GB`
-- `pipe.enable_sequential_cpu_offload()`:
-  - Similar to `enable_model_cpu_offload` but can significantly reduce memory usage at the cost of slow inference
-  - When enabled, memory usage is under `4 GB`
-- `pipe.vae.enable_tiling()`:
-  - With enabling cpu offloading and tiling, memory usage is `11 GB`
-- `pipe.vae.enable_slicing()`
+| Feature (overlay the previous) | Max Memory Allocated | Max Memory Reserved |
+| :----------------------------- | :------------------- | :------------------ |
+| -                              | 37 GB                | 44 GB               |
+| enable_model_cpu_offload       | 22 GB                | 25 GB               |
+| enable_sequential_cpu_offload  | 16 GB                | 22 GB               |
+| vae.enable_slicing             | 16 GB                | 22 GB               |
+| vae.enable_tiling              | 5 GB                 | 7 GB                |
 
 ### Quantized inference
 

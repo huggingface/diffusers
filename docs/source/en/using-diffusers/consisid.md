@@ -26,7 +26,7 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 ```python
 import torch
 from diffusers import ConsisIDPipeline
-from diffusers.pipelines.consisid.util_consisid import prepare_face_models, process_face_embeddings_infer
+from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
 from huggingface_hub import snapshot_download
 
 # Download ckpts

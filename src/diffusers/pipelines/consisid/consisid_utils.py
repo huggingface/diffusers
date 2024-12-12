@@ -13,9 +13,30 @@ from torchvision.transforms.functional import normalize, resize
 
 from diffusers.utils import load_image
 
-from .util_clip import create_model_and_transforms
-from .util_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .util_clip.utils_qformer import resize_numpy_image_long
+from consisid_eva_clip import create_model_and_transforms
+from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
+
+
+def resize_numpy_image_long(image, resize_long_edge=768):
+    """
+    Resize the input image to a specified long edge while maintaining aspect ratio.
+    
+    Args:
+        image (numpy.ndarray): Input image (H x W x C or H x W).
+        resize_long_edge (int): The target size for the long edge of the image. Default is 768.
+        
+    Returns:
+        numpy.ndarray: Resized image with the long edge matching `resize_long_edge`, while maintaining the aspect ratio.
+    """
+    
+    h, w = image.shape[:2]
+    if max(h, w) <= resize_long_edge:
+        return image
+    k = resize_long_edge / max(h, w)
+    h = int(h * k)
+    w = int(w * k)
+    image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LANCZOS4)
+    return image
 
 
 def img2tensor(imgs, bgr2rgb=True, float32=True):

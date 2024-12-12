@@ -11,15 +11,17 @@ specific language governing permissions and limitations under the License.
 -->
 # ConsisID
 
-[ConsisID](https://github.com/PKU-YuanGroup/ConsisID)是一种身份保持的文本到视频生成模型，其通过频率分解在生成的视频中保持面部一致性。有一个 [视频](https://www.youtube.com/watch?v=PhlgC-bI5SQ) 展示了其强大的功能。它具有以下特点：
+[ConsisID](https://github.com/PKU-YuanGroup/ConsisID)是一种身份保持的文本到视频生成模型，其通过频率分解在生成的视频中保持面部一致性。它具有以下特点：
 
-​	🔥 基于频率分解：将人物ID特征解耦为高频和低频部分，从频域的角度分析DIT架构的特性，并且基于此特性设计合理的控制信息注入方式。
+- 基于频率分解：将人物ID特征解耦为高频和低频部分，从频域的角度分析DIT架构的特性，并且基于此特性设计合理的控制信息注入方式。
 
-​	🔥 一致性训练策略：我们提出粗到细训练策略、动态掩码损失、动态跨脸损失，进一步提高了模型的泛化能力和身份保持效果。
+- 一致性训练策略：我们提出粗到细训练策略、动态掩码损失、动态跨脸损失，进一步提高了模型的泛化能力和身份保持效果。
 
-​	🔥 推理无需微调：之前的方法在推理前，需要对输入id进行case-by-case微调，时间和算力开销较大，而我们的方法是tuning-free的。
 
-有关更多信息，请参阅[论文](https://arxiv.org/abs/2411.17440)。本指南将指导您使用 ConsisID 生成身份保持的视频。
+- 推理无需微调：之前的方法在推理前，需要对输入id进行case-by-case微调，时间和算力开销较大，而我们的方法是tuning-free的。
+
+
+本指南将指导您使用 ConsisID 生成身份保持的视频。
 
 ## Load Model Checkpoints
 模型权重可以存储在Hub上或本地的单独子文件夹中，在这种情况下，您应该使用 [`~DiffusionPipeline.from_pretrained`] 方法。
@@ -28,7 +30,7 @@ specific language governing permissions and limitations under the License.
 ```python
 import torch
 from diffusers import ConsisIDPipeline
-from diffusers.pipelines.consisid.util_consisid import prepare_face_models, process_face_embeddings_infer
+from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
 from huggingface_hub import snapshot_download
 
 # Download ckpts
@@ -88,13 +90,7 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
 
 ## Citation
 
-如果您发现ConsisID对您的研究有用，请给我们[Repo](https://github.com/PKU-YuanGroup/ConsisID)点个Star或者在文章中引用ConsisID。
+通过以下资源了解有关 ConsisID 的更多信息：
 
-```BibTeX
-@article{yuan2024identity,
-  title={Identity-Preserving Text-to-Video Generation by Frequency Decomposition},
-  author={Yuan, Shenghai and Huang, Jinfa and He, Xianyi and Ge, Yunyuan and Shi, Yujun and Chen, Liuhan and Luo, Jiebo and Yuan, Li},
-  journal={arXiv preprint arXiv:2411.17440},
-  year={2024}
-}
-```
+- 一段 [视频](https://www.youtube.com/watch?v=PhlgC-bI5SQ) 演示了 ConsisID 的主要功能；
+- 有关更多详细信息，请参阅研究论文 [Identity-Preserving Text-to-Video Generation by Frequency Decomposition](https://hf.co/papers/2411.17440)。
