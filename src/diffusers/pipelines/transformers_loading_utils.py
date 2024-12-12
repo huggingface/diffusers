@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Dict
 from huggingface_hub import DDUFEntry
 from tqdm import tqdm
 
-from ..utils import is_safetensors_available, is_transformers_available
+from ..utils import is_safetensors_available, is_transformers_version
 
 
 if TYPE_CHECKING:
@@ -84,6 +84,11 @@ def load_transformers_model_from_dduf(
     if not is_safetensors_available():
         raise EnvironmentError(
             "Safetensors is not available, cannot load model from DDUF. Please `pip install safetensors`."
+        )
+    if is_transformers_version("<", "4.47.0"):
+        raise ImportError(
+            "You need to install `transformers>4.47.0` in order to load a transformers model from a DDUF file. "
+            "You can install it with: `pip install --upgrade transformers`"
         )
 
     with tempfile.TemporaryDirectory() as tmp_dir:

@@ -755,7 +755,7 @@ def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) ->
 
     In practice, this method will return the `"from_pretrained"` (or `load_method_name`) method of the class object
     except if loading from a DDUF checkpoint. In that case, transformers models and tokenizers have a specific loading
-    method that we need to use (won't use `from_pretrained`).
+    method that we need to use.
     """
     if is_dduf:
         if issubclass(class_obj, PreTrainedTokenizerBase):
