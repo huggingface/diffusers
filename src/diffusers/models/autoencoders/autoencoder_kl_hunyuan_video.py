@@ -240,6 +240,8 @@ class HunyuanVideoMidBlock3D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
+        self.gradient_checkpointing = False
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -336,6 +338,8 @@ class HunyuanVideoDownBlock3D(nn.Module):
         else:
             self.downsamplers = None
 
+        self.gradient_checkpointing = False
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -410,6 +414,8 @@ class HunyuanVideoUpBlock3D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.gradient_checkpointing = False
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -440,7 +446,7 @@ class HunyuanVideoUpBlock3D(nn.Module):
         return hidden_states
 
 
-class EncoderCausal3D(nn.Module):
+class HunyuanVideoEncoder3D(nn.Module):
     r"""
     Causal encoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
     """
@@ -564,7 +570,7 @@ class EncoderCausal3D(nn.Module):
         return hidden_states
 
 
-class DecoderCausal3D(nn.Module):
+class HunyuanVideoDecoder3D(nn.Module):
     r"""
     Causal decoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
     """
@@ -730,7 +736,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         self.time_compression_ratio = temporal_compression_ratio
 
-        self.encoder = EncoderCausal3D(
+        self.encoder = HunyuanVideoEncoder3D(
             in_channels=in_channels,
             out_channels=latent_channels,
             down_block_types=down_block_types,
@@ -744,7 +750,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             spatial_compression_ratio=spatial_compression_ratio,
         )
 
-        self.decoder = DecoderCausal3D(
+        self.decoder = HunyuanVideoDecoder3D(
             in_channels=latent_channels,
             out_channels=out_channels,
             up_block_types=up_block_types,
@@ -789,7 +795,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self.tile_sample_stride_width = 192
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (EncoderCausal3D, DecoderCausal3D)):
+        if isinstance(module, (HunyuanVideoEncoder3D, HunyuanVideoDecoder3D)):
             module.gradient_checkpointing = value
 
     def enable_tiling(
@@ -1151,7 +1157,5 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z)
-        if not return_dict:
-            return (dec,)
+        dec = self.decode(z, return_dict=return_dict)
         return dec
