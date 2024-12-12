@@ -366,7 +366,8 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         # Convert image_proj state dict to diffusers
         image_proj_state_dict = {}
         for key, value in state_dict["image_proj"].items():
-            for idx in range(4):
+            if key.startswith("layers."):
+                idx = key.split(".")[1]
                 key = key.replace(f"layers.{idx}.0.norm1", f"layers.{idx}.ln0")
                 key = key.replace(f"layers.{idx}.0.norm2", f"layers.{idx}.ln1")
                 key = key.replace(f"layers.{idx}.0.to_q", f"layers.{idx}.attn.to_q")

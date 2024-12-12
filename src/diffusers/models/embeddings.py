@@ -2107,10 +2107,10 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
 class IPAdapterTimeImageProjectionBlock(nn.Module):
     def __init__(
         self,
-        hidden_dim: int = 768,
+        hidden_dim: int = 1280,
         dim_head: int = 64,
-        heads: int = 16,
-        ffn_ratio: float = 4,
+        heads: int = 20,
+        ffn_ratio: int = 4,
     ) -> None:
         super().__init__()
         from .attention import FeedForward
@@ -2124,7 +2124,6 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
             heads=heads,
             bias=False,
             out_bias=False,
-            processor=FusedAttnProcessor2_0(),
         )
         self.ff = FeedForward(hidden_dim, hidden_dim, activation_fn="gelu", mult=ffn_ratio, bias=False)
 
@@ -2133,21 +2132,47 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         self.adaln_proj = nn.Linear(hidden_dim, 4 * hidden_dim)
         self.adaln_norm = nn.LayerNorm(hidden_dim)
 
-        # Set scale and fuse KV
+        # Set attention scale and fuse KV
         self.attn.scale = 1 / math.sqrt(math.sqrt(dim_head))
         self.attn.fuse_projections()
         self.attn.to_k = None
         self.attn.to_v = None
 
     def forward(self, x, latents, timestep_emb):
+        # Shift and scale for AdaLayerNorm
         emb = self.adaln_proj(self.adaln_silu(timestep_emb))
         shift_msa, scale_msa, shift_mlp, scale_mlp = emb.chunk(4, dim=1)
 
+        # Fused Attention 
         residual = latents
         x = self.ln0(x)
         latents = self.ln1(latents) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        latents = self.attn(latents, torch.cat((x, latents), dim=-2)) + residual
 
+        batch_size = latents.shape[0]
+
+        query = self.attn.to_q(latents)
+        kv_input = torch.cat((x, latents), dim=-2)
+        kv = self.attn.to_kv(kv_input)
+        split_size = kv.shape[-1] // 2
+        key, value = torch.split(kv, split_size, dim=-1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // self.attn.heads
+
+        query = query.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, self.attn.heads, head_dim).transpose(1, 2)
+
+        weight = (query * self.attn.scale) @ (key * self.attn.scale).transpose(-2, -1)
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        latents = weight @ value
+
+        latents = latents.transpose(1, 2).reshape(batch_size, -1, self.attn.heads * head_dim)
+        latents = self.attn.to_out[0](latents)
+        latents = self.attn.to_out[1](latents)
+        latents = latents + residual
+        
+        ## FeedForward
         residual = latents
         latents = self.adaln_norm(latents) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
         return self.ff(latents) + residual
