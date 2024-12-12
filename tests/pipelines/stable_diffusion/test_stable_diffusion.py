@@ -839,7 +839,7 @@ class StableDiffusionPipelineFastTests(
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
-        
+
     def test_pipeline_accept_tuple_type_unet_sample_size(self):
         # the purpose of this test is to see whether the pipeline would accept a unet with the tuple-typed sample size
         sd_repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
