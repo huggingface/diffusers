@@ -313,7 +313,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 dduf_file_path = os.path.join(save_directory, dduf_file)
                 dir_to_archive = os.path.join(save_directory, pipeline_component_name)
                 if os.path.isdir(dir_to_archive):
-                    export_folder_as_dduf(dduf_file_path, dir_to_archive, append=True, retain_base_folder=True)
+                    export_folder_as_dduf(dduf_file_path, dir_to_archive)
                     shutil.rmtree(dir_to_archive)
 
         # finally save the config

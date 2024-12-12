@@ -1905,6 +1905,8 @@ class PipelineTesterMixin:
     # @pytest.mark.xfail(condition=not os.getenv("RUN_DDUF_TEST", False), strict=True)
     # Should consider guarding the test with proper transformers and huggingface_hub versions.
     def test_save_load_dduf(self):
+        from huggingface_hub import export_folder_as_dduf
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -1917,8 +1919,10 @@ class PipelineTesterMixin:
         pipeline_out = pipe(**inputs).images
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            dduf_filename = f"{pipe.__class__.__name__.lower()}.dduf"
-            pipe.save_pretrained(tmpdir, dduf_file=dduf_filename)
+            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
+            pipe.save_pretrained(tmpdir, safe_serialization=True)
+            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
+            print(f"{os.listdir(tmpdir)=}")
             loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
 
         inputs["generator"] = torch.manual_seed(0)
