@@ -25,36 +25,37 @@ from diffusers.utils.import_utils import is_accelerate_available
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
-    "Efficient-Large-Model/Sana_1600M_1024px_MultiLing",
-    "Efficient-Large-Model/Sana_1600M_1024px_BF16",
-    "Efficient-Large-Model/Sana_1600M_512px_MultiLing",
-    "Efficient-Large-Model/Sana_1600M_1024px",
-    "Efficient-Large-Model/Sana_1600M_512px",
-    "Efficient-Large-Model/Sana_600M_1024px",
-    "Efficient-Large-Model/Sana_600M_512px",
+    "Efficient-Large-Model/Sana_1600M_1024px_MultiLing/checkpoints/Sana_1600M_1024px_MultiLing.pth",
+    "Efficient-Large-Model/Sana_1600M_1024px_BF16/checkpoints/Sana_1600M_1024px_BF16.pth",
+    "Efficient-Large-Model/Sana_1600M_512px_MultiLing/checkpoints/Sana_1600M_512px_MultiLing.pth",
+    "Efficient-Large-Model/Sana_1600M_1024px/checkpoints/Sana_1600M_1024px.pth",
+    "Efficient-Large-Model/Sana_1600M_512px/checkpoints/Sana_1600M_512px.pth",
+    "Efficient-Large-Model/Sana_600M_1024px/checkpoints/Sana_600M_1024px_MultiLing.pth",
+    "Efficient-Large-Model/Sana_600M_512px/checkpoints/Sana_600M_512px_MultiLing.pth",
 ]
 # https://github.com/NVlabs/Sana/blob/main/scripts/inference.py
 
 
 def main(args):
-    ckpt_id = ckpt_ids[0]
     cache_dir_path = os.path.expanduser("~/.cache/huggingface/hub")
 
     if args.orig_ckpt_path is None or args.orig_ckpt_path in ckpt_ids:
+        ckpt_id = args.orig_ckpt_path or ckpt_ids[0]
         snapshot_download(
-            repo_id=ckpt_id,
+            repo_id=f"{'/'.join(ckpt_id.split('/')[:2])}",
             cache_dir=cache_dir_path,
             repo_type="model",
         )
         file_path = hf_hub_download(
-            repo_id=ckpt_id,
-            filename=f"checkpoints/{ckpt_id.split('/')[-1]}.pth",
+            repo_id=f"{'/'.join(ckpt_id.split('/')[:2])}",
+            filename=f"{'/'.join(ckpt_id.split('/')[2:])}",
             cache_dir=cache_dir_path,
             repo_type="model",
         )
     else:
         file_path = args.orig_ckpt_path
 
+    print(colored(f"Loading checkpoint from {file_path}", "green", attrs=["bold"]))
     all_state_dict = torch.load(file_path, weights_only=True)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
@@ -212,7 +213,7 @@ def main(args):
         ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", torch_dtype=torch.float32)
 
         # Text Encoder
-        text_encoder_model_path = "Efficient-Large-Model/gemma-2-2b-it"
+        text_encoder_model_path = "google/gemma-2-2b-it"
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_model_path)
         tokenizer.padding_side = "right"
         text_encoder = AutoModelForCausalLM.from_pretrained(text_encoder_model_path, torch_dtype=torch.bfloat16).get_decoder()
