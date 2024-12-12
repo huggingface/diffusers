@@ -28,7 +28,7 @@ from ..activations import get_activation
 from ..attention_processor import Attention, SpatialNorm
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaGroupNorm, RMSNorm
+from ..normalization import AdaGroupNorm
 from .vae import BaseOutput, DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -47,39 +47,36 @@ def prepare_causal_attention_mask(n_frame: int, n_hw: int, dtype, device, batch_
 
 
 class CausalConv3d(nn.Module):
-    """
-    Implements a causal 3D convolution layer where each position only depends on previous timesteps and current spatial
-    locations. This maintains temporal causality in video generation tasks.
-    """
-
     def __init__(
         self,
-        chan_in,
-        chan_out,
-        kernel_size: Union[int, Tuple[int, int, int]],
+        in_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int, int]] = 3,
         stride: Union[int, Tuple[int, int, int]] = 1,
+        padding: Union[int, Tuple[int, int, int]] = 0,
         dilation: Union[int, Tuple[int, int, int]] = 1,
-        pad_mode="replicate",
-        **kwargs,
-    ):
+        bias: bool = True,
+        pad_mode: str = "replicate",
+    ) -> None:
         super().__init__()
 
+        kernel_size = (kernel_size, kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+
         self.pad_mode = pad_mode
-        padding = (
-            kernel_size // 2,
-            kernel_size // 2,
-            kernel_size // 2,
-            kernel_size // 2,
-            kernel_size - 1,
+        self.time_causal_padding = (
+            kernel_size[0] // 2,
+            kernel_size[0] // 2,
+            kernel_size[1] // 2,
+            kernel_size[1] // 2,
+            kernel_size[2] - 1,
             0,
-        )  # W, H, T
-        self.time_causal_padding = padding
+        )
 
-        self.conv = nn.Conv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding, dilation, bias=bias)
 
-    def forward(self, x):
-        x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
-        return self.conv(x)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = F.pad(hidden_states, self.time_causal_padding, mode=self.pad_mode)
+        return self.conv(hidden_states)
 
 
 class UpsampleCausal3D(nn.Module):
@@ -117,61 +114,24 @@ class UpsampleCausal3D(nn.Module):
 
 
 class DownsampleCausal3D(nn.Module):
-    """
-    A 3D downsampling layer with an optional convolution.
-    """
-
     def __init__(
         self,
         channels: int,
-        use_conv: bool = False,
         out_channels: Optional[int] = None,
         padding: int = 1,
-        name: str = "conv",
         kernel_size=3,
-        norm_type=None,
-        eps=None,
-        elementwise_affine=None,
         bias=True,
         stride=2,
     ):
         super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.padding = padding
-        stride = stride
-        self.name = name
 
-        if norm_type == "ln_norm":
-            self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
-        elif norm_type == "rms_norm":
-            self.norm = RMSNorm(channels, eps, elementwise_affine)
-        elif norm_type is None:
-            self.norm = None
-        else:
-            raise ValueError(f"unknown norm_type: {norm_type}")
+        out_channels = out_channels or channels
 
-        if use_conv:
-            conv = CausalConv3d(self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, bias=bias)
-        else:
-            raise NotImplementedError
+        self.conv = CausalConv3d(channels, out_channels, kernel_size=kernel_size, stride=stride, bias=bias)
 
-        if name == "conv":
-            self.Conv2d_0 = conv
-            self.conv = conv
-        elif name == "Conv2d_0":
-            self.conv = conv
-        else:
-            self.conv = conv
-
-    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
-        assert hidden_states.shape[1] == self.channels
-
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.norm is not None:
             hidden_states = self.norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-
-        assert hidden_states.shape[1] == self.channels
 
         hidden_states = self.conv(hidden_states)
 
@@ -456,10 +416,8 @@ class DownEncoderBlockCausal3D(nn.Module):
                 [
                     DownsampleCausal3D(
                         out_channels,
-                        use_conv=True,
                         out_channels=out_channels,
                         padding=downsample_padding,
-                        name="op",
                         stride=downsample_stride,
                     )
                 ]
