@@ -297,13 +297,13 @@ def _get_model_file(
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
     if dduf_entries:
-        if os.path.join(pretrained_model_name_or_path, weights_name) in dduf_entries:
-            return os.path.join(pretrained_model_name_or_path, weights_name)
+        if "/".join([pretrained_model_name_or_path, weights_name]) in dduf_entries:
+            return "/".join([pretrained_model_name_or_path, weights_name])
         elif (
             subfolder is not None
-            and os.path.join(pretrained_model_name_or_path, subfolder, weights_name) in dduf_entries
+            and "/".join([pretrained_model_name_or_path, subfolder, weights_name]) in dduf_entries
         ):
-            return os.path.join(pretrained_model_name_or_path, weights_name)
+            return "/".join([pretrained_model_name_or_path, subfolder, weights_name])
         else:
             raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
     elif os.path.isfile(pretrained_model_name_or_path):

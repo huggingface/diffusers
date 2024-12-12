@@ -786,7 +786,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # We retrieve the information by matching whether variant model checkpoints exist in the subfolders.
         # Example: `diffusion_pytorch_model.safetensors` -> `diffusion_pytorch_model.fp16.safetensors`
         # with variant being `"fp16"`.
-        # TODO: adapt logic for DDUF files (at the moment, scans the local directory which doesn't make sense in DDUF context)
         model_variants = _identify_model_variants(folder=cached_folder, variant=variant, config=config_dict)
         if len(model_variants) == 0 and variant is not None:
             error_message = f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
