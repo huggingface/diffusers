@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 Consistency training strategy: A coarse-to-fine training strategy, dynamic masking loss, and dynamic cross-face loss further enhance the model's generalization ability and identity preservation performance.
 - Inference without finetuning: Previous methods required case-by-case finetuning of the input ID before inference, leading to significant time and computational costs. In contrast, ConsisID is tuning-free.
 
-For more information, please refer to the [paper](https://arxiv.org/abs/2411.17440). This guide will walk you through using ConsisID for use cases.
+This guide will walk you through using ConsisID for use cases.
 
 ## Load Model Checkpoints
 Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
