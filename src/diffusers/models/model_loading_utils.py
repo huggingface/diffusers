@@ -281,7 +281,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries=None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -359,7 +359,7 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries=None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
