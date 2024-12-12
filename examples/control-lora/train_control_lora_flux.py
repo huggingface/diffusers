@@ -224,6 +224,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "diffusers",
         "control-lora",
         "diffusers-training",
+        "lora",
     ]
     model_card = populate_model_card(model_card, tags=tags)
 

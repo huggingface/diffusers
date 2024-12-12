@@ -188,7 +188,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     model_description = f"""
-# controlnet-{repo_id}
+# control-lora-{repo_id}
 
 These are Control weights trained on {base_model} with new type of conditioning.
 {img_str}
