@@ -446,13 +446,14 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline, StableDiffusionM
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         height,
         width,
         callback_steps,
+        gligen_images,
+        gligen_phrases,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -497,6 +498,13 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline, StableDiffusionM
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+
+        if gligen_images is not None and gligen_phrases is not None:
+            if len(gligen_images) != len(gligen_phrases):
+                raise ValueError(
+                    "`gligen_images` and `gligen_phrases` must have the same length when both are provided, but"
+                    f" got: `gligen_images` with length {len(gligen_images)} != `gligen_phrases` with length {len(gligen_phrases)}."
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
@@ -814,6 +822,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline, StableDiffusionM
             height,
             width,
             callback_steps,
+            gligen_images,
+            gligen_phrases,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,

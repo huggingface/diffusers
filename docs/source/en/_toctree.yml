@@ -252,6 +252,8 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -314,6 +316,8 @@
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
+      - local: api/models/autoencoder_dc
+        title: AutoencoderDC
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
       - local: api/models/autoencoder_oobleck
@@ -366,6 +370,8 @@
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
       title: ControlNet-XS with Stable Diffusion XL
+    - local: api/pipelines/controlnet_union
+      title: ControlNetUnion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
