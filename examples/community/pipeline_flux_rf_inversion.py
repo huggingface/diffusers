@@ -648,6 +648,8 @@ class RFInversionFluxPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 1.0,
+        decay_eta: Optional[bool] = False,
+        eta_decay_power: Optional[float] = 1.,
         strength: float = 1.0,
         start_timestep: float = 0,
         stop_timestep: float = 0.25,
@@ -881,8 +883,7 @@ class RFInversionFluxPipeline(
                     v_t_cond = (y_0 - latents) / (1 - t_i)
                     eta_t = eta if start_timestep <= i < stop_timestep else 0.0
                     if decay_eta:
-                        eta_t = eta_t * (1 - i / num_inference_steps)  # Decay eta over the loop
-                        # eta_t = eta * (1 - i / num_inference_steps) ** 2
+                        eta_t = eta_t * (1 - i / num_inference_steps) ** eta_decay_power  # Decay eta over the loop
                     v_hat_t = v_t + eta_t * (v_t_cond - v_t)
 
                     # SDE Eq: 17 from https://arxiv.org/pdf/2410.10792
