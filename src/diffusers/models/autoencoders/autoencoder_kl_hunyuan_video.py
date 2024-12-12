@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
@@ -240,18 +241,51 @@ class HunyuanVideoMidBlock3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.resnets[0](hidden_states)
-        for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if attn is not None:
-                batch_size, num_channels, num_frames, height, width = hidden_states.shape
-                hidden_states = hidden_states.permute(0, 2, 3, 4, 1).flatten(1, 3)
-                attention_mask = prepare_causal_attention_mask(
-                    num_frames, height * width, hidden_states.dtype, hidden_states.device, batch_size=batch_size
-                )
-                hidden_states = attn(hidden_states, attention_mask=attention_mask)
-                hidden_states = hidden_states.unflatten(1, (num_frames, height, width)).permute(0, 4, 1, 2, 3)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
-            hidden_states = resnet(hidden_states)
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
+
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            hidden_states = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.resnets[0]), hidden_states, **ckpt_kwargs
+            )
+
+            for attn, resnet in zip(self.attentions, self.resnets[1:]):
+                if attn is not None:
+                    batch_size, num_channels, num_frames, height, width = hidden_states.shape
+                    hidden_states = hidden_states.permute(0, 2, 3, 4, 1).flatten(1, 3)
+                    attention_mask = prepare_causal_attention_mask(
+                        num_frames, height * width, hidden_states.dtype, hidden_states.device, batch_size=batch_size
+                    )
+                    hidden_states = attn(hidden_states, attention_mask=attention_mask)
+                    hidden_states = hidden_states.unflatten(1, (num_frames, height, width)).permute(0, 4, 1, 2, 3)
+
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, **ckpt_kwargs
+                )
+
+        else:
+            hidden_states = self.resnets[0](hidden_states)
+
+            for attn, resnet in zip(self.attentions, self.resnets[1:]):
+                if attn is not None:
+                    batch_size, num_channels, num_frames, height, width = hidden_states.shape
+                    hidden_states = hidden_states.permute(0, 2, 3, 4, 1).flatten(1, 3)
+                    attention_mask = prepare_causal_attention_mask(
+                        num_frames, height * width, hidden_states.dtype, hidden_states.device, batch_size=batch_size
+                    )
+                    hidden_states = attn(hidden_states, attention_mask=attention_mask)
+                    hidden_states = hidden_states.unflatten(1, (num_frames, height, width)).permute(0, 4, 1, 2, 3)
+
+                hidden_states = resnet(hidden_states)
 
         return hidden_states
 
@@ -303,8 +337,26 @@ class HunyuanVideoDownBlock3D(nn.Module):
             self.downsamplers = None
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        for resnet in self.resnets:
-            hidden_states = resnet(hidden_states)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
+
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            for resnet in self.resnets:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, **ckpt_kwargs
+                )
+        else:
+            for resnet in self.resnets:
+                hidden_states = resnet(hidden_states)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
@@ -359,8 +411,27 @@ class HunyuanVideoUpBlock3D(nn.Module):
             self.upsamplers = None
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        for resnet in self.resnets:
-            hidden_states = resnet(hidden_states)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
+
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            for resnet in self.resnets:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet), hidden_states, **ckpt_kwargs
+                )
+
+        else:
+            for resnet in self.resnets:
+                hidden_states = resnet(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -401,6 +472,9 @@ class EncoderCausal3D(nn.Module):
 
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
+            if down_block_type != "HunyuanVideoDownBlock3D":
+                raise ValueError(f"Unsupported down_block_type: {down_block_type}")
+
             input_channel = output_channel
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
@@ -454,27 +528,35 @@ class EncoderCausal3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        # 1. Input layer
         hidden_states = self.conv_in(hidden_states)
 
-        use_reentrant = is_torch_version("<=", "1.11.0")
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
-        def create_block_forward(block):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                return lambda *inputs: torch.utils.checkpoint.checkpoint(
-                    lambda *x: block(*x), *inputs, use_reentrant=use_reentrant
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
+
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            for down_block in self.down_blocks:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(down_block), hidden_states, **ckpt_kwargs
                 )
-            else:
-                return block
 
-        # 2. Down blocks
-        for down_block in self.down_blocks:
-            hidden_states = create_block_forward(down_block)(hidden_states)
+            hidden_states = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.mid_block), hidden_states, **ckpt_kwargs
+            )
+        else:
+            for down_block in self.down_blocks:
+                hidden_states = down_block(hidden_states)
 
-        # 3. Mid block
-        hidden_states = self.mid_block(hidden_states)
+            hidden_states = self.mid_block(hidden_states)
 
-        # 4. Output layers
         hidden_states = self.conv_norm_out(hidden_states)
         hidden_states = self.conv_act(hidden_states)
         hidden_states = self.conv_out(hidden_states)
@@ -501,7 +583,6 @@ class DecoderCausal3D(nn.Module):
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
-        norm_type: str = "group",
         mid_block_add_attention=True,
         time_compression_ratio: int = 4,
         spatial_compression_ratio: int = 8,
@@ -527,6 +608,9 @@ class DecoderCausal3D(nn.Module):
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
+            if up_block_type != "HunyuanVideoUpBlock3D":
+                raise ValueError(f"Unsupported up_block_type: {up_block_type}")
+
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
@@ -569,36 +653,30 @@ class DecoderCausal3D(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.conv_in(hidden_states)
 
-        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
-            def create_custom_forward(module):
+            def create_custom_forward(module, return_dict=None):
                 def custom_forward(*inputs):
-                    return module(*inputs)
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
 
                 return custom_forward
 
-            # up
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            hidden_states = torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.mid_block), hidden_states, **ckpt_kwargs
+            )
+
             for up_block in self.up_blocks:
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(up_block),
-                    hidden_states,
-                    use_reentrant=False,
+                    create_custom_forward(up_block), hidden_states, **ckpt_kwargs
                 )
-            else:
-                # middle
-                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), hidden_states)
-                hidden_states = hidden_states.to(upscale_dtype)
-
-                # up
-                for up_block in self.up_blocks:
-                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), hidden_states)
         else:
-            # middle
             hidden_states = self.mid_block(hidden_states)
-            hidden_states = hidden_states.to(upscale_dtype)
 
-            # up
             for up_block in self.up_blocks:
                 hidden_states = up_block(hidden_states)
 
@@ -643,7 +721,6 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         layers_per_block: int = 2,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
-        sample_tsize: int = 64,
         scaling_factor: float = 0.476986,
         spatial_compression_ratio: int = 8,
         temporal_compression_ratio: int = 4,
@@ -700,11 +777,10 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self.use_framewise_encoding = True
         self.use_framewise_decoding = True
 
-
         # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
-        
+
         # The minimal tile temporal batch size for temporal tiling to be used
         self.tile_sample_min_tsize = 64
 
