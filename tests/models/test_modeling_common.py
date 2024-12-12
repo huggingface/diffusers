@@ -44,6 +44,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     WEIGHTS_INDEX_NAME,
+    is_peft_available,
     is_torch_npu_available,
     is_xformers_available,
     logging,
@@ -65,6 +66,10 @@ from diffusers.utils.testing_utils import (
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
+if is_peft_available():
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+
 def caculate_expected_num_shards(index_map_path):
     with open(index_map_path) as f:
         weight_map_dict = json.load(f)["weight_map"]
@@ -72,6 +77,16 @@ def caculate_expected_num_shards(index_map_path):
     weight_loc = weight_map_dict[first_key]  # e.g., diffusion_pytorch_model-00001-of-00002.safetensors
     expected_num_shards = int(weight_loc.split("-")[-1].split(".")[0])
     return expected_num_shards
+
+
+def check_if_lora_correctly_set(model) -> bool:
+    """
+    Checks if the LoRA layers are correctly set with peft
+    """
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return True
+    return False
 
 
 # Will be run via run_test_in_subprocess
@@ -843,11 +858,6 @@ class ModelTesterMixin:
     ):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
-        if self.model_class.__name__ in [
-            "UNetSpatioTemporalConditionModel",
-            "AutoencoderKLTemporalDecoder",
-        ]:
-            return
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -877,8 +887,6 @@ class ModelTesterMixin:
         model = model_class_copy(**init_dict)
         model.enable_gradient_checkpointing()
 
-        print(f"{set(modules_with_gc_enabled.keys())=}, {expected_set=}")
-
         assert set(modules_with_gc_enabled.keys()) == expected_set
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
 
@@ -901,6 +909,94 @@ class ModelTesterMixin:
                 f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
+
+    @parameterized.expand([True, False])
+    @torch.no_grad()
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_save_load_lora_adapter(self, use_dora=False):
+        import safetensors
+        from peft import LoraConfig
+        from peft.utils import get_peft_model_state_dict
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        torch.manual_seed(0)
+        output_no_lora = model(**inputs_dict, return_dict=False)[0]
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        torch.manual_seed(0)
+        outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
+
+        self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_lora_adapter(tmpdir)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")))
+
+            state_dict_loaded = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
+
+            model.unload_lora()
+            self.assertFalse(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+            model.load_lora_adapter(tmpdir, prefix=None, use_safetensors=True)
+            state_dict_retrieved = get_peft_model_state_dict(model, adapter_name="default_0")
+
+            for k in state_dict_loaded:
+                loaded_v = state_dict_loaded[k]
+                retrieved_v = state_dict_retrieved[k].to(loaded_v.device)
+                self.assertTrue(torch.allclose(loaded_v, retrieved_v))
+
+            self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        torch.manual_seed(0)
+        outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
+
+        self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
+        self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
+
+    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
+    def test_wrong_adapter_name_raises_error(self):
+        from peft import LoraConfig
+
+        from diffusers.loaders.peft import PeftAdapterMixin
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        if not issubclass(model.__class__, PeftAdapterMixin):
+            return
+
+        denoiser_lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=False,
+        )
+        model.add_adapter(denoiser_lora_config)
+        self.assertTrue(check_if_lora_correctly_set(model), "LoRA layers not set correctly")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wrong_name = "foo"
+            with self.assertRaises(ValueError) as err_context:
+                model.save_lora_adapter(tmpdir, adapter_name=wrong_name)
+
+            self.assertTrue(f"Adapter name {wrong_name} not found in the model." in str(err_context.exception))
 
     @require_torch_gpu
     def test_cpu_offload(self):

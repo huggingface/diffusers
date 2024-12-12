@@ -200,3 +200,9 @@ class SASolverSchedulerTest(SchedulerCommonTest):
             assert abs(result_mean.item() - 1.0901763439178467) < 1e-2
         else:
             print("None")
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

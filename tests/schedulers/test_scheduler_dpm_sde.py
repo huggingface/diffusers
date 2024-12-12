@@ -165,3 +165,9 @@ class DPMSolverSDESchedulerTest(SchedulerCommonTest):
         else:
             assert abs(result_sum.item() - 170.3135223388672) < 1e-2
             assert abs(result_mean.item() - 0.23003872730981811) < 1e-2
+
+    def test_beta_sigmas(self):
+        self.check_over_configs(use_beta_sigmas=True)
+
+    def test_exponential_sigmas(self):
+        self.check_over_configs(use_exponential_sigmas=True)

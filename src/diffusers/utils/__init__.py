@@ -86,6 +86,7 @@ from .import_utils import (
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
+    is_torch_xla_version,
     is_torchsde_available,
     is_torchvision_available,
     is_transformers_available,
