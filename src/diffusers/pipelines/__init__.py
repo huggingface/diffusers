@@ -162,6 +162,9 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
         ]
     )
     _import_structure["pag"].extend(
@@ -247,6 +250,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
     _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
@@ -496,6 +500,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
         )
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
@@ -579,6 +586,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .ltx import LTXImageToVideoPipeline, LTXPipeline
         from .lumina import LuminaText2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
