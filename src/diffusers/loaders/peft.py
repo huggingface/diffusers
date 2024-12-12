@@ -664,15 +664,28 @@ class PeftAdapterMixin:
         if isinstance(module, BaseTunerLayer):
             module.unmerge()
 
-    def unload_lora(self):
+    def unload_lora(self, adapter_names: Optional[Union[List[str], str]] = None):
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `unload_lora()`.")
 
-        from ..utils import recurse_remove_peft_layers
+        if adapter_names is None:
+            from ..utils import recurse_remove_peft_layers
 
-        recurse_remove_peft_layers(self)
-        if hasattr(self, "peft_config"):
-            del self.peft_config
+            recurse_remove_peft_layers(self)
+            if hasattr(self, "peft_config"):
+                del self.peft_config
+        else:
+            # We cannot completely unload a particular adapter, so, we temporally deactivate it.
+            # See more details in https://github.com/huggingface/diffusers/issues/9325#issuecomment-2535510486
+            if isinstance(adapter_names, str):
+                adapter_names = list(adapter_names)
+            present_adapters = getattr(self, "peft_config", {})
+            for adapter_name in adapter_names:
+                if adapter_name not in present_adapters:
+                    raise ValueError(
+                        f"{adapter_name} not found in the current list of adapters: {set(present_adapters.keys())}."
+                    )
+            self.delete_adapters(adapter_names=adapter_names)
 
     def disable_lora(self):
         """

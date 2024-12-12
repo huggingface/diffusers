@@ -54,6 +54,8 @@ def recurse_remove_peft_layers(model):
     else:
         # This is for backwards compatibility with PEFT <= 0.6.2.
         # TODO can be removed once that PEFT version is no longer supported.
+        # If we drop v0.6.0 PEFT support, we could consider a much cleaner code path
+        # as noted in https://github.com/huggingface/diffusers/issues/9325#issuecomment-2535510486.
         from peft.tuners.lora import LoraLayer
 
         for name, module in model.named_children():
