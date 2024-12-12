@@ -299,8 +299,9 @@ def _get_model_file(
     if dduf_entries:
         if subfolder is not None:
             raise ValueError("DDUF file only allow for 1 level of directory. Please check the DDUF structure")
-        if "/".join([pretrained_model_name_or_path, weights_name]) in dduf_entries:
-            return "/".join([pretrained_model_name_or_path, weights_name])
+        model_file = weights_name if pretrained_model_name_or_path == "" else "/".join([pretrained_model_name_or_path, weights_name])
+        if model_file in dduf_entries:
+            return model_file
         else:
             raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
     elif os.path.isfile(pretrained_model_name_or_path):
