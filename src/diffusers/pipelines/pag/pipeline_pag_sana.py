@@ -142,7 +142,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
-        pag_applied_layers: Union[str, List[str]] = "transformer_blocks.8",
+        pag_applied_layers: Union[str, List[str]] = "transformer_blocks.0",
     ):
         super().__init__()
 
@@ -511,8 +511,11 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
         return caption.strip()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
         shape = (
             batch_size,
             num_channels_latents,
@@ -525,13 +528,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
     @property
@@ -561,8 +558,8 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         sigmas: List[float] = None,
         guidance_scale: float = 4.5,
         num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int = 1024,
+        width: int = 1024,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -771,9 +768,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 6.1 Prepare micro-conditions.
-        added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
-
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
@@ -796,7 +790,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     timestep=timestep,
-                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
                 noise_pred = noise_pred.float()
