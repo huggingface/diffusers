@@ -741,6 +741,8 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         prompt_3: Optional[Union[str, List[str]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         image: PipelineImageInput = None,
         strength: float = 0.6,
         num_inference_steps: int = 50,
@@ -871,11 +873,15 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             [`~pipelines.stable_diffusion_3.StableDiffusion3PipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             prompt_2,
             prompt_3,
+            height,
+            width,
             strength,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
@@ -944,7 +950,7 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Preprocess image
-        image = self.image_processor.preprocess(image)
+        image = self.image_processor.preprocess(image, height=height, width=width)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
