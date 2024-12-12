@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging, is_torch_version
+from ...utils import is_torch_version, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..attention_processor import Attention, SpatialNorm
@@ -83,116 +83,35 @@ class CausalConv3d(nn.Module):
 
 
 class UpsampleCausal3D(nn.Module):
-    """
-    A 3D upsampling layer with an optional convolution.
-    """
-
     def __init__(
         self,
-        channels: int,
-        use_conv: bool = False,
-        use_conv_transpose: bool = False,
+        in_channels: int,
         out_channels: Optional[int] = None,
-        name: str = "conv",
-        kernel_size: Optional[int] = None,
-        padding=1,
-        norm_type=None,
-        eps=None,
-        elementwise_affine=None,
-        bias=True,
-        interpolate=True,
-        upsample_factor=(2, 2, 2),
-    ):
+        bias: bool = True,
+        upsample_factor: Tuple[float, float, float] = (2, 2, 2),
+    ) -> None:
         super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.use_conv_transpose = use_conv_transpose
-        self.name = name
-        self.interpolate = interpolate
+
+        out_channels = out_channels or in_channels
         self.upsample_factor = upsample_factor
 
-        if norm_type == "ln_norm":
-            self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
-        elif norm_type == "rms_norm":
-            self.norm = RMSNorm(channels, eps, elementwise_affine)
-        elif norm_type is None:
-            self.norm = None
+        self.conv = CausalConv3d(in_channels, out_channels, 3, 1, bias=bias)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        num_frames = hidden_states.size(2)
+        first_frame, other_frames = hidden_states.split((1, num_frames - 1), dim=2)
+
+        first_frame = F.interpolate(
+            first_frame.squeeze(2), scale_factor=self.upsample_factor[1:], mode="nearest"
+        ).unsqueeze(2)
+
+        if num_frames > 1:
+            other_frames = F.interpolate(other_frames, scale_factor=self.upsample_factor, mode="nearest")
+            hidden_states = torch.cat((first_frame, other_frames), dim=2)
         else:
-            raise ValueError(f"unknown norm_type: {norm_type}")
+            hidden_states = first_frame
 
-        conv = None
-        if use_conv_transpose:
-            assert False, "Not Implement yet"
-            if kernel_size is None:
-                kernel_size = 4
-            conv = nn.ConvTranspose2d(
-                channels, self.out_channels, kernel_size=kernel_size, stride=2, padding=padding, bias=bias
-            )
-        elif use_conv:
-            if kernel_size is None:
-                kernel_size = 3
-            conv = CausalConv3d(self.channels, self.out_channels, kernel_size=kernel_size, bias=bias)
-
-        if name == "conv":
-            self.conv = conv
-        else:
-            self.Conv2d_0 = conv
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        output_size: Optional[int] = None,
-        scale: float = 1.0,
-    ) -> torch.Tensor:
-        assert hidden_states.shape[1] == self.channels
-
-        if self.norm is not None:
-            assert False, "Not Implement yet"
-            hidden_states = self.norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-
-        if self.use_conv_transpose:
-            return self.conv(hidden_states)
-
-        # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16
-        dtype = hidden_states.dtype
-        if dtype == torch.bfloat16:
-            hidden_states = hidden_states.to(torch.float32)
-
-        # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
-        if hidden_states.shape[0] >= 64:
-            hidden_states = hidden_states.contiguous()
-
-        # if `output_size` is passed we force the interpolation output
-        # size and do not make use of `scale_factor=2`
-        if self.interpolate:
-            B, C, T, H, W = hidden_states.shape
-            first_h, other_h = hidden_states.split((1, T - 1), dim=2)
-            if output_size is None:
-                if T > 1:
-                    other_h = F.interpolate(other_h, scale_factor=self.upsample_factor, mode="nearest")
-
-                first_h = first_h.squeeze(2)
-                first_h = F.interpolate(first_h, scale_factor=self.upsample_factor[1:], mode="nearest")
-                first_h = first_h.unsqueeze(2)
-            else:
-                assert False, "Not Implement yet"
-                other_h = F.interpolate(other_h, size=output_size, mode="nearest")
-
-            if T > 1:
-                hidden_states = torch.cat((first_h, other_h), dim=2)
-            else:
-                hidden_states = first_h
-
-        # If the input is bfloat16, we cast back to bfloat16
-        if dtype == torch.bfloat16:
-            hidden_states = hidden_states.to(dtype)
-
-        if self.use_conv:
-            if self.name == "conv":
-                hidden_states = self.conv(hidden_states)
-            else:
-                hidden_states = self.Conv2d_0(hidden_states)
+        hidden_states = self.conv(hidden_states)
 
         return hidden_states
 
@@ -278,13 +197,10 @@ class ResnetBlockCausal3D(nn.Module):
         eps: float = 1e-6,
         non_linearity: str = "swish",
         skip_time_act: bool = False,
-        # default, scale_shift, ada_group, spatial
         time_embedding_norm: str = "default",
         kernel: Optional[torch.Tensor] = None,
         output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
-        up: bool = False,
-        down: bool = False,
         conv_shortcut_bias: bool = True,
         conv_3d_out_channels: Optional[int] = None,
     ):
@@ -295,8 +211,6 @@ class ResnetBlockCausal3D(nn.Module):
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
-        self.up = up
-        self.down = down
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
@@ -340,12 +254,6 @@ class ResnetBlockCausal3D(nn.Module):
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.upsample = self.downsample = None
-        if self.up:
-            self.upsample = UpsampleCausal3D(in_channels, use_conv=False)
-        elif self.down:
-            self.downsample = DownsampleCausal3D(in_channels, use_conv=False, name="op")
-
         self.use_in_shortcut = self.in_channels != conv_3d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
@@ -372,18 +280,6 @@ class ResnetBlockCausal3D(nn.Module):
             hidden_states = self.norm1(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
-
-        if self.upsample is not None:
-            # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
-            if hidden_states.shape[0] >= 64:
-                input_tensor = input_tensor.contiguous()
-                hidden_states = hidden_states.contiguous()
-            input_tensor = self.upsample(input_tensor, scale=scale)
-            hidden_states = self.upsample(hidden_states, scale=scale)
-        elif self.downsample is not None:
-            input_tensor = self.downsample(input_tensor, scale=scale)
-            hidden_states = self.downsample(hidden_states, scale=scale)
-
         hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
@@ -460,12 +356,6 @@ class UNetMidBlockCausal3D(nn.Module):
             )
         ]
         attentions = []
-
-        if attention_head_dim is None:
-            logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
-            )
-            attention_head_dim = in_channels
 
         for _ in range(num_layers):
             if self.add_attention:
@@ -634,7 +524,6 @@ class UpDecoderBlockCausal3D(nn.Module):
                 [
                     UpsampleCausal3D(
                         out_channels,
-                        use_conv=True,
                         out_channels=out_channels,
                         upsample_factor=upsample_scale_factor,
                     )
@@ -662,12 +551,17 @@ class EncoderCausal3D(nn.Module):
     r"""
     Causal encoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
     """
-    
+
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D"),
+        down_block_types: Tuple[str, ...] = (
+            "DownEncoderBlockCausal3D",
+            "DownEncoderBlockCausal3D",
+            "DownEncoderBlockCausal3D",
+            "DownEncoderBlockCausal3D",
+        ),
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
@@ -678,7 +572,7 @@ class EncoderCausal3D(nn.Module):
         spatial_compression_ratio: int = 8,
     ) -> None:
         super().__init__()
-        
+
         self.conv_in = CausalConv3d(in_channels, block_out_channels[0], kernel_size=3, stride=1)
         self.mid_block = None
         self.down_blocks = nn.ModuleList([])
@@ -717,7 +611,7 @@ class EncoderCausal3D(nn.Module):
                 resnet_groups=norm_num_groups,
                 downsample_padding=0,
             )
-            
+
             self.down_blocks.append(down_block)
 
         self.mid_block = UNetMidBlockCausal3D(
@@ -778,7 +672,12 @@ class DecoderCausal3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D"),
+        up_block_types: Tuple[str, ...] = (
+            "UpDecoderBlockCausal3D",
+            "UpDecoderBlockCausal3D",
+            "UpDecoderBlockCausal3D",
+            "UpDecoderBlockCausal3D",
+        ),
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
@@ -831,7 +730,7 @@ class DecoderCausal3D(nn.Module):
             upsample_scale_factor_HW = (2, 2) if add_spatial_upsample else (1, 1)
             upsample_scale_factor_T = (2,) if add_time_upsample else (1,)
             upsample_scale_factor = tuple(upsample_scale_factor_T + upsample_scale_factor_HW)
-            
+
             up_block = UpDecoderBlockCausal3D(
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
@@ -844,7 +743,7 @@ class DecoderCausal3D(nn.Module):
                 resnet_time_scale_shift=norm_type,
                 temb_channels=temb_channels,
             )
-            
+
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
@@ -923,8 +822,8 @@ class DecoderOutput2(BaseOutput):
 
 class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
     r"""
-    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Introduced
-    in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
+    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
+    Introduced in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -1119,9 +1018,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(
-        self, z: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images/videos.
 
@@ -1229,9 +1126,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def spatial_tiled_decode(
-        self, z: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    def spatial_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Decode a batch of images/videos using a tiled decoder.
 
@@ -1315,9 +1210,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def temporal_tiled_decode(
-        self, z: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    def temporal_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         # Split z into overlapping tiles and decode them separately.
 
         B, C, T, H, W = z.shape

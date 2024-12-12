@@ -109,9 +109,7 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "single_blocks": remap_single_transformer_blocks_,
 }
 
-VAE_KEYS_RENAME_DICT = {
-    
-}
+VAE_KEYS_RENAME_DICT = {}
 
 VAE_SPECIAL_KEYS_REMAP = {}
 
@@ -208,7 +206,7 @@ if __name__ == "__main__":
         transformer = transformer.to(dtype=dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
-    
+
     if args.vae_ckpt_path is not None:
         vae = convert_vae(args.vae_ckpt_path)
         if not args.save_pipeline:
