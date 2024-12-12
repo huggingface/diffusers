@@ -657,7 +657,6 @@ class FluxControlInpaintPipeline(
 
         return image
 
-
     def prepare_mask_latents(
         self,
         image,
@@ -930,7 +929,6 @@ class FluxControlInpaintPipeline(
             lora_scale=lora_scale,
         )
 
-
         # 3. Preprocess mask and image
         num_channels_latents = self.vae.config.latent_channels
         if masked_image_latents is not None:
@@ -1065,10 +1063,14 @@ class FluxControlInpaintPipeline(
                 init_mask = mask
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
-                    init_latents_proper = self.scheduler.scale_noise(image_latents, torch.tensor([noise_timestep]), noise)
+                    init_latents_proper = self.scheduler.scale_noise(
+                        image_latents, torch.tensor([noise_timestep]), noise
+                    )
                 else:
                     init_latents_proper = image_latents
-                init_latents_proper = self._pack_latents(init_latents_proper, batch_size * num_images_per_prompt, num_channels_latents, height_8, width_8)
+                init_latents_proper = self._pack_latents(
+                    init_latents_proper, batch_size * num_images_per_prompt, num_channels_latents, height_8, width_8
+                )
 
                 latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
