@@ -19,7 +19,13 @@ import numpy as np
 import torch
 from transformers import Gemma2Config, Gemma2ForCausalLM, GemmaTokenizer
 
-from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
+from diffusers import (
+    AutoencoderDC,
+    FlowMatchEulerDiscreteScheduler,
+    SanaPAGPipeline,
+    SanaPipeline,
+    SanaTransformer2DModel,
+)
 from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -29,8 +35,8 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 enable_full_determinism()
 
 
-class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = SanaPipeline
+class SanaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = SanaPAGPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -53,7 +59,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_size=1,
             in_channels=4,
             out_channels=4,
-            num_layers=1,
+            num_layers=2,
             num_attention_heads=2,
             attention_head_dim=4,
             num_cross_attention_heads=2,
@@ -129,6 +135,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
+            "pag_scale": 3.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
@@ -249,6 +256,72 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
+
+    def test_pag_disable_enable(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # base pipeline (expect same output when pag is disabled)
+        pipe_sd = SanaPipeline(**components)
+        pipe_sd = pipe_sd.to(device)
+        pipe_sd.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["pag_scale"]
+        assert (
+            "pag_scale" not in inspect.signature(pipe_sd.__call__).parameters
+        ), f"`pag_scale` should not be a call parameter of the base pipeline {pipe_sd.__class__.__name__}."
+        out = pipe_sd(**inputs).images[0, -3:, -3:, -1]
+
+        components = self.get_dummy_components()
+
+        # pag disabled with pag_scale=0.0
+        pipe_pag = self.pipeline_class(**components)
+        pipe_pag = pipe_pag.to(device)
+        pipe_pag.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["pag_scale"] = 0.0
+        out_pag_disabled = pipe_pag(**inputs).images[0, -3:, -3:, -1]
+
+        assert np.abs(out.flatten() - out_pag_disabled.flatten()).max() < 1e-3
+
+    def test_pag_applied_layers(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # base pipeline
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        all_self_attn_layers = [k for k in pipe.transformer.attn_processors.keys() if "attn1" in k]
+        original_attn_procs = pipe.transformer.attn_processors
+        pag_layers = ["blocks.0", "blocks.1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(all_self_attn_layers)
+
+        # blocks.0
+        block_0_self_attn = ["transformer_blocks.0.attn1.processor"]
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0.attn1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert set(pipe.pag_attn_processors) == set(block_0_self_attn)
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.(0|1)"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert (len(pipe.pag_attn_processors)) == 2
+
+        pipe.transformer.set_attn_processor(original_attn_procs.copy())
+        pag_layers = ["blocks.0", r"blocks\.1"]
+        pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
+        assert len(pipe.pag_attn_processors) == 2
     
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip("A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error.")
