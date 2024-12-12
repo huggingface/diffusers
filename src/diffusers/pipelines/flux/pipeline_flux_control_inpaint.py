@@ -103,7 +103,7 @@ EXAMPLE_DOC_STRING = """
             mask_image=mask_image,
             num_inference_steps=30,
             strength=0.9,
-            guidance_scale=50.0,
+            guidance_scale=10.0,
             generator=torch.Generator().manual_seed(42),
         ).images[0]
         make_image_grid([image, control_image, mask_image, output.resize(image.size)], rows=1, cols=4).save("output.png")
