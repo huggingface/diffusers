@@ -23,11 +23,11 @@ import re
 from collections import OrderedDict
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import safetensors
 import torch
-from huggingface_hub import DDUFEntry, Dict, create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
