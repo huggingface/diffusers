@@ -70,6 +70,7 @@ def load_transformers_model_from_dduf(
         raise EnvironmentError(
             f"Could not find a config.json file for component {name} in DDUF file (contains {dduf_entries.keys()})."
         )
+    generation_config = dduf_entries.get(f"{name}/generation_config.json", None)
 
     weight_files = [
         entry
@@ -86,13 +87,16 @@ def load_transformers_model_from_dduf(
         )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
+        from transformers import AutoConfig, GenerationConfig
         tmp_config_file = os.path.join(tmp_dir, "config.json")
         with open(tmp_config_file, "w") as f:
             f.write(config_file.read_text())
-        # TODO: I feel like it is easier if we pass the config file directly. Otherwise, if we pass 
-        # pretrained_model_name_or_path, we will need to do more checks in transformers. 
-        from transformers import AutoConfig
         config = AutoConfig.from_pretrained(tmp_config_file)
+        if generation_config is not None:
+            tmp_generation_config_file = os.path.join(tmp_generation_config_file, "generation_config.json")
+            with open(tmp_generation_config_file, "w") as f:
+                f.write(generation_config.read_text())
+            generation_config = GenerationConfig.from_pretrained(tmp_config_file)
         state_dict = {}
         with contextlib.ExitStack() as stack:
             for entry in tqdm(weight_files, desc="Loading state_dict"):  # Loop over safetensors files
@@ -103,5 +107,5 @@ def load_transformers_model_from_dduf(
                 # Update the state dictionary with tensors
                 state_dict.update(tensors)
             return cls.from_pretrained(
-                pretrained_model_name_or_path=None, config=config, state_dict=state_dict, **kwargs
-            )
+                pretrained_model_name_or_path=None, config=config, generation_config=generation_config, state_dict=state_dict, **kwargs
+                )
