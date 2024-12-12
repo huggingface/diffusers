@@ -129,7 +129,11 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_entries: Optional[Dict[str, DDUFEntry]]=None):
+def load_state_dict(
+    checkpoint_file: Union[str, os.PathLike],
+    variant: Optional[str] = None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """

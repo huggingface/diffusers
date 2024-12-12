@@ -24,10 +24,10 @@ import os
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Tuple, Union, Optional, Dict
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
-from huggingface_hub import create_repo, hf_hub_download, DDUFEntry
+from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
     RepositoryNotFoundError,
@@ -560,7 +560,9 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[Dict[str, DDUFEntry]] = None):
+    def _dict_from_json_file(
+        cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[Dict[str, DDUFEntry]] = None
+    ):
         if dduf_entries:
             text = dduf_entries[json_file].read_text()
         else:

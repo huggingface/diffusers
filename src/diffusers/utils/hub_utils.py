@@ -292,7 +292,7 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
-    dduf_entries: Optional[Dict[str, DDUFEntry]]=None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 

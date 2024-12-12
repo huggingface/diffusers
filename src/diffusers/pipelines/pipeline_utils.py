@@ -28,6 +28,7 @@ import PIL.Image
 import requests
 import torch
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     create_repo,
     hf_hub_download,
@@ -1313,8 +1314,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             not local_files_only
             and dduf_file is not None
             and dduf_file not in (sibling.rfilename for sibling in info.siblings)
-            ):  
-                raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
+        ):
+            raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
 
         if not local_files_only and not dduf_file:
             filenames = {sibling.rfilename for sibling in info.siblings}

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Dict
 from huggingface_hub import DDUFEntry
 from tqdm import tqdm
 
-from ..utils import is_safetensors_available, is_transformers_version
+from ..utils import is_safetensors_available, is_transformers_available, is_transformers_version
 
 
 if TYPE_CHECKING:
@@ -93,15 +93,16 @@ def load_transformers_model_from_dduf(
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         from transformers import AutoConfig, GenerationConfig
+
         tmp_config_file = os.path.join(tmp_dir, "config.json")
         with open(tmp_config_file, "w") as f:
             f.write(config_file.read_text())
         config = AutoConfig.from_pretrained(tmp_config_file)
         if generation_config is not None:
-            tmp_generation_config_file = os.path.join(tmp_generation_config_file, "generation_config.json")
+            tmp_generation_config_file = os.path.join(tmp_dir, "generation_config.json")
             with open(tmp_generation_config_file, "w") as f:
                 f.write(generation_config.read_text())
-            generation_config = GenerationConfig.from_pretrained(tmp_config_file)
+            generation_config = GenerationConfig.from_pretrained(tmp_generation_config_file)
         state_dict = {}
         with contextlib.ExitStack() as stack:
             for entry in tqdm(weight_files, desc="Loading state_dict"):  # Loop over safetensors files
@@ -112,5 +113,9 @@ def load_transformers_model_from_dduf(
                 # Update the state dictionary with tensors
                 state_dict.update(tensors)
             return cls.from_pretrained(
-                pretrained_model_name_or_path=None, config=config, generation_config=generation_config, state_dict=state_dict, **kwargs
-                )
+                pretrained_model_name_or_path=None,
+                config=config,
+                generation_config=generation_config,
+                state_dict=state_dict,
+                **kwargs,
+            )
