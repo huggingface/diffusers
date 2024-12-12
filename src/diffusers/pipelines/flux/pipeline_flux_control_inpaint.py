@@ -660,8 +660,8 @@ class FluxControlInpaintPipeline(
 
     def prepare_mask_latents(
         self,
-        mask,
-        masked_image,
+        image,
+        mask_image,
         batch_size,
         num_channels_latents,
         num_images_per_prompt,
@@ -673,19 +673,25 @@ class FluxControlInpaintPipeline(
     ):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
+        image = self.image_processor.preprocess(image, height=height, width=width)
+        mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
+        masked_image = image * (1 - mask_image)
+        masked_image = masked_image.to(device=device, dtype=dtype)
+
         height = 2 * (int(height) // (self.vae_scale_factor * 2))
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
-        mask = torch.nn.functional.interpolate(mask, size=(height, width))
-        mask = mask.to(device=device, dtype=dtype)
+        mask_image = torch.nn.functional.interpolate(mask_image, size=(height, width))
+        mask_image = mask_image.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
 
         masked_image = masked_image.to(device=device, dtype=dtype)
 
-        if masked_image.shape[1] == 16:
+        if masked_image.shape[1] == num_channels_latents:
             masked_image_latents = masked_image
         else:
             masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
@@ -693,14 +699,14 @@ class FluxControlInpaintPipeline(
         masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        if mask.shape[0] < batch_size:
-            if not batch_size % mask.shape[0] == 0:
+        if mask_image.shape[0] < batch_size:
+            if not batch_size % mask_image.shape[0] == 0:
                 raise ValueError(
                     "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
-                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
+                    f" a total batch size of {batch_size}, but {mask_image.shape[0]} mask_image were passed. Make sure the number"
                     " of masks that you pass is divisible by the total requested batch size."
                 )
-            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
+            mask_image = mask_image.repeat(batch_size // mask_image.shape[0], 1, 1, 1)
         if masked_image_latents.shape[0] < batch_size:
             if not batch_size % masked_image_latents.shape[0] == 0:
                 raise ValueError(
@@ -719,15 +725,16 @@ class FluxControlInpaintPipeline(
             height,
             width,
         )
-        mask = self._pack_latents(
-            mask.repeat(1, num_channels_latents, 1, 1),
+        mask_image = self._pack_latents(
+            mask_image.repeat(1, num_channels_latents, 1, 1),
             batch_size,
             num_channels_latents,
             height,
             width,
         )
+        masked_image_latents = torch.cat((masked_image_latents, mask_image), dim=-1)
 
-        return mask, masked_image_latents
+        return mask_image, masked_image_latents
 
     @property
     def guidance_scale(self):
@@ -759,7 +766,7 @@ class FluxControlInpaintPipeline(
         width: Optional[int] = None,
         strength: float = 0.6,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -820,10 +827,10 @@ class FluxControlInpaintPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -927,18 +934,13 @@ class FluxControlInpaintPipeline(
         # 3. Preprocess mask and image
         num_channels_latents = self.vae.config.latent_channels
         if masked_image_latents is not None:
+            # pre computed masked_image_latents and mask_image
             masked_image_latents = masked_image_latents.to(latents.device)
+            mask = mask_image.to(latents.device)
         else:
-            image = self.image_processor.preprocess(image, height=height, width=width)
-            mask_image = self.mask_processor.preprocess(mask_image, height=height, width=width)
-
-            masked_image = image * (1 - mask_image)
-            masked_image = masked_image.to(device=device, dtype=prompt_embeds.dtype)
-
-            height, width = image.shape[-2:]
             mask, masked_image_latents = self.prepare_mask_latents(
+                image,
                 mask_image,
-                masked_image,
                 batch_size,
                 num_channels_latents,
                 num_images_per_prompt,
@@ -948,13 +950,12 @@ class FluxControlInpaintPipeline(
                 device,
                 generator,
             )
-            masked_image_latents = torch.cat((masked_image_latents, mask), dim=-1)
 
         init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
         # 4.Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = (int(height) // self.vae_scale_factor // 2) * (int(width) // self.vae_scale_factor // 2)
         mu = calculate_shift(
             image_seq_len,
@@ -967,8 +968,7 @@ class FluxControlInpaintPipeline(
             self.scheduler,
             num_inference_steps,
             device,
-            timesteps,
-            sigmas,
+            sigmas=sigmas,
             mu=mu,
         )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
@@ -1062,11 +1062,12 @@ class FluxControlInpaintPipeline(
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
                 # for 64 channel transformer only.
-                init_latents_proper = image_latents
                 init_mask = mask
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
-                    init_latents_proper = self.scheduler.scale_noise(init_latents_proper, torch.tensor([noise_timestep]), noise)
+                    init_latents_proper = self.scheduler.scale_noise(image_latents, torch.tensor([noise_timestep]), noise)
+                else:
+                    init_latents_proper = image_latents
                 init_latents_proper = self._pack_latents(init_latents_proper, batch_size * num_images_per_prompt, num_channels_latents, height_8, width_8)
 
                 latents = (1 - init_mask) * init_latents_proper + init_mask * latents
