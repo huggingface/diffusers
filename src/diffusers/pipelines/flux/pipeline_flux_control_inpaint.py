@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
         from diffusers.models.transformers import FluxTransformer2DModel
         from transformers import T5EncoderModel
         from diffusers.utils import load_image, make_image_grid
-        from image_gen_aux import DepthPreprocessor # https://github.com/huggingface/image_gen_aux
+        from image_gen_aux import DepthPreprocessor  # https://github.com/huggingface/image_gen_aux
         from PIL import Image
         import numpy as np
 
@@ -90,7 +90,7 @@ EXAMPLE_DOC_STRING = """
         image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
 
         head_mask = np.zeros_like(image)
-        head_mask[65:580,300:642] = 255
+        head_mask[65:580, 300:642] = 255
         mask_image = Image.fromarray(head_mask)
 
         processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
@@ -106,9 +106,9 @@ EXAMPLE_DOC_STRING = """
             guidance_scale=10.0,
             generator=torch.Generator().manual_seed(42),
         ).images[0]
-        make_image_grid([image, control_image, mask_image, output.resize(image.size)], rows=1, cols=4).save("output.png")
-
-
+        make_image_grid([image, control_image, mask_image, output.resize(image.size)], rows=1, cols=4).save(
+            "output.png"
+        )
         ```
 """
 
@@ -649,7 +649,7 @@ class FluxControlInpaintPipeline(
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
-        return latents, noise, image_latents, latent_image_ids
+        return latents, latent_image_ids
 
     # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
     def prepare_image(
