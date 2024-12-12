@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
@@ -28,18 +26,20 @@ from ..activations import get_activation
 from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import BaseOutput, DecoderOutput, DiagonalGaussianDistribution
+from .vae import DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def prepare_causal_attention_mask(n_frame: int, n_hw: int, dtype, device, batch_size: int = None):
-    seq_len = n_frame * n_hw
+def prepare_causal_attention_mask(
+    num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
+):
+    seq_len = num_frames * height_width
     mask = torch.full((seq_len, seq_len), float("-inf"), dtype=dtype, device=device)
     for i in range(seq_len):
-        i_frame = i // n_hw
-        mask[i, : (i_frame + 1) * n_hw] = 0
+        i_frame = i // height_width
+        mask[i, : (i_frame + 1) * height_width] = 0
     if batch_size is not None:
         mask = mask.unsqueeze(0).expand(batch_size, -1, -1)
     return mask
@@ -178,7 +178,7 @@ class ResnetBlockCausal3D(nn.Module):
         return hidden_states
 
 
-class UNetMidBlockCausal3D(nn.Module):
+class HunyuanVideoMidBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -243,19 +243,20 @@ class UNetMidBlockCausal3D(nn.Module):
         hidden_states = self.resnets[0](hidden_states)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
-                B, C, T, H, W = hidden_states.shape
-                hidden_states = rearrange(hidden_states, "b c f h w -> b (f h w) c")
+                batch_size, num_channels, num_frames, height, width = hidden_states.shape
+                hidden_states = hidden_states.permute(0, 2, 3, 4, 1).flatten(1, 3)
                 attention_mask = prepare_causal_attention_mask(
-                    T, H * W, hidden_states.dtype, hidden_states.device, batch_size=B
+                    num_frames, height * width, hidden_states.dtype, hidden_states.device, batch_size=batch_size
                 )
                 hidden_states = attn(hidden_states, attention_mask=attention_mask)
-                hidden_states = rearrange(hidden_states, "b (f h w) c -> b c f h w", f=T, h=H, w=W)
+                hidden_states = hidden_states.unflatten(1, (num_frames, height, width)).permute(0, 4, 1, 2, 3)
+
             hidden_states = resnet(hidden_states)
 
         return hidden_states
 
 
-class DownEncoderBlockCausal3D(nn.Module):
+class HunyuanVideoDownBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -268,7 +269,7 @@ class DownEncoderBlockCausal3D(nn.Module):
         add_downsample: bool = True,
         downsample_stride: int = 2,
         downsample_padding: int = 1,
-    ):
+    ) -> None:
         super().__init__()
         resnets = []
 
@@ -312,20 +313,19 @@ class DownEncoderBlockCausal3D(nn.Module):
         return hidden_states
 
 
-class UpDecoderBlockCausal3D(nn.Module):
+class HunyuanVideoUpBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         add_upsample: bool = True,
-        upsample_scale_factor=(2, 2, 2),
-    ):
+        upsample_scale_factor: Tuple[int, int, int] = (2, 2, 2),
+    ) -> None:
         super().__init__()
         resnets = []
 
@@ -358,8 +358,6 @@ class UpDecoderBlockCausal3D(nn.Module):
         else:
             self.upsamplers = None
 
-        self.resolution_idx = resolution_idx
-
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
@@ -381,10 +379,10 @@ class EncoderCausal3D(nn.Module):
         in_channels: int = 3,
         out_channels: int = 3,
         down_block_types: Tuple[str, ...] = (
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
         ),
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
@@ -424,7 +422,7 @@ class EncoderCausal3D(nn.Module):
             downsample_stride_T = (2,) if add_time_downsample else (1,)
             downsample_stride = tuple(downsample_stride_T + downsample_stride_HW)
 
-            down_block = DownEncoderBlockCausal3D(
+            down_block = HunyuanVideoDownBlock3D(
                 num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
@@ -438,7 +436,7 @@ class EncoderCausal3D(nn.Module):
 
             self.down_blocks.append(down_block)
 
-        self.mid_block = UNetMidBlockCausal3D(
+        self.mid_block = HunyuanVideoMidBlock3D(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
@@ -494,10 +492,10 @@ class DecoderCausal3D(nn.Module):
         in_channels: int = 3,
         out_channels: int = 3,
         up_block_types: Tuple[str, ...] = (
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
         ),
         block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
@@ -516,7 +514,7 @@ class DecoderCausal3D(nn.Module):
         self.up_blocks = nn.ModuleList([])
 
         # mid
-        self.mid_block = UNetMidBlockCausal3D(
+        self.mid_block = HunyuanVideoMidBlock3D(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
@@ -547,7 +545,7 @@ class DecoderCausal3D(nn.Module):
             upsample_scale_factor_T = (2,) if add_time_upsample else (1,)
             upsample_scale_factor = tuple(upsample_scale_factor_T + upsample_scale_factor_HW)
 
-            up_block = UpDecoderBlockCausal3D(
+            up_block = HunyuanVideoUpBlock3D(
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
@@ -568,10 +566,8 @@ class DecoderCausal3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.Tensor) -> torch.Tensor:
-        assert len(sample.shape) == 5, "The input tensor should have 5 dimensions"
-
-        sample = self.conv_in(sample)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.conv_in(hidden_states)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         if self.training and self.gradient_checkpointing:
@@ -584,40 +580,34 @@ class DecoderCausal3D(nn.Module):
 
             # up
             for up_block in self.up_blocks:
-                sample = torch.utils.checkpoint.checkpoint(
+                hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(up_block),
-                    sample,
+                    hidden_states,
                     use_reentrant=False,
                 )
             else:
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
-                sample = sample.to(upscale_dtype)
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), hidden_states)
+                hidden_states = hidden_states.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample)
+                    hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), hidden_states)
         else:
             # middle
-            sample = self.mid_block(sample)
-            sample = sample.to(upscale_dtype)
+            hidden_states = self.mid_block(hidden_states)
+            hidden_states = hidden_states.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(sample)
+                hidden_states = up_block(hidden_states)
 
         # post-process
-        sample = self.conv_norm_out(sample)
-        sample = self.conv_act(sample)
-        sample = self.conv_out(sample)
+        hidden_states = self.conv_norm_out(hidden_states)
+        hidden_states = self.conv_act(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
 
-        return sample
-
-
-@dataclass
-class DecoderOutput2(BaseOutput):
-    sample: torch.Tensor
-    posterior: Optional[DiagonalGaussianDistribution] = None
+        return hidden_states
 
 
 class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
@@ -638,16 +628,16 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         out_channels: int = 3,
         latent_channels: int = 16,
         down_block_types: Tuple[str, ...] = (
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
-            "DownEncoderBlockCausal3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
+            "HunyuanVideoDownBlock3D",
         ),
         up_block_types: Tuple[str, ...] = (
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
-            "UpDecoderBlockCausal3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
+            "HunyuanVideoUpBlock3D",
         ),
         block_out_channels: Tuple[int] = (128, 256, 512, 512),
         layers_per_block: int = 2,
@@ -1050,9 +1040,8 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        return_posterior: bool = False,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput2, torch.Tensor]:
+    ) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
@@ -1067,14 +1056,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        dec = self.decode(z).sample
-
+        dec = self.decode(z)
         if not return_dict:
-            if return_posterior:
-                return (dec, posterior)
-            else:
-                return (dec,)
-        if return_posterior:
-            return DecoderOutput2(sample=dec, posterior=posterior)
-        else:
-            return DecoderOutput2(sample=dec)
+            return (dec,)
+        return dec
