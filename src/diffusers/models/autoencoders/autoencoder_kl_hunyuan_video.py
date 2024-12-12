@@ -700,13 +700,13 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self.use_framewise_encoding = True
         self.use_framewise_decoding = True
 
-        # only relevant if vae tiling is enabled
-        self.tile_sample_min_tsize = sample_tsize
-        self.tile_latent_min_tsize = sample_tsize // temporal_compression_ratio
 
         # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
+        
+        # The minimal tile temporal batch size for temporal tiling to be used
+        self.tile_sample_min_tsize = 64
 
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
@@ -812,8 +812,9 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_num_frames = self.tile_sample_min_tsize // self.temporal_compression_ratio
 
-        if self.use_framewise_decoding and num_frames > self.tile_latent_min_tsize:
+        if self.use_framewise_decoding and num_frames > tile_latent_min_num_frames:
             return self.temporal_tiled_decode(z, return_dict=return_dict)
 
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
@@ -987,9 +988,10 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
     def temporal_tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
         B, C, T, H, W = x.shape
+        tile_latent_min_tsize = self.tile_sample_min_tsize // self.temporal_compression_ratio
         overlap_size = int(self.tile_sample_min_tsize * (1 - self.tile_overlap_factor))
-        blend_extent = int(self.tile_latent_min_tsize * self.tile_overlap_factor)
-        t_limit = self.tile_latent_min_tsize - blend_extent
+        blend_extent = int(tile_latent_min_tsize * self.tile_overlap_factor)
+        t_limit = tile_latent_min_tsize - blend_extent
 
         # Split the video into tiles and encode them separately.
         row = []
@@ -1020,13 +1022,14 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         # Split z into overlapping tiles and decode them separately.
 
         B, C, T, H, W = z.shape
-        overlap_size = int(self.tile_latent_min_tsize * (1 - self.tile_overlap_factor))
+        tile_latent_min_tsize = self.tile_sample_min_tsize // self.temporal_compression_ratio
+        overlap_size = int(tile_latent_min_tsize * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_sample_min_tsize * self.tile_overlap_factor)
         t_limit = self.tile_sample_min_tsize - blend_extent
 
         row = []
         for i in range(0, T, overlap_size):
-            tile = z[:, :, i : i + self.tile_latent_min_tsize + 1, :, :]
+            tile = z[:, :, i : i + tile_latent_min_tsize + 1, :, :]
             if self.use_tiling and (
                 tile.shape[-1] > self.tile_latent_min_size or tile.shape[-2] > self.tile_latent_min_size
             ):
