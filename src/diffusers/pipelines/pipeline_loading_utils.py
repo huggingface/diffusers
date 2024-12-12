@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from huggingface_hub import ModelCard, model_info
+from huggingface_hub import DDUFEntry, ModelCard, model_info
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -626,7 +626,7 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
-    dduf_entries,
+    dduf_entries: Optional[Dict[str, DDUFEntry]],
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
 

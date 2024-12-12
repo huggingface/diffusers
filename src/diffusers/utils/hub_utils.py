@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
+    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -291,7 +292,7 @@ def _get_model_file(
     user_agent: Optional[Union[Dict, str]] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
-    dduf_entries=None,
+    dduf_entries: Optional[Dict[str, DDUFEntry]]=None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 

@@ -19,10 +19,11 @@ import inspect
 import os
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
+from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers.quantization_config import QuantizationMethod
@@ -128,7 +129,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_entries=None):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[str] = None, dduf_entries: Optional[Dict[str, DDUFEntry]]=None):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
