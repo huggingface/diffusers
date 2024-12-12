@@ -193,7 +193,8 @@ class SanaPipeline(DiffusionPipeline):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
             use_complex_huamen_instruction (`list[str]`, defaults to `complex_huamen_instruction`):
-                If `complex_huamen_instruction` is not empty, the function will use the complex Huamen instruction for the prompt.
+                If `complex_huamen_instruction` is not empty, the function will use the complex Huamen instruction for
+                the prompt.
         """
 
         if device is None:
@@ -582,13 +583,13 @@ class SanaPipeline(DiffusionPipeline):
         max_sequence_length: int = 300,
         complex_human_attention: list[str] = [
             'Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:',
-            '- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.',
-            '- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.',
-            'Here are examples of how to transform or refine prompts:',
-            '- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.',
-            '- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.',
-            'Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:',
-            'User Prompt: '
+            "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
+            "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
+            "Here are examples of how to transform or refine prompts:",
+            "- User Prompt: A cat sleeping -> Enhanced: A small, fluffy white cat curled up in a round shape, sleeping peacefully on a warm sunny windowsill, surrounded by pots of blooming red flowers.",
+            "- User Prompt: A busy city street -> Enhanced: A bustling city street scene at dusk, featuring glowing street lamps, a diverse crowd of people in colorful clothing, and a double-decker bus passing by towering glass skyscrapers.",
+            "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
+            "User Prompt: ",
         ],
     ) -> Union[SanaPipelineOutput, Tuple]:
         """
@@ -669,7 +670,8 @@ class SanaPipeline(DiffusionPipeline):
             max_sequence_length (`int` defaults to `300`):
                 Maximum sequence length to use with the `prompt`.
             complex_human_attention (`list[str]`, *optional*):
-                Instructions for complex human attention: https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.
+                Instructions for complex human attention:
+                https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.
 
         Examples:
 

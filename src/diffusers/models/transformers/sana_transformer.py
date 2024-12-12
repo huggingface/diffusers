@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -405,26 +405,43 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = self.caption_norm(encoder_hidden_states)
 
         # 2. Transformer blocks
-        use_reentrant = is_torch_version("<=", "1.11.0")
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
-        def create_block_forward(block):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                return lambda *inputs: torch.utils.checkpoint.checkpoint(
-                    lambda *x: block(*x), *inputs, use_reentrant=use_reentrant
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
+
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            for block in self.transformer_blocks:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    attention_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    timestep,
+                    post_patch_height,
+                    post_patch_width,
+                    **ckpt_kwargs,
                 )
-            else:
-                return block
 
-        for block in self.transformer_blocks:
-            hidden_states = create_block_forward(block)(
-                hidden_states,
-                attention_mask,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                timestep,
-                post_patch_height,
-                post_patch_width,
-            )
+        else:
+            for block in self.transformer_blocks:
+                hidden_states = block(
+                    hidden_states,
+                    attention_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    timestep,
+                    post_patch_height,
+                    post_patch_width,
+                )
 
         # 3. Normalization
         shift, scale = (

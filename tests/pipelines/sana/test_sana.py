@@ -212,9 +212,6 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = pipe(**inputs)[0]
         assert output.abs().sum() < 1e10
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
-
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
     ):
@@ -249,13 +246,17 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 expected_max_diff,
                 "Attention slicing should not affect the inference results",
             )
-    
+
     # TODO(aryan): Create a dummy gemma model with smol vocab size
-    @unittest.skip("A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error.")
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
     def test_inference_batch_consistent(self):
         pass
 
-    @unittest.skip("A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error.")
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
     def test_inference_batch_single_identical(self):
         pass
 

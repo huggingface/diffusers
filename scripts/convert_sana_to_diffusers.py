@@ -216,7 +216,9 @@ def main(args):
         text_encoder_model_path = "google/gemma-2-2b-it"
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_model_path)
         tokenizer.padding_side = "right"
-        text_encoder = AutoModelForCausalLM.from_pretrained(text_encoder_model_path, torch_dtype=torch.bfloat16).get_decoder()
+        text_encoder = AutoModelForCausalLM.from_pretrained(
+            text_encoder_model_path, torch_dtype=torch.bfloat16
+        ).get_decoder()
 
         # Scheduler
         if args.scheduler_type == "flow-dpm_solver":
