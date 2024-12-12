@@ -731,7 +731,7 @@ class SanaPipeline(DiffusionPipeline):
             latent_channels,
             height,
             width,
-            prompt_embeds.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -746,6 +746,7 @@ class SanaPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
@@ -758,6 +759,7 @@ class SanaPipeline(DiffusionPipeline):
                     timestep=timestep,
                     return_dict=False,
                 )[0]
+                noise_pred = noise_pred.float()
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -771,13 +773,7 @@ class SanaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
-                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

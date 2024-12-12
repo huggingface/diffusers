@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -35,13 +35,13 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Modified from diffusers.models.autoencoders.autoencoder_dc.GLUMBConv
-@maybe_allow_in_graph
-class SanaGLUMBConv(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, mlp_ratio: float = 2.5) -> None:
+class GLUMBConv(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, expand_ratio: float = 4, norm_type: Optional[str] = None, residual_connection: bool = True) -> None:
         super().__init__()
 
-        hidden_channels = int(mlp_ratio * in_channels)
+        hidden_channels = int(expand_ratio * in_channels)
+        self.norm_type = norm_type
+        self.residual_connection = residual_connection
 
         self.nonlinearity = nn.SiLU()
 
@@ -49,14 +49,13 @@ class SanaGLUMBConv(nn.Module):
         self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
         self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
 
-    def forward(self, hidden_states: torch.Tensor, HW: Optional[tuple[int]] = None) -> torch.Tensor:
-        B, N, C = hidden_states.shape
-        if HW is None:
-            H = W = int(N**0.5)
-        else:
-            H, W = HW
+        self.norm = None
+        if norm_type == "rms_norm":
+            self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
 
-        hidden_states = hidden_states.reshape(B, H, W, C).permute(0, 3, 1, 2)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.residual_connection:
+            residual = hidden_states    
 
         hidden_states = self.conv_inverted(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
@@ -66,23 +65,22 @@ class SanaGLUMBConv(nn.Module):
         hidden_states = hidden_states * self.nonlinearity(gate)
 
         hidden_states = self.conv_point(hidden_states)
-        hidden_states = hidden_states.reshape(B, C, N).permute(0, 2, 1)
+        
+        if self.norm_type == "rms_norm":
+            # move channel to the last dimension so we apply RMSnorm across channel dimension
+            hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
 
+        if self.residual_connection:
+            hidden_states = hidden_states + residual
+        
         return hidden_states
 
 
 class SanaTransformerBlock(nn.Module):
     r"""
-    A Transformer block following the Linear Transformer architecture, introduced in Sana
-
-    Reference: https://arxiv.org/abs/2410.10629
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
+    Transformer block introduced in [Sana](https://huggingface.co/papers/2410.10629).
     """
-
+    
     def __init__(
         self,
         dim: int = 2240,
@@ -127,11 +125,7 @@ class SanaTransformerBlock(nn.Module):
             )
 
         # 3. Feed-forward
-        self.ff = SanaGLUMBConv(
-            in_channels=dim,
-            out_channels=dim,
-            mlp_ratio=mlp_ratio,
-        )
+        self.ff = GLUMBConv(dim, dim, mlp_ratio, norm_type=None, residual_connection=False)
 
         self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
@@ -142,7 +136,8 @@ class SanaTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
-        HW: Optional[tuple[int]] = None,
+        height: int = None,
+        width: int = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
 
@@ -171,7 +166,9 @@ class SanaTransformerBlock(nn.Module):
         norm_hidden_states = self.norm2(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
-        ff_output = self.ff(norm_hidden_states, HW=HW)
+        norm_hidden_states = norm_hidden_states.unflatten(1, (height, width)).permute(0, 3, 1, 2)
+        ff_output = self.ff(norm_hidden_states)
+        ff_output = ff_output.flatten(2, 3).permute(0, 2, 1)
         hidden_states = hidden_states + gate_mlp * ff_output
 
         return hidden_states
@@ -179,7 +176,7 @@ class SanaTransformerBlock(nn.Module):
 
 class SanaTransformer2DModel(ModelMixin, ConfigMixin):
     r"""
-    A 2D Transformer model as introduced in [Sana](https://arxiv.org/abs/2410.10629) family of models.
+    A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
 
     Args:
         in_channels (`int`, defaults to `32`):
@@ -204,7 +201,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             The expansion ratio to use in the GLUMBConv layer.
         dropout (`float`, defaults to `0.0`):
             The dropout probability.
-        attention_bias (`bool`, defaults to `True`):
+        attention_bias (`bool`, defaults to `False`):
             Whether to use bias in the attention layer.
         sample_size (`int`, defaults to `32`):
             The base size of the input latent.
@@ -233,7 +230,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
-        attention_bias: bool = True,
+        attention_bias: bool = False,
         sample_size: int = 32,
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
@@ -245,7 +242,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
 
         # 1. Patch Embedding
-        self.pos_embed = PatchEmbed(
+        self.patch_embed = PatchEmbed(
             height=sample_size,
             width=sample_size,
             patch_size=patch_size,
@@ -255,7 +252,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             pos_embed_type=None,
         )
 
-        # 2. Caption Embedding
+        # 2. Additional condition embeddings
+        self.time_embed = AdaLayerNormSingle(inner_dim)
+
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
         self.caption_norm = RMSNorm(inner_dim, eps=1e-5)
 
@@ -284,8 +283,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
-
-        self.adaln_single = AdaLayerNormSingle(inner_dim)
 
         self.gradient_checkpointing = False
 
@@ -361,7 +358,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ):
+    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -387,11 +384,12 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
 
         # 1. Input
         batch_size, num_channels, height, width = hidden_states.shape
-        post_patch_height = height // self.config.patch_size
-        post_patch_width = width // self.config.patch_size
-        hidden_states = self.pos_embed(hidden_states)
+        p = self.config.patch_size
+        post_patch_height, post_patch_width = height // p, width // p
 
-        timestep, embedded_timestep = self.adaln_single(
+        hidden_states = self.patch_embed(hidden_states)
+
+        timestep, embedded_timestep = self.time_embed(
             timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
         )
 
@@ -418,7 +416,8 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
                 encoder_hidden_states,
                 encoder_attention_mask,
                 timestep,
-                (post_patch_height, post_patch_width),
+                post_patch_height,
+                post_patch_width,
             )
 
         # 3. Normalization
@@ -436,14 +435,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
             batch_size, post_patch_height, post_patch_width, self.config.patch_size, self.config.patch_size, -1
         )
         hidden_states = hidden_states.permute(0, 5, 1, 3, 2, 4)
-        output = hidden_states.reshape(
-            shape=(
-                batch_size,
-                -1,
-                post_patch_height * self.config.patch_size,
-                post_patch_width * self.config.patch_size,
-            )
-        )
+        output = hidden_states.reshape(batch_size, -1, post_patch_height * p, post_patch_width * p)
 
         if not return_dict:
             return (output,)

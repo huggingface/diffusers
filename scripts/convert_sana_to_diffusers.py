@@ -59,8 +59,8 @@ def main(args):
     converted_state_dict = {}
 
     # Patch embeddings.
-    converted_state_dict["pos_embed.proj.weight"] = state_dict.pop("x_embedder.proj.weight")
-    converted_state_dict["pos_embed.proj.bias"] = state_dict.pop("x_embedder.proj.bias")
+    converted_state_dict["patch_embed.proj.weight"] = state_dict.pop("x_embedder.proj.weight")
+    converted_state_dict["patch_embed.proj.bias"] = state_dict.pop("x_embedder.proj.bias")
 
     # Caption projection.
     converted_state_dict["caption_projection.linear_1.weight"] = state_dict.pop("y_embedder.y_proj.fc1.weight")
@@ -69,18 +69,18 @@ def main(args):
     converted_state_dict["caption_projection.linear_2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
     # AdaLN-single LN
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
         "t_embedder.mlp.0.weight"
     )
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.bias"] = state_dict.pop("t_embedder.mlp.0.bias")
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.bias"] = state_dict.pop("t_embedder.mlp.0.bias")
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
         "t_embedder.mlp.2.weight"
     )
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
 
     # Shared norm.
-    converted_state_dict["adaln_single.linear.weight"] = state_dict.pop("t_block.1.weight")
-    converted_state_dict["adaln_single.linear.bias"] = state_dict.pop("t_block.1.bias")
+    converted_state_dict["time_embed.linear.weight"] = state_dict.pop("t_block.1.weight")
+    converted_state_dict["time_embed.linear.bias"] = state_dict.pop("t_block.1.bias")
 
     # y norm
     converted_state_dict["caption_norm.weight"] = state_dict.pop("attention_y_norm.weight")
@@ -166,18 +166,19 @@ def main(args):
             num_cross_attention_heads=model_kwargs[args.model_type]["num_cross_attention_heads"],
             cross_attention_head_dim=model_kwargs[args.model_type]["cross_attention_head_dim"],
             cross_attention_dim=model_kwargs[args.model_type]["cross_attention_dim"],
+            caption_channels=2304,
+            mlp_ratio=2.5,
             attention_bias=False,
             sample_size=32,
             patch_size=1,
             norm_elementwise_affine=False,
             norm_eps=1e-6,
-            caption_channels=2304,
-            expand_ratio=2.5,
         )
+    
     if is_accelerate_available():
         load_model_dict_into_meta(transformer, converted_state_dict)
     else:
-        transformer.load_state_dict(converted_state_dict, strict=True)
+        transformer.load_state_dict(converted_state_dict, strict=True, assign=True)
 
     try:
         state_dict.pop("y_embedder.y_embedding")

@@ -5361,8 +5361,6 @@ class SanaLinearAttnProcessor2_0:
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
 
-        batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
 
@@ -5370,12 +5368,9 @@ class SanaLinearAttnProcessor2_0:
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
-        key = key.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1).transpose(-1, -2)
-        value = value.transpose(-1, -2).reshape(batch_size, attn.heads, head_dim, -1)
+        query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
+        key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
+        value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
 
         query = self.kernel_func(query)
         key = self.kernel_func(key)
@@ -5386,17 +5381,14 @@ class SanaLinearAttnProcessor2_0:
         scores = torch.matmul(value, key)
         hidden_states = torch.matmul(scores, query)
 
-        if hidden_states.dtype in [torch.float16, torch.bfloat16]:
-            hidden_states = hidden_states.float()
-
         hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
-        hidden_states = hidden_states.view(batch_size, attn.heads * head_dim, -1).permute(0, 2, 1)
+        hidden_states = hidden_states.flatten(1, 2).transpose(1, 2)
         hidden_states = hidden_states.to(original_dtype)
 
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
-        if hidden_states.dtype == torch.float16:
+        if original_dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
 
         return hidden_states

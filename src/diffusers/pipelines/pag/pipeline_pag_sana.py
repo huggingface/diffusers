@@ -27,7 +27,6 @@ from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGI
 from ...schedulers import FlowDPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
