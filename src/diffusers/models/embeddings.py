@@ -21,7 +21,7 @@ from torch import nn
 
 from ..utils import deprecate
 from .activations import FP32SiLU, get_activation
-from .attention_processor import Attention, FusedAttnProcessor2_0
+from .attention_processor import Attention
 
 
 def get_timestep_embedding(
@@ -2143,7 +2143,7 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         emb = self.adaln_proj(self.adaln_silu(timestep_emb))
         shift_msa, scale_msa, shift_mlp, scale_mlp = emb.chunk(4, dim=1)
 
-        # Fused Attention 
+        # Fused Attention
         residual = latents
         x = self.ln0(x)
         latents = self.ln1(latents) * (1 + scale_msa[:, None]) + shift_msa[:, None]
@@ -2171,7 +2171,7 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         latents = self.attn.to_out[0](latents)
         latents = self.attn.to_out[1](latents)
         latents = latents + residual
-        
+
         ## FeedForward
         residual = latents
         latents = self.adaln_norm(latents) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]

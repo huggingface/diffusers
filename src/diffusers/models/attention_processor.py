@@ -3927,8 +3927,9 @@ class FusedAttnProcessor2_0:
             key = attn.norm_k(key)
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
