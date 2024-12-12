@@ -617,7 +617,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         height: Optional[int] = None,
         num_inference_steps: int = 30,
-        timesteps: List[int] = None,
         guidance_scale: float = 4.0,
         negative_prompt: Union[str, List[str]] = None,
         sigmas: List[float] = None,
@@ -649,10 +648,6 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
@@ -776,9 +771,7 @@ class LuminaText2ImgPipeline(DiffusionPipeline):
             prompt_attention_mask = torch.cat([prompt_attention_mask, negative_prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
