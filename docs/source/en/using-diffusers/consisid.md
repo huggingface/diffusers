@@ -84,15 +84,8 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
   </tr>
 </table>
 
-## Citation
+## Resources
 
-If you find consisid useful in your research, please consider giving a star and citation.
-
-```BibTeX
-@article{yuan2024identity,
-  title={Identity-Preserving Text-to-Video Generation by Frequency Decomposition},
-  author={Yuan, Shenghai and Huang, Jinfa and He, Xianyi and Ge, Yunyuan and Shi, Yujun and Chen, Liuhan and Luo, Jiebo and Yuan, Li},
-  journal={arXiv preprint arXiv:2411.17440},
-  year={2024}
-}
-```
+Learn more about ConsisID with the following resources.
+- A [video](https://www.youtube.com/watch?v=PhlgC-bI5SQ) demonstrating ConsisID's main features.
+- The research paper, [Identity-Preserving Text-to-Video Generation by Frequency Decomposition](https://hf.co/papers/2411.17440) for more details.
