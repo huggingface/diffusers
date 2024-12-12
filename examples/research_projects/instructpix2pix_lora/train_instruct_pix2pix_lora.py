@@ -43,6 +43,8 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -51,9 +53,12 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available
+from diffusers.training_utils import cast_training_params, EMAModel
+from diffusers.utils import check_min_version, deprecate, convert_state_dict_to_diffusers, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
+
 if is_wandb_available():
 
     import wandb
@@ -68,6 +73,47 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("input_image", "edit_prompt", "edited_image"),
 }
 WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
+
+def save_model_card(
+    repo_id: str,
+    images: list = None,
+    base_model: str = None,
+    dataset_name: str = None,
+    repo_folder: str = None,
+):
+    img_str = ""
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
+
+    model_description = f"""
+# LoRA text2image fine-tuning - {repo_id}
+These are LoRA adaption weights for {base_model}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
+{img_str}
+"""
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        "lora",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
+
 
 def log_validation(
     pipeline,
@@ -535,43 +581,35 @@ def main():
     unet.requires_grad_(False)
 
     # referred to https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py
-    unet_lora_parameters = []
-    for attn_processor_name, attn_processor in unet.attn_processors.items():
-        # Parse the attention module.
-        attn_module = unet
-        for n in attn_processor_name.split(".")[:-1]:
-            attn_module = getattr(attn_module, n)
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
 
-        # Set the `lora_layer` attribute of the attention-related matrices.
-        attn_module.to_q.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
-            )
-        )
-        attn_module.to_k.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
-            )
-        )
+    # Freeze the unet parameters before adding adapters
+    for param in unet.parameters():
+        param.requires_grad_(False)
 
-        attn_module.to_v.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
-            )
-        )
-        attn_module.to_out[0].set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_out[0].in_features,
-                out_features=attn_module.to_out[0].out_features,
-                rank=args.rank,
-            )
-        )
+    unet_lora_config = LoraConfig(
+        r=args.rank,
+        lora_alpha=args.rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+    )
 
-        # Accumulate the LoRA params to optimize.
-        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
+
+    # Add adapter and make sure the trainable params are in float32.
+    unet.add_adapter(unet_lora_config)
+    if args.mixed_precision == "fp16":
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -589,6 +627,8 @@ def main():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -657,9 +697,9 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
-    # train on only unet_lora_parameters
+    # train on only lora_layers
     optimizer = optimizer_cls(
-        unet_lora_parameters,
+        lora_layers,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -817,8 +857,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, unet_lora_parameters, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, unet_lora_parameters, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
     )
 
     if args.use_ema:
@@ -964,7 +1004,7 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(concatenated_noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -974,7 +1014,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet_lora_parameters, args.max_grad_norm)
+                    accelerator.clip_grad_norm_(lora_layers, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -982,7 +1022,7 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
-                    ema_unet.step(unet_lora_parameters)
+                    ema_unet.step(lora_layers)
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -1012,6 +1052,16 @@ def main():
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+                        unwrapped_unet = unwrap_model(unet)
+                        unet_lora_state_dict = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(unwrapped_unet)
+                        )
+
+                        StableDiffusionInstructPix2PixPipeline.save_lora_weights(
+                            save_directory=save_path,
+                            unet_lora_layers=unet_lora_state_dict,
+                            safe_serialization=True,
+                        )
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1064,9 +1114,19 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
+
+        # store only LORA layers
+        unet = unet.to(torch.float32)
+
+        unwrapped_unet = unwrap_model(unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
+        StableDiffusionInstructPix2PixPipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=unet_lora_state_dict,
+            safe_serialization=True,
+        )
 
         pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -1076,10 +1136,25 @@ def main():
             revision=args.revision,
             variant=args.variant,
         )
-        # store only LORA layers
-        unet.save_attn_procs(args.output_dir)
+        pipeline.load_lora_weights(args.output_dir)
+        
+        images =  None
+        if (args.val_image_url is not None) and (args.validation_prompt is not None):
+            images = log_validation(
+                pipeline,
+                args,
+                accelerator,
+                generator,
+            )
 
         if args.push_to_hub:
+            save_model_card(
+                repo_id,
+                images=images,
+                base_model=args.pretrained_model_name_or_path,
+                dataset_name=args.dataset_name,
+                repo_folder=args.output_dir,
+            )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
