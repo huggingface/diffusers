@@ -207,15 +207,13 @@ def main(args):
     else:
         print(colored(f"Saving the whole SanaPipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        ae = AutoencoderDC.from_pretrained(
-            "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers",
-        )
+        ae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", torch_dtype=torch.float32)
 
         # Text Encoder
         text_encoder_model_path = "google/gemma-2-2b-it"
         tokenizer = AutoTokenizer.from_pretrained(text_encoder_model_path)
         tokenizer.padding_side = "right"
-        text_encoder = AutoModelForCausalLM.from_pretrained(text_encoder_model_path).get_decoder()
+        text_encoder = AutoModelForCausalLM.from_pretrained(text_encoder_model_path, torch_dtype=torch.bfloat16).get_decoder()
 
         # Scheduler
         if args.scheduler_type == "flow-dpm_solver":
