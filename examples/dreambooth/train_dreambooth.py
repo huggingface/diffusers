@@ -1303,10 +1303,10 @@ def main(args):
 
                     if noise_scheduler.config.prediction_type == "v_prediction":
                         # Velocity objective needs to be floored to an SNR weight of one.
-                        divisor = snr + 1         
+                        divisor = snr + 1
                     else:
                         divisor = snr
-                    
+
                     mse_loss_weights = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / divisor
                     )
