@@ -193,7 +193,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
-        dduf_file: Optional[Union[str, os.PathLike]] = None,
         **kwargs,
     ):
         """
@@ -219,8 +218,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            dduf_file (`str` or `os.PathLike`, *optional*, defaults to `None`):
-                If specified, the weights will be saved in dduf format with the specified name.
 
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
@@ -305,28 +302,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
-            if dduf_file:
-                import shutil
-
-                from huggingface_hub import export_folder_as_dduf
-
-                dduf_file_path = os.path.join(save_directory, dduf_file)
-                dir_to_archive = os.path.join(save_directory, pipeline_component_name)
-                if os.path.isdir(dir_to_archive):
-                    export_folder_as_dduf(dduf_file_path, dir_to_archive)
-                    shutil.rmtree(dir_to_archive)
-
         # finally save the config
         self.save_config(save_directory)
-
-        # Takes care of including the "model_index.json" inside the ZIP.
-        if dduf_file:
-            from huggingface_hub import add_entry_to_dduf
-
-            config_path = os.path.join(save_directory, self.config_name)
-            # add config.json to the root of the dduf_file_path
-            add_entry_to_dduf(dduf_file_path, self.config_name, content=config_path)
-            os.remove(config_path)
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
