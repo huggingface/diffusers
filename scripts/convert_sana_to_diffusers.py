@@ -200,6 +200,7 @@ def main(args):
                 attrs=["bold"],
             )
         )
+        transformer = transformer.to(weight_dtype)
         transformer.save_pretrained(
             os.path.join(args.dump_path, "transformer"), safe_serialization=True, max_shard_size="5GB", variant=variant
         )
