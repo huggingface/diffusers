@@ -24,10 +24,10 @@ import os
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union, Optional, Dict
 
 import numpy as np
-from huggingface_hub import create_repo, hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download, DDUFEntry
 from huggingface_hub.utils import (
     EntryNotFoundError,
     RepositoryNotFoundError,
@@ -347,7 +347,7 @@ class ConfigMixin:
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
         user_agent = kwargs.pop("user_agent", {})
-        dduf_entries = kwargs.pop("dduf_entries", None)
+        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
 
         user_agent = {**user_agent, "file_type": "config"}
         user_agent = http_user_agent(user_agent)
