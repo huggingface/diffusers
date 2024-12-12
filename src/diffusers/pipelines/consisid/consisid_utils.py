@@ -4,6 +4,8 @@ import cv2
 import insightface
 import numpy as np
 import torch
+from consisid_eva_clip import create_model_and_transforms
+from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from facexlib.parsing import init_parsing_model
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
 from insightface.app import FaceAnalysis
@@ -13,22 +15,20 @@ from torchvision.transforms.functional import normalize, resize
 
 from diffusers.utils import load_image
 
-from consisid_eva_clip import create_model_and_transforms
-from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-
 
 def resize_numpy_image_long(image, resize_long_edge=768):
     """
     Resize the input image to a specified long edge while maintaining aspect ratio.
-    
+
     Args:
         image (numpy.ndarray): Input image (H x W x C or H x W).
         resize_long_edge (int): The target size for the long edge of the image. Default is 768.
-        
+
     Returns:
-        numpy.ndarray: Resized image with the long edge matching `resize_long_edge`, while maintaining the aspect ratio.
+        numpy.ndarray: Resized image with the long edge matching `resize_long_edge`, while maintaining the aspect
+        ratio.
     """
-    
+
     h, w = image.shape[:2]
     if max(h, w) <= resize_long_edge:
         return image
