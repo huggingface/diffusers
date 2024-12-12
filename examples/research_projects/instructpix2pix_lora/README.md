@@ -24,7 +24,10 @@ accelerate launch finetune_instruct_pix2pix.py \
   --rank=4 \
   --output_dir=$OUTPUT_DIR \
   --report_to=wandb \
-  --push_to_hub
+  --push_to_hub \
+  --original_image_column="original_image" \
+  --edited_image_column="cartoonized_image" \
+  --edit_prompt_column="edit_prompt"
 ```
 
 ## Inference
