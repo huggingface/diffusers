@@ -251,13 +251,6 @@ class AllegroPipeline(DiffusionPipeline):
         if device is None:
             device = self._execution_device
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
         # See Section 3.1. of the paper.
         max_length = max_sequence_length
 
@@ -302,12 +295,12 @@ class AllegroPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
-        prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
-        prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.repeat(1, num_videos_per_prompt)
+        prompt_attention_mask = prompt_attention_mask.view(bs_embed * num_videos_per_prompt, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [negative_prompt] * batch_size if isinstance(negative_prompt, str) else negative_prompt
+            uncond_tokens = [negative_prompt] * bs_embed if isinstance(negative_prompt, str) else negative_prompt
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -334,10 +327,10 @@ class AllegroPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
-            negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
-            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_videos_per_prompt, 1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(1, num_videos_per_prompt)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed * num_videos_per_prompt, -1)
         else:
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
@@ -630,19 +623,16 @@ class AllegroPipeline(DiffusionPipeline):
                 self.transformer.config.interpolation_scale_h,
                 self.transformer.config.interpolation_scale_w,
             ),
+            device=device,
         )
 
-        grid_t = torch.from_numpy(grid_t).to(device=device, dtype=torch.long)
-        grid_h = torch.from_numpy(grid_h).to(device=device, dtype=torch.long)
-        grid_w = torch.from_numpy(grid_w).to(device=device, dtype=torch.long)
+        grid_t = grid_t.to(dtype=torch.long)
+        grid_h = grid_h.to(dtype=torch.long)
+        grid_w = grid_w.to(dtype=torch.long)
 
         pos = torch.cartesian_prod(grid_t, grid_h, grid_w)
         pos = pos.reshape(-1, 3).transpose(0, 1).reshape(3, 1, -1).contiguous()
         grid_t, grid_h, grid_w = pos
-
-        freqs_t = (freqs_t[0].to(device=device), freqs_t[1].to(device=device))
-        freqs_h = (freqs_h[0].to(device=device), freqs_h[1].to(device=device))
-        freqs_w = (freqs_w[0].to(device=device), freqs_w[1].to(device=device))
 
         return (freqs_t, freqs_h, freqs_w), (grid_t, grid_h, grid_w)
 

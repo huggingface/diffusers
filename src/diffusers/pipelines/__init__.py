@@ -127,12 +127,17 @@ else:
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
     _import_structure["flux"] = [
+        "FluxControlPipeline",
+        "FluxControlImg2ImgPipeline",
         "FluxControlNetPipeline",
         "FluxControlNetImg2ImgPipeline",
         "FluxControlNetInpaintPipeline",
         "FluxImg2ImgPipeline",
         "FluxInpaintPipeline",
         "FluxPipeline",
+        "FluxFillPipeline",
+        "FluxPriorReduxPipeline",
+        "ReduxImageEncoder",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -157,6 +162,9 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
         ]
     )
     _import_structure["pag"].extend(
@@ -166,8 +174,10 @@ else:
             "KolorsPAGPipeline",
             "HunyuanDiTPAGPipeline",
             "StableDiffusion3PAGPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusionPAGPipeline",
             "StableDiffusionPAGImg2ImgPipeline",
+            "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
@@ -489,6 +499,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
         )
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
@@ -521,12 +534,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionPipeline,
         )
         from .flux import (
+            FluxControlImg2ImgPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
+            FluxControlPipeline,
+            FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
             FluxPipeline,
+            FluxPriorReduxPipeline,
+            ReduxImageEncoder,
         )
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
@@ -579,10 +597,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTPAGPipeline,
             KolorsPAGPipeline,
             PixArtSigmaPAGPipeline,
+            StableDiffusion3PAGImg2ImgPipeline,
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGInpaintPipeline,
             StableDiffusionControlNetPAGPipeline,
             StableDiffusionPAGImg2ImgPipeline,
+            StableDiffusionPAGInpaintPipeline,
             StableDiffusionPAGPipeline,
             StableDiffusionXLControlNetPAGImg2ImgPipeline,
             StableDiffusionXLControlNetPAGPipeline,
