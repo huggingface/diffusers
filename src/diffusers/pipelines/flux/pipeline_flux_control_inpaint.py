@@ -603,7 +603,6 @@ class FluxControlInpaintPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux_img2img.FluxImg2ImgPipeline.prepare_latents
     def prepare_latents(
         self,
         image,
@@ -649,7 +648,7 @@ class FluxControlInpaintPipeline(
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
-        return latents, latent_image_ids
+        return latents, noise, image_latents, latent_image_ids
 
     # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
     def prepare_image(
