@@ -712,7 +712,7 @@ class ConsisIDPipeline(DiffusionPipeline):
                 The height in pixels of the generated image. This is set to 480 by default for the best results.
             width (`int`, *optional*, defaults to self.transformer.config.sample_height * self.vae_scale_factor_spatial):
                 The width in pixels of the generated image. This is set to 720 by default for the best results.
-            num_frames (`int`, defaults to `48`):
+            num_frames (`int`, defaults to `49`):
                 Number of frames to generate. Must be divisible by self.vae_scale_factor_temporal. Generated video will
                 contain 1 extra frame because ConsisID is conditioned with (num_seconds * fps + 1) frames where
                 num_seconds is 6 and fps is 4. However, since videos can be saved at any fps, the only condition that
