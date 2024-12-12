@@ -561,7 +561,7 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(cls, json_file: Union[str, os.PathLike], dduf_entries=None):
+    def _dict_from_json_file(cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[Dict[str, DDUFEntry]] = None):
         if dduf_entries:
             text = dduf_entries[json_file].read_text()
         else:
