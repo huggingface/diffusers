@@ -371,7 +371,7 @@ class SingleTokenRefiner(nn.Module):
         if attention_mask is None:
             pooled_projections = hidden_states.mean(dim=1)
         else:
-            mask_float = attention_mask.float().unsqueeze(-1)  # [b, s1, 1]
+            mask_float = attention_mask.float().unsqueeze(-1)
             pooled_projections = (hidden_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
             pooled_projections = pooled_projections.to(original_dtype)
 
@@ -409,7 +409,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
             out_dim=hidden_size,
             bias=True,
             processor=HunyuanVideoAttnProcessor2_0(),
-            qk_norm="rms_norm",
+            qk_norm=qk_norm,
             eps=1e-6,
             pre_only=True,
         )

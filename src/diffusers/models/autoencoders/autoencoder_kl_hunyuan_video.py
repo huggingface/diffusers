@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import logging
+from ...utils import logging, is_torch_version
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..attention_processor import Attention, SpatialNorm
@@ -141,10 +141,10 @@ class UpsampleCausal3D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
+        hidden_states: torch.Tensor,
         output_size: Optional[int] = None,
         scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -246,7 +246,7 @@ class DownsampleCausal3D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -257,114 +257,6 @@ class DownsampleCausal3D(nn.Module):
         hidden_states = self.conv(hidden_states)
 
         return hidden_states
-
-
-def get_down_block3d(
-    down_block_type: str,
-    num_layers: int,
-    in_channels: int,
-    out_channels: int,
-    temb_channels: int,
-    add_downsample: bool,
-    downsample_stride: int,
-    resnet_eps: float,
-    resnet_act_fn: str,
-    transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = None,
-    resnet_groups: Optional[int] = None,
-    cross_attention_dim: Optional[int] = None,
-    downsample_padding: Optional[int] = None,
-    dual_cross_attention: bool = False,
-    use_linear_projection: bool = False,
-    only_cross_attention: bool = False,
-    upcast_attention: bool = False,
-    resnet_time_scale_shift: str = "default",
-    attention_type: str = "default",
-    resnet_skip_time_act: bool = False,
-    resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
-    attention_head_dim: Optional[int] = None,
-    downsample_type: Optional[str] = None,
-    dropout: float = 0.0,
-):
-    # If attn head dim is not defined, we default it to the number of heads
-    if attention_head_dim is None:
-        logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
-        )
-        attention_head_dim = num_attention_heads
-
-    down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
-    if down_block_type == "DownEncoderBlockCausal3D":
-        return DownEncoderBlockCausal3D(
-            num_layers=num_layers,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            dropout=dropout,
-            add_downsample=add_downsample,
-            downsample_stride=downsample_stride,
-            resnet_eps=resnet_eps,
-            resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
-            downsample_padding=downsample_padding,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-        )
-    raise ValueError(f"{down_block_type} does not exist.")
-
-
-def get_up_block3d(
-    up_block_type: str,
-    num_layers: int,
-    in_channels: int,
-    out_channels: int,
-    prev_output_channel: int,
-    temb_channels: int,
-    add_upsample: bool,
-    upsample_scale_factor: Tuple,
-    resnet_eps: float,
-    resnet_act_fn: str,
-    resolution_idx: Optional[int] = None,
-    transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = None,
-    resnet_groups: Optional[int] = None,
-    cross_attention_dim: Optional[int] = None,
-    dual_cross_attention: bool = False,
-    use_linear_projection: bool = False,
-    only_cross_attention: bool = False,
-    upcast_attention: bool = False,
-    resnet_time_scale_shift: str = "default",
-    attention_type: str = "default",
-    resnet_skip_time_act: bool = False,
-    resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
-    attention_head_dim: Optional[int] = None,
-    upsample_type: Optional[str] = None,
-    dropout: float = 0.0,
-) -> nn.Module:
-    # If attn head dim is not defined, we default it to the number of heads
-    if attention_head_dim is None:
-        logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
-        )
-        attention_head_dim = num_attention_heads
-
-    up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
-    if up_block_type == "UpDecoderBlockCausal3D":
-        return UpDecoderBlockCausal3D(
-            num_layers=num_layers,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            resolution_idx=resolution_idx,
-            dropout=dropout,
-            add_upsample=add_upsample,
-            upsample_scale_factor=upsample_scale_factor,
-            resnet_eps=resnet_eps,
-            resnet_act_fn=resnet_act_fn,
-            resnet_groups=resnet_groups,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            temb_channels=temb_channels,
-        )
-    raise ValueError(f"{up_block_type} does not exist.")
 
 
 class ResnetBlockCausal3D(nn.Module):
@@ -388,7 +280,7 @@ class ResnetBlockCausal3D(nn.Module):
         skip_time_act: bool = False,
         # default, scale_shift, ada_group, spatial
         time_embedding_norm: str = "default",
-        kernel: Optional[torch.FloatTensor] = None,
+        kernel: Optional[torch.Tensor] = None,
         output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
         up: bool = False,
@@ -468,10 +360,10 @@ class ResnetBlockCausal3D(nn.Module):
 
     def forward(
         self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
+        input_tensor: torch.Tensor,
+        temb: torch.Tensor,
         scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         hidden_states = input_tensor
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
@@ -614,7 +506,7 @@ class UNetMidBlockCausal3D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
@@ -685,7 +577,7 @@ class DownEncoderBlockCausal3D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=None, scale=scale)
 
@@ -754,8 +646,8 @@ class UpDecoderBlockCausal3D(nn.Module):
         self.resolution_idx = resolution_idx
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
-    ) -> torch.FloatTensor:
+        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, scale: float = 1.0
+    ) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
 
@@ -768,15 +660,15 @@ class UpDecoderBlockCausal3D(nn.Module):
 
 class EncoderCausal3D(nn.Module):
     r"""
-    The `EncoderCausal3D` layer of a variational autoencoder that encodes its input into a latent representation.
+    Causal encoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
     """
-
+    
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlockCausal3D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: Tuple[str, ...] = ("DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D", "DownEncoderBlockCausal3D"),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -784,15 +676,13 @@ class EncoderCausal3D(nn.Module):
         mid_block_add_attention=True,
         time_compression_ratio: int = 4,
         spatial_compression_ratio: int = 8,
-    ):
+    ) -> None:
         super().__init__()
-        self.layers_per_block = layers_per_block
-
+        
         self.conv_in = CausalConv3d(in_channels, block_out_channels[0], kernel_size=3, stride=1)
         self.mid_block = None
         self.down_blocks = nn.ModuleList([])
 
-        # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
@@ -815,23 +705,21 @@ class EncoderCausal3D(nn.Module):
             downsample_stride_HW = (2, 2) if add_spatial_downsample else (1, 1)
             downsample_stride_T = (2,) if add_time_downsample else (1,)
             downsample_stride = tuple(downsample_stride_T + downsample_stride_HW)
-            down_block = get_down_block3d(
-                down_block_type,
-                num_layers=self.layers_per_block,
+
+            down_block = DownEncoderBlockCausal3D(
+                num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 add_downsample=bool(add_spatial_downsample or add_time_downsample),
                 downsample_stride=downsample_stride,
                 resnet_eps=1e-6,
-                downsample_padding=0,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attention_head_dim=output_channel,
-                temb_channels=None,
+                downsample_padding=0,
             )
+            
             self.down_blocks.append(down_block)
 
-        # mid
         self.mid_block = UNetMidBlockCausal3D(
             in_channels=block_out_channels[-1],
             resnet_eps=1e-6,
@@ -844,50 +732,58 @@ class EncoderCausal3D(nn.Module):
             add_attention=mid_block_add_attention,
         )
 
-        # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
         self.conv_out = CausalConv3d(block_out_channels[-1], conv_out_channels, kernel_size=3)
 
-    def forward(self, sample: torch.FloatTensor) -> torch.FloatTensor:
-        r"""The forward method of the `EncoderCausal3D` class."""
-        assert len(sample.shape) == 5, "The input tensor should have 5 dimensions"
+        self.gradient_checkpointing = False
 
-        sample = self.conv_in(sample)
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # 1. Input layer
+        hidden_states = self.conv_in(hidden_states)
 
-        # down
+        use_reentrant = is_torch_version("<=", "1.11.0")
+
+        def create_block_forward(block):
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                return lambda *inputs: torch.utils.checkpoint.checkpoint(
+                    lambda *x: block(*x), *inputs, use_reentrant=use_reentrant
+                )
+            else:
+                return block
+
+        # 2. Down blocks
         for down_block in self.down_blocks:
-            sample = down_block(sample)
+            hidden_states = create_block_forward(down_block)(hidden_states)
 
-        # middle
-        sample = self.mid_block(sample)
+        # 3. Mid block
+        hidden_states = self.mid_block(hidden_states)
 
-        # post-process
-        sample = self.conv_norm_out(sample)
-        sample = self.conv_act(sample)
-        sample = self.conv_out(sample)
+        # 4. Output layers
+        hidden_states = self.conv_norm_out(hidden_states)
+        hidden_states = self.conv_act(hidden_states)
+        hidden_states = self.conv_out(hidden_states)
 
-        return sample
+        return hidden_states
 
 
 class DecoderCausal3D(nn.Module):
     r"""
-    The `DecoderCausal3D` layer of a variational autoencoder that decodes its latent representation into an output
-    sample.
+    Causal decoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
     """
 
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlockCausal3D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        up_block_types: Tuple[str, ...] = ("UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D", "UpDecoderBlockCausal3D"),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
-        norm_type: str = "group",  # group, spatial
+        norm_type: str = "group",
         mid_block_add_attention=True,
         time_compression_ratio: int = 4,
         spatial_compression_ratio: int = 8,
@@ -935,21 +831,20 @@ class DecoderCausal3D(nn.Module):
             upsample_scale_factor_HW = (2, 2) if add_spatial_upsample else (1, 1)
             upsample_scale_factor_T = (2,) if add_time_upsample else (1,)
             upsample_scale_factor = tuple(upsample_scale_factor_T + upsample_scale_factor_HW)
-            up_block = get_up_block3d(
-                up_block_type,
+            
+            up_block = UpDecoderBlockCausal3D(
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                prev_output_channel=None,
                 add_upsample=bool(add_spatial_upsample or add_time_upsample),
                 upsample_scale_factor=upsample_scale_factor,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
-                attention_head_dim=output_channel,
-                temb_channels=temb_channels,
                 resnet_time_scale_shift=norm_type,
+                temb_channels=temb_channels,
             )
+            
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
@@ -965,9 +860,9 @@ class DecoderCausal3D(nn.Module):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
-        latent_embeds: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        sample: torch.Tensor,
+        latent_embeds: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""The forward method of the `DecoderCausal3D` class."""
         assert len(sample.shape) == 5, "The input tensor should have 5 dimensions"
 
@@ -1022,14 +917,14 @@ class DecoderCausal3D(nn.Module):
 
 @dataclass
 class DecoderOutput2(BaseOutput):
-    sample: torch.FloatTensor
+    sample: torch.Tensor
     posterior: Optional[DiagonalGaussianDistribution] = None
 
 
 class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
     r"""
-    A VAE model with KL loss for encoding images/videos into latents and decoding latent representations into
-    images/videos.
+    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Introduced
+    in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -1076,12 +971,12 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             down_block_types=down_block_types,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
-            act_fn=act_fn,
             norm_num_groups=norm_num_groups,
+            act_fn=act_fn,
             double_z=True,
+            mid_block_add_attention=mid_block_add_attention,
             time_compression_ratio=time_compression_ratio,
             spatial_compression_ratio=spatial_compression_ratio,
-            mid_block_add_attention=mid_block_add_attention,
         )
 
         self.decoder = DecoderCausal3D(
@@ -1166,13 +1061,13 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images/videos into latents.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images/videos.
+            x (`torch.Tensor`): Input batch of images/videos.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
@@ -1204,7 +1099,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         assert len(z.shape) == 5, "The input tensor should have 5 dimensions"
 
         if self.use_temporal_tiling and z.shape[2] > self.tile_latent_min_tsize:
@@ -1225,13 +1120,13 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        self, z: torch.Tensor, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images/videos.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -1277,7 +1172,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         return b
 
     def spatial_tiled_encode(
-        self, x: torch.FloatTensor, return_dict: bool = True, return_moments: bool = False
+        self, x: torch.Tensor, return_dict: bool = True, return_moments: bool = False
     ) -> AutoencoderKLOutput:
         r"""Encode a batch of images/videos using a tiled encoder.
 
@@ -1288,7 +1183,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         changes in the output, but they should be much less noticeable.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images/videos.
+            x (`torch.Tensor`): Input batch of images/videos.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
@@ -1335,13 +1230,13 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def spatial_tiled_decode(
-        self, z: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        self, z: torch.Tensor, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Decode a batch of images/videos using a tiled decoder.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -1384,7 +1279,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def temporal_tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def temporal_tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
         B, C, T, H, W = x.shape
         overlap_size = int(self.tile_sample_min_tsize * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_tsize * self.tile_overlap_factor)
@@ -1421,8 +1316,8 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def temporal_tiled_decode(
-        self, z: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        self, z: torch.Tensor, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.Tensor]:
         # Split z into overlapping tiles and decode them separately.
 
         B, C, T, H, W = z.shape
@@ -1459,15 +1354,15 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         return_posterior: bool = False,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput2, torch.FloatTensor]:
+    ) -> Union[DecoderOutput2, torch.Tensor]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):

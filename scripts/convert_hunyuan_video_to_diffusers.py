@@ -4,7 +4,7 @@ from typing import Any, Dict
 import torch
 from accelerate import init_empty_weights
 
-from diffusers import HunyuanVideoTransformer3DModel
+from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 
 
 def remap_norm_scale_shift_(key, state_dict):
@@ -109,7 +109,9 @@ TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "single_blocks": remap_single_transformer_blocks_,
 }
 
-VAE_KEYS_RENAME_DICT = {}
+VAE_KEYS_RENAME_DICT = {
+    
+}
 
 VAE_SPECIAL_KEYS_REMAP = {}
 
@@ -151,14 +153,37 @@ def convert_transformer(ckpt_path: str):
     return transformer
 
 
+def convert_vae(ckpt_path: str):
+    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=True))
+
+    with init_empty_weights():
+        vae = AutoencoderKLHunyuanVideo()
+
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_(original_state_dict, key, new_key)
+
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vae
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
+    parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
-    parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the model in.")
+    parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
     return parser.parse_args()
 
 
@@ -180,5 +205,11 @@ if __name__ == "__main__":
 
     if args.transformer_ckpt_path is not None:
         transformer = convert_transformer(args.transformer_ckpt_path)
+        transformer = transformer.to(dtype=dtype)
         if not args.save_pipeline:
             transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    
+    if args.vae_ckpt_path is not None:
+        vae = convert_vae(args.vae_ckpt_path)
+        if not args.save_pipeline:
+            vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

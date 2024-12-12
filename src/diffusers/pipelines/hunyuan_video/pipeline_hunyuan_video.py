@@ -582,7 +582,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        enable_tiling: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -804,32 +803,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         latents = latents.to(vae_dtype)
         if not output_type == "latent":
-            expand_temporal_dim = False
-            if len(latents.shape) == 4:
-                latents = latents.unsqueeze(2)
-                expand_temporal_dim = True
-            elif len(latents.shape) == 5:
-                pass
-            else:
-                raise ValueError(
-                    f"Only support latents with shape (b, c, h, w) or (b, c, f, h, w), but got {latents.shape}."
-                )
-
-            if hasattr(self.vae.config, "shift_factor") and self.vae.config.shift_factor:
-                latents = latents / self.vae.config.scaling_factor + self.vae.config.shift_factor
-            else:
-                latents = latents / self.vae.config.scaling_factor
-
-            if enable_tiling:
-                self.vae.enable_tiling()
-                image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
-            else:
-                image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            image = self.vae.decode(latents, return_dict=False)[0]
 
             torch.save(image, "diffusers_latents_decoded.pt")
-
-            if expand_temporal_dim or image.shape[2] == 1:
-                image = image.squeeze(2)
 
         else:
             image = latents
