@@ -11,13 +11,11 @@ specific language governing permissions and limitations under the License.
 -->
 # ConsisID
 
-[ConsisID](https://github.com/PKU-YuanGroup/ConsisID) is an identity-preserving text-to-video generation model, which keep the face consistent in the generated video by frequency decomposition. There is a [video](https://www.youtube.com/watch?v=PhlgC-bI5SQ) show its powerful function. It has the following features:
+[ConsisID](https://github.com/PKU-YuanGroup/ConsisID) is an identity-preserving text-to-video generation model that keeps the face consistent in the generated video by frequency decomposition. The main features of ConsisID are:
 
-​	🔥 **Frequency Decomposition**: The characteristics of the DiT architecture are analyzed from the frequency domain perspective, and based on these characteristics, a reasonable control information injection method is designed.
-
-​	🔥 **Consistency Training Strategy**: We propose a coarse-to-fine training strategy, dynamic masking loss, and dynamic cross-face loss, which further enhance the model's generalization ability and identity preservation performance.
-
-​	🔥 **Inference Without Fine-Tuning**: Previous methods required case-by-case fine-tuning of the input ID before inference, leading to significant time and computational costs. In contrast, consisid is tuning-free.
+- Frequency decomposition: The characteristics of the DiT architecture are analyzed from the frequency domain perspective, and based on these characteristics, a reasonable control information injection method is designed.
+Consistency training strategy: A coarse-to-fine training strategy, dynamic masking loss, and dynamic cross-face loss further enhance the model's generalization ability and identity preservation performance.
+- Inference without finetuning: Previous methods required case-by-case finetuning of the input ID before inference, leading to significant time and computational costs. In contrast, ConsisID is tuning-free.
 
 For more information, please refer to the [paper](https://arxiv.org/abs/2411.17440). This guide will walk you through using ConsisID for use cases.
 
