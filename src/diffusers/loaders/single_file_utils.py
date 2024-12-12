@@ -92,6 +92,8 @@ CHECKPOINT_KEY_NAMES = {
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
+    "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
+    "autoencoder-dc-sana": "encoder.project_in.conv.bias",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -138,6 +140,10 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
+    "autoencoder-dc-f128c512": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"},
+    "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
+    "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
+    "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -564,6 +570,23 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "flux-dev"
         else:
             model_type = "flux-schnell"
+
+    elif CHECKPOINT_KEY_NAMES["autoencoder-dc"] in checkpoint:
+        encoder_key = "encoder.project_in.conv.conv.bias"
+        decoder_key = "decoder.project_in.main.conv.weight"
+
+        if CHECKPOINT_KEY_NAMES["autoencoder-dc-sana"] in checkpoint:
+            model_type = "autoencoder-dc-f32c32-sana"
+
+        elif checkpoint[encoder_key].shape[-1] == 64 and checkpoint[decoder_key].shape[1] == 32:
+            model_type = "autoencoder-dc-f32c32"
+
+        elif checkpoint[encoder_key].shape[-1] == 64 and checkpoint[decoder_key].shape[1] == 128:
+            model_type = "autoencoder-dc-f64c128"
+
+        else:
+            model_type = "autoencoder-dc-f128c512"
+
     else:
         model_type = "v1"
 
@@ -2196,5 +2219,77 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
         checkpoint.pop("final_layer.adaLN_modulation.1.bias")
     )
+
+    return converted_state_dict
+
+
+def convert_autoencoder_dc_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    def remap_qkv_(key: str, state_dict):
+        qkv = state_dict.pop(key)
+        q, k, v = torch.chunk(qkv, 3, dim=0)
+        parent_module, _, _ = key.rpartition(".qkv.conv.weight")
+        state_dict[f"{parent_module}.to_q.weight"] = q.squeeze()
+        state_dict[f"{parent_module}.to_k.weight"] = k.squeeze()
+        state_dict[f"{parent_module}.to_v.weight"] = v.squeeze()
+
+    def remap_proj_conv_(key: str, state_dict):
+        parent_module, _, _ = key.rpartition(".proj.conv.weight")
+        state_dict[f"{parent_module}.to_out.weight"] = state_dict.pop(key).squeeze()
+
+    AE_KEYS_RENAME_DICT = {
+        # common
+        "main.": "",
+        "op_list.": "",
+        "context_module": "attn",
+        "local_module": "conv_out",
+        # NOTE: The below two lines work because scales in the available configs only have a tuple length of 1
+        # If there were more scales, there would be more layers, so a loop would be better to handle this
+        "aggreg.0.0": "to_qkv_multiscale.0.proj_in",
+        "aggreg.0.1": "to_qkv_multiscale.0.proj_out",
+        "depth_conv.conv": "conv_depth",
+        "inverted_conv.conv": "conv_inverted",
+        "point_conv.conv": "conv_point",
+        "point_conv.norm": "norm",
+        "conv.conv.": "conv.",
+        "conv1.conv": "conv1",
+        "conv2.conv": "conv2",
+        "conv2.norm": "norm",
+        "proj.norm": "norm_out",
+        # encoder
+        "encoder.project_in.conv": "encoder.conv_in",
+        "encoder.project_out.0.conv": "encoder.conv_out",
+        "encoder.stages": "encoder.down_blocks",
+        # decoder
+        "decoder.project_in.conv": "decoder.conv_in",
+        "decoder.project_out.0": "decoder.norm_out",
+        "decoder.project_out.2.conv": "decoder.conv_out",
+        "decoder.stages": "decoder.up_blocks",
+    }
+
+    AE_F32C32_F64C128_F128C512_KEYS = {
+        "encoder.project_in.conv": "encoder.conv_in.conv",
+        "decoder.project_out.2.conv": "decoder.conv_out.conv",
+    }
+
+    AE_SPECIAL_KEYS_REMAP = {
+        "qkv.conv.weight": remap_qkv_,
+        "proj.conv.weight": remap_proj_conv_,
+    }
+    if "encoder.project_in.conv.bias" not in converted_state_dict:
+        AE_KEYS_RENAME_DICT.update(AE_F32C32_F64C128_F128C512_KEYS)
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in AE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in AE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
