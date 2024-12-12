@@ -16,11 +16,12 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
@@ -54,19 +55,7 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import AutoPipelineForText2Image
-
-        >>> pipe = AutoPipelineForText2Image.from_pretrained(
-        ...     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
-        ...     torch_dtype=torch.float16,
-        ...     pag_applied_layers=["blocks.14"],
-        ...     enable_pag=True,
-        ... )
-        >>> pipe = pipe.to("cuda")
-
-        >>> prompt = "A small cactus with a happy face in the Sahara desert"
-        >>> image = pipe(prompt, pag_scale=4.0, guidance_scale=1.0).images[0]
+        # TODO(aryan): once the weights are hosted
         ```
 """
 
@@ -133,28 +122,18 @@ def retrieve_timesteps(
 
 class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
     r"""
-    [PAG pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag) for text-to-image generation
-    using PixArt-Sigma.
+    Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629). This pipeline
+    supports the use of [Perturbed Attention Guidance
+    (PAG)](https://huggingface.co/docs/diffusers/main/en/using-diffusers/pag).
     """
 
-    bad_punct_regex = re.compile(
-        r"["
-        + "#®•©™&@·º½¾¿¡§~"
-        + r"\)"
-        + r"\("
-        + r"\]"
-        + r"\["
-        + r"\}"
-        + r"\{"
-        + r"\|"
-        + "\\"
-        + r"\/"
-        + r"\*"
-        + r"]{1,}"
-    )  # noqa
+    # fmt: off
+    bad_punct_regex = re.compile(r"[" + "#®•©™&@·º½¾¿¡§~" + r"\)" + r"\(" + r"\]" + r"\[" + r"\}" + r"\{" + r"\|" + "\\" + r"\/" + r"\*" + r"]{1,}")
+    # fmt: on
 
     _optional_components = ["tokenizer", "text_encoder"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -163,7 +142,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: FlowDPMSolverMultistepScheduler,
-        pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
+        pag_applied_layers: Union[str, List[str]] = "transformer_blocks.8",
     ):
         super().__init__()
 
@@ -325,14 +304,14 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.check_inputs
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         height,
         width,
-        negative_prompt,
-        callback_steps,
+        callback_on_step_end_tensor_inputs=None,
+        negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
@@ -341,12 +320,11 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -393,7 +371,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                     f" {negative_prompt_attention_mask.shape}."
                 )
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
             logger.warning(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
@@ -418,7 +396,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
         return [process(t) for t in text]
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._clean_caption
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._clean_caption
     def _clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
@@ -556,6 +534,22 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -578,10 +572,10 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 300,
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
@@ -644,12 +638,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.IFPipelineOutput`] instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
             clean_caption (`bool`, *optional*, defaults to `True`):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
@@ -658,6 +646,15 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 300): Maximum sequence length to use with the `prompt`.
             pag_scale (`float`, *optional*, defaults to 3.0):
                 The scale factor for the perturbed attention guidance. If it is set to 0.0, the perturbed attention
@@ -665,6 +662,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             pag_adaptive_scale (`float`, *optional*, defaults to 0.0):
                 The adaptive scale factor for the perturbed attention guidance. If it is set to 0.0, `pag_scale` is
                 used.
+
         Examples:
 
         Returns:
@@ -672,9 +670,10 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
-        # 1. Check inputs. Raise error if not correct
-        height = height or self.transformer.config.sample_size * self.vae_scale_factor
-        width = width or self.transformer.config.sample_size * self.vae_scale_factor
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
         if use_resolution_binning:
             if self.transformer.config.sample_size == 64:
                 aspect_ratio_bin = ASPECT_RATIO_2048_BIN
@@ -691,15 +690,18 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             prompt,
             height,
             width,
+            callback_on_step_end_tensor_inputs,
             negative_prompt,
-            callback_steps,
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
         )
+
         self._pag_scale = pag_scale
         self._pag_adaptive_scale = pag_adaptive_scale
+        self._guidance_scale = guidance_scale
+        self._interrupt = False
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
@@ -711,11 +713,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
         device = self._execution_device
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-
         # 3. Encode input prompt
         (
             prompt_embeds,
@@ -724,7 +721,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
@@ -735,14 +732,15 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
         )
+
         if self.do_perturbed_attention_guidance:
             prompt_embeds = self._prepare_perturbed_attention_guidance(
-                prompt_embeds, negative_prompt_embeds, do_classifier_free_guidance
+                prompt_embeds, negative_prompt_embeds, self.do_classifier_free_guidance
             )
             prompt_attention_mask = self._prepare_perturbed_attention_guidance(
-                prompt_attention_mask, negative_prompt_attention_mask, do_classifier_free_guidance
+                prompt_attention_mask, negative_prompt_attention_mask, self.do_classifier_free_guidance
             )
-        elif do_classifier_free_guidance:
+        elif self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
@@ -758,7 +756,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             latent_channels,
             height,
             width,
-            prompt_embeds.dtype,
+            torch.float32,
             device,
             generator,
             latents,
@@ -767,7 +765,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             original_attn_proc = self.transformer.attn_processors
             self._set_pag_attn_processor(
                 pag_applied_layers=self.pag_applied_layers,
-                do_classifier_free_guidance=do_classifier_free_guidance,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
             )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -778,67 +776,57 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
                 # expand the latents if we are doing classifier free guidance, perturbed-attention guidance, or both
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
-                current_timestep = t
-                if not torch.is_tensor(current_timestep):
-                    # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-                    # This would be a good case for the `match` statement (Python 3.10+)
-                    is_mps = latent_model_input.device.type == "mps"
-                    if isinstance(current_timestep, float):
-                        dtype = torch.float32 if is_mps else torch.float64
-                    else:
-                        dtype = torch.int32 if is_mps else torch.int64
-                    current_timestep = torch.tensor([current_timestep], dtype=dtype, device=latent_model_input.device)
-                elif len(current_timestep.shape) == 0:
-                    current_timestep = current_timestep[None].to(latent_model_input.device)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                current_timestep = current_timestep.expand(latent_model_input.shape[0])
+                timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
                 # predict noise model_output
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
-                    timestep=current_timestep,
+                    timestep=timestep,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
+                noise_pred = noise_pred.float()
 
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
                     noise_pred = self._apply_perturbed_attention_guidance(
-                        noise_pred, do_classifier_free_guidance, guidance_scale, current_timestep
+                        noise_pred, self.do_classifier_free_guidance, guidance_scale, timestep
                     )
-                elif do_classifier_free_guidance:
+                elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                # learned sigma
-                if self.transformer.config.out_channels // 2 == latent_channels:
-                    noise_pred = noise_pred.chunk(2, dim=1)[0]
-                else:
-                    noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if latents.dtype != latents_dtype:
-                    if torch.backends.mps.is_available():
-                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
-                        latents = latents.to(latents_dtype)
                 # call the callback, if provided
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         if output_type == "latent":
             image = latents

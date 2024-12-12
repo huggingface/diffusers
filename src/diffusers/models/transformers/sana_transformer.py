@@ -19,7 +19,6 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version, logging
-from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
@@ -36,7 +35,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class GLUMBConv(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, expand_ratio: float = 4, norm_type: Optional[str] = None, residual_connection: bool = True) -> None:
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        expand_ratio: float = 4,
+        norm_type: Optional[str] = None,
+        residual_connection: bool = True,
+    ) -> None:
         super().__init__()
 
         hidden_channels = int(expand_ratio * in_channels)
@@ -44,7 +50,6 @@ class GLUMBConv(nn.Module):
         self.residual_connection = residual_connection
 
         self.nonlinearity = nn.SiLU()
-
         self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
         self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
         self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
@@ -55,7 +60,7 @@ class GLUMBConv(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.residual_connection:
-            residual = hidden_states    
+            residual = hidden_states
 
         hidden_states = self.conv_inverted(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
@@ -65,14 +70,14 @@ class GLUMBConv(nn.Module):
         hidden_states = hidden_states * self.nonlinearity(gate)
 
         hidden_states = self.conv_point(hidden_states)
-        
+
         if self.norm_type == "rms_norm":
             # move channel to the last dimension so we apply RMSnorm across channel dimension
             hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
 
         if self.residual_connection:
             hidden_states = hidden_states + residual
-        
+
         return hidden_states
 
 
@@ -80,7 +85,7 @@ class SanaTransformerBlock(nn.Module):
     r"""
     Transformer block introduced in [Sana](https://huggingface.co/papers/2410.10629).
     """
-    
+
     def __init__(
         self,
         dim: int = 2240,
@@ -149,6 +154,7 @@ class SanaTransformerBlock(nn.Module):
         # 2. Self Attention
         norm_hidden_states = self.norm1(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+        norm_hidden_states = norm_hidden_states.to(hidden_states.dtype)
 
         attn_output = self.attn1(norm_hidden_states)
         hidden_states = hidden_states + gate_msa * attn_output
@@ -256,7 +262,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         self.time_embed = AdaLayerNormSingle(inner_dim)
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
-        self.caption_norm = RMSNorm(inner_dim, eps=1e-5)
+        self.caption_norm = RMSNorm(inner_dim, eps=1e-5, elementwise_affine=True)
 
         # 3. Transformer blocks
         self.transformer_blocks = nn.ModuleList(

@@ -174,7 +174,7 @@ def main(args):
             norm_elementwise_affine=False,
             norm_eps=1e-6,
         )
-    
+
     if is_accelerate_available():
         load_model_dict_into_meta(transformer, converted_state_dict)
     else:

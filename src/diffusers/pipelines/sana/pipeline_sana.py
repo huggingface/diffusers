@@ -54,16 +54,7 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import SanaPipeline
-
-        >>> # You can replace the checkpoint id with "Sana_1600M_1024px/Sana_1600M_1024px" too.
-        >>> pipe = SanaPipeline.from_pretrained("Sana_1600M_1024px/Sana_1600M_1024px", torch_dtype=torch.float16)
-        >>> # Enable memory optimizations.
-        >>> # pipe.enable_model_cpu_offload()
-
-        >>> prompt = "A small cactus with a happy face in the Sahara desert."
-        >>> image = pipe(prompt).images[0]
+        # TODO(aryan): once the weights are hosted
         ```
 """
 
@@ -130,24 +121,12 @@ def retrieve_timesteps(
 
 class SanaPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using [SANA](https://huggingface.co/papers/2410.10629).
+    Pipeline for text-to-image generation using [Sana](https://huggingface.co/papers/2410.10629).
     """
 
-    bad_punct_regex = re.compile(
-        r"["
-        + "#®•©™&@·º½¾¿¡§~"
-        + r"\)"
-        + r"\("
-        + r"\]"
-        + r"\["
-        + r"\}"
-        + r"\{"
-        + r"\|"
-        + "\\"
-        + r"\/"
-        + r"\*"
-        + r"]{1,}"
-    )  # noqa
+    # fmt: off
+    bad_punct_regex = re.compile(r"[" + "#®•©™&@·º½¾¿¡§~" + r"\)" + r"\(" + r"\]" + r"\[" + r"\}" + r"\{" + r"\|" + "\\" + r"\/" + r"\*" + r"]{1,}")
+    # fmt: on
 
     _optional_components = ["tokenizer", "text_encoder"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -324,7 +303,8 @@ class SanaPipeline(DiffusionPipeline):
         prompt,
         height,
         width,
-        negative_prompt,
+        callback_on_step_end_tensor_inputs=None,
+        negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
@@ -332,6 +312,13 @@ class SanaPipeline(DiffusionPipeline):
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -540,6 +527,22 @@ class SanaPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -674,12 +677,16 @@ class SanaPipeline(DiffusionPipeline):
             prompt,
             height,
             width,
+            callback_on_step_end_tensor_inputs,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_attention_mask,
         )
+
+        self._guidance_scale = guidance_scale
+        self._interrupt = False
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
@@ -691,11 +698,6 @@ class SanaPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-
         # 3. Encode input prompt
         (
             prompt_embeds,
@@ -704,7 +706,7 @@ class SanaPipeline(DiffusionPipeline):
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
@@ -715,7 +717,7 @@ class SanaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
         )
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
@@ -742,10 +744,14 @@ class SanaPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                if self.interrupt:
+                    continue
+
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -762,7 +768,7 @@ class SanaPipeline(DiffusionPipeline):
                 noise_pred = noise_pred.float()
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
