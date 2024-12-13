@@ -252,6 +252,8 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -272,6 +274,8 @@
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/ltx_video_transformer3d
+        title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/pixart_transformer2d
@@ -310,6 +314,8 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoderkl_ltx_video
+        title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
@@ -368,6 +374,8 @@
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
       title: ControlNet-XS with Stable Diffusion XL
+    - local: api/pipelines/controlnet_union
+      title: ControlNetUnion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -404,6 +412,8 @@
       title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/ltx_video
+      title: LTX
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold

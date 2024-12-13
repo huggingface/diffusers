@@ -224,6 +224,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         )
         self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
+        self.patch_size = (
+            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -538,6 +541,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         prompt,
         prompt_2,
         prompt_3,
+        height,
+        width,
         strength,
         negative_prompt=None,
         negative_prompt_2=None,
@@ -549,6 +554,15 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if (
+            height % (self.vae_scale_factor * self.patch_size) != 0
+            or width % (self.vae_scale_factor * self.patch_size) != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * self.patch_size} but are {height} and {width}."
+                f"You can use height {height - height % (self.vae_scale_factor * self.patch_size)} and width {width - width % (self.vae_scale_factor * self.patch_size)}."
+            )
+
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -953,6 +967,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             prompt,
             prompt_2,
             prompt_3,
+            height,
+            width,
             strength,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
