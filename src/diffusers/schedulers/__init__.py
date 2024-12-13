@@ -52,7 +52,6 @@ else:
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
-    _import_structure["scheduling_dpmsolver_multistep_flow"] = ["FlowDPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
     _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
@@ -153,7 +152,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_deis_multistep import DEISMultistepScheduler
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
-        from .scheduling_dpmsolver_multistep_flow import FlowDPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
