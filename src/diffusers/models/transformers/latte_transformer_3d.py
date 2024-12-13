@@ -156,9 +156,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin):
 
         # define temporal positional embedding
         temp_pos_embed = get_1d_sincos_pos_embed_from_grid(
-            inner_dim, torch.arange(0, video_length).unsqueeze(1)
+            inner_dim, torch.arange(0, video_length).unsqueeze(1), output_type="pt"
         )  # 1152 hidden size
-        self.register_buffer("temp_pos_embed", torch.from_numpy(temp_pos_embed).float().unsqueeze(0), persistent=False)
+        self.register_buffer("temp_pos_embed", temp_pos_embed.float().unsqueeze(0), persistent=False)
 
         self.gradient_checkpointing = False
 
