@@ -10,7 +10,7 @@ class DiffusionDetConfig(ConfigMixin):
             resnet_in_features=("res2", "res3", "res4", "res5"),
             roi_head_in_features=("p2", "p3", "p4", "p5"),
             pooler_resolution=7,
-            pooler_sampling_ratio=2,
+            sampling_ratio=2,
             num_proposals=300,
             num_attn_heads=8,
             dropout=0.0,
@@ -50,7 +50,7 @@ class DiffusionDetConfig(ConfigMixin):
         self.resnet_in_features = resnet_in_features
         self.roi_head_in_features = roi_head_in_features
         self.pooler_resolution = pooler_resolution
-        self.pooler_sampling_ratio = pooler_sampling_ratio
+        self.sampling_ratio = sampling_ratio
         self.num_proposals = num_proposals
 
         # RCNN Head.

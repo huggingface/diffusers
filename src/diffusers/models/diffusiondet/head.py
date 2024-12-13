@@ -49,13 +49,13 @@ class DynamicHead(nn.Module):
 
 
 class DiffusionDetHead(nn.Module):
-    def __init__(self, roi_input_shape):
+    def __init__(self, config, roi_input_shape):
         super().__init__()
 
-        in_features = ['p2', 'p3', 'p4', 'p5']
-        pooler_resolution = 7
-        pooler_scales = tuple(1.0 / roi_input_shape[k].stride for k in in_features)
-        sampling_ratio = 2
+        in_features = config.roi_head_in_features
+        pooler_resolution = config.pooler_resolution
+        pooler_scales = tuple(1.0 / roi_input_shape[k]['stride'] for k in in_features)
+        sampling_ratio = config.sampling_ratio
 
         self.pooler = ROIPooler(
             output_size=pooler_resolution,
