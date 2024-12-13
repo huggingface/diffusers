@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-from functools import partial
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -24,7 +22,11 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version
 from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
-from ..embeddings import get_1d_rotary_pos_embed, get_timestep_embedding
+from ..embeddings import (
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    get_1d_rotary_pos_embed,
+)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -123,19 +125,6 @@ class HunyuanVideoAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class MLPEmbedder(nn.Module):
-    """copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py"""
-
-    def __init__(self, in_dim: int, hidden_dim: int):
-        super().__init__()
-        self.in_layer = nn.Linear(in_dim, hidden_dim, bias=True)
-        self.silu = nn.SiLU()
-        self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.out_layer(self.silu(self.in_layer(x)))
-
-
 class PatchEmbed(nn.Module):
     def __init__(
         self,
@@ -154,49 +143,21 @@ class PatchEmbed(nn.Module):
         return hidden_states
 
 
-class TextProjection(nn.Module):
-    def __init__(self, in_channels, hidden_size, act_layer):
+class HunyuanVideoAdaNorm(nn.Module):
+    def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
         super().__init__()
-        self.linear_1 = nn.Linear(in_features=in_channels, out_features=hidden_size, bias=True)
-        self.act_1 = act_layer()
-        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
 
-    def forward(self, caption):
-        hidden_states = self.linear_1(caption)
-        hidden_states = self.act_1(hidden_states)
-        hidden_states = self.linear_2(hidden_states)
-        return hidden_states
+        out_features = out_features or 2 * in_features
+        self.linear = nn.Linear(in_features, out_features)
+        self.nonlinearity = nn.SiLU()
 
-
-class TimestepEmbedder(nn.Module):
-    """
-    Embeds scalar timesteps into vector representations.
-    """
-
-    def __init__(
-        self,
-        hidden_size,
-        act_layer,
-        frequency_embedding_size=256,
-        max_period=10000,
-        out_size=None,
-    ):
-        super().__init__()
-        self.frequency_embedding_size = frequency_embedding_size
-        self.max_period = max_period
-        if out_size is None:
-            out_size = hidden_size
-
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            act_layer(),
-            nn.Linear(hidden_size, out_size, bias=True),
-        )
-
-    def forward(self, t):
-        t_freq = get_timestep_embedding(t, self.frequency_embedding_size, flip_sin_to_cos=True, max_period=self.max_period, downscale_freq_shift=0).type(self.mlp[0].weight.dtype)
-        t_emb = self.mlp(t_freq)
-        return t_emb
+    def forward(
+        self, temb: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        temb = self.linear(self.nonlinearity(temb))
+        gate_msa, gate_mlp = temb.chunk(2, dim=1)
+        gate_msa, gate_mlp = gate_msa.unsqueeze(1), gate_mlp.unsqueeze(1)
+        return gate_msa, gate_mlp
 
 
 class IndividualTokenRefinerBlock(nn.Module):
@@ -224,10 +185,7 @@ class IndividualTokenRefinerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
 
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True),
-        )
+        self.norm_out = HunyuanVideoAdaNorm(hidden_size, 2 * hidden_size)
 
     def forward(
         self,
@@ -235,8 +193,6 @@ class IndividualTokenRefinerBlock(nn.Module):
         temb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        gate_msa, gate_mlp = self.adaLN_modulation(temb).chunk(2, dim=1)
-
         norm_hidden_states = self.norm1(hidden_states)
 
         attn_output = self.attn(
@@ -244,9 +200,12 @@ class IndividualTokenRefinerBlock(nn.Module):
             encoder_hidden_states=None,
             attention_mask=attention_mask,
         )
-        hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
 
-        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states)) * gate_mlp.unsqueeze(1)
+        gate_msa, gate_mlp = self.norm_out(temb)
+        hidden_states = hidden_states + attn_output * gate_msa
+
+        ff_output = self.mlp(self.norm2(hidden_states))
+        hidden_states = hidden_states + ff_output * gate_mlp
 
         return hidden_states
 
@@ -313,10 +272,10 @@ class SingleTokenRefiner(nn.Module):
 
         hidden_size = num_attention_heads * attention_head_dim
 
-        self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
-        self.time_embed = TimestepEmbedder(hidden_size, nn.SiLU)
-        self.context_embed = TextProjection(in_channels, hidden_size, nn.SiLU)
-
+        self.time_text_embed = CombinedTimestepTextProjEmbeddings(
+            embedding_dim=hidden_size, pooled_projection_dim=in_channels
+        )
+        self.proj_in = nn.Linear(in_channels, hidden_size, bias=True)
         self.token_refiner = IndividualTokenRefiner(
             num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
@@ -332,21 +291,17 @@ class SingleTokenRefiner(nn.Module):
         timestep: torch.LongTensor,
         attention_mask: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
-        original_dtype = hidden_states.dtype
-        temb = self.time_embed(timestep)
-
         if attention_mask is None:
             pooled_projections = hidden_states.mean(dim=1)
         else:
+            original_dtype = hidden_states.dtype
             mask_float = attention_mask.float().unsqueeze(-1)
             pooled_projections = (hidden_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
             pooled_projections = pooled_projections.to(original_dtype)
 
-        pooled_projections = self.context_embed(pooled_projections)
-        emb = temb + pooled_projections
-
-        hidden_states = self.input_embedder(hidden_states)
-        hidden_states = self.token_refiner(hidden_states, emb, attention_mask)
+        temb = self.time_text_embed(timestep, pooled_projections)
+        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.token_refiner(hidden_states, temb, attention_mask)
 
         return hidden_states
 
@@ -561,14 +516,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
 
-        # time modulation
-        self.time_in = TimestepEmbedder(inner_dim, nn.SiLU)
-
-        # text modulation
-        self.vector_in = MLPEmbedder(text_embed_dim_2, inner_dim)
-
-        # guidance modulation
-        self.guidance_in = TimestepEmbedder(inner_dim, nn.SiLU)
+        self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, text_embed_dim_2)
 
         # 3. RoPE
         self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_dim_list, rope_theta)
@@ -679,30 +627,55 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         image_rotary_emb = self.rope(hidden_states)
 
-        temb = self.time_in(timestep)
-        temb = temb + self.vector_in(encoder_hidden_states_2)
-        temb = temb + self.guidance_in(guidance)
+        temb = self.time_text_embed(timestep, guidance, encoder_hidden_states_2)
 
         # Embed image and text.
         hidden_states = self.img_in(hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states, timestep, encoder_attention_mask)
 
-        use_reentrant = is_torch_version(">=", "1.11.0")
-        block_forward = (
-            partial(torch.utils.checkpoint.checkpoint, use_reentrant=use_reentrant)
-            if torch.is_grad_enabled() and self.gradient_checkpointing
-            else lambda x: x
-        )
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
-        for _, block in enumerate(self.transformer_blocks):
-            hidden_states, encoder_hidden_states = block_forward(block)(
-                hidden_states, encoder_hidden_states, temb, image_rotary_emb
-            )
+            def create_custom_forward(module, return_dict=None):
+                def custom_forward(*inputs):
+                    if return_dict is not None:
+                        return module(*inputs, return_dict=return_dict)
+                    else:
+                        return module(*inputs)
 
-        for block in self.single_transformer_blocks:
-            hidden_states, encoder_hidden_states = block_forward(block)(
-                hidden_states, encoder_hidden_states, temb, image_rotary_emb
-            )
+                return custom_forward
+
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+
+            for block in self.transformer_blocks:
+                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    image_rotary_emb,
+                    **ckpt_kwargs,
+                )
+
+            for block in self.single_transformer_blocks:
+                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    image_rotary_emb,
+                    **ckpt_kwargs,
+                )
+
+        else:
+            for block in self.transformer_blocks:
+                hidden_states, encoder_hidden_states = block(
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                )
+
+            for block in self.single_transformer_blocks:
+                hidden_states, encoder_hidden_states = block(
+                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                )
 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)

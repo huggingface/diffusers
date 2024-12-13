@@ -5,7 +5,7 @@ import torch
 from accelerate import init_empty_weights
 from transformers import AutoModel, AutoTokenizer, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
+from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
 
 
 def remap_norm_scale_shift_(key, state_dict):
@@ -13,6 +13,23 @@ def remap_norm_scale_shift_(key, state_dict):
     shift, scale = weight.chunk(2, dim=0)
     new_weight = torch.cat([scale, shift], dim=0)
     state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
+
+
+def remap_token_refiner_blocks_(key, state_dict):
+    def rename_key(key):
+        new_key = key.replace("individual_token_refiner.blocks", "token_refiner.refiner_blocks")
+        new_key = new_key.replace("adaLN_modulation.1", "norm_out.linear")
+        return new_key
+
+    if "self_attn_qkv" in key:
+        weight = state_dict.pop(key)
+        to_q, to_k, to_v = weight.chunk(3, dim=0)
+        state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_q"))] = to_q
+        state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_k"))] = to_k
+        state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_v"))] = to_v
+
+    else:
+        state_dict[rename_key(key)] = state_dict.pop(key)
 
 
 def remap_img_attn_qkv_(key, state_dict):
@@ -29,14 +46,6 @@ def remap_txt_attn_qkv_(key, state_dict):
     state_dict[key.replace("txt_attn_qkv", "attn.add_q_proj")] = to_q
     state_dict[key.replace("txt_attn_qkv", "attn.add_k_proj")] = to_k
     state_dict[key.replace("txt_attn_qkv", "attn.add_v_proj")] = to_v
-
-
-def remap_self_attn_qkv_(key, state_dict):
-    weight = state_dict.pop(key)
-    to_q, to_k, to_v = weight.chunk(3, dim=0)
-    state_dict[key.replace("self_attn_qkv", "attn.to_q")] = to_q
-    state_dict[key.replace("self_attn_qkv", "attn.to_k")] = to_k
-    state_dict[key.replace("self_attn_qkv", "attn.to_v")] = to_v
 
 
 def remap_single_transformer_blocks_(key, state_dict):
@@ -71,16 +80,16 @@ def remap_single_transformer_blocks_(key, state_dict):
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
-    # "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
-    # "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
-    # "guidance_in.mlp.0": "time_text_embed.guidance_embedder.linear_1",
-    # "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
-    # "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
-    # "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
-    "txt_in.t_embedder": "txt_in.time_embed",
-    "txt_in.c_embedder": "txt_in.context_embed",
+    "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
+    "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
+    "guidance_in.mlp.0": "time_text_embed.guidance_embedder.linear_1",
+    "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
+    "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
+    "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
+    "txt_in.t_embedder.mlp.0": "txt_in.time_text_embed.timestep_embedder.linear_1",
+    "txt_in.t_embedder.mlp.2": "txt_in.time_text_embed.timestep_embedder.linear_2",
+    "txt_in.c_embedder": "txt_in.time_text_embed.text_embedder",
     "double_blocks": "transformer_blocks",
-    "individual_token_refiner.blocks": "token_refiner.refiner_blocks",
     "img_attn_q_norm": "attn.norm_q",
     "img_attn_k_norm": "attn.norm_k",
     "img_attn_proj": "attn.to_out.0",
@@ -102,14 +111,15 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     "final_layer.linear": "proj_out",
     "fc1": "net.0.proj",
     "fc2": "net.2",
+    "input_embedder": "proj_in",
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
-    "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
     "img_attn_qkv": remap_img_attn_qkv_,
     "txt_attn_qkv": remap_txt_attn_qkv_,
-    "self_attn_qkv": remap_self_attn_qkv_,
     "single_blocks": remap_single_transformer_blocks_,
+    "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
+    "individual_token_refiner.blocks": remap_token_refiner_blocks_,
 }
 
 VAE_KEYS_RENAME_DICT = {}
