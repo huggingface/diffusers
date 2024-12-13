@@ -55,11 +55,11 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             Level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`])
         """
         Level_dict = {
-            "WEAK": -1.0,
-            "MEDIUM": -0.5,
-            "NOMAL": 0.0,
-            "STRONG": 0.5,
-            "MAX": 1.0,
+            "WEAK": -0.10,
+            "MEDIUM": -0.01,
+            "NOMAL": 0.00,
+            "STRONG": 0.01,
+            "MAX": 0.10,
             }
         if Level in Level_dict:
             Level = Level_dict[Level]
