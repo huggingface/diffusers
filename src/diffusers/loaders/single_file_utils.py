@@ -966,6 +966,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False, **kwargs)
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
+    is_diffusers = "time_embedding.linear_1.weight" in checkpoint
+    if is_diffusers:
+        return checkpoint
     # extract state_dict for UNet
     unet_state_dict = {}
     keys = list(checkpoint.keys())
