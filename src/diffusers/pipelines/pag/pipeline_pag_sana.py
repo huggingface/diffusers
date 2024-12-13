@@ -25,7 +25,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
-from ...schedulers import FlowDPMSolverMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
@@ -140,7 +140,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         text_encoder: AutoModelForCausalLM,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
-        scheduler: FlowDPMSolverMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         pag_applied_layers: Union[str, List[str]] = "transformer_blocks.0",
     ):
         super().__init__()
@@ -316,7 +316,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
+        if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(

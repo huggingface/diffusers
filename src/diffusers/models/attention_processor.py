@@ -5446,11 +5446,6 @@ class SanaLinearAttnProcessor2_0:
     Processor for implementing scaled dot-product linear attention.
     """
 
-    def __init__(self, pad_val=1.0, eps=1e-15):
-        self.pad_val = pad_val
-        self.eps = eps
-        self.kernel_func = nn.ReLU(inplace=False)
-
     def __call__(
         self,
         attn: Attention,
@@ -5471,16 +5466,16 @@ class SanaLinearAttnProcessor2_0:
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
         value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
 
-        query = self.kernel_func(query)
-        key = self.kernel_func(key)
+        query = F.relu(query)
+        key = F.relu(key)
 
         query, key, value = query.float(), key.float(), value.float()
 
-        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
         scores = torch.matmul(value, key)
         hidden_states = torch.matmul(scores, query)
 
-        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + self.eps)
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + 1e-15)
         hidden_states = hidden_states.flatten(1, 2).transpose(1, 2)
         hidden_states = hidden_states.to(original_dtype)
 
@@ -5497,11 +5492,6 @@ class PAGCFGSanaLinearAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product linear attention.
     """
-
-    def __init__(self, pad_val=1.0, eps=1e-15):
-        self.pad_val = pad_val
-        self.eps = eps
-        self.kernel_func = nn.ReLU(inplace=False)
 
     def __call__(
         self,
@@ -5523,16 +5513,16 @@ class PAGCFGSanaLinearAttnProcessor2_0:
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
         value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
 
-        query = self.kernel_func(query)
-        key = self.kernel_func(key)
+        query = F.relu(query)
+        key = F.relu(key)
 
         query, key, value = query.float(), key.float(), value.float()
 
-        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
         scores = torch.matmul(value, key)
         hidden_states_org = torch.matmul(scores, query)
 
-        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + self.eps)
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + 1e-15)
         hidden_states_org = hidden_states_org.flatten(1, 2).transpose(1, 2)
         hidden_states_org = hidden_states_org.to(original_dtype)
 
@@ -5558,11 +5548,6 @@ class PAGIdentitySanaLinearAttnProcessor2_0:
     Processor for implementing scaled dot-product linear attention.
     """
 
-    def __init__(self, pad_val=1.0, eps=1e-15):
-        self.pad_val = pad_val
-        self.eps = eps
-        self.kernel_func = nn.ReLU(inplace=False)
-
     def __call__(
         self,
         attn: Attention,
@@ -5587,14 +5572,14 @@ class PAGIdentitySanaLinearAttnProcessor2_0:
 
         query, key, value = query.float(), key.float(), value.float()
 
-        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=self.pad_val)
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
         scores = torch.matmul(value, key)
         hidden_states_org = torch.matmul(scores, query)
 
         if hidden_states_org.dtype in [torch.float16, torch.bfloat16]:
             hidden_states_org = hidden_states_org.float()
 
-        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + self.eps)
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + 1e-15)
         hidden_states_org = hidden_states_org.flatten(1, 2).transpose(1, 2)
         hidden_states_org = hidden_states_org.to(original_dtype)
 

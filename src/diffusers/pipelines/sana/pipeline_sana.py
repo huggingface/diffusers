@@ -24,7 +24,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderDC, SanaTransformer2DModel
-from ...schedulers import FlowDPMSolverMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
@@ -137,7 +137,7 @@ class SanaPipeline(DiffusionPipeline):
         text_encoder: AutoModelForCausalLM,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
-        scheduler: FlowDPMSolverMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -187,8 +187,7 @@ class SanaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. For Sana, it's should be the embeddings of the ""
-                string.
+                Pre-generated negative text embeddings. For Sana, it's should be the embeddings of the "" string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
@@ -325,7 +324,7 @@ class SanaPipeline(DiffusionPipeline):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
+        if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
