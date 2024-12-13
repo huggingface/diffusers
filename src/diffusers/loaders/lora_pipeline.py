@@ -1979,10 +1979,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     Specific to [`StableDiffusion3Pipeline`].
     """
-
-# The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
-# relied on `StableDiffusionLoraLoaderMixin` for its LoRA support.
-class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     _lora_loadable_modules = ["transformer", "text_encoder"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
