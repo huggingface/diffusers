@@ -6,6 +6,40 @@ from torch import nn
 from torchvision.ops import RoIAlign
 
 
+def _fmt_box_list(box_tensor, batch_index: int):
+    repeated_index = torch.full(
+        (len(box_tensor), 1),
+        batch_index,
+        dtype=box_tensor.dtype,
+        device=box_tensor.device,
+    )
+    return torch.cat((repeated_index, box_tensor), dim=1)
+
+
+def convert_boxes_to_pooler_format(box_lists):
+    pooler_fmt_boxes = torch.cat(
+        [_fmt_box_list(box_list, i) for i, box_list in enumerate(box_lists)],
+        dim=0,
+    )
+    return pooler_fmt_boxes
+
+
+def assign_boxes_to_levels(
+        box_lists,
+        min_level,
+        max_level,
+        canonical_box_size,
+        canonical_level,
+):
+    box_sizes = torch.sqrt(torch.cat([boxes.area() for boxes in box_lists]))
+    # Eqn.(1) in FPN paper
+    level_assignments = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + 1e-8))
+    # clamp level to (min, max), in case the box size is too large or too small
+    # for the available feature maps
+    level_assignments = torch.clamp(level_assignments, min=min_level, max=max_level)
+    return level_assignments.to(torch.int64) - min_level
+
+
 class DynamicHead(nn.Module):
     def __init__(self):
         super().__init__()
@@ -33,10 +67,7 @@ class DiffusionDetHead(nn.Module):
         N, nr_boxes = bboxes.shape[:2]
 
         # roi_feature.
-        proposal_boxes = list()
-        for b in range(N):
-            proposal_boxes.append(Boxes(bboxes[b]))
-        roi_features = self.pooler(features, proposal_boxes)
+        roi_features = self.pooler(features, bboxes)
 
         pro_features = roi_features.view(N, nr_boxes, self.d_model, -1).mean(-1)
 
@@ -146,37 +177,3 @@ class ROIPooler(nn.Module):
             output.index_put_((inds,), pooler(x_level, pooler_fmt_boxes_level))
 
         return output
-
-
-def _fmt_box_list(box_tensor, batch_index: int):
-    repeated_index = torch.full(
-        (len(box_tensor), 1),
-        batch_index,
-        dtype=box_tensor.dtype,
-        device=box_tensor.device,
-    )
-    return torch.cat((repeated_index, box_tensor), dim=1)
-
-
-def convert_boxes_to_pooler_format(box_lists):
-    pooler_fmt_boxes = torch.cat(
-        [_fmt_box_list(box_list, i) for i, box_list in enumerate(box_lists)],
-        dim=0,
-    )
-    return pooler_fmt_boxes
-
-
-def assign_boxes_to_levels(
-        box_lists,
-        min_level,
-        max_level,
-        canonical_box_size,
-        canonical_level,
-):
-    box_sizes = torch.sqrt(torch.cat([boxes.area() for boxes in box_lists]))
-    # Eqn.(1) in FPN paper
-    level_assignments = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + 1e-8))
-    # clamp level to (min, max), in case the box size is too large or too small
-    # for the available feature maps
-    level_assignments = torch.clamp(level_assignments, min=min_level, max=max_level)
-    return level_assignments.to(torch.int64) - min_level
