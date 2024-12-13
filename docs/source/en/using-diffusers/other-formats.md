@@ -242,15 +242,14 @@ Benefits of using a single-file layout include:
 
 ### DDUF
 
-<Tip warning={true}>
+> [!WARNING]
+>DDUF is an experimental file format and APIs related to it can change in the future.
 
-DDUF is an experimental file format and APIs related to it can change in the future.
+DDUF (**D**DUF **D**iffusion **U**nified **F**ormat) is a file format designed to make storing, distributing, and using diffusion models much easier. Built on the ZIP file format, DDUF offers a standardized, efficient, and flexible way to package all parts of a diffusion model into a single, easy-to-manage file. It provides a balance between Diffusers multi-folder format and the widely popular single-file format.
 
-</Tip>
+Learn more details about DDUF on the Hugging Face Hub [documentation](https://huggingface.co/docs/hub/dduf).
 
-DDUF, aka (**D**DUF’s **D**iffusion **U**nified **F**ormat) is a file format designed to make storing, distributing, and using diffusion models much easier. Built on the ZIP file format, DDUF offers a standardized, efficient, and flexible way to package all parts of a diffusion model into a single, easy-to-manage file. It tries to provide a sweet spot between our multi-folder format and widely popular single-file format. To learn more about it, please check out the documentation [here](https://huggingface.co/docs/hub/dduf).
-
-Below we show, how to load a DDUF checkpoint in a [`DiffusionPipeline`]:
+Pass a checkpoint to the `dduf_file` parameter to load it in [`DiffusionPipeline`].
 
 ```py
 from diffusers import DiffusionPipeline
@@ -265,7 +264,7 @@ image = pipe(
 image.save("cat.png")
 ```
 
-To save a pipeline as a `.dduf` checkpoint, we rely on `huggingface_hub`'s `export_folder_as_dduf()` utility, which takes care of all the necessary file-level validations:
+To save a pipeline as a `.dduf` checkpoint, use the [`~huggingface_hub.export_folder_as_dduf`] utility, which takes care of all the necessary file-level validations.
 
 ```py
 from huggingface_hub import export_folder_as_dduf
@@ -278,11 +277,8 @@ save_folder = "flux-dev"
 pipe.save_pretrained("flux-dev")
 export_folder_as_dduf("flux-dev.dduf", folder_path=save_folder)
 
-<Tip>
-
-We support packaging and loading quantized checkpoints in the DDUF format as long as they respect the multi-folder structure.
-
-</Tip>
+> [!TIP]
+> Packaging and loading quantized checkpoints in the DDUF format is supported as long as they respect the multi-folder structure.
 
 ## Convert layout and files
 
