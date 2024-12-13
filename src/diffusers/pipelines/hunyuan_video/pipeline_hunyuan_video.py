@@ -13,24 +13,19 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, LlamaForCausalLM, LlamaTokenizerFast
+from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    BaseOutput,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import HunyuanVideoPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -111,18 +106,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-PRECISION_TO_TYPE = {
-    "fp32": torch.float32,
-    "fp16": torch.float16,
-    "bf16": torch.bfloat16,
-}
-
-
-@dataclass
-class HunyuanVideoPipelineOutput(BaseOutput):
-    videos: Union[torch.Tensor, np.ndarray]
-
-
 class HunyuanVideoPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-video generation using HunyuanVideo.
@@ -131,29 +114,36 @@ class HunyuanVideoPipeline(DiffusionPipeline):
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`TextEncoder`]):
-            Frozen text-encoder.
-        text_encoder_2 ([`TextEncoder`]):
-            Frozen text-encoder_2.
-        transformer ([`HYVideoDiffusionTransformer`]):
-            A `HYVideoDiffusionTransformer` to denoise the encoded video latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents.
+        text_encoder ([`LlamaModel`]):
+            [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
+        tokenizer_2 (`LlamaTokenizer`):
+            Tokenizer from [Llava Llama3-8B](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers).
+        transformer ([`HunyuanVideoTransformer3DModel`]):
+            Conditional Transformer to denoise the encoded image latents.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLHunyuanVideo`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        text_encoder_2 ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
+        text_encoder_2 ([`CLIPTextModel`]):
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        tokenizer_2 (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _optional_components = ["text_encoder_2"]
-    _exclude_from_cpu_offload = ["transformer"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
-        vae: AutoencoderKLHunyuanVideo,
-        text_encoder: LlamaForCausalLM,
+        text_encoder: LlamaModel,
         tokenizer: LlamaTokenizerFast,
         transformer: HunyuanVideoTransformer3DModel,
+        vae: AutoencoderKLHunyuanVideo,
         scheduler: KarrasDiffusionSchedulers,
         text_encoder_2: Optional[CLIPTextModel] = None,
         tokenizer_2: Optional[CLIPTokenizer] = None,
@@ -176,7 +166,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = (
             self.vae.spatial_compression_ratio if hasattr(self, "vae") and self.vae is not None else 8
         )
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def _get_llama_prompt_embeds(
         self,
@@ -397,13 +387,38 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
-
-    @property
-    def clip_skip(self):
-        return self._clip_skip
 
     @property
     def num_timesteps(self):
@@ -549,13 +564,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             max_sequence_length,
         )
 
-        target_dtype = torch.bfloat16  # Note(aryan): This has been hardcoded for now from the original repo
-        vae_dtype = torch.float16  # Note(aryan): This has been hardcoded for now from the original repo
-
-        prompt_embeds = prompt_embeds.to(target_dtype)
-        prompt_attention_mask = prompt_attention_mask.to(target_dtype)
+        transformer_dtype = self.transformer.dtype
+        prompt_embeds = prompt_embeds.to(transformer_dtype)
+        prompt_attention_mask = prompt_attention_mask.to(transformer_dtype)
         if prompt_embeds_2 is not None:
-            prompt_embeds_2 = prompt_embeds_2.to(target_dtype)
+            prompt_embeds_2 = prompt_embeds_2.to(transformer_dtype)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -574,11 +587,13 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             height,
             width,
             num_latent_frames,
-            target_dtype,
+            torch.float32,
             device,
             generator,
             latents,
         )
+
+        guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=transformer_dtype, device=device) * 1000.0
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -589,23 +604,17 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                latent_model_input = latents.to(transformer_dtype)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                guidance_expand = (
-                    torch.tensor([guidance_scale] * latents.shape[0], dtype=torch.float32, device=device).to(
-                        target_dtype
-                    )
-                    * 1000.0
-                )
-
                 noise_pred = self.transformer(
-                    hidden_states=latents,
+                    hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     encoder_hidden_states_2=prompt_embeds_2,
-                    guidance=guidance_expand,
+                    guidance=guidance,
                     return_dict=False,
                 )[0]
 
@@ -627,24 +636,25 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        latents = latents.to(vae_dtype)
+        latents = latents.to(self.vae.dtype)
         if not output_type == "latent":
             latents = latents / self.vae.config.scaling_factor
-            image = self.vae.decode(latents, return_dict=False)[0]
+            video = self.vae.decode(latents, return_dict=False)[0]
 
-            torch.save(image, "diffusers_latents_decoded.pt")
+            torch.save(video, "diffusers_latents_decoded.pt")
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         else:
-            image = latents
+            video = latents
 
-        image = (image / 2 + 0.5).clamp(0, 1)
+        video = (video / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        image = image.cpu().float()
+        video = video.cpu().float()
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return image
+            return video
 
-        return HunyuanVideoPipelineOutput(videos=image)
+        return HunyuanVideoPipelineOutput(videos=video)

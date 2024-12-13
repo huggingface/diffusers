@@ -5,7 +5,12 @@ import torch
 from accelerate import init_empty_weights
 from transformers import AutoModel, AutoTokenizer, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLHunyuanVideo,
+    FlowMatchEulerDiscreteScheduler,
+    HunyuanVideoPipeline,
+    HunyuanVideoTransformer3DModel,
+)
 
 
 def remap_norm_scale_shift_(key, state_dict):
@@ -193,6 +198,7 @@ def get_args():
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
     parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original llama checkpoint")
+    parser.add_argument("--tokenizer_path", type=str, default=None, help="Path to original llama tokenizer")
     parser.add_argument("--text_encoder_2_path", type=str, default=None, help="Path to original clip checkpoint")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
@@ -216,6 +222,7 @@ if __name__ == "__main__":
     if args.save_pipeline:
         assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
         assert args.text_encoder_path is not None
+        assert args.tokenizer_path is not None
         assert args.text_encoder_2_path is not None
 
     if args.transformer_ckpt_path is not None:
@@ -231,9 +238,11 @@ if __name__ == "__main__":
 
     if args.save_pipeline:
         text_encoder = AutoModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.float16)
-        tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_path, padding_side="right")
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path, padding_side="right")
         text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
         tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+        print(tokenizer_2)
 
         pipe = HunyuanVideoPipeline(
             transformer=transformer,
@@ -242,5 +251,6 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             text_encoder_2=text_encoder_2,
             tokenizer_2=tokenizer_2,
+            scheduler=scheduler,
         )
         pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
