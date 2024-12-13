@@ -24,7 +24,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...models import AutoencoderDC, SanaTransformer2DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
@@ -137,7 +137,7 @@ class SanaPipeline(DiffusionPipeline):
         text_encoder: AutoModelForCausalLM,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
 
