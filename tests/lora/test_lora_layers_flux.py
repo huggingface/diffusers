@@ -479,6 +479,10 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
 
         control_pipe.unload_lora_weights()
+        self.assertTrue(
+            control_pipe.transformer.config.in_channels == num_channels_without_control,
+            f"Expected {num_channels_without_control} channels in the modified transformer but has {control_pipe.transformer.config.in_channels=}",
+        )
         loaded_pipe = FluxPipeline.from_pipe(control_pipe)
         self.assertTrue(
             loaded_pipe.transformer.config.in_channels == num_channels_without_control,

@@ -2284,7 +2284,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer._transformer_norm_layers = None
 
         if getattr(transformer, "_overwritten_params", None) is not None:
-            print(f"{transformer._overwritten_params.keys()=}")
             overwritten_params = transformer._overwritten_params
             module_names = set()
 
