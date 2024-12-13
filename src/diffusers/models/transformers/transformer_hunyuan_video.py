@@ -24,7 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import is_torch_version
 from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor
-from ..embeddings import get_1d_rotary_pos_embed
+from ..embeddings import get_1d_rotary_pos_embed, get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
@@ -219,7 +219,8 @@ class TimestepEmbedder(nn.Module):
         )
 
     def forward(self, t):
-        t_freq = timestep_embedding(t, self.frequency_embedding_size, self.max_period).type(self.mlp[0].weight.dtype)
+        # t_freq = timestep_embedding(t, self.frequency_embedding_size, self.max_period).type(self.mlp[0].weight.dtype)
+        t_freq = get_timestep_embedding(t, self.frequency_embedding_size, flip_sin_to_cos=True, max_period=self.max_period, downscale_freq_shift=0).type(self.mlp[0].weight.dtype)
         t_emb = self.mlp(t_freq)
         return t_emb
 
@@ -231,24 +232,22 @@ class IndividualTokenRefinerBlock(nn.Module):
         attention_head_dim: int,
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
-        qkv_bias: bool = True,
+        attention_bias: bool = True,
     ) -> None:
         super().__init__()
 
         hidden_size = num_attention_heads * attention_head_dim
 
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
-
         self.attn = Attention(
             query_dim=hidden_size,
             cross_attention_dim=None,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
-            bias=True,
+            bias=attention_bias,
         )
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
-
         self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
 
         self.adaLN_modulation = nn.Sequential(
@@ -286,8 +285,8 @@ class IndividualTokenRefiner(nn.Module):
         num_layers: int,
         mlp_width_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        qkv_bias: bool = True,
-    ):
+        attention_bias: bool = True,
+    ) -> None:
         super().__init__()
 
         self.refiner_blocks = nn.ModuleList(
@@ -297,7 +296,7 @@ class IndividualTokenRefiner(nn.Module):
                     attention_head_dim=attention_head_dim,
                     mlp_width_ratio=mlp_width_ratio,
                     mlp_drop_rate=mlp_drop_rate,
-                    qkv_bias=qkv_bias,
+                    attention_bias=attention_bias,
                 )
                 for _ in range(num_layers)
             ]
@@ -308,7 +307,7 @@ class IndividualTokenRefiner(nn.Module):
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-    ):
+    ) -> None:
         self_attn_mask = None
         if attention_mask is not None:
             batch_size = attention_mask.shape[0]
@@ -334,13 +333,15 @@ class SingleTokenRefiner(nn.Module):
         num_layers: int,
         mlp_ratio: float = 4.0,
         mlp_drop_rate: float = 0.0,
-        qkv_bias: bool = True,
-    ):
+        attention_bias: bool = True,
+    ) -> None:
         super().__init__()
 
         hidden_size = num_attention_heads * attention_head_dim
 
         self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
+        # self.time_embed = TimestepEmbedder(hidden_size, nn.SiLU)
+        # self.context_embed = TextProjection(in_channels, hidden_size, nn.SiLU)
         self.t_embedder = TimestepEmbedder(hidden_size, nn.SiLU)
         self.c_embedder = TextProjection(in_channels, hidden_size, nn.SiLU)
 
@@ -350,7 +351,7 @@ class SingleTokenRefiner(nn.Module):
             num_layers=num_layers,
             mlp_width_ratio=mlp_ratio,
             mlp_drop_rate=mlp_drop_rate,
-            qkv_bias=qkv_bias,
+            attention_bias=attention_bias,
         )
 
     def forward(
@@ -360,6 +361,7 @@ class SingleTokenRefiner(nn.Module):
         attention_mask: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
+        # temb = self.time_embed(timestep)
         temb = self.t_embedder(timestep)
 
         if attention_mask is None:
@@ -369,6 +371,7 @@ class SingleTokenRefiner(nn.Module):
             pooled_projections = (hidden_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
             pooled_projections = pooled_projections.to(original_dtype)
 
+        # pooled_projections = self.context_embed(pooled_projections)
         pooled_projections = self.c_embedder(pooled_projections)
         emb = temb + pooled_projections
 
