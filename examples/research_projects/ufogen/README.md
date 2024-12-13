@@ -8,3 +8,6 @@ Repo Link: https://github.com/xuyanwu/SIDDMs-UFOGen
 
 ## Instructions
 
+Execute run.sh and observe the results. Since this is a reference-only implementation, expect the output to be **highly unstable**. 
+
+Experiment with the source files to get a more accurate output.
