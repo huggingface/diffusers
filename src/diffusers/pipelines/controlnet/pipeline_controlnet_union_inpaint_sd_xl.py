@@ -40,7 +40,6 @@ from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from ...models.controlnets import ControlNetUnionInput, ControlNetUnionInputProMax
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -82,7 +81,6 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         from diffusers import StableDiffusionXLControlNetUnionInpaintPipeline, ControlNetUnionModel, AutoencoderKL
-        from diffusers.models.controlnets import ControlNetUnionInputProMax
         from diffusers.utils import load_image
         import torch
         import numpy as np
@@ -114,11 +112,8 @@ EXAMPLE_DOC_STRING = """
         mask_np = np.array(mask)
         controlnet_img_np[mask_np > 0] = 0
         controlnet_img = Image.fromarray(controlnet_img_np)
-        union_input = ControlNetUnionInputProMax(
-            repaint=controlnet_img,
-        )
         # generate image
-        image = pipe(prompt, image=image, mask_image=mask, control_image_list=union_input).images[0]
+        image = pipe(prompt, image=image, mask_image=mask, control_image=[controlnet_img], control_mode=[7]).images[0]
         image.save("inpaint.png")
         ```
 """
@@ -1130,7 +1125,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
-        control_image_list: Union[ControlNetUnionInput, ControlNetUnionInputProMax] = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         padding_mask_crop: Optional[int] = None,
@@ -1158,6 +1153,7 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
+        control_mode: Optional[Union[int, List[int]]] = None,
         guidance_rescale: float = 0.0,
         original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
@@ -1345,20 +1341,6 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        if not isinstance(control_image_list, (ControlNetUnionInput, ControlNetUnionInputProMax)):
-            raise ValueError(
-                "Expected type of `control_image_list` to be one of `ControlNetUnionInput` or `ControlNetUnionInputProMax`"
-            )
-        if len(control_image_list) != controlnet.config.num_control_type:
-            if isinstance(control_image_list, ControlNetUnionInput):
-                raise ValueError(
-                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(control_image_list)}. Try `ControlNetUnionInputProMax`."
-                )
-            elif isinstance(control_image_list, ControlNetUnionInputProMax):
-                raise ValueError(
-                    f"Expected num_control_type {controlnet.config.num_control_type}, got {len(control_image_list)}. Try `ControlNetUnionInput`."
-                )
-
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
@@ -1375,36 +1357,44 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
 
+        if not isinstance(control_image, list):
+            control_image = [control_image]
+
+        if not isinstance(control_mode, list):
+            control_mode = [control_mode]
+
+        if len(control_image) != len(control_mode):
+            raise ValueError("Expected len(control_image) == len(control_type)")
+
+        num_control_type = controlnet.config.num_control_type
+
         # 1. Check inputs
-        control_type = []
-        for image_type in control_image_list:
-            if control_image_list[image_type]:
-                self.check_inputs(
-                    prompt,
-                    prompt_2,
-                    control_image_list[image_type],
-                    mask_image,
-                    strength,
-                    num_inference_steps,
-                    callback_steps,
-                    output_type,
-                    negative_prompt,
-                    negative_prompt_2,
-                    prompt_embeds,
-                    negative_prompt_embeds,
-                    ip_adapter_image,
-                    ip_adapter_image_embeds,
-                    pooled_prompt_embeds,
-                    negative_pooled_prompt_embeds,
-                    controlnet_conditioning_scale,
-                    control_guidance_start,
-                    control_guidance_end,
-                    callback_on_step_end_tensor_inputs,
-                    padding_mask_crop,
-                )
-                control_type.append(1)
-            else:
-                control_type.append(0)
+        control_type = [0 for _ in range(num_control_type)]
+        for _image, control_idx in zip(control_image, control_mode):
+            control_type[control_idx] = 1
+            self.check_inputs(
+                prompt,
+                prompt_2,
+                _image,
+                mask_image,
+                strength,
+                num_inference_steps,
+                callback_steps,
+                output_type,
+                negative_prompt,
+                negative_prompt_2,
+                prompt_embeds,
+                negative_prompt_embeds,
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+                controlnet_conditioning_scale,
+                control_guidance_start,
+                control_guidance_end,
+                callback_on_step_end_tensor_inputs,
+                padding_mask_crop,
+            )
 
         control_type = torch.Tensor(control_type)
 
@@ -1499,23 +1489,21 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
         init_image = init_image.to(dtype=torch.float32)
 
         # 5.2 Prepare control images
-        for image_type in control_image_list:
-            if control_image_list[image_type]:
-                control_image = self.prepare_control_image(
-                    image=control_image_list[image_type],
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    crops_coords=crops_coords,
-                    resize_mode=resize_mode,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                )
-                height, width = control_image.shape[-2:]
-                control_image_list[image_type] = control_image
+        for idx, _ in enumerate(control_image):
+            control_image[idx] = self.prepare_control_image(
+                image=control_image[idx],
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+            height, width = control_image[idx].shape[-2:]
 
         # 5.3 Prepare mask
         mask = self.mask_processor.preprocess(
@@ -1589,6 +1577,9 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
 
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
+        for _image in control_image:
+            if isinstance(_image, torch.Tensor):
+                original_size = original_size or _image.shape[-2:]
 
         # 10. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
@@ -1693,8 +1684,9 @@ class StableDiffusionXLControlNetUnionInpaintPipeline(
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=control_image_list,
+                    controlnet_cond=control_image,
                     control_type=control_type,
+                    control_type_idx=control_mode,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
