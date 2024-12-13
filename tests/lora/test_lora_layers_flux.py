@@ -435,6 +435,14 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         # another lora with correct shapes is loaded. This is not supported at the moment and should raise an error.
         # When we do support it, this test should be removed. Context: https://github.com/huggingface/diffusers/issues/10180
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+
+        # Change the transformer config to mimic a real use case.
+        num_channels_without_control = 4
+        transformer = FluxTransformer2DModel.from_config(
+            components["transformer"].config, in_channels=num_channels_without_control
+        ).to(torch_device)
+        components["transformer"] = transformer
+
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -453,11 +461,15 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         }
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(lora_state_dict, "adapter-1")
-            self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
 
+        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
+        self.assertTrue(pipe.get_active_adapters() == ["adapter-1"])
         self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == 2 * in_features)
         self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
         self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        lora_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         normal_lora_A = torch.nn.Linear(in_features, rank, bias=False)
         normal_lora_B = torch.nn.Linear(rank, out_features, bias=False)
@@ -475,6 +487,12 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             lora_state_dict,
             "adapter-2",
         )
+        # We should have `adapter-1` as the only adapter.
+        self.assertTrue(pipe.get_active_adapters() == ["adapter-1"])
+
+        # Check if the output is the same after lora loading error
+        lora_output_after_error = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(np.allclose(lora_output, lora_output_after_error, atol=1e-3, rtol=1e-3))
 
         # Test the opposite case where the first lora has the correct input features and the second lora has expanded input features.
         # This should raise a runtime error on input shapes being incompatible. But it doesn't. This is because PEFT renames the
@@ -482,6 +500,13 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         # weight is compatible with the current model inadequate. This should be addressed when attempting support for
         # https://github.com/huggingface/diffusers/issues/10180 (TODO)
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+        # Change the transformer config to mimic a real use case.
+        num_channels_without_control = 4
+        transformer = FluxTransformer2DModel.from_config(
+            components["transformer"].config, in_channels=num_channels_without_control
+        ).to(torch_device)
+        components["transformer"] = transformer
+
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
