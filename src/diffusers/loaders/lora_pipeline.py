@@ -1641,10 +1641,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         """
         super().unfuse_lora(components=components)
 
+
 class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`AuraFlowTransformer2DModel`]
-    Specific to [`AuraFlowPipeline`].
+    Load LoRA layers into [`AuraFlowTransformer2DModel`] Specific to [`AuraFlowPipeline`].
     """
 
     _lora_loadable_modules = ["transformer"]
@@ -1896,9 +1896,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         state_dict = {}
 
         if not (transformer_lora_layers):
-            raise ValueError(
-                "You must pass `transformer_lora_layers`."
-            )
+            raise ValueError("You must pass `transformer_lora_layers`.")
 
         state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
 

@@ -89,9 +89,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .ip_adapter import IPAdapterMixin
             from .lora_pipeline import (
                 AmusedLoraLoaderMixin,
+                AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 FluxLoraLoaderMixin,
-                AuraFlowLoraLoaderMixin,
                 LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
