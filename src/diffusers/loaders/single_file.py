@@ -683,24 +683,22 @@ class FromSingleFileMixin:
 
         </Tip>
 
-        Examples:
-
+        Example_1:
         ```py
-        >>> from diffusers import DiffusionPipeline
+        >>> from diffusers import StableDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        >>> pipeline = StableDiffusionPipeline.from_auto("stabilityai/stable-diffusion-2-1").to("cuda")
+        ```
 
-        >>> # Download pipeline that requires an authorization token
-        >>> # For more information on access tokens, please refer to this section
-        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        Example_2:
+        ```py
+        >>> from diffusers import StableDiffusionPipeline
 
-        >>> # Use a different scheduler
-        >>> from diffusers import LMSDiscreteScheduler
-
-        >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
-        >>> pipeline.scheduler = scheduler
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = StableDiffusionPipeline.from_auto(
+        ...     "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
+        ... ).to("cuda")
         ```
         """
         # Retrieve information about the path or repo ID
