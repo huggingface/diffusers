@@ -100,6 +100,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
+    "kolors": "down_blocks.1.attentions.0.transformer_blocks.0.attn2.to_k.weight"
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -151,6 +152,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32-sana": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"},
+    "kolors": {"pretrained_model_name_or_path": "Kwai-Kolors/Kolors-diffusers"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -596,6 +598,9 @@ def infer_diffusers_model_type(checkpoint):
 
         else:
             model_type = "autoencoder-dc-f128c512"
+
+    elif CHECKPOINT_KEY_NAMES["kolors"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["kolors"]].shape[-1] == 2048:
+        model_type = "kolors"
 
     else:
         model_type = "v1"
