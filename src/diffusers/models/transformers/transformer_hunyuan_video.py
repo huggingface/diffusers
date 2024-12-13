@@ -168,31 +168,6 @@ class TextProjection(nn.Module):
         return hidden_states
 
 
-def timestep_embedding(t, dim, max_period=10000):
-    """
-    Create sinusoidal timestep embeddings.
-
-    Args:
-        t (torch.Tensor): a 1-D Tensor of N indices, one per batch element. These may be fractional.
-        dim (int): the dimension of the output.
-        max_period (int): controls the minimum frequency of the embeddings.
-
-    Returns:
-        embedding (torch.Tensor): An (N, D) Tensor of positional embeddings.
-
-    .. ref_link: https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
-    """
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-        device=t.device
-    )
-    args = t[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    return embedding
-
-
 class TimestepEmbedder(nn.Module):
     """
     Embeds scalar timesteps into vector representations.
@@ -219,7 +194,6 @@ class TimestepEmbedder(nn.Module):
         )
 
     def forward(self, t):
-        # t_freq = timestep_embedding(t, self.frequency_embedding_size, self.max_period).type(self.mlp[0].weight.dtype)
         t_freq = get_timestep_embedding(t, self.frequency_embedding_size, flip_sin_to_cos=True, max_period=self.max_period, downscale_freq_shift=0).type(self.mlp[0].weight.dtype)
         t_emb = self.mlp(t_freq)
         return t_emb
@@ -340,10 +314,8 @@ class SingleTokenRefiner(nn.Module):
         hidden_size = num_attention_heads * attention_head_dim
 
         self.input_embedder = nn.Linear(in_channels, hidden_size, bias=True)
-        # self.time_embed = TimestepEmbedder(hidden_size, nn.SiLU)
-        # self.context_embed = TextProjection(in_channels, hidden_size, nn.SiLU)
-        self.t_embedder = TimestepEmbedder(hidden_size, nn.SiLU)
-        self.c_embedder = TextProjection(in_channels, hidden_size, nn.SiLU)
+        self.time_embed = TimestepEmbedder(hidden_size, nn.SiLU)
+        self.context_embed = TextProjection(in_channels, hidden_size, nn.SiLU)
 
         self.token_refiner = IndividualTokenRefiner(
             num_attention_heads=num_attention_heads,
@@ -361,8 +333,7 @@ class SingleTokenRefiner(nn.Module):
         attention_mask: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
-        # temb = self.time_embed(timestep)
-        temb = self.t_embedder(timestep)
+        temb = self.time_embed(timestep)
 
         if attention_mask is None:
             pooled_projections = hidden_states.mean(dim=1)
@@ -371,8 +342,7 @@ class SingleTokenRefiner(nn.Module):
             pooled_projections = (hidden_states * mask_float).sum(dim=1) / mask_float.sum(dim=1)
             pooled_projections = pooled_projections.to(original_dtype)
 
-        # pooled_projections = self.context_embed(pooled_projections)
-        pooled_projections = self.c_embedder(pooled_projections)
+        pooled_projections = self.context_embed(pooled_projections)
         emb = temb + pooled_projections
 
         hidden_states = self.input_embedder(hidden_states)

@@ -3,8 +3,9 @@ from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
+from transformers import AutoModel, AutoTokenizer, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
+from diffusers import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel, HunyuanVideoPipeline
 
 
 def remap_norm_scale_shift_(key, state_dict):
@@ -76,6 +77,8 @@ TRANSFORMER_KEYS_RENAME_DICT = {
     # "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
     # "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
     # "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
+    "txt_in.t_embedder": "txt_in.time_embed",
+    "txt_in.c_embedder": "txt_in.context_embed",
     "double_blocks": "transformer_blocks",
     "individual_token_refiner.blocks": "token_refiner.refiner_blocks",
     "img_attn_q_norm": "attn.norm_q",
@@ -179,6 +182,8 @@ def get_args():
         "--transformer_ckpt_path", type=str, default=None, help="Path to original transformer checkpoint"
     )
     parser.add_argument("--vae_ckpt_path", type=str, default=None, help="Path to original VAE checkpoint")
+    parser.add_argument("--text_encoder_path", type=str, default=None, help="Path to original llama checkpoint")
+    parser.add_argument("--text_encoder_2_path", type=str, default=None, help="Path to original clip checkpoint")
     parser.add_argument("--save_pipeline", action="store_true")
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
@@ -200,6 +205,8 @@ if __name__ == "__main__":
 
     if args.save_pipeline:
         assert args.transformer_ckpt_path is not None and args.vae_ckpt_path is not None
+        assert args.text_encoder_path is not None
+        assert args.text_encoder_2_path is not None
 
     if args.transformer_ckpt_path is not None:
         transformer = convert_transformer(args.transformer_ckpt_path)
@@ -211,3 +218,19 @@ if __name__ == "__main__":
         vae = convert_vae(args.vae_ckpt_path)
         if not args.save_pipeline:
             vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+    if args.save_pipeline:
+        text_encoder = AutoModel.from_pretrained(args.text_encoder_path, torch_dtype=torch.float16)
+        tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_path, padding_side="right")
+        text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
+        tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
+
+        pipe = HunyuanVideoPipeline(
+            transformer=transformer,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            text_encoder_2=text_encoder_2,
+            tokenizer_2=tokenizer_2,
+        )
+        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
