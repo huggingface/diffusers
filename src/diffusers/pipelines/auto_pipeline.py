@@ -24,11 +24,12 @@ from ..loaders.single_file_utils import (
     load_single_file_checkpoint,
 )
 from ..utils import is_sentencepiece_available
-from .aura_flow import AuraFlowPipeline
+
 from .animatediff import (
     AnimateDiffPipeline,
     AnimateDiffSDXLPipeline,
 )
+from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
