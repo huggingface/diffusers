@@ -2393,3 +2393,84 @@ def convert_autoencoder_dc_checkpoint_to_diffusers(checkpoint, **kwargs):
             handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
+
+
+# Copied from diffusers.examples.model_search.pipeline_easy.get_keyword_types
+def get_keyword_types(keyword):
+    r"""
+    Determine the type and loading method for a given keyword.
+
+    Parameters:
+        keyword (`str`):
+            The input keyword to classify.
+
+    Returns:
+        `dict`: A dictionary containing the model format, loading method,
+                and various types and extra types flags.
+    """
+
+    # Initialize the status dictionary with default values
+    status = {
+        "checkpoint_format": None,
+        "loading_method": None,
+        "type": {
+            "other": False,
+            "hf_url": False,
+            "hf_repo": False,
+            "civitai_url": False,
+            "local": False,
+        },
+        "extra_type": {
+            "url": False,
+            "missing_model_index": None,
+        },
+    }
+
+    # Check if the keyword is an HTTP or HTTPS URL
+    status["extra_type"]["url"] = bool(re.search(r"^(https?)://", keyword))
+
+    # Check if the keyword is a file
+    if os.path.isfile(keyword):
+        status["type"]["local"] = True
+        status["checkpoint_format"] = "single_file"
+        status["loading_method"] = "from_single_file"
+
+    # Check if the keyword is a directory
+    elif os.path.isdir(keyword):
+        status["type"]["local"] = True
+        status["checkpoint_format"] = "diffusers"
+        status["loading_method"] = "from_pretrained"
+        if not os.path.exists(os.path.join(keyword, "model_index.json")):
+            status["extra_type"]["missing_model_index"] = True
+
+    # Check if the keyword is a Civitai URL
+    elif keyword.startswith("https://civitai.com/"):
+        status["type"]["civitai_url"] = True
+        status["checkpoint_format"] = "single_file"
+        status["loading_method"] = None
+
+    # Check if the keyword starts with any valid URL prefixes
+    elif any(keyword.startswith(prefix) for prefix in VALID_URL_PREFIXES):
+        repo_id, weights_name = _extract_repo_id_and_weights_name(keyword)
+        if weights_name:
+            status["type"]["hf_url"] = True
+            status["checkpoint_format"] = "single_file"
+            status["loading_method"] = "from_single_file"
+        else:
+            status["type"]["hf_repo"] = True
+            status["checkpoint_format"] = "diffusers"
+            status["loading_method"] = "from_pretrained"
+
+    # Check if the keyword matches a Hugging Face repository format
+    elif re.match(r"^[^/]+/[^/]+$", keyword):
+        status["type"]["hf_repo"] = True
+        status["checkpoint_format"] = "diffusers"
+        status["loading_method"] = "from_pretrained"
+
+    # If none of the above apply
+    else:
+        status["type"]["other"] = True
+        status["checkpoint_format"] = None
+        status["loading_method"] = None
+
+    return status
