@@ -1979,6 +1979,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     Specific to [`StableDiffusion3Pipeline`].
     """
+
     _lora_loadable_modules = ["transformer", "text_encoder"]
     transformer_name = TRANSFORMER_NAME
     text_encoder_name = TEXT_ENCODER_NAME
