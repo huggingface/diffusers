@@ -109,13 +109,7 @@ def get_3d_sincos_pos_embed(
             embed_dim]`.
     """
     if output_type == "np":
-        deprecation_message = (
-            "`get_3d_sincos_pos_embed` uses `torch` and supports `device`."
-            " `from_numpy` is no longer required."
-            "  Pass `output_type='pt' to use the new version now."
-        )
-        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
-        return get_3d_sincos_pos_embed_np(
+        return _get_3d_sincos_pos_embed_np(
             embed_dim=embed_dim,
             spatial_size=spatial_size,
             temporal_size=temporal_size,
@@ -156,7 +150,7 @@ def get_3d_sincos_pos_embed(
     return pos_embed
 
 
-def get_3d_sincos_pos_embed_np(
+def _get_3d_sincos_pos_embed_np(
     embed_dim: int,
     spatial_size: Union[int, Tuple[int, int]],
     temporal_size: int,
@@ -184,6 +178,12 @@ def get_3d_sincos_pos_embed_np(
             The 3D sinusoidal positional embeddings of shape `[temporal_size, spatial_size[0] * spatial_size[1],
             embed_dim]`.
     """
+    deprecation_message = (
+        "`get_3d_sincos_pos_embed` uses `torch` and supports `device`."
+        " `from_numpy` is no longer required."
+        "  Pass `output_type='pt' to use the new version now."
+    )
+    deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
     if embed_dim % 4 != 0:
         raise ValueError("`embed_dim` must be divisible by 4")
     if isinstance(spatial_size, int):
