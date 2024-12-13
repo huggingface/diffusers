@@ -289,24 +289,31 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_2: Union[str, List[str]] = None,
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         num_videos_per_prompt: int = 1,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_2: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 256,
     ):
-        prompt_embeds, prompt_attention_mask = self._get_llama_prompt_embeds(
-            prompt,
-            prompt_template,
-            num_videos_per_prompt,
-            device=device,
-            max_sequence_length=max_sequence_length,
-        )
+        if prompt_embeds is None:
+            prompt_embeds, prompt_attention_mask = self._get_llama_prompt_embeds(
+                prompt,
+                prompt_template,
+                num_videos_per_prompt,
+                device=device,
+                dtype=dtype,
+                max_sequence_length=max_sequence_length,
+            )
 
-        if self.text_encoder_2 is not None:
-            prompt_2 = prompt_2 or prompt
+        if prompt_embeds_2 is None and self.text_encoder_2 is not None:
+            if prompt_2 is None and prompt_embeds_2 is None:
+                prompt_2 = prompt
             prompt_embeds_2 = self._get_clip_prompt_embeds(
                 prompt,
                 num_videos_per_prompt,
                 device=device,
+                dtype=dtype,
                 max_sequence_length=77,
             )
 
@@ -318,7 +325,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_2,
         height,
         width,
-        video_length,
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
         prompt_template=None,
@@ -362,20 +368,23 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        video_length,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
+        batch_size: int,
+        num_channels_latents: 32,
+        height: int = 720,
+        width: int = 1280,
+        num_frames: int = 129,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+
         shape = (
             batch_size,
             num_channels_latents,
-            video_length,
+            num_frames,
             int(height) // self.vae_scale_factor_spatial,
             int(width) // self.vae_scale_factor_spatial,
         )
@@ -385,234 +394,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
-        # Check existence to make it compatible with FlowMatchEulerDiscreteScheduler
-        if hasattr(self.scheduler, "init_noise_sigma"):
-            # scale the initial noise by the standard deviation required by the scheduler
-            latents = latents * self.scheduler.init_noise_sigma
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
-
-    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    def get_guidance_scale_embedding(
-        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
-    ) -> torch.Tensor:
-        """
-        See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
-
-        Args:
-            w (`torch.Tensor`):
-                Generate embedding vectors with a specified guidance scale to subsequently enrich timestep embeddings.
-            embedding_dim (`int`, *optional*, defaults to 512):
-                Dimension of the embeddings to generate.
-            dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
-                Data type of the generated embeddings.
-
-        Returns:
-            `torch.Tensor`: Embedding vectors with shape `(len(w), embedding_dim)`.
-        """
-        assert len(w.shape) == 1
-        w = w * 1000.0
-
-        half_dim = embedding_dim // 2
-        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
-        emb = w.to(dtype)[:, None] * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-        if embedding_dim % 2 == 1:  # zero pad
-            emb = torch.nn.functional.pad(emb, (0, 1))
-        assert emb.shape == (w.shape[0], embedding_dim)
-        return emb
-
-    def get_rotary_pos_embed(self, video_length, height, width):
-        def _to_tuple(x, dim=2):
-            if isinstance(x, int):
-                return (x,) * dim
-            elif len(x) == dim:
-                return x
-            else:
-                raise ValueError(f"Expected length {dim} or int, but got {x}")
-
-        def get_meshgrid_nd(start, *args, dim=2):
-            """
-            Get n-D meshgrid with start, stop and num.
-
-            Args:
-                start (int or tuple):
-                    If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If
-                    len(args) == 2, start is start, args[0] is stop, args[1] is num. For n-dim, start/stop/num should
-                    be int or n-tuple. If n-tuple is provided, the meshgrid will be stacked following the dim order in
-                    n-tuples.
-                *args: See above.
-                dim (int): Dimension of the meshgrid. Defaults to 2.
-
-            Returns:
-                grid (np.ndarray): [dim, ...]
-            """
-            if len(args) == 0:
-                # start is grid_size
-                num = _to_tuple(start, dim=dim)
-                start = (0,) * dim
-                stop = num
-            elif len(args) == 1:
-                # start is start, args[0] is stop, step is 1
-                start = _to_tuple(start, dim=dim)
-                stop = _to_tuple(args[0], dim=dim)
-                num = [stop[i] - start[i] for i in range(dim)]
-            elif len(args) == 2:
-                # start is start, args[0] is stop, args[1] is num
-                start = _to_tuple(start, dim=dim)  # Left-Top       eg: 12,0
-                stop = _to_tuple(args[0], dim=dim)  # Right-Bottom   eg: 20,32
-                num = _to_tuple(args[1], dim=dim)  # Target Size    eg: 32,124
-            else:
-                raise ValueError(f"len(args) should be 0, 1 or 2, but got {len(args)}")
-
-            # PyTorch implement of np.linspace(start[i], stop[i], num[i], endpoint=False)
-            axis_grid = []
-            for i in range(dim):
-                a, b, n = start[i], stop[i], num[i]
-                g = torch.linspace(a, b, n + 1, dtype=torch.float32)[:n]
-                axis_grid.append(g)
-            grid = torch.meshgrid(*axis_grid, indexing="ij")  # dim x [W, H, D]
-            grid = torch.stack(grid, dim=0)  # [dim, W, H, D]
-
-            return grid
-
-        def get_1d_rotary_pos_embed(
-            dim: int,
-            pos: Union[torch.FloatTensor, int],
-            theta: float = 10000.0,
-            use_real: bool = False,
-            theta_rescale_factor: float = 1.0,
-            interpolation_factor: float = 1.0,
-        ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            """
-            Precompute the frequency tensor for complex exponential (cis) with given dimensions. (Note: `cis` means
-            `cos + i * sin`, where i is the imaginary unit.)
-
-            This function calculates a frequency tensor with complex exponential using the given dimension 'dim' and
-            the end index 'end'. The 'theta' parameter scales the frequencies. The returned tensor contains complex
-            values in complex64 data type.
-
-            Args:
-                dim (int): Dimension of the frequency tensor.
-                pos (int or torch.FloatTensor): Position indices for the frequency tensor. [S] or scalar
-                theta (float, optional): Scaling factor for frequency computation. Defaults to 10000.0.
-                use_real (bool, optional): If True, return real part and imaginary part separately.
-                                        Otherwise, return complex numbers.
-                theta_rescale_factor (float, optional): Rescale factor for theta. Defaults to 1.0.
-
-            Returns:
-                freqs_cis: Precomputed frequency tensor with complex exponential. [S, D/2] freqs_cos, freqs_sin:
-                Precomputed frequency tensor with real and imaginary parts separately. [S, D]
-            """
-            if isinstance(pos, int):
-                pos = torch.arange(pos).float()
-
-            # proposed by reddit user bloc97, to rescale rotary embeddings to longer sequence length without fine-tuning
-            # has some connection to NTK literature
-            if theta_rescale_factor != 1.0:
-                theta *= theta_rescale_factor ** (dim / (dim - 2))
-
-            freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))  # [D/2]
-            # assert interpolation_factor == 1.0, f"interpolation_factor: {interpolation_factor}"
-            freqs = torch.outer(pos * interpolation_factor, freqs)  # [S, D/2]
-            if use_real:
-                freqs_cos = freqs.cos().repeat_interleave(2, dim=1)  # [S, D]
-                freqs_sin = freqs.sin().repeat_interleave(2, dim=1)  # [S, D]
-                return freqs_cos, freqs_sin
-            else:
-                freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64     # [S, D/2]
-                return freqs_cis
-
-        def get_nd_rotary_pos_embed(
-            rope_dim_list,
-            start,
-            *args,
-            theta=10000.0,
-            use_real=False,
-            theta_rescale_factor: Union[float, List[float]] = 1.0,
-            interpolation_factor: Union[float, List[float]] = 1.0,
-        ):
-            """
-            This is a n-d version of precompute_freqs_cis, which is a RoPE for tokens with n-d structure.
-
-            Args:
-                rope_dim_list (list of int): Dimension of each rope. len(rope_dim_list) should equal to n.
-                    sum(rope_dim_list) should equal to head_dim of attention layer.
-                start (int | tuple of int | list of int):
-                    If len(args) == 0, start is num; If len(args) == 1, start is start, args[0] is stop, step is 1; If
-                    len(args) == 2, start is start, args[0] is stop, args[1] is num.
-                *args: See above.
-                theta (float): Scaling factor for frequency computation. Defaults to 10000.0.
-                use_real (bool):
-                    If True, return real part and imaginary part separately. Otherwise, return complex numbers. Some
-                    libraries such as TensorRT does not support complex64 data type. So it is useful to provide a real
-                    part and an imaginary part separately.
-                theta_rescale_factor (float): Rescale factor for theta. Defaults to 1.0.
-
-            Returns:
-                pos_embed (torch.Tensor): [HW, D/2]
-            """
-
-            grid = get_meshgrid_nd(start, *args, dim=len(rope_dim_list))  # [3, W, H, D] / [2, W, H]
-
-            if isinstance(theta_rescale_factor, int) or isinstance(theta_rescale_factor, float):
-                theta_rescale_factor = [theta_rescale_factor] * len(rope_dim_list)
-            elif isinstance(theta_rescale_factor, list) and len(theta_rescale_factor) == 1:
-                theta_rescale_factor = [theta_rescale_factor[0]] * len(rope_dim_list)
-            assert len(theta_rescale_factor) == len(
-                rope_dim_list
-            ), "len(theta_rescale_factor) should equal to len(rope_dim_list)"
-
-            if isinstance(interpolation_factor, int) or isinstance(interpolation_factor, float):
-                interpolation_factor = [interpolation_factor] * len(rope_dim_list)
-            elif isinstance(interpolation_factor, list) and len(interpolation_factor) == 1:
-                interpolation_factor = [interpolation_factor[0]] * len(rope_dim_list)
-            assert len(interpolation_factor) == len(
-                rope_dim_list
-            ), "len(interpolation_factor) should equal to len(rope_dim_list)"
-
-            # use 1/ndim of dimensions to encode grid_axis
-            embs = []
-            for i in range(len(rope_dim_list)):
-                emb = get_1d_rotary_pos_embed(
-                    rope_dim_list[i],
-                    grid[i].reshape(-1),
-                    theta,
-                    use_real=use_real,
-                    theta_rescale_factor=theta_rescale_factor[i],
-                    interpolation_factor=interpolation_factor[i],
-                )  # 2 x [WHD, rope_dim_list[i]]
-                embs.append(emb)
-
-            if use_real:
-                cos = torch.cat([emb[0] for emb in embs], dim=1)  # (WHD, D/2)
-                sin = torch.cat([emb[1] for emb in embs], dim=1)  # (WHD, D/2)
-                return cos, sin
-            else:
-                emb = torch.cat(embs, dim=1)  # (WHD, D/2)
-                return emb
-
-        latents_size = [(video_length - 1) // 4 + 1, height // 8, width // 8]
-        rope_sizes = [
-            latents_size[0] // self.transformer.config.patch_size_t,
-            latents_size[1] // self.transformer.config.patch_size,
-            latents_size[2] // self.transformer.config.patch_size,
-        ]
-
-        freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
-            self.transformer.config.rope_dim_list,
-            rope_sizes,
-            theta=256,
-            use_real=True,
-            theta_rescale_factor=1,
-        )
-
-        return freqs_cos, freqs_sin
 
     @property
     def guidance_scale(self):
@@ -639,12 +422,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
-        data_type: str = "video",
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
         guidance_scale: float = 6.0,
         num_videos_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -669,19 +450,15 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 will be used instead.
-            height (`int`):
+            height (`int`, defaults to `720`):
                 The height in pixels of the generated image.
-            width (`int`):
+            width (`int`, defaults to `1280`):
                 The width in pixels of the generated image.
-            video_length (`int`):
+            num_frames (`int`, defaults to `129`):
                 The number of frames in the generated video.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
@@ -696,9 +473,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 not applied.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -744,7 +518,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             prompt_2,
             height,
             width,
-            num_frames,
             prompt_embeds,
             callback_on_step_end_tensor_inputs,
             prompt_template,
@@ -769,6 +542,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             prompt_2,
             prompt_template,
             num_videos_per_prompt,
+            prompt_embeds,
+            prompt_embeds_2,
+            prompt_attention_mask,
             device,
             max_sequence_length,
         )
@@ -808,9 +584,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        image_rotary_emb = self.get_rotary_pos_embed(num_frames, height, width)
-
-        # if is_progress_bar:
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -832,8 +605,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
                     encoder_hidden_states_2=prompt_embeds_2,
-                    freqs_cos=image_rotary_emb[0],
-                    freqs_sin=image_rotary_emb[1],
                     guidance=guidance_expand,
                     return_dict=False,
                 )[0]
