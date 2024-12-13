@@ -103,7 +103,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
                 result_img["special_scores"][concept_idx] = round(concept_cos - concept_threshold + self.adjustment, 3)
                 if result_img["special_scores"][concept_idx] > 0:
                     result_img["special_care"].append({concept_idx, result_img["special_scores"][concept_idx]})
-                    self.adjustment = 0.01
+                    self.adjustment += 0.01
 
             for concept_idx in range(len(cos_dist[0])):
                 concept_cos = cos_dist[i][concept_idx]
