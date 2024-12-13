@@ -100,7 +100,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
-    "kolors": "down_blocks.1.attentions.0.transformer_blocks.0.attn2.to_k.weight"
+    "kolors": "down_blocks.1.attentions.0.transformer_blocks.0.attn2.to_k.weight",
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
