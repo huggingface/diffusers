@@ -382,6 +382,20 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 If `return_dict` is True, an [`~models.unet_slatio_temporal.UNetSpatioTemporalConditionOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is the sample tensor.
         """
+        # By default samples have to be AT least a multiple of the overall upsampling factor.
+        # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
+        # However, the upsampling interpolation output size can be forced to fit any upsampling size
+        # on the fly if necessary.
+        default_overall_up_factor = 2**self.num_upsamplers
+
+        # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
+        forward_upsample_size = False
+        upsample_size = None
+
+        if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
+            logger.info("Forward upsample size to force interpolation output size.")
+            forward_upsample_size = True
+
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
@@ -457,8 +471,15 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
+            is_final_block = i == len(self.up_blocks) - 1
+
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+
+            # if we have not reached the final block and need to forward the
+            # upsample size, we do it here
+            if not is_final_block and forward_upsample_size:
+                upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 sample = upsample_block(
@@ -466,6 +487,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
+                    upsample_size=upsample_size,
                     image_only_indicator=image_only_indicator,
                 )
             else:
@@ -473,6 +495,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
                     image_only_indicator=image_only_indicator,
                 )
 

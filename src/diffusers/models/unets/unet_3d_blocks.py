@@ -1375,6 +1375,7 @@ class UpBlockSpatioTemporal(nn.Module):
         res_hidden_states_tuple: Tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        upsample_size: Optional[int] = None,
     ) -> torch.Tensor:
         for resnet in self.resnets:
             # pop res hidden states
@@ -1415,7 +1416,7 @@ class UpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -1485,6 +1486,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        upsample_size: Optional[int] = None,
     ) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1533,6 +1535,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
