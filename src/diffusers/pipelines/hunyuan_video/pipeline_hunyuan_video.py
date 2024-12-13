@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -140,7 +141,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         text_encoder: TextEncoder,
         transformer: HunyuanVideoTransformer3DModel,
         scheduler: KarrasDiffusionSchedulers,
-        text_encoder_2: Optional[TextEncoder] = None,
+        text_encoder_2: Optional[CLIPTextModel] = None,
+        tokenizer_2: Optional[CLIPTokenizer] = None,
     ):
         super().__init__()
 
@@ -150,6 +152,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
             text_encoder_2=text_encoder_2,
+            tokenizer_2=tokenizer_2,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -245,6 +248,45 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             prompt_embeds,
             attention_mask,
         )
+
+    def _get_clip_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]],
+        num_videos_per_prompt: int = 1,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+        max_sequence_length: int = 77,
+    ):
+        device = device or self._execution_device
+        dtype = dtype or self.text_encoder_2.dtype
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
+
+        text_inputs = self.tokenizer_2(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer_2(prompt, padding="longest", return_tensors="pt").input_ids
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer_2.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {max_sequence_length} tokens: {removed_text}"
+            )
+
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False).pooler_output
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt)
+        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, -1)
+
+        return prompt_embeds
 
     def check_inputs(
         self,
@@ -577,7 +619,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
@@ -674,7 +715,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         )
 
         self._guidance_scale = guidance_scale
-        self._clip_skip = clip_skip
         self._interrupt = False
 
         # 2. Define call parameters
@@ -698,27 +738,33 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
             attention_mask=prompt_attention_mask,
-            clip_skip=self.clip_skip,
             data_type=data_type,
         )
 
+        # if self.text_encoder_2 is not None:
+        #     (
+        #         prompt_embeds_2,
+        #         prompt_mask_2,
+        #     ) = self.encode_prompt(
+        #         prompt,
+        #         device,
+        #         num_videos_per_prompt,
+        #         prompt_embeds=prompt_embeds_2,
+        #         attention_mask=None,
+        #         clip_skip=self.clip_skip,
+        #         text_encoder=self.text_encoder_2,
+        #         data_type=data_type,
+        #     )
+        # else:
+        #     prompt_embeds_2 = None
+        #     prompt_mask_2 = None
+
         if self.text_encoder_2 is not None:
-            (
-                prompt_embeds_2,
-                prompt_mask_2,
-            ) = self.encode_prompt(
+            prompt_embeds_2 = self._get_clip_prompt_embeds(
                 prompt,
-                device,
                 num_videos_per_prompt,
-                prompt_embeds=prompt_embeds_2,
-                attention_mask=None,
-                clip_skip=self.clip_skip,
-                text_encoder=self.text_encoder_2,
-                data_type=data_type,
+                device=device,
             )
-        else:
-            prompt_embeds_2 = None
-            prompt_mask_2 = None
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
