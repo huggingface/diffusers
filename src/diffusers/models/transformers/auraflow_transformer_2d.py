@@ -343,8 +343,8 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.gradient_checkpointing = False
 
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
