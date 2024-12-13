@@ -18,10 +18,10 @@ import unittest
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
-    FlowMatchEulerDiscreteScheduler,
     AuraFlowPipeline,
+    FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.testing_utils import is_peft_available, require_peft_backend, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import is_peft_available, require_peft_backend
 
 
 if is_peft_available():
