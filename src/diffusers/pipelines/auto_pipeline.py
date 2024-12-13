@@ -403,7 +403,7 @@ def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kw
                 - A link to the `.ckpt` file (for example
                   `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                 - A path to a *file* containing all pipeline weights.
-        pipeline_mapping (dict): 
+        pipeline_mapping (dict):
             A dictionary mapping model types to their corresponding pipeline classes.
         torch_dtype (`str` or `torch.dtype`, *optional*):
             Override the default `torch.dtype` and load the model with another dtype.
@@ -463,7 +463,7 @@ def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kw
     else:
         # Instantiate and return the pipeline with the loaded checkpoint and any additional kwargs
         return pipeline_class.from_auto(pretrained_model_or_path, **kwargs)
-    
+
 
 class AutoPipelineForText2Image(ConfigMixin):
     r"""
@@ -749,7 +749,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         model.register_to_config(**unused_original_config)
 
         return model
-    
+
     @classmethod
     def from_auto(cls, pretrained_model_or_path, **kwargs):
         r"""
@@ -1213,7 +1213,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         model.register_to_config(**unused_original_config)
 
         return model
-    
+
     @classmethod
     def from_auto(cls, pretrained_model_or_path, **kwargs):
         r"""
@@ -1363,7 +1363,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         # Get the keyword types for the provided model path
         hf_model_status = get_keyword_types(pretrained_model_or_path)
-        
+
         # Check if it is loadable.
         if hf_model_status["loading_method"] is not None:
             if hf_model_status["checkpoint_format"] == "single_file":
@@ -1671,7 +1671,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         model.register_to_config(**unused_original_config)
 
         return model
-    
+
     @classmethod
     def from_auto(cls, pretrained_model_or_path, **kwargs):
         r"""
@@ -1821,7 +1821,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         # Get the keyword types for the provided model path
         hf_model_status = get_keyword_types(pretrained_model_or_path)
-        
+
         # Check if it is loadable.
         if hf_model_status["loading_method"] is not None:
             if hf_model_status["checkpoint_format"] == "single_file":
