@@ -27,6 +27,7 @@ from ..attention_processor import Attention, AttentionProcessor, FusedJointAttnP
 from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..transformers.transformer_sd3 import SD3SingleTransformerBlock
 from .controlnet import BaseOutput, zero_module
 
 
@@ -56,38 +57,62 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
+        dual_attention_layers: Tuple[int, ...] = (),
+        qk_norm: Optional[str] = None,
+        pos_embed_type: Optional[str] = "sincos",
+        use_pos_embed: bool = True,
+        force_zeros_for_pooled_projection: bool = True,
     ):
         super().__init__()
         default_out_channels = in_channels
         self.out_channels = out_channels if out_channels is not None else default_out_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 
-        self.pos_embed = PatchEmbed(
-            height=sample_size,
-            width=sample_size,
-            patch_size=patch_size,
-            in_channels=in_channels,
-            embed_dim=self.inner_dim,
-            pos_embed_max_size=pos_embed_max_size,
-        )
+        if use_pos_embed:
+            self.pos_embed = PatchEmbed(
+                height=sample_size,
+                width=sample_size,
+                patch_size=patch_size,
+                in_channels=in_channels,
+                embed_dim=self.inner_dim,
+                pos_embed_max_size=pos_embed_max_size,
+                pos_embed_type=pos_embed_type,
+            )
+        else:
+            self.pos_embed = None
         self.time_text_embed = CombinedTimestepTextProjEmbeddings(
             embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
         )
-        self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
+        if joint_attention_dim is not None:
+            self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
-        # `attention_head_dim` is doubled to account for the mixing.
-        # It needs to crafted when we get the actual checkpoints.
-        self.transformer_blocks = nn.ModuleList(
-            [
-                JointTransformerBlock(
-                    dim=self.inner_dim,
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=self.config.attention_head_dim,
-                    context_pre_only=False,
-                )
-                for i in range(num_layers)
-            ]
-        )
+            # `attention_head_dim` is doubled to account for the mixing.
+            # It needs to crafted when we get the actual checkpoints.
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    JointTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                        context_pre_only=False,
+                        qk_norm=qk_norm,
+                        use_dual_attention=True if i in dual_attention_layers else False,
+                    )
+                    for i in range(num_layers)
+                ]
+            )
+        else:
+            self.context_embedder = None
+            self.transformer_blocks = nn.ModuleList(
+                [
+                    SD3SingleTransformerBlock(
+                        dim=self.inner_dim,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                    )
+                    for _ in range(num_layers)
+                ]
+            )
 
         # controlnet_blocks
         self.controlnet_blocks = nn.ModuleList([])
@@ -241,6 +266,20 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    # Notes: This is for SD3.5 8b controlnet, which shares the pos_embed with the transformer
+    # we should have handled this in conversion script
+    def _get_pos_embed_from_transformer(self, transformer):
+        pos_embed = PatchEmbed(
+            height=transformer.config.sample_size,
+            width=transformer.config.sample_size,
+            patch_size=transformer.config.patch_size,
+            in_channels=transformer.config.in_channels,
+            embed_dim=transformer.inner_dim,
+            pos_embed_max_size=transformer.config.pos_embed_max_size,
+        )
+        pos_embed.load_state_dict(transformer.pos_embed.state_dict(), strict=True)
+        return pos_embed
+
     @classmethod
     def from_transformer(
         cls, transformer, num_layers=12, num_extra_conditioning_channels=1, load_weights_from_transformer=True
@@ -248,7 +287,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         config = transformer.config
         config["num_layers"] = num_layers or config.num_layers
         config["extra_conditioning_channels"] = num_extra_conditioning_channels
-        controlnet = cls(**config)
+        controlnet = cls.from_config(config)
 
         if load_weights_from_transformer:
             controlnet.pos_embed.load_state_dict(transformer.pos_embed.state_dict())
@@ -314,9 +353,27 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+        if self.pos_embed is not None and hidden_states.ndim != 4:
+            raise ValueError("hidden_states must be 4D when pos_embed is used")
+
+        # SD3.5 8b controlnet does not have a `pos_embed`,
+        # it use the `pos_embed` from the transformer to process input before passing to controlnet
+        elif self.pos_embed is None and hidden_states.ndim != 3:
+            raise ValueError("hidden_states must be 3D when pos_embed is not used")
+
+        if self.context_embedder is not None and encoder_hidden_states is None:
+            raise ValueError("encoder_hidden_states must be provided when context_embedder is used")
+        # SD3.5 8b controlnet does not have a `context_embedder`, it does not use `encoder_hidden_states`
+        elif self.context_embedder is None and encoder_hidden_states is not None:
+            raise ValueError("encoder_hidden_states should not be provided when context_embedder is not used")
+
+        if self.pos_embed is not None:
+            hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
+
         temb = self.time_text_embed(timestep, pooled_projections)
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        if self.context_embedder is not None:
+            encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # add
         hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
@@ -336,18 +393,28 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
+                if self.context_embedder is not None:
+                    encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block), hidden_states, temb, **ckpt_kwargs
+                    )
 
             else:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
-                )
+                if self.context_embedder is not None:
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states=hidden_states, encoder_hidden_states=encoder_hidden_states, temb=temb
+                    )
+                else:
+                    # SD3.5 8b controlnet use single transformer block, which does not use `encoder_hidden_states`
+                    hidden_states = block(hidden_states, temb)
 
             block_res_samples = block_res_samples + (hidden_states,)
 

@@ -23,10 +23,13 @@ from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     convert_animatediff_checkpoint_to_diffusers,
+    convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_ltx_transformer_checkpoint_to_diffusers,
+    convert_ltx_vae_checkpoint_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
@@ -82,6 +85,15 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_flux_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "LTXVideoTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_ltx_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AutoencoderKLLTXVideo": {
+        "checkpoint_mapping_fn": convert_ltx_vae_checkpoint_to_diffusers,
+        "default_subfolder": "vae",
+    },
+    "AutoencoderDC": {"checkpoint_mapping_fn": convert_autoencoder_dc_checkpoint_to_diffusers},
 }
 
 
@@ -219,7 +231,7 @@ class FromOriginalModelMixin:
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
-        if original_config:
+        if original_config is not None:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
             else:
@@ -243,7 +255,7 @@ class FromOriginalModelMixin:
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
         else:
-            if config:
+            if config is not None:
                 if isinstance(config, str):
                     default_pretrained_model_config_name = config
                 else:
@@ -269,6 +281,8 @@ class FromOriginalModelMixin:
                 pretrained_model_name_or_path=default_pretrained_model_config_name,
                 subfolder=subfolder,
                 local_files_only=local_files_only,
+                token=token,
+                revision=revision,
             )
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
