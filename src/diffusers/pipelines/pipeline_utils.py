@@ -852,11 +852,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 _requires_flow_match = any("FlowMatch" in class_type for class_type in _expected_class_types)
                 _is_flow_match = "FlowMatch" in class_obj.__class__.__name__
                 if _requires_flow_match and not _is_flow_match:
-                    raise ValueError(f"Expected FlowMatch scheduler, got {class_obj.__class__.__name__}.")
+                    logger.warning(f"Expected FlowMatch scheduler, got {class_obj.__class__.__name__}.")
                 elif not _requires_flow_match and _is_flow_match:
-                    raise ValueError(f"Expected non-FlowMatch scheduler, got {class_obj.__class__.__name__}.")
+                    logger.warning(f"Expected non-FlowMatch scheduler, got {class_obj.__class__.__name__}.")
             elif not _is_valid_type:
-                raise ValueError(
+                logger.warning(
                     f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
                 )
 
