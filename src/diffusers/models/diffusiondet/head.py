@@ -1,4 +1,5 @@
 import math
+from dataclasses import astuple
 
 import torch
 from torch import nn
@@ -118,51 +119,34 @@ class ROIPooler(nn.Module):
             for scale in scales
         )
 
-    def forward(self, x, box_lists):
+    def forward(self, x, bboxes):
         num_level_assignments = len(self.level_poolers)
+        assert len(x) == num_level_assignments and len(bboxes) == x[0].size(0)
 
-        if not is_fx_tracing():
-            torch._assert(
-                isinstance(x, list) and isinstance(box_lists, list),
-                "Arguments to pooler must be lists",
-            )
-        assert_fx_safe(
-            len(x) == num_level_assignments,
-            "unequal value, num_level_assignments={}, but x is list of {} Tensors".format(
-                num_level_assignments, len(x)
-            ),
-        )
-        assert_fx_safe(
-            len(box_lists) == x[0].size(0),
-            "unequal value, x[0] batch dim 0 is {}, but box_list has length {}".format(
-                x[0].size(0), len(box_lists)
-            ),
-        )
-        if len(box_lists) == 0:
-            return _create_zeros(None, x[0].shape[1], *self.output_size, x[0])
-
-        pooler_fmt_boxes = convert_boxes_to_pooler_format(box_lists)
+        pooler_fmt_boxes = convert_boxes_to_pooler_format(bboxes)
 
         if num_level_assignments == 1:
             return self.level_poolers[0](x[0], pooler_fmt_boxes)
 
         level_assignments = assign_boxes_to_levels(
-            box_lists, self.min_level, self.max_level, self.canonical_box_size, self.canonical_level
+            bboxes, self.min_level, self.max_level, self.canonical_box_size, self.canonical_level
         )
 
-        num_boxes = len(pooler_fmt_boxes)
-        num_channels = x[0].shape[1]
+        batches = pooler_fmt_boxes.shape[0]
+        channels = x[0].shape[1]
         output_size = self.output_size[0]
+        sizes = (batches, channels, output_size, output_size)
 
-        output = _create_zeros(pooler_fmt_boxes, num_channels, output_size, output_size, x[0])
+        output = torch.zeros(sizes, dtype=x[0].dtype, device=x[0].device)
 
-        for level, pooler in enumerate(self.level_poolers):
-            inds = nonzero_tuple(level_assignments == level)[0]
+        for level, (x_level, pooler) in enumerate(zip(x, self.level_poolers)):
+            inds = (level_assignments == level).nonzero(as_tuple=True)[0]
             pooler_fmt_boxes_level = pooler_fmt_boxes[inds]
             # Use index_put_ instead of advance indexing, to avoid pytorch/issues/49852
-            output.index_put_((inds,), pooler(x[level], pooler_fmt_boxes_level))
+            output.index_put_((inds,), pooler(x_level, pooler_fmt_boxes_level))
 
         return output
+
 
 def _fmt_box_list(box_tensor, batch_index: int):
     repeated_index = torch.full(
@@ -181,12 +165,13 @@ def convert_boxes_to_pooler_format(box_lists):
     )
     return pooler_fmt_boxes
 
+
 def assign_boxes_to_levels(
-    box_lists,
-    min_level,
-    max_level,
-    canonical_box_size,
-    canonical_level,
+        box_lists,
+        min_level,
+        max_level,
+        canonical_box_size,
+        canonical_level,
 ):
     box_sizes = torch.sqrt(torch.cat([boxes.area() for boxes in box_lists]))
     # Eqn.(1) in FPN paper
