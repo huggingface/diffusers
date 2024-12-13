@@ -39,7 +39,7 @@ from ..utils import (
     logging,
 )
 from ..utils.torch_utils import is_compiled_module
-from .transformers_loading_utils import load_tokenizer_from_dduf, load_transformers_model_from_dduf
+from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transformers_model_from_dduf
 
 
 if is_transformers_available():
@@ -759,9 +759,9 @@ def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) ->
     """
     if is_dduf:
         if issubclass(class_obj, PreTrainedTokenizerBase):
-            return lambda *args, **kwargs: load_tokenizer_from_dduf(class_obj, *args, **kwargs)
+            return lambda *args, **kwargs: _load_tokenizer_from_dduf(class_obj, *args, **kwargs)
         if issubclass(class_obj, PreTrainedModel):
-            return lambda *args, **kwargs: load_transformers_model_from_dduf(class_obj, *args, **kwargs)
+            return lambda *args, **kwargs: _load_transformers_model_from_dduf(class_obj, *args, **kwargs)
     return getattr(class_obj, load_method_name)
 
 

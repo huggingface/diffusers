@@ -33,7 +33,7 @@ if is_safetensors_available():
     import safetensors.torch
 
 
-def load_tokenizer_from_dduf(
+def _load_tokenizer_from_dduf(
     cls: "PreTrainedTokenizer", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedTokenizer":
     """
@@ -56,7 +56,7 @@ def load_tokenizer_from_dduf(
         return cls.from_pretrained(os.path.dirname(tmp_entry_path), **kwargs)
 
 
-def load_transformers_model_from_dduf(
+def _load_transformers_model_from_dduf(
     cls: "PreTrainedModel", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedModel":
     """
