@@ -2152,9 +2152,7 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
 
         query = self.attn.to_q(latents)
         kv_input = torch.cat((x, latents), dim=-2)
-        kv = self.attn.to_kv(kv_input)
-        split_size = kv.shape[-1] // 2
-        key, value = torch.split(kv, split_size, dim=-1)
+        key, value = self.attn.to_kv(kv_input).chunk(2, dim=-1)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // self.attn.heads

@@ -5090,9 +5090,6 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
-        img_query = query
-        img_key = key
-        img_value = value
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -5100,6 +5097,9 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        img_query = query
+        img_key = key
+        img_value = value
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -5154,26 +5154,23 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             ip_value = self.to_v_ip(norm_ip_hidden_states)
 
             # Reshape
-            img_query = img_query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-            img_key = img_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-            img_value = img_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
             ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
             ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
             # Norm
-            img_query = self.norm_q(img_query)
+            query = self.norm_q(img_query)
             img_key = self.norm_k(img_key)
             ip_key = self.norm_ip_k(ip_key)
 
             # cat img
-            img_key = torch.cat([img_key, ip_key], dim=2)
-            img_value = torch.cat([img_value, ip_value], dim=2)
+            key = torch.cat([img_key, ip_key], dim=2)
+            value = torch.cat([img_value, ip_value], dim=2)
 
             ip_hidden_states = F.scaled_dot_product_attention(
-                img_query, img_key, img_value, dropout_p=0.0, is_causal=False
+                query, key, value, dropout_p=0.0, is_causal=False
             )
             ip_hidden_states = ip_hidden_states.transpose(1, 2).view(batch_size, -1, attn.heads * head_dim)
-            ip_hidden_states = ip_hidden_states.to(img_query.dtype)
+            ip_hidden_states = ip_hidden_states.to(query.dtype)
 
             hidden_states = hidden_states + ip_hidden_states * self.scale
 
