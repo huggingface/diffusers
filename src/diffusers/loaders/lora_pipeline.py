@@ -22,7 +22,6 @@ from ..utils import (
     USE_PEFT_BACKEND,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
-    convert_unet_state_dict_to_peft,
     deprecate,
     get_adapter_name,
     get_peft_kwargs,
