@@ -309,6 +309,8 @@ class FromSingleFileMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
+            checkpoint (`dict`, *optional*):
+                The loaded state dictionary of the model.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -356,6 +358,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        checkpoint = kwargs.pop("checkpoint", None)
 
         is_legacy_loading = False
 
@@ -376,15 +379,16 @@ class FromSingleFileMixin:
 
         pipeline_class = _get_pipeline_class(cls, config=None)
 
-        checkpoint = load_single_file_checkpoint(
-            pretrained_model_link_or_path,
-            force_download=force_download,
-            proxies=proxies,
-            token=token,
-            cache_dir=cache_dir,
-            local_files_only=local_files_only,
-            revision=revision,
-        )
+        if checkpoint is None:
+            checkpoint = load_single_file_checkpoint(
+                pretrained_model_link_or_path,
+                force_download=force_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+            )
 
         if config is None:
             config = fetch_diffusers_config(checkpoint)
