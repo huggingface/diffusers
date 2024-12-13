@@ -265,7 +265,7 @@ image = pipe(
 image.save("cat.png")
 ```
 
-To obtain `.dduf` checkpoint, we rely on `huggingface_hub`'s `export_folder_as_dduf()` utility, which takes care of all the necessary file-level validations:
+To save a pipeline as a `.dduf` checkpoint, we rely on `huggingface_hub`'s `export_folder_as_dduf()` utility, which takes care of all the necessary file-level validations:
 
 ```py
 from huggingface_hub import export_folder_as_dduf
