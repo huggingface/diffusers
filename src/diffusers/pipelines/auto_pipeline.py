@@ -900,7 +900,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         hf_model_status = get_keyword_types(pretrained_model_or_path)
 
         if hf_model_status["loading_method"] is not None:
-            if hf_model_status.checkpoint_format == "single_file":
+            if hf_model_status["checkpoint_format"] == "single_file":
                 return auto_load_single_checkpoint(
                     pretrained_model_or_path=pretrained_model_or_path,
                     pipeline_mapping=SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING,
