@@ -24,11 +24,7 @@ from ..loaders.single_file_utils import (
     load_single_file_checkpoint,
 )
 from ..utils import is_sentencepiece_available
-
-from .animatediff import (
-    AnimateDiffPipeline,
-    AnimateDiffSDXLPipeline,
-)
+from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline
 from .aura_flow import AuraFlowPipeline
 from .cogview3 import CogView3PlusPipeline
 from .controlnet import (
@@ -66,7 +62,10 @@ from .kandinsky2_2 import (
     KandinskyV22Pipeline,
 )
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
-from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
+from .latent_consistency_models import (
+    LatentConsistencyModelImg2ImgPipeline,
+    LatentConsistencyModelPipeline,
+)
 from .lumina import LuminaText2ImgPipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
