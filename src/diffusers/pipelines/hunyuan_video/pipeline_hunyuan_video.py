@@ -803,6 +803,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         latents = latents.to(vae_dtype)
         if not output_type == "latent":
+            latents = latents / self.vae.config.scaling_factor
             image = self.vae.decode(latents, return_dict=False)[0]
 
             torch.save(image, "diffusers_latents_decoded.pt")
