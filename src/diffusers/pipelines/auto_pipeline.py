@@ -434,8 +434,6 @@ def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kw
                   hosted on the Hub.
                 - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                   component configs in Diffusers format.
-        checkpoint (`dict`, *optional*):
-            The loaded state dictionary of the model.
         kwargs (remaining dictionary of keyword arguments, *optional*):
             Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
             class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -462,7 +460,7 @@ def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kw
 
     else:
         # Instantiate and return the pipeline with the loaded checkpoint and any additional kwargs
-        return pipeline_class.from_auto(pretrained_model_or_path, **kwargs)
+        return pipeline_class.from_single_file(pretrained_model_or_path, checkpoint=checkpoint, **kwargs)
 
 
 class AutoPipelineForText2Image(ConfigMixin):
