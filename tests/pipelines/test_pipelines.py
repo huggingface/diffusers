@@ -75,9 +75,11 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_compel,
     require_flax,
+    require_hf_hub_version_greater,
     require_onnxruntime,
     require_torch_2,
     require_torch_gpu,
+    require_transformers_version_greater,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -1801,6 +1803,25 @@ class PipelineFastTests(unittest.TestCase):
         assert sd._offload_gpu_id == 5
         sd.maybe_free_model_hooks()
         assert sd._offload_gpu_id == 5
+
+    @require_hf_hub_version_greater("0.26.5")
+    @require_transformers_version_greater("4.47.0")
+    @parameterized.expand([torch.float32, torch.float16])
+    def test_load_dduf_from_hub(self, dtype):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe = DiffusionPipeline.from_pretrained(
+                "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", cache_dir=tmpdir, torch_dtype=dtype
+            ).to(torch_device)
+            out_1 = pipe(prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np").images
+
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = DiffusionPipeline.from_pretrained(tmpdir, torch_dtype=dtype).to(torch_device)
+
+            out_2 = loaded_pipe(
+                prompt="dog", num_inference_steps=5, generator=torch.manual_seed(0), output_type="np"
+            ).images
+
+        self.assertTrue(np.allclose(out_1, out_2, atol=1e-4, rtol=1e-4))
 
 
 @slow
