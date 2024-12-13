@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
+# DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim and https://github.com/xuyanwu/SIDDMs-UFOGen
 
 import math
 from dataclasses import dataclass
