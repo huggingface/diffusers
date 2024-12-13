@@ -298,8 +298,15 @@ def _get_model_file(
 
     if dduf_entries:
         if subfolder is not None:
-            raise ValueError("DDUF file only allow for 1 level of directory. Please check the DDUF structure")
-        model_file = weights_name if pretrained_model_name_or_path == "" else "/".join([pretrained_model_name_or_path, weights_name])
+            raise ValueError(
+                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
+                "Please check the DDUF structure"
+            )
+        model_file = (
+            weights_name
+            if pretrained_model_name_or_path == ""
+            else "/".join([pretrained_model_name_or_path, weights_name])
+        )
         if model_file in dduf_entries:
             return model_file
         else:
