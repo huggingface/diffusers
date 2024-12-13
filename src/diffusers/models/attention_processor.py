@@ -5166,9 +5166,7 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
             key = torch.cat([img_key, ip_key], dim=2)
             value = torch.cat([img_value, ip_value], dim=2)
 
-            ip_hidden_states = F.scaled_dot_product_attention(
-                query, key, value, dropout_p=0.0, is_causal=False
-            )
+            ip_hidden_states = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0, is_causal=False)
             ip_hidden_states = ip_hidden_states.transpose(1, 2).view(batch_size, -1, attn.heads * head_dim)
             ip_hidden_states = ip_hidden_states.to(query.dtype)
 
