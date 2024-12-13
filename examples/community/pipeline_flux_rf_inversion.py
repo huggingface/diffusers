@@ -649,7 +649,7 @@ class RFInversionFluxPipeline(
         width: Optional[int] = None,
         eta: float = 1.0,
         decay_eta: Optional[bool] = False,
-        eta_decay_power: Optional[float] = 1.,
+        eta_decay_power: Optional[float] = 1.0,
         strength: float = 1.0,
         start_timestep: float = 0,
         stop_timestep: float = 0.25,
