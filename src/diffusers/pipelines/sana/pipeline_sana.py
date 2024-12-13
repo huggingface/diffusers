@@ -165,7 +165,7 @@ class SanaPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
         max_sequence_length: int = 300,
-        complex_huamen_instruction: list[str] = [],
+        complex_human_instruction=None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -187,13 +187,13 @@ class SanaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
+                Pre-generated negative text embeddings. For Sana, it's should be the embeddings of the ""
                 string.
             clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             max_sequence_length (`int`, defaults to 300): Maximum sequence length to use for the prompt.
-            use_complex_huamen_instruction (`list[str]`, defaults to `complex_huamen_instruction`):
-                If `complex_huamen_instruction` is not empty, the function will use the complex Huamen instruction for
+            complex_human_instruction (`list[str]`, defaults to `complex_human_instruction`):
+                If `complex_human_instruction` is not empty, the function will use the complex Human instruction for
                 the prompt.
         """
 
@@ -214,11 +214,11 @@ class SanaPipeline(DiffusionPipeline):
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
 
-            # prepare complex huamen instruction
-            if not complex_huamen_instruction:
+            # prepare complex human instruction
+            if not complex_human_instruction:
                 max_length_all = max_length
             else:
-                chi_prompt = "\n".join(complex_huamen_instruction)
+                chi_prompt = "\n".join(complex_human_instruction)
                 prompt = [chi_prompt + p for p in prompt]
                 num_chi_prompt_tokens = len(self.tokenizer.encode(chi_prompt))
                 max_length_all = num_chi_prompt_tokens + max_length - 2
@@ -581,7 +581,7 @@ class SanaPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 300,
-        complex_human_attention: list[str] = [
+        complex_human_instruction: list[str] = [
             'Given a user prompt, generate an "Enhanced prompt" that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:',
             "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
             "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
@@ -669,7 +669,7 @@ class SanaPipeline(DiffusionPipeline):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to `300`):
                 Maximum sequence length to use with the `prompt`.
-            complex_human_attention (`list[str]`, *optional*):
+            complex_human_instruction (`list[str]`, *optional*):
                 Instructions for complex human attention:
                 https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.
 
@@ -740,6 +740,7 @@ class SanaPipeline(DiffusionPipeline):
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
             max_sequence_length=max_sequence_length,
+            complex_human_instruction=complex_human_instruction,
         )
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
