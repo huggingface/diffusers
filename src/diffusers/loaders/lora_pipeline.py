@@ -2283,6 +2283,50 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             transformer.load_state_dict(transformer._transformer_norm_layers, strict=False)
             transformer._transformer_norm_layers = None
 
+        if getattr(transformer, "_overwritten_params", None) is not None:
+            print(f"{transformer._overwritten_params.keys()=}")
+            overwritten_params = transformer._overwritten_params
+            module_names = set()
+
+            for param_name in overwritten_params:
+                if param_name.endswith(".weight"):
+                    module_names.add(param_name.replace(".weight", ""))
+
+            for name, module in transformer.named_modules():
+                if isinstance(module, torch.nn.Linear) and name in module_names:
+                    module_weight = module.weight.data
+                    module_bias = module.bias.data if module.bias is not None else None
+                    bias = module_bias is not None
+
+                    parent_module_name, _, current_module_name = name.rpartition(".")
+                    parent_module = transformer.get_submodule(parent_module_name)
+
+                    current_param_weight = overwritten_params[f"{name}.weight"]
+                    in_features, out_features = current_param_weight.shape[1], current_param_weight.shape[0]
+                    with torch.device("meta"):
+                        original_module = torch.nn.Linear(
+                            in_features,
+                            out_features,
+                            bias=bias,
+                            device=module_weight.device,
+                            dtype=module_weight.dtype,
+                        )
+
+                    original_module.weight.data.copy_(current_param_weight)
+                    if module_bias is not None:
+                        original_module.bias.data.copy_(overwritten_params[f"{name}.bias"])
+
+                    setattr(parent_module, current_module_name, original_module)
+
+                    if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
+                        attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
+                        new_value = int(current_param_weight.shape[1])
+                        old_value = getattr(transformer.config, attribute_name)
+                        setattr(transformer.config, attribute_name, new_value)
+                        logger.info(
+                            f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}."
+                        )
+
     @classmethod
     def _maybe_expand_transformer_param_shape_or_error_(
         cls,
@@ -2309,6 +2353,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         # Expand transformer parameter shapes if they don't match lora
         has_param_with_shape_update = False
+        overwritten_params = {}
 
         for name, module in transformer.named_modules():
             if isinstance(module, torch.nn.Linear):
@@ -2370,6 +2415,14 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     old_value = getattr(transformer.config, attribute_name)
                     setattr(transformer.config, attribute_name, new_value)
                     logger.info(f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}.")
+
+                    # For `unload_lora_weights()`.
+                    overwritten_params[f"{current_module_name}.weight"] = module_weight
+                    if module_bias is not None:
+                        overwritten_params[f"{current_module_name}.bias"] = module_bias
+
+        if len(overwritten_params) > 0:
+            transformer._overwritten_params = overwritten_params
 
         return has_param_with_shape_update
 

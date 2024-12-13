@@ -430,6 +430,68 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(not np.allclose(original_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3))
         self.assertTrue(not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3))
 
+    def test_lora_unload_with_parameter_expanded_shapes(self):
+        components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
+
+        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger.setLevel(logging.DEBUG)
+
+        # Change the transformer config to mimic a real use case.
+        num_channels_without_control = 4
+        transformer = FluxTransformer2DModel.from_config(
+            components["transformer"].config, in_channels=num_channels_without_control
+        ).to(torch_device)
+        self.assertTrue(
+            transformer.config.in_channels == num_channels_without_control,
+            f"Expected {num_channels_without_control} channels in the modified transformer but has {transformer.config.in_channels=}",
+        )
+
+        # This should be initialize with a Flux pipeline variant that doesn't accept `control_image`.
+        components["transformer"] = transformer
+        pipe = FluxPipeline(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        control_image = inputs.pop("control_image")
+        original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        control_pipe = self.pipeline_class(**components)
+        out_features, in_features = control_pipe.transformer.x_embedder.weight.shape
+        rank = 4
+
+        dummy_lora_A = torch.nn.Linear(2 * in_features, rank, bias=False)
+        dummy_lora_B = torch.nn.Linear(rank, out_features, bias=False)
+        lora_state_dict = {
+            "transformer.x_embedder.lora_A.weight": dummy_lora_A.weight,
+            "transformer.x_embedder.lora_B.weight": dummy_lora_B.weight,
+        }
+        with CaptureLogger(logger) as cap_logger:
+            control_pipe.load_lora_weights(lora_state_dict, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser")
+
+        inputs["control_image"] = control_image
+        lora_out = control_pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(np.allclose(original_out, lora_out, rtol=1e-4, atol=1e-4))
+        self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == 2 * in_features)
+        self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
+        self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
+
+        control_pipe.unload_lora_weights()
+        loaded_pipe = FluxPipeline.from_pipe(control_pipe)
+        self.assertTrue(
+            loaded_pipe.transformer.config.in_channels == num_channels_without_control,
+            f"Expected {num_channels_without_control} channels in the modified transformer but has {loaded_pipe.transformer.config.in_channels=}",
+        )
+        inputs.pop("control_image")
+        unloaded_lora_out = loaded_pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(np.allclose(unloaded_lora_out, lora_out, rtol=1e-4, atol=1e-4))
+        self.assertTrue(np.allclose(unloaded_lora_out, original_out, atol=1e-4, rtol=1e-4))
+        self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == in_features)
+        self.assertTrue(pipe.transformer.config.in_channels == in_features)
+
     @unittest.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
