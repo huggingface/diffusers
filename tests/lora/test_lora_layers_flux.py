@@ -446,7 +446,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             f"Expected {num_channels_without_control} channels in the modified transformer but has {transformer.config.in_channels=}",
         )
 
-        # This should be initialize with a Flux pipeline variant that doesn't accept `control_image`.
+        # This should be initialized with a Flux pipeline variant that doesn't accept `control_image`.
         components["transformer"] = transformer
         pipe = FluxPipeline(**components)
         pipe = pipe.to(torch_device)
