@@ -100,6 +100,9 @@ class PipelineBlock:
     expected_components = []
     expected_auxiliaries = []
     expected_configs = []
+    model_cpu_offload_seq = None
+    _exclude_from_cpu_offload=[]
+
 
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
@@ -114,6 +117,24 @@ class PipelineBlock:
     def intermediates_outputs(self) -> List[str]:
         return []
 
+    @property
+    def model_cpu_offload_seq(self):
+
+        model_cpu_offload_seq = []
+        block_component_names = set([k for k, v in self.components.items() if isinstance(v, torch.nn.Module)])
+        if len(block_component_names) <= 1:
+            return None
+        else:
+            if self.model_cpu_offload_seq is None:
+                raise ValueError(f"Block {self.__class__.__name__} has multiple components but no model_cpu_offload_seq specified")
+            for model_str in self.model_cpu_offload_seq.split("->"):
+                if model_str in block_component_names:
+                    model_cpu_offload_seq.append(block_component_names.pop(model_str))
+            if len(block_component_names) > 0:
+                raise ValueError(f"Block {self.__class__.__name__} has components {block_component_names} that are not in model_cpu_offload_seq {self.model_cpu_offload_seq}")
+            return "->".join(model_cpu_offload_seq)
+    
+    
     def update_states(self, **kwargs):
         """
         Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
@@ -271,7 +292,8 @@ class MultiPipelineBlocks:
     """
 
     block_classes = []
-    block_names = []
+    block_prefixes = []
+    model_cpu_offload_seq = None
 
     @property
     def expected_components(self):
@@ -343,6 +365,14 @@ class MultiPipelineBlocks:
     @property
     def intermediates_outputs(self) -> List[str]:
         raise NotImplementedError("intermediates_outputs property must be implemented in subclasses")
+
+    @property
+    def model_cpu_offload_seq(self):
+        raise NotImplementedError("model_cpu_offload_seq property must be implemented in subclasses")
+    
+    @property
+    def _exclude_from_cpu_offload(self):
+        raise NotImplementedError("_exclude_from_cpu_offload property must be implemented in subclasses")
 
     def __call__(self, pipeline, state):
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -524,7 +554,7 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
 
         # Map trigger inputs to block objects
         self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
-
+      
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return combine_inputs(*(block.inputs for block in self.blocks.values()))
@@ -573,6 +603,36 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
             )
             logger.error(error_msg)
             raise
+    
+    @property
+    def model_cpu_offload_seq(self):
+        """
+        This is a sequence of model names that are expected to be offloaded to CPU
+        """
+        model_cpu_offload_seq = None
+        for block_name, block in self.blocks.items():
+            if block.model_cpu_offload_seq is not None:
+                if model_cpu_offload_seq is None:
+                    model_cpu_offload_seq = block.model_cpu_offload_seq
+                else:
+                    if len(block.model_cpu_offload_seq.split("->")) > len(model_cpu_offload_seq.split("->")):
+                        model_cpu_offload_seq = block.model_cpu_offload_seq
+        return model_cpu_offload_seq
+    
+    
+    @property
+    def _exclude_from_cpu_offload(self):
+        model_cpu_offload_seq = None
+        for block_name, block in self.blocks.items():
+            if block.model_cpu_offload_seq is not None:
+                if model_cpu_offload_seq is None:
+                    model_cpu_offload_seq = block.model_cpu_offload_seq
+                else:
+                    if len(block.model_cpu_offload_seq.split("->")) > len(model_cpu_offload_seq.split("->")):
+                        model_cpu_offload_seq = block.model_cpu_offload_seq
+        return model_cpu_offload_seq
+
+
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -696,6 +756,34 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
                 logger.error(error_msg)
                 raise
         return pipeline, state
+
+    @property
+    def model_cpu_offload_seq(self):
+        model_cpu_offload_seq = []
+    
+        for block_name, block in self.blocks.items():
+            block_components_names = set([k for k, v in block.components.items() if isinstance(v, torch.nn.Module)])
+            block_components_names = [b for b in block_components_names if b not in self.block._exclude_from_cpu_offload]
+            if len(block_components_names) == 0:
+                continue
+            if len(block_components_names) == 1:
+                model_cpu_offload_seq.append(block_components_names.pop())
+            else:
+                if block.model_cpu_offload_seq is None:
+                    raise ValueError(f"Block {block_name}:{block.__class__.__name__} has multiple components {block_components_names} but no model_cpu_offload_seq specified")
+                for model_str in block.model_cpu_offload_seq.split("->"):
+                    if model_str in block_components_names:
+                        model_cpu_offload_seq.append(block_components_names.pop(model_str))
+                if len(block_components_names) > 0:
+                    raise ValueError(f"Block {block_name}:{block.__class__.__name__} has components {block_components_names} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}")
+        return "->".join(model_cpu_offload_seq)
+    
+    @property
+    def _exclude_from_cpu_offload(self):
+        exclude_from_cpu_offload = set()
+        for block in self.blocks.values():
+            exclude_from_cpu_offload.update(block._exclude_from_cpu_offload)
+        return list(exclude_from_cpu_offload)
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -1372,3 +1460,16 @@ class ModularPipelineBuilder(ConfigMixin):
                     " `torch_dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
+
+
+    def remove_all_hooks(self):
+        for _, model in self.components.items():
+            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
+                accelerate.hooks.remove_hook_from_module(model, recurse=True)
+        self._all_hooks = []
+    
+    def find_model_sequence(self):
+        pass
+
+    
+    #  def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda", model_cpu_offload_seq: Optional[List[str]] = None):

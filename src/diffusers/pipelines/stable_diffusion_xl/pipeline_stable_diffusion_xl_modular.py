@@ -158,6 +158,7 @@ class StableDiffusionXLInputStep(PipelineBlock):
 class StableDiffusionXLTextEncoderStep(PipelineBlock):
     expected_components = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
     expected_configs = ["force_zeros_for_empty_prompt"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -945,6 +946,7 @@ class StableDiffusionXLDenoiseStep(PipelineBlock):
 class StableDiffusionXLControlNetDenoiseStep(PipelineBlock):
     expected_components = ["unet", "controlnet", "scheduler", "guider", "controlnet_guider"]
     expected_auxiliaries = ["control_image_processor"]
+    _exclude_from_cpu_offload = ["controlnet"]
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
