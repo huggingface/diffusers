@@ -30,7 +30,31 @@ from .pipeline_output import HunyuanVideoPipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-EXAMPLE_DOC_STRING = """"""
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```python
+        >>> import torch
+        >>> from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+        >>> from diffusers.utils import export_to_video
+
+        >>> model_id = "tencent/HunyuanVideo"
+        >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
+        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ... )
+        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
+        >>> pipe.vae.enable_tiling()
+        >>> pipe.to("cuda")
+
+        >>> output = pipe(
+        ...     prompt="A cat walks on the grass, realistic",
+        ...     height=320,
+        ...     width=512,
+        ...     num_frames=61,
+        ...     num_inference_steps=30,
+        ... ).frames[0]
+        >>> export_to_video(output, "output.mp4", fps=15)
+        ```
+"""
 
 
 DEFAULT_PROMPT_TEMPLATE = {
@@ -621,8 +645,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                torch.save(latents, f"diffusers_refactor_latents_{i}.pt")
-
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -636,14 +658,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        latents = latents.to(self.vae.dtype)
         if not output_type == "latent":
-            latents = latents / self.vae.config.scaling_factor
+            latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
-
-            torch.save(video, "diffusers_latents_decoded.pt")
             video = self.video_processor.postprocess_video(video, output_type=output_type)
-
         else:
             video = latents
 

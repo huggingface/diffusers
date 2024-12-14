@@ -20,10 +20,14 @@ def remap_norm_scale_shift_(key, state_dict):
     state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
 
 
-def remap_token_refiner_blocks_(key, state_dict):
+def remap_txt_in_(key, state_dict):
     def rename_key(key):
         new_key = key.replace("individual_token_refiner.blocks", "token_refiner.refiner_blocks")
         new_key = new_key.replace("adaLN_modulation.1", "norm_out.linear")
+        new_key = new_key.replace("txt_in", "context_embedder")
+        new_key = new_key.replace("t_embedder.mlp.0", "time_text_embed.timestep_embedder.linear_1")
+        new_key = new_key.replace("t_embedder.mlp.2", "time_text_embed.timestep_embedder.linear_2")
+        new_key = new_key.replace("c_embedder", "time_text_embed.text_embedder")
         return new_key
 
     if "self_attn_qkv" in key:
@@ -32,7 +36,6 @@ def remap_token_refiner_blocks_(key, state_dict):
         state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_q"))] = to_q
         state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_k"))] = to_k
         state_dict[rename_key(key.replace("self_attn_qkv", "attn.to_v"))] = to_v
-
     else:
         state_dict[rename_key(key)] = state_dict.pop(key)
 
@@ -85,15 +88,13 @@ def remap_single_transformer_blocks_(key, state_dict):
 
 
 TRANSFORMER_KEYS_RENAME_DICT = {
+    "img_in": "x_embedder",
     "time_in.mlp.0": "time_text_embed.timestep_embedder.linear_1",
     "time_in.mlp.2": "time_text_embed.timestep_embedder.linear_2",
     "guidance_in.mlp.0": "time_text_embed.guidance_embedder.linear_1",
     "guidance_in.mlp.2": "time_text_embed.guidance_embedder.linear_2",
     "vector_in.in_layer": "time_text_embed.text_embedder.linear_1",
     "vector_in.out_layer": "time_text_embed.text_embedder.linear_2",
-    "txt_in.t_embedder.mlp.0": "txt_in.time_text_embed.timestep_embedder.linear_1",
-    "txt_in.t_embedder.mlp.2": "txt_in.time_text_embed.timestep_embedder.linear_2",
-    "txt_in.c_embedder": "txt_in.time_text_embed.text_embedder",
     "double_blocks": "transformer_blocks",
     "img_attn_q_norm": "attn.norm_q",
     "img_attn_k_norm": "attn.norm_k",
@@ -120,11 +121,11 @@ TRANSFORMER_KEYS_RENAME_DICT = {
 }
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "txt_in": remap_txt_in_,
     "img_attn_qkv": remap_img_attn_qkv_,
     "txt_attn_qkv": remap_txt_attn_qkv_,
     "single_blocks": remap_single_transformer_blocks_,
     "final_layer.adaLN_modulation.1": remap_norm_scale_shift_,
-    "individual_token_refiner.blocks": remap_token_refiner_blocks_,
 }
 
 VAE_KEYS_RENAME_DICT = {}
@@ -242,7 +243,6 @@ if __name__ == "__main__":
         text_encoder_2 = CLIPTextModel.from_pretrained(args.text_encoder_2_path, torch_dtype=torch.float16)
         tokenizer_2 = CLIPTokenizer.from_pretrained(args.text_encoder_2_path)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        print(tokenizer_2)
 
         pipe = HunyuanVideoPipeline(
             transformer=transformer,
