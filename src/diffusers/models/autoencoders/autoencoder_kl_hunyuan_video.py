@@ -789,6 +789,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
 
         # The minimal tile temporal batch size for temporal tiling to be used
         self.tile_sample_min_tsize = 64
+        self.tile_overlap_factor = 0.25
 
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
@@ -1108,13 +1109,12 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         overlap_size = int(tile_latent_min_tsize * (1 - self.tile_overlap_factor))
         blend_extent = int(self.tile_sample_min_tsize * self.tile_overlap_factor)
         t_limit = self.tile_sample_min_tsize - blend_extent
+        tile_latent_min_size = self.tile_sample_min_size // self.spatial_compression_ratio
 
         row = []
         for i in range(0, T, overlap_size):
             tile = z[:, :, i : i + tile_latent_min_tsize + 1, :, :]
-            if self.use_tiling and (
-                tile.shape[-1] > self.tile_latent_min_size or tile.shape[-2] > self.tile_latent_min_size
-            ):
+            if self.use_tiling and (tile.shape[-1] > tile_latent_min_size or tile.shape[-2] > tile_latent_min_size):
                 decoded = self.tiled_decode(tile, return_dict=True).sample
             else:
                 tile = self.post_quant_conv(tile)

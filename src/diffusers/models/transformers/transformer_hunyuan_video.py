@@ -379,6 +379,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.shape[1]
@@ -397,6 +398,7 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
             image_rotary_emb=image_rotary_emb,
         )
         attn_output = torch.cat([attn_output, context_attn_output], dim=1)
@@ -452,6 +454,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
@@ -462,6 +465,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
         img_attn, txt_attn = self.attn(
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
             image_rotary_emb=freqs_cis,
         )
 
@@ -619,8 +623,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
-        p = self.config.patch_size
-        p_t = self.config.patch_size_t
+        p, p_t = self.config.patch_size, self.config.patch_size_t
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p
         post_patch_width = width // p
@@ -632,6 +635,19 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         # Embed image and text.
         hidden_states = self.img_in(hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states, timestep, encoder_attention_mask)
+
+        latent_sequence_length = hidden_states.shape[1]
+        condition_sequence_length = encoder_hidden_states.shape[1]
+        sequence_length = latent_sequence_length + condition_sequence_length
+        attention_mask = torch.zeros(
+            batch_size, sequence_length, sequence_length, device=hidden_states.device, dtype=torch.bool
+        )  # [B, N, N]
+
+        effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
+        effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
+
+        for i in range(batch_size):
+            attention_mask[i, : effective_sequence_length[i], : effective_sequence_length[i]] = True
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
 
@@ -652,6 +668,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states,
                     encoder_hidden_states,
                     temb,
+                    attention_mask,
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
@@ -662,6 +679,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_states,
                     encoder_hidden_states,
                     temb,
+                    attention_mask,
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
@@ -669,12 +687,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         else:
             for block in self.transformer_blocks:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
                 )
 
             for block in self.single_transformer_blocks:
                 hidden_states, encoder_hidden_states = block(
-                    hidden_states, encoder_hidden_states, temb, image_rotary_emb
+                    hidden_states, encoder_hidden_states, temb, attention_mask, image_rotary_emb
                 )
 
         hidden_states = self.norm_out(hidden_states, temb)
