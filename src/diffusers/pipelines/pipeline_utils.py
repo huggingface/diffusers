@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Dict, List, Optional, Self, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
@@ -318,7 +318,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 create_pr=create_pr,
             )
 
-    def to(self, *args, **kwargs):
+    def to(self, *args, **kwargs) -> Self:
         r"""
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
