@@ -100,8 +100,7 @@ class PipelineBlock:
     expected_components = []
     expected_auxiliaries = []
     expected_configs = []
-    model_cpu_offload_seq = None
-    _exclude_from_cpu_offload=[]
+    _model_cpu_offload_seq = None
 
 
     @property
@@ -119,19 +118,23 @@ class PipelineBlock:
 
     @property
     def model_cpu_offload_seq(self):
+        """
+        adjust the model_cpu_offload_seq to reflect actual components loaded in the block
+        """
 
         model_cpu_offload_seq = []
-        block_component_names = set([k for k, v in self.components.items() if isinstance(v, torch.nn.Module)])
-        if len(block_component_names) <= 1:
+        block_component_names = [k for k, v in self.components.items() if isinstance(v, torch.nn.Module)]
+        if len(block_component_names) ==0:
             return None
+        if len(block_component_names) == 1:
+            return block_component_names[0]
         else:
-            if self.model_cpu_offload_seq is None:
+            if self._model_cpu_offload_seq is None:
                 raise ValueError(f"Block {self.__class__.__name__} has multiple components but no model_cpu_offload_seq specified")
-            for model_str in self.model_cpu_offload_seq.split("->"):
-                if model_str in block_component_names:
-                    model_cpu_offload_seq.append(block_component_names.pop(model_str))
-            if len(block_component_names) > 0:
-                raise ValueError(f"Block {self.__class__.__name__} has components {block_component_names} that are not in model_cpu_offload_seq {self.model_cpu_offload_seq}")
+            model_cpu_offload_seq = [m for m in self._model_cpu_offload_seq.split("->") if m in block_component_names]
+            remaining = [m for m in block_component_names if m not in model_cpu_offload_seq]
+            if remaining:
+                logger.warning(f"Block {self.__class__.__name__} has components {remaining} that are not in model_cpu_offload_seq {self._model_cpu_offload_seq}")
             return "->".join(model_cpu_offload_seq)
     
     
@@ -293,7 +296,7 @@ class MultiPipelineBlocks:
 
     block_classes = []
     block_prefixes = []
-    model_cpu_offload_seq = None
+    _model_cpu_offload_seq = None
 
     @property
     def expected_components(self):
@@ -369,10 +372,6 @@ class MultiPipelineBlocks:
     @property
     def model_cpu_offload_seq(self):
         raise NotImplementedError("model_cpu_offload_seq property must be implemented in subclasses")
-    
-    @property
-    def _exclude_from_cpu_offload(self):
-        raise NotImplementedError("_exclude_from_cpu_offload property must be implemented in subclasses")
 
     def __call__(self, pipeline, state):
         raise NotImplementedError("__call__ method must be implemented in subclasses")
@@ -606,32 +605,10 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
     
     @property
     def model_cpu_offload_seq(self):
-        """
-        This is a sequence of model names that are expected to be offloaded to CPU
-        """
-        model_cpu_offload_seq = None
-        for block_name, block in self.blocks.items():
-            if block.model_cpu_offload_seq is not None:
-                if model_cpu_offload_seq is None:
-                    model_cpu_offload_seq = block.model_cpu_offload_seq
-                else:
-                    if len(block.model_cpu_offload_seq.split("->")) > len(model_cpu_offload_seq.split("->")):
-                        model_cpu_offload_seq = block.model_cpu_offload_seq
-        return model_cpu_offload_seq
-    
-    
-    @property
-    def _exclude_from_cpu_offload(self):
-        model_cpu_offload_seq = None
-        for block_name, block in self.blocks.items():
-            if block.model_cpu_offload_seq is not None:
-                if model_cpu_offload_seq is None:
-                    model_cpu_offload_seq = block.model_cpu_offload_seq
-                else:
-                    if len(block.model_cpu_offload_seq.split("->")) > len(model_cpu_offload_seq.split("->")):
-                        model_cpu_offload_seq = block.model_cpu_offload_seq
-        return model_cpu_offload_seq
 
+        default_block = self.trigger_to_block_map.get(None)
+
+        return default_block.model_cpu_offload_seq
 
 
     def __repr__(self):
@@ -763,7 +740,6 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
     
         for block_name, block in self.blocks.items():
             block_components_names = set([k for k, v in block.components.items() if isinstance(v, torch.nn.Module)])
-            block_components_names = [b for b in block_components_names if b not in self.block._exclude_from_cpu_offload]
             if len(block_components_names) == 0:
                 continue
             if len(block_components_names) == 1:
@@ -773,17 +749,12 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
                     raise ValueError(f"Block {block_name}:{block.__class__.__name__} has multiple components {block_components_names} but no model_cpu_offload_seq specified")
                 for model_str in block.model_cpu_offload_seq.split("->"):
                     if model_str in block_components_names:
-                        model_cpu_offload_seq.append(block_components_names.pop(model_str))
+                        model_cpu_offload_seq.append(model_str)
+                        block_components_names.remove(model_str)
                 if len(block_components_names) > 0:
-                    raise ValueError(f"Block {block_name}:{block.__class__.__name__} has components {block_components_names} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}")
+                    logger.warning(f"Block {block_name}:{block.__class__.__name__} has components {block_components_names} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}")
         return "->".join(model_cpu_offload_seq)
     
-    @property
-    def _exclude_from_cpu_offload(self):
-        exclude_from_cpu_offload = set()
-        for block in self.blocks.values():
-            exclude_from_cpu_offload.update(block._exclude_from_cpu_offload)
-        return list(exclude_from_cpu_offload)
 
     def __repr__(self):
         class_name = self.__class__.__name__
