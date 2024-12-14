@@ -396,6 +396,8 @@
       title: Flux
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
+    - local: api/pipelines/hunyuan_video
+      title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix

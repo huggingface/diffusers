@@ -16,10 +16,12 @@ The 3D variational autoencoder (VAE) model with KL loss used in [HunyuanVideo](h
 The model can be loaded with the following code snippet.
 
 ```python
-TODO
+from diffusers import AutoencoderKLHunyuanVideo
+
+vae = AutoencoderKLHunyuanVideo.from_pretrained("tencent/HunyuanVideo", torch_dtype=torch.float16)
 ```
 
-## AutoencoderKLMochi
+## AutoencoderKLHunyuanVideo
 
 [[autodoc]] AutoencoderKLHunyuanVideo
   - decode

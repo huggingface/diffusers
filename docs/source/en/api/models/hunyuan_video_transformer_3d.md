@@ -16,7 +16,9 @@ A Diffusion Transformer model for 3D video-like data was introduced in [HunyuanV
 The model can be loaded with the following code snippet.
 
 ```python
-TODO
+from diffusers import HunyuanVideoTransformer3DModel
+
+transformer = HunyuanVideoTransformer3DModel.from_pretrained("tencent/HunyuanVideo", torch_dtype=torch.bfloat16)
 ```
 
 ## HunyuanVideoTransformer3DModel
