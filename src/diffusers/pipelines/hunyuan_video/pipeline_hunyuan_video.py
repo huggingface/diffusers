@@ -145,8 +145,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         transformer: HunyuanVideoTransformer3DModel,
         vae: AutoencoderKLHunyuanVideo,
         scheduler: KarrasDiffusionSchedulers,
-        text_encoder_2: Optional[CLIPTextModel] = None,
-        tokenizer_2: Optional[CLIPTokenizer] = None,
+        text_encoder_2: CLIPTextModel,
+        tokenizer_2: CLIPTokenizer,
     ):
         super().__init__()
 
@@ -179,7 +179,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         num_hidden_layers_to_skip: int = 2,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or self._execution_device
-        dtype = dtype or self.text_encoder_2.dtype
+        dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -211,15 +211,15 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             return_overflowing_tokens=False,
             return_attention_mask=True,
         )
-        text_input_ids = text_inputs.input_ids.to(device)
-        prompt_attention_mask = text_inputs.attention_mask.to(device)
+        text_input_ids = text_inputs.input_ids.to(device=device)
+        prompt_attention_mask = text_inputs.attention_mask.to(device=device)
 
         prompt_embeds = self.text_encoder(
             input_ids=text_input_ids,
             attention_mask=prompt_attention_mask,
             output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
-        prompt_embeds = prompt_embeds.to(dtype)
+        prompt_embeds = prompt_embeds.to(dtype=dtype)
 
         if crop_start is not None and crop_start > 0:
             prompt_embeds = prompt_embeds[:, crop_start:]
@@ -296,7 +296,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 max_sequence_length=max_sequence_length,
             )
 
-        if pooled_prompt_embeds is None and self.text_encoder_2 is not None:
+        if pooled_prompt_embeds is None:
             if prompt_2 is None and pooled_prompt_embeds is None:
                 prompt_2 = prompt
             pooled_prompt_embeds = self._get_clip_prompt_embeds(
@@ -553,15 +553,15 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         # 3. Encode input prompt
         prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self.encode_prompt(
-            prompt,
-            prompt_2,
-            prompt_template,
-            num_videos_per_prompt,
-            prompt_embeds,
-            pooled_prompt_embeds,
-            prompt_attention_mask,
-            device,
-            max_sequence_length,
+            prompt=prompt,
+            prompt_2=prompt_2,
+            prompt_template=prompt_template,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            device=device,
+            max_sequence_length=max_sequence_length,
         )
 
         transformer_dtype = self.transformer.dtype
