@@ -16,7 +16,7 @@ import traceback
 import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from tqdm.auto import tqdm
@@ -102,7 +102,6 @@ class PipelineBlock:
     expected_configs = []
     _model_cpu_offload_seq = None
 
-
     @property
     def inputs(self) -> Tuple[Tuple[str, Any], ...]:
         # (input_name, default_value)
@@ -124,20 +123,23 @@ class PipelineBlock:
 
         model_cpu_offload_seq = []
         block_component_names = [k for k, v in self.components.items() if isinstance(v, torch.nn.Module)]
-        if len(block_component_names) ==0:
+        if len(block_component_names) == 0:
             return None
         if len(block_component_names) == 1:
             return block_component_names[0]
         else:
             if self._model_cpu_offload_seq is None:
-                raise ValueError(f"Block {self.__class__.__name__} has multiple components but no model_cpu_offload_seq specified")
+                raise ValueError(
+                    f"Block {self.__class__.__name__} has multiple components but no model_cpu_offload_seq specified"
+                )
             model_cpu_offload_seq = [m for m in self._model_cpu_offload_seq.split("->") if m in block_component_names]
             remaining = [m for m in block_component_names if m not in model_cpu_offload_seq]
             if remaining:
-                logger.warning(f"Block {self.__class__.__name__} has components {remaining} that are not in model_cpu_offload_seq {self._model_cpu_offload_seq}")
+                logger.warning(
+                    f"Block {self.__class__.__name__} has components {remaining} that are not in model_cpu_offload_seq {self._model_cpu_offload_seq}"
+                )
             return "->".join(model_cpu_offload_seq)
-    
-    
+
     def update_states(self, **kwargs):
         """
         Update components and configs after instance creation. Auxiliaries (e.g. image_processor) should be defined for
@@ -553,7 +555,7 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
 
         # Map trigger inputs to block objects
         self.trigger_to_block_map = dict(zip(self.block_trigger_inputs, self.blocks.values()))
-      
+
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return combine_inputs(*(block.inputs for block in self.blocks.values()))
@@ -602,14 +604,12 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
             )
             logger.error(error_msg)
             raise
-    
+
     @property
     def model_cpu_offload_seq(self):
-
         default_block = self.trigger_to_block_map.get(None)
 
         return default_block.model_cpu_offload_seq
-
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -669,11 +669,6 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
                 if intermediates_str:
                     blocks_str += f"       intermediates: {intermediates_str}\n"
             blocks_str += "\n"
-
-        # Pipeline interface information
-        inputs_str = "  PipelineBlock Interface:\n"
-        inputs_str += "    Inputs:\n" + "\n".join(f"      - {name}={default}" for name, default in self.inputs)
-
         intermediates_str = (
             "\n    Intermediates:\n"
             f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
@@ -686,7 +681,6 @@ class AutoPipelineBlocks(MultiPipelineBlocks):
             f"{auxiliaries_str}\n"
             f"{configs_str}\n"
             f"{blocks_str}\n"
-            f"{inputs_str}"
             f"{intermediates_str}\n"
             f")"
         )
@@ -737,24 +731,33 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
     @property
     def model_cpu_offload_seq(self):
         model_cpu_offload_seq = []
-    
+
         for block_name, block in self.blocks.items():
-            block_components_names = set([k for k, v in block.components.items() if isinstance(v, torch.nn.Module)])
-            if len(block_components_names) == 0:
+            block_components = [k for k, v in block.components.items() if isinstance(v, torch.nn.Module)]
+            if len(block_components) == 0:
                 continue
-            if len(block_components_names) == 1:
-                model_cpu_offload_seq.append(block_components_names.pop())
+            if len(block_components) == 1:
+                if block_components[0] in model_cpu_offload_seq:
+                    model_cpu_offload_seq.remove(block_components[0])
+                model_cpu_offload_seq.append(block_components[0])
             else:
                 if block.model_cpu_offload_seq is None:
-                    raise ValueError(f"Block {block_name}:{block.__class__.__name__} has multiple components {block_components_names} but no model_cpu_offload_seq specified")
+                    raise ValueError(
+                        f"Block {block_name}:{block.__class__.__name__} has multiple components {block_components} but no model_cpu_offload_seq specified"
+                    )
                 for model_str in block.model_cpu_offload_seq.split("->"):
-                    if model_str in block_components_names:
+                    if model_str in block_components:
+                        # if it is already in the list,remove previous occurence and add to the end
+                        if model_str in model_cpu_offload_seq:
+                            model_cpu_offload_seq.remove(model_str)
                         model_cpu_offload_seq.append(model_str)
-                        block_components_names.remove(model_str)
-                if len(block_components_names) > 0:
-                    logger.warning(f"Block {block_name}:{block.__class__.__name__} has components {block_components_names} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}")
+                        block_components.remove(model_str)
+                if len(block_components) > 0:
+                    logger.warning(
+                        f"Block {block_name}:{block.__class__.__name__} has components {block_components} that are not in model_cpu_offload_seq {block.model_cpu_offload_seq}"
+                    )
+
         return "->".join(model_cpu_offload_seq)
-    
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -810,10 +813,6 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
                     blocks_str += f"       intermediates: {intermediates_str}\n"
             blocks_str += "\n"
 
-        # Pipeline interface information
-        inputs_str = "  PipelineBlock Interface:\n"
-        inputs_str += "    Inputs:\n" + "\n".join(f"      - {name}={default}" for name, default in self.inputs)
-
         intermediates_str = (
             "\n    Intermediates:\n"
             f"      - inputs: {', '.join(self.intermediates_inputs)}\n"
@@ -826,7 +825,6 @@ class SequentialPipelineBlocks(MultiPipelineBlocks):
             f"{auxiliaries_str}\n"
             f"{configs_str}\n"
             f"{blocks_str}\n"
-            f"{inputs_str}"
             f"{intermediates_str}\n"
             f")"
         )
@@ -1004,6 +1002,7 @@ class ModularPipelineBuilder(ConfigMixin):
     def __call__(self, *args, **kwargs):
         raise NotImplementedError("__call__ is not implemented for ModularPipelineBuilder")
 
+    # YiYi Notes: do we need to support multiple blocks?
     def remove_blocks(self, indices: Union[int, List[int]]):
         """
         Remove one or more blocks from the pipeline by their indices and clean up associated components, configs, and
@@ -1060,6 +1059,8 @@ class ModularPipelineBuilder(ConfigMixin):
                 if config_name in self.config:
                     del self.config[config_name]
 
+    # YiYi Notes: I left all the functionalities to support adding multiple blocks
+    # but I wonder if it is still needed now we have `SequentialBlocks` and user can always combine them into one before adding to the builder
     def add_blocks(self, pipeline_blocks, at: int = -1):
         """Add blocks to the pipeline.
 
@@ -1171,6 +1172,7 @@ class ModularPipelineBuilder(ConfigMixin):
                     error_msg = f"Error in block: ({block.__class__.__name__}):\n"
                     logger.error(error_msg)
                     raise
+            self.maybe_free_model_hooks()
 
         return state
 
@@ -1206,6 +1208,7 @@ class ModularPipelineBuilder(ConfigMixin):
                     )
                     logger.error(error_msg)
                     raise
+            self.maybe_free_model_hooks()
 
         return state.get_output("images")
 
@@ -1226,7 +1229,14 @@ class ModularPipelineBuilder(ConfigMixin):
         output += "Pipeline Blocks:\n"
         output += "----------------\n"
         for i, block in enumerate(self.pipeline_blocks):
-            output += f"{i}. {block.__class__.__name__}\n"
+            if isinstance(block, MultiPipelineBlocks):
+                output += f"{i}. {block.__class__.__name__} - (CPU offload seq: {block.model_cpu_offload_seq})\n"
+                # Add sub-blocks information
+                for sub_block_name, sub_block in block.blocks.items():
+                    output += f"    • {sub_block_name} ({sub_block.__class__.__name__}) \n"
+            else:
+                output += f"{i}. {block.__class__.__name__} - (CPU offload seq: {block.model_cpu_offload_seq})\n"
+            output += "\n"
 
             intermediates_str = ""
             if hasattr(block, "intermediates_inputs"):
@@ -1432,15 +1442,119 @@ class ModularPipelineBuilder(ConfigMixin):
                 )
         return self
 
-
     def remove_all_hooks(self):
         for _, model in self.components.items():
             if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
-    
+
     def find_model_sequence(self):
         pass
 
-    
-    #  def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda", model_cpu_offload_seq: Optional[List[str]] = None):
+    # YiYi notes: assume there is only one pipeline block now (still debating if we want to support multiple pipeline blocks)
+    @property
+    def model_cpu_offload_seq(self):
+        return self.pipeline_blocks[0].model_cpu_offload_seq
+
+    def enable_model_cpu_offload(
+        self,
+        gpu_id: Optional[int] = None,
+        device: Union[torch.device, str] = "cuda",
+        model_cpu_offload_seq: Optional[str] = None,
+    ):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+
+        Arguments:
+            gpu_id (`int`, *optional*):
+                The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
+            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
+                The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
+                default to "cuda".
+        """
+        _exclude_from_cpu_offload = []  # YiYi Notes: this is not used (keep the variable for now)
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_model_cpu_offload()`."
+            )
+
+        model_cpu_offload_seq = model_cpu_offload_seq or self.model_cpu_offload_seq
+        self._model_cpu_offload_seq_used = model_cpu_offload_seq
+        if model_cpu_offload_seq is None:
+            raise ValueError(
+                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set or passed."
+            )
+
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        self.remove_all_hooks()
+
+        torch_device = torch.device(device)
+        device_index = torch_device.index
+
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
+        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
+
+        device_type = torch_device.type
+        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
+
+        self.to("cpu", silence_dtype_warnings=True)
+        device_mod = getattr(torch, device.type, None)
+        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+
+        self._all_hooks = []
+        hook = None
+        for model_str in model_cpu_offload_seq.split("->"):
+            model = all_model_components.pop(model_str, None)
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+            self._all_hooks.append(hook)
+
+        # CPU offload models that are not in the seq chain unless they are explicitly excluded
+        # these models will stay on CPU until maybe_free_model_hooks is called
+        # some models cannot be in the seq chain because they are iteratively called, such as controlnet
+        for name, model in all_model_components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in _exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                _, hook = cpu_offload_with_hook(model, device)
+                self._all_hooks.append(hook)
+
+    def maybe_free_model_hooks(self):
+        r"""
+        Function that offloads all components, removes all model hooks that were added when using
+        `enable_model_cpu_offload` and then applies them again. In case the model has not been offloaded this function
+        is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
+        functions correctly when applying enable_model_cpu_offload.
+        """
+        if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
+            # `enable_model_cpu_offload` has not be called, so silently do nothing
+            return
+
+        # make sure the model is in the same state as before calling it
+        self.enable_model_cpu_offload(
+            device=getattr(self, "_offload_device", "cuda"),
+            model_cpu_offload_seq=getattr(self, "_model_cpu_offload_seq_used", None),
+        )
