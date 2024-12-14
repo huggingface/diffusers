@@ -994,7 +994,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda", model_cpu_offload_seq: Optional[str] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -1051,7 +1051,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         self._all_hooks = []
         hook = None
-        for model_str in self.model_cpu_offload_seq.split("->"):
+        
+        if model_cpu_offload_seq is None:
+            model_cpu_offload_seq = self.model_cpu_offload_seq
+        
+        for model_str in model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
 
             if not isinstance(model, torch.nn.Module):
