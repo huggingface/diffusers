@@ -496,12 +496,12 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         mlp_ratio: float = 4.0,
         patch_size: int = 2,
         patch_size_t: int = 1,
-        rope_dim_list: List[int] = [16, 56, 56],
         qk_norm: str = "rms_norm",
         guidance_embeds: bool = True,
         text_embed_dim: int = 4096,
-        text_embed_dim_2: int = 768,
+        pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
+        rope_axes_dim: Tuple[int] = (16, 56, 56),
     ) -> None:
         super().__init__()
 
@@ -516,10 +516,10 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
 
-        self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, text_embed_dim_2)
+        self.time_text_embed = CombinedTimestepGuidanceTextProjEmbeddings(inner_dim, pooled_projection_dim)
 
         # 3. RoPE
-        self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_dim_list, rope_theta)
+        self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -614,7 +614,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        encoder_hidden_states_2: torch.Tensor,
+        pooled_projections: torch.Tensor,
         guidance: torch.Tensor = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -627,7 +627,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
 
         image_rotary_emb = self.rope(hidden_states)
 
-        temb = self.time_text_embed(timestep, guidance, encoder_hidden_states_2)
+        temb = self.time_text_embed(timestep, guidance, pooled_projections)
 
         # Embed image and text.
         hidden_states = self.img_in(hidden_states)

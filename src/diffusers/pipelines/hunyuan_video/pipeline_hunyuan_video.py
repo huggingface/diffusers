@@ -280,7 +280,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         prompt_template: Dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -296,10 +296,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 max_sequence_length=max_sequence_length,
             )
 
-        if prompt_embeds_2 is None and self.text_encoder_2 is not None:
-            if prompt_2 is None and prompt_embeds_2 is None:
+        if pooled_prompt_embeds is None and self.text_encoder_2 is not None:
+            if prompt_2 is None and pooled_prompt_embeds is None:
                 prompt_2 = prompt
-            prompt_embeds_2 = self._get_clip_prompt_embeds(
+            pooled_prompt_embeds = self._get_clip_prompt_embeds(
                 prompt,
                 num_videos_per_prompt,
                 device=device,
@@ -307,7 +307,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 max_sequence_length=77,
             )
 
-        return prompt_embeds, prompt_embeds_2, prompt_attention_mask
+        return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
     def check_inputs(
         self,
@@ -444,7 +444,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
+        pooled_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -552,13 +552,13 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
-        prompt_embeds, prompt_embeds_2, prompt_attention_mask = self.encode_prompt(
+        prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self.encode_prompt(
             prompt,
             prompt_2,
             prompt_template,
             num_videos_per_prompt,
             prompt_embeds,
-            prompt_embeds_2,
+            pooled_prompt_embeds,
             prompt_attention_mask,
             device,
             max_sequence_length,
@@ -567,8 +567,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         prompt_attention_mask = prompt_attention_mask.to(transformer_dtype)
-        if prompt_embeds_2 is not None:
-            prompt_embeds_2 = prompt_embeds_2.to(transformer_dtype)
+        if pooled_prompt_embeds is not None:
+            pooled_prompt_embeds = pooled_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(
@@ -613,7 +613,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=prompt_attention_mask,
-                    encoder_hidden_states_2=prompt_embeds_2,
+                    pooled_projections=pooled_prompt_embeds,
                     guidance=guidance,
                     return_dict=False,
                 )[0]
@@ -647,14 +647,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         else:
             video = latents
 
-        video = (video / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
-        video = video.cpu().float()
-
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return video
+            return (video,)
 
-        return HunyuanVideoPipelineOutput(videos=video)
+        return HunyuanVideoPipelineOutput(frames=video)

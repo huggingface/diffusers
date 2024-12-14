@@ -790,7 +790,11 @@ class Attention(nn.Module):
                 self.to_kv.bias.copy_(concatenated_bias)
 
         # handle added projections for SD3 and others.
-        if hasattr(self, "add_q_proj") and hasattr(self, "add_k_proj") and hasattr(self, "add_v_proj"):
+        if (
+            getattr(self, "add_q_proj", None) is not None
+            and getattr(self, "add_k_proj", None) is not None
+            and getattr(self, "add_v_proj", None) is not None
+        ):
             concatenated_weights = torch.cat(
                 [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
             )

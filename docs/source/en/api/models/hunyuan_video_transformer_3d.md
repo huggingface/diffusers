@@ -21,7 +21,7 @@ TODO
 
 ## HunyuanVideoTransformer3DModel
 
-[[autodoc]] MochiTransformer3DModel
+[[autodoc]] HunyuanVideoTransformer3DModel
 
 ## Transformer2DModelOutput
 
