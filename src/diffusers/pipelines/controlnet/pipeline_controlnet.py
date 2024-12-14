@@ -42,6 +42,7 @@ from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
