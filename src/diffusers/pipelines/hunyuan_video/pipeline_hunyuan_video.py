@@ -166,7 +166,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         tokenizer: LlamaTokenizerFast,
         transformer: HunyuanVideoTransformer3DModel,
         vae: AutoencoderKLHunyuanVideo,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder_2: CLIPTextModel,
         tokenizer_2: CLIPTokenizer,
     ):
