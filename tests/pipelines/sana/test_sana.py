@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import inspect
 import unittest
 
@@ -20,7 +21,12 @@ import torch
 from transformers import Gemma2Config, Gemma2ForCausalLM, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -263,3 +269,71 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
+
+
+@slow
+@require_torch_gpu
+class SanaPipelineIntegrationTests(unittest.TestCase):
+    prompt = "A painting of a squirrel eating a burger."
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_sana_1024(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = SanaPipeline.from_pretrained(
+            "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float16
+        )
+        pipe.enable_model_cpu_offload()
+
+        image = pipe(
+            prompt=self.prompt,
+            height=1024,
+            width=1024,
+            generator=generator,
+            num_inference_steps=20,
+            output_type="np",
+        ).images[0]
+
+        image = image.flatten()
+        output_slice = np.concatenate((image[:16], image[-16:]))
+
+        # fmt: off
+        expected_slice = np.array([0.0427, 0.0789, 0.0662, 0.0464, 0.082, 0.0574, 0.0535, 0.0886, 0.0647, 0.0549, 0.0872, 0.0605, 0.0593, 0.0942, 0.0674, 0.0581, 0.0076, 0.0168, 0.0027, 0.0063, 0.0159, 0.0, 0.0071, 0.0198, 0.0034, 0.0105, 0.0212, 0.0, 0.0, 0.0166, 0.0042, 0.0125])
+        # fmt: on
+
+        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-4))
+
+    def test_sana_512(self):
+        generator = torch.Generator("cpu").manual_seed(0)
+
+        pipe = SanaPipeline.from_pretrained(
+            "Efficient-Large-Model/Sana_1600M_512px_diffusers", torch_dtype=torch.float16
+        )
+        pipe.enable_model_cpu_offload()
+
+        image = pipe(
+            prompt=self.prompt,
+            height=512,
+            width=512,
+            generator=generator,
+            num_inference_steps=20,
+            output_type="np",
+        ).images[0]
+
+        image = image.flatten()
+        output_slice = np.concatenate((image[:16], image[-16:]))
+
+        # fmt: off
+        expected_slice = np.array([0.0803, 0.0774, 0.1108, 0.0872, 0.093, 0.1118, 0.0952, 0.0898, 0.1038, 0.0818, 0.0754, 0.0894, 0.074, 0.0691, 0.0906, 0.0671, 0.0154, 0.0254, 0.0203, 0.0178, 0.0283, 0.0193, 0.0215, 0.0273, 0.0188, 0.0212, 0.0273, 0.0151, 0.0061, 0.0244, 0.0212, 0.0259])
+        # fmt: on
+
+        self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-4))
