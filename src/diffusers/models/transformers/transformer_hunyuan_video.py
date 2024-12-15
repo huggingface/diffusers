@@ -121,11 +121,11 @@ class HunyuanVideoAttnProcessor2_0:
                 hidden_states[:, -encoder_hidden_states.shape[1] :],
             )
 
-            if not attn.pre_only:
+            if getattr(attn, "to_out", None) is not None:
                 hidden_states = attn.to_out[0](hidden_states)
                 hidden_states = attn.to_out[1](hidden_states)
 
-            if attn.context_pre_only is not None and not attn.context_pre_only:
+            if getattr(attn, "to_add_out", None) is not None:
                 encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         return hidden_states, encoder_hidden_states
@@ -189,7 +189,7 @@ class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
         )
 
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
-        self.mlp = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="silu", dropout=mlp_drop_rate)
+        self.ff = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="linear-silu", dropout=mlp_drop_rate)
 
         self.norm_out = HunyuanVideoAdaNorm(hidden_size, 2 * hidden_size)
 
@@ -210,7 +210,7 @@ class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
         gate_msa, gate_mlp = self.norm_out(temb)
         hidden_states = hidden_states + attn_output * gate_msa
 
-        ff_output = self.mlp(self.norm2(hidden_states))
+        ff_output = self.ff(self.norm2(hidden_states))
         hidden_states = hidden_states + ff_output * gate_mlp
 
         return hidden_states

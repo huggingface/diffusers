@@ -35,7 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def prepare_causal_attention_mask(
     num_frames: int, height_width: int, dtype: torch.dtype, device: torch.device, batch_size: int = None
-):
+) -> torch.Tensor:
     seq_len = num_frames * height_width
     mask = torch.full((seq_len, seq_len), float("-inf"), dtype=dtype, device=device)
     for i in range(seq_len):
@@ -46,7 +46,7 @@ def prepare_causal_attention_mask(
     return mask
 
 
-class CausalConv3d(nn.Module):
+class HunyuanVideoCausalConv3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -79,7 +79,7 @@ class CausalConv3d(nn.Module):
         return self.conv(hidden_states)
 
 
-class UpsampleCausal3D(nn.Module):
+class HunyuanVideoUpsampleCausal3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -94,7 +94,7 @@ class UpsampleCausal3D(nn.Module):
         out_channels = out_channels or in_channels
         self.upsample_factor = upsample_factor
 
-        self.conv = CausalConv3d(in_channels, out_channels, kernel_size, stride, bias=bias)
+        self.conv = HunyuanVideoCausalConv3d(in_channels, out_channels, kernel_size, stride, bias=bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         num_frames = hidden_states.size(2)
@@ -114,7 +114,7 @@ class UpsampleCausal3D(nn.Module):
         return hidden_states
 
 
-class DownsampleCausal3D(nn.Module):
+class HunyuanVideoDownsampleCausal3D(nn.Module):
     def __init__(
         self,
         channels: int,
@@ -127,14 +127,14 @@ class DownsampleCausal3D(nn.Module):
         super().__init__()
         out_channels = out_channels or channels
 
-        self.conv = CausalConv3d(channels, out_channels, kernel_size, stride, padding, bias=bias)
+        self.conv = HunyuanVideoCausalConv3d(channels, out_channels, kernel_size, stride, padding, bias=bias)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.conv(hidden_states)
         return hidden_states
 
 
-class ResnetBlockCausal3D(nn.Module):
+class HunyuanVideoResnetBlockCausal3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -150,15 +150,15 @@ class ResnetBlockCausal3D(nn.Module):
         self.nonlinearity = get_activation(non_linearity)
 
         self.norm1 = nn.GroupNorm(groups, in_channels, eps=eps, affine=True)
-        self.conv1 = CausalConv3d(in_channels, out_channels, 3, 1, 0)
+        self.conv1 = HunyuanVideoCausalConv3d(in_channels, out_channels, 3, 1, 0)
 
         self.norm2 = nn.GroupNorm(groups, out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = CausalConv3d(out_channels, out_channels, 3, 1, 0)
+        self.conv2 = HunyuanVideoCausalConv3d(out_channels, out_channels, 3, 1, 0)
 
         self.conv_shortcut = None
         if in_channels != out_channels:
-            self.conv_shortcut = CausalConv3d(in_channels, out_channels, 1, 1, 0)
+            self.conv_shortcut = HunyuanVideoCausalConv3d(in_channels, out_channels, 1, 1, 0)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
@@ -197,7 +197,7 @@ class HunyuanVideoMidBlock3D(nn.Module):
 
         # There is always at least one resnet
         resnets = [
-            ResnetBlockCausal3D(
+            HunyuanVideoResnetBlockCausal3D(
                 in_channels=in_channels,
                 out_channels=in_channels,
                 eps=resnet_eps,
@@ -227,7 +227,7 @@ class HunyuanVideoMidBlock3D(nn.Module):
                 attentions.append(None)
 
             resnets.append(
-                ResnetBlockCausal3D(
+                HunyuanVideoResnetBlockCausal3D(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     eps=resnet_eps,
@@ -312,7 +312,7 @@ class HunyuanVideoDownBlock3D(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                ResnetBlockCausal3D(
+                HunyuanVideoResnetBlockCausal3D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     eps=resnet_eps,
@@ -327,7 +327,7 @@ class HunyuanVideoDownBlock3D(nn.Module):
         if add_downsample:
             self.downsamplers = nn.ModuleList(
                 [
-                    DownsampleCausal3D(
+                    HunyuanVideoDownsampleCausal3D(
                         out_channels,
                         out_channels=out_channels,
                         padding=downsample_padding,
@@ -389,7 +389,7 @@ class HunyuanVideoUpBlock3D(nn.Module):
             input_channels = in_channels if i == 0 else out_channels
 
             resnets.append(
-                ResnetBlockCausal3D(
+                HunyuanVideoResnetBlockCausal3D(
                     in_channels=input_channels,
                     out_channels=out_channels,
                     eps=resnet_eps,
@@ -404,7 +404,7 @@ class HunyuanVideoUpBlock3D(nn.Module):
         if add_upsample:
             self.upsamplers = nn.ModuleList(
                 [
-                    UpsampleCausal3D(
+                    HunyuanVideoUpsampleCausal3D(
                         out_channels,
                         out_channels=out_channels,
                         upsample_factor=upsample_scale_factor,
@@ -472,7 +472,7 @@ class HunyuanVideoEncoder3D(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.conv_in = CausalConv3d(in_channels, block_out_channels[0], kernel_size=3, stride=1)
+        self.conv_in = HunyuanVideoCausalConv3d(in_channels, block_out_channels[0], kernel_size=3, stride=1)
         self.mid_block = None
         self.down_blocks = nn.ModuleList([])
 
@@ -529,7 +529,7 @@ class HunyuanVideoEncoder3D(nn.Module):
         self.conv_act = nn.SiLU()
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
-        self.conv_out = CausalConv3d(block_out_channels[-1], conv_out_channels, kernel_size=3)
+        self.conv_out = HunyuanVideoCausalConv3d(block_out_channels[-1], conv_out_channels, kernel_size=3)
 
         self.gradient_checkpointing = False
 
@@ -596,7 +596,7 @@ class HunyuanVideoDecoder3D(nn.Module):
         super().__init__()
         self.layers_per_block = layers_per_block
 
-        self.conv_in = CausalConv3d(in_channels, block_out_channels[-1], kernel_size=3, stride=1)
+        self.conv_in = HunyuanVideoCausalConv3d(in_channels, block_out_channels[-1], kernel_size=3, stride=1)
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
@@ -652,7 +652,7 @@ class HunyuanVideoDecoder3D(nn.Module):
         # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
-        self.conv_out = CausalConv3d(block_out_channels[0], out_channels, kernel_size=3)
+        self.conv_out = HunyuanVideoCausalConv3d(block_out_channels[0], out_channels, kernel_size=3)
 
         self.gradient_checkpointing = False
 
