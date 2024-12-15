@@ -6,7 +6,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -190,7 +190,11 @@ def slerp(
 
 
 class LatentConsistencyModelWalkPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
@@ -200,8 +204,8 @@ class LatentConsistencyModelWalkPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
@@ -281,8 +285,8 @@ class LatentConsistencyModelWalkPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -302,10 +306,10 @@ class LatentConsistencyModelWalkPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -317,7 +321,7 @@ class LatentConsistencyModelWalkPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -449,7 +453,7 @@ class LatentConsistencyModelWalkPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
+        if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder, lora_scale)
 
@@ -472,7 +476,12 @@ class LatentConsistencyModelWalkPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            int(height) // self.vae_scale_factor,
+            int(width) // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -501,7 +510,7 @@ class LatentConsistencyModelWalkPipeline(
                 data type of the generated embeddings
 
         Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+            `torch.Tensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
         """
         assert len(w.shape) == 1
         w = w * 1000.0
@@ -541,7 +550,7 @@ class LatentConsistencyModelWalkPipeline(
         height: int,
         width: int,
         callback_steps: int,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
@@ -575,11 +584,11 @@ class LatentConsistencyModelWalkPipeline(
     @torch.no_grad()
     def interpolate_embedding(
         self,
-        start_embedding: torch.FloatTensor,
-        end_embedding: torch.FloatTensor,
+        start_embedding: torch.Tensor,
+        end_embedding: torch.Tensor,
         num_interpolation_steps: Union[int, List[int]],
         interpolation_type: str,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if interpolation_type == "lerp":
             interpolation_fn = lerp
         elif interpolation_type == "slerp":
@@ -606,11 +615,11 @@ class LatentConsistencyModelWalkPipeline(
     @torch.no_grad()
     def interpolate_latent(
         self,
-        start_latent: torch.FloatTensor,
-        end_latent: torch.FloatTensor,
+        start_latent: torch.Tensor,
+        end_latent: torch.Tensor,
         num_interpolation_steps: Union[int, List[int]],
         interpolation_type: str,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         if interpolation_type == "lerp":
             interpolation_fn = lerp
         elif interpolation_type == "slerp":
@@ -658,8 +667,8 @@ class LatentConsistencyModelWalkPipeline(
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -700,11 +709,11 @@ class LatentConsistencyModelWalkPipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -726,7 +735,7 @@ class LatentConsistencyModelWalkPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
             embedding_interpolation_type (`str`, *optional*, defaults to `"lerp"`):
                 The type of interpolation to use for interpolating between text embeddings. Choose between `"lerp"` and `"slerp"`.
             latent_interpolation_type (`str`, *optional*, defaults to `"slerp"`):
@@ -779,7 +788,7 @@ class LatentConsistencyModelWalkPipeline(
         else:
             batch_size = prompt_embeds.shape[0]
         if batch_size < 2:
-            raise ValueError(f"`prompt` must have length of atleast 2 but found {batch_size}")
+            raise ValueError(f"`prompt` must have length of at least 2 but found {batch_size}")
         if num_images_per_prompt != 1:
             raise ValueError("`num_images_per_prompt` must be `1` as no other value is supported yet")
         if prompt_embeds is not None:
@@ -883,7 +892,7 @@ class LatentConsistencyModelWalkPipeline(
                 ) as batch_progress_bar:
                     for batch_index in range(0, bs, process_batch_size):
                         batch_inference_latents = inference_latents[batch_index : batch_index + process_batch_size]
-                        batch_inference_embedddings = inference_embeddings[
+                        batch_inference_embeddings = inference_embeddings[
                             batch_index : batch_index + process_batch_size
                         ]
 
@@ -892,7 +901,7 @@ class LatentConsistencyModelWalkPipeline(
                         )
                         timesteps = self.scheduler.timesteps
 
-                        current_bs = batch_inference_embedddings.shape[0]
+                        current_bs = batch_inference_embeddings.shape[0]
                         w = torch.tensor(self.guidance_scale - 1).repeat(current_bs)
                         w_embedding = self.get_guidance_scale_embedding(
                             w, embedding_dim=self.unet.config.time_cond_proj_dim
@@ -901,14 +910,14 @@ class LatentConsistencyModelWalkPipeline(
                         # 10. Perform inference for current batch
                         with self.progress_bar(total=num_inference_steps) as progress_bar:
                             for index, t in enumerate(timesteps):
-                                batch_inference_latents = batch_inference_latents.to(batch_inference_embedddings.dtype)
+                                batch_inference_latents = batch_inference_latents.to(batch_inference_embeddings.dtype)
 
                                 # model prediction (v-prediction, eps, x)
                                 model_pred = self.unet(
                                     batch_inference_latents,
                                     t,
                                     timestep_cond=w_embedding,
-                                    encoder_hidden_states=batch_inference_embedddings,
+                                    encoder_hidden_states=batch_inference_embeddings,
                                     cross_attention_kwargs=self.cross_attention_kwargs,
                                     return_dict=False,
                                 )[0]
@@ -924,8 +933,8 @@ class LatentConsistencyModelWalkPipeline(
                                     callback_outputs = callback_on_step_end(self, index, t, callback_kwargs)
 
                                     batch_inference_latents = callback_outputs.pop("latents", batch_inference_latents)
-                                    batch_inference_embedddings = callback_outputs.pop(
-                                        "prompt_embeds", batch_inference_embedddings
+                                    batch_inference_embeddings = callback_outputs.pop(
+                                        "prompt_embeds", batch_inference_embeddings
                                     )
                                     w_embedding = callback_outputs.pop("w_embedding", w_embedding)
                                     denoised = callback_outputs.pop("denoised", denoised)
@@ -939,7 +948,7 @@ class LatentConsistencyModelWalkPipeline(
                                         step_idx = index // getattr(self.scheduler, "order", 1)
                                         callback(step_idx, t, batch_inference_latents)
 
-                        denoised = denoised.to(batch_inference_embedddings.dtype)
+                        denoised = denoised.to(batch_inference_embeddings.dtype)
 
                         # Note: This is not supported because you would get black images in your latent walk if
                         #       NSFW concept is detected

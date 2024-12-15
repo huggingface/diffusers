@@ -37,15 +37,15 @@ class TCDSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_noised_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_noised_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted noised sample `(x_{s})` based on the model output from the current timestep.
     """
 
-    prev_sample: torch.FloatTensor
-    pred_noised_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.Tensor
+    pred_noised_sample: Optional[torch.Tensor] = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -83,7 +83,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -94,17 +94,17 @@ def betas_for_alpha_bar(
 
 
 # Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
-def rescale_zero_terminal_snr(betas: torch.FloatTensor) -> torch.FloatTensor:
+def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
 
 
     Args:
-        betas (`torch.FloatTensor`):
+        betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`: rescaled betas with zero terminal SNR
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
@@ -132,8 +132,8 @@ def rescale_zero_terminal_snr(betas: torch.FloatTensor) -> torch.FloatTensor:
 
 class TCDScheduler(SchedulerMixin, ConfigMixin):
     """
-    `TCDScheduler` incorporates the `Strategic Stochastic Sampling` introduced by the paper `Trajectory Consistency Distillation`,
-    extending the original Multistep Consistency Sampling to enable unrestricted trajectory traversal.
+    `TCDScheduler` incorporates the `Strategic Stochastic Sampling` introduced by the paper `Trajectory Consistency
+    Distillation`, extending the original Multistep Consistency Sampling to enable unrestricted trajectory traversal.
 
     This code is based on the official repo of TCD(https://github.com/jabir-zheng/TCD).
 
@@ -166,9 +166,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the alpha value at step 0.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
@@ -227,7 +225,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
@@ -299,18 +297,19 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
+
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -327,7 +326,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         return variance
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -366,7 +365,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         device: Union[str, torch.device] = None,
         original_inference_steps: Optional[int] = None,
         timesteps: Optional[List[int]] = None,
-        strength: int = 1.0,
+        strength: float = 1.0,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -386,6 +385,8 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
+            strength (`float`, *optional*, defaults to 1.0):
+                Used to determine the number of timesteps used for inference when using img2img, inpaint, etc.
         """
         # 0. Check inputs
         if num_inference_steps is None and timesteps is None:
@@ -523,9 +524,9 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         eta: float = 0.3,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
@@ -535,15 +536,16 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`int`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             eta (`float`):
-                A stochastic parameter (referred to as `gamma` in the paper) used to control the stochasticity in every step.
-                When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic sampling.
+                A stochastic parameter (referred to as `gamma` in the paper) used to control the stochasticity in every
+                step. When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic
+                sampling.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -626,14 +628,18 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
 
         return TCDSchedulerOutput(prev_sample=prev_sample, pred_noised_sample=pred_noised_sample)
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+        # for the subsequent add_noise calls
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -649,11 +655,11 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
-    def get_velocity(
-        self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
-    ) -> torch.FloatTensor:
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
+    def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -672,17 +678,14 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
     def __len__(self):
         return self.config.num_train_timesteps
 
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
     def previous_timestep(self, timestep):
-        if self.custom_timesteps:
+        if self.custom_timesteps or self.num_inference_steps:
             index = (self.timesteps == timestep).nonzero(as_tuple=True)[0][0]
             if index == self.timesteps.shape[0] - 1:
                 prev_t = torch.tensor(-1)
             else:
                 prev_t = self.timesteps[index + 1]
         else:
-            num_inference_steps = (
-                self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
-            )
-            prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
-
+            prev_t = timestep - 1
         return prev_t

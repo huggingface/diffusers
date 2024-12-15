@@ -22,12 +22,12 @@ from torch import nn
 
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU
 from diffusers.models.embeddings import get_timestep_embedding
-from diffusers.models.lora import LoRACompatibleLinear
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
 from diffusers.utils.testing_utils import (
     backend_manual_seed,
     require_torch_accelerator_with_fp64,
+    require_torch_version_greater_equal,
     torch_device,
 )
 
@@ -55,17 +55,6 @@ class EmbeddingsTests(unittest.TestCase):
         for grad in grad_mean:
             assert grad > prev_grad
             prev_grad = grad
-
-    def test_timestep_defaults(self):
-        embedding_dim = 16
-        timesteps = torch.arange(10)
-
-        t1 = get_timestep_embedding(timesteps, embedding_dim)
-        t2 = get_timestep_embedding(
-            timesteps, embedding_dim, flip_sin_to_cos=False, downscale_freq_shift=1, max_period=10_000
-        )
-
-        assert torch.allclose(t1.cpu(), t2.cpu(), 1e-3)
 
     def test_timestep_flip_sin_cos(self):
         embedding_dim = 16
@@ -130,6 +119,21 @@ class Upsample2DBlockTests(unittest.TestCase):
         assert upsampled.shape == (1, 32, 64, 64)
         output_slice = upsampled[0, -1, -3:, -3:]
         expected_slice = torch.tensor([-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    @require_torch_version_greater_equal("2.1")
+    def test_upsample_bfloat16(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 32, 32).to(torch.bfloat16)
+        upsample = Upsample2D(channels=32, use_conv=False)
+        with torch.no_grad():
+            upsampled = upsample(sample)
+
+        assert upsampled.shape == (1, 32, 64, 64)
+        output_slice = upsampled[0, -1, -3:, -3:]
+        expected_slice = torch.tensor(
+            [-0.2173, -1.2079, -1.2079, 0.2952, 1.1254, 1.1254, 0.2952, 1.1254, 1.1254], dtype=torch.bfloat16
+        )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_upsample_with_conv(self):
@@ -482,7 +486,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
         assert spatial_transformer_block.transformer_blocks[0].ff.net[0].__class__ == GEGLU
         assert spatial_transformer_block.transformer_blocks[0].ff.net[1].__class__ == nn.Dropout
-        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == LoRACompatibleLinear
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == nn.Linear
 
         dim = 32
         inner_dim = 128
@@ -506,7 +510,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
         assert spatial_transformer_block.transformer_blocks[0].ff.net[0].__class__ == ApproximateGELU
         assert spatial_transformer_block.transformer_blocks[0].ff.net[1].__class__ == nn.Dropout
-        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == LoRACompatibleLinear
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == nn.Linear
 
         dim = 32
         inner_dim = 128

@@ -31,13 +31,13 @@ Some notes about this pipeline:
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers.md) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading.md#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
 ## Inference with under 8GB GPU VRAM
 
-Run the [`PixArtAlphaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example. 
+Run the [`PixArtAlphaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example.
 
 First, install the [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) library:
 
@@ -75,10 +75,10 @@ with torch.no_grad():
     prompt_embeds, prompt_attention_mask, negative_embeds, negative_prompt_attention_mask = pipe.encode_prompt(prompt)
 ```
 
-Since text embeddings have been computed, remove the `text_encoder` and `pipe` from the memory, and free up som GPU VRAM:
+Since text embeddings have been computed, remove the `text_encoder` and `pipe` from the memory, and free up some GPU VRAM:
 
 ```python
-import gc 
+import gc
 
 def flush():
     gc.collect()
@@ -99,7 +99,7 @@ pipe = PixArtAlphaPipeline.from_pretrained(
 ).to("cuda")
 
 latents = pipe(
-    negative_prompt=None, 
+    negative_prompt=None,
     prompt_embeds=prompt_embeds,
     negative_prompt_embeds=negative_embeds,
     prompt_attention_mask=prompt_attention_mask,
@@ -146,4 +146,3 @@ While loading the `text_encoder`, you set `load_in_8bit` to `True`. You could al
 [[autodoc]] PixArtAlphaPipeline
 	- all
 	- __call__
-	

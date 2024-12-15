@@ -22,13 +22,14 @@ concurrency:
 
 env:
   DIFFUSERS_IS_CI: yes
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
 
 jobs:
   check_code_quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -40,13 +41,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
+        run: make quality
+      - name: Check if failure
+        if: ${{ failure() }}
         run: |
-          ruff check examples tests src utils scripts
-          ruff format examples tests src utils scripts --check
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
     needs: check_code_quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -57,11 +60,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-      - name: Check quality
+      - name: Check repo consistency
         run: |
           python utils/check_copies.py
           python utils/check_dummies.py
           make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
     needs: [check_code_quality, check_repository_consistency]
@@ -71,28 +78,29 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: docker-cpu
+            runner: aws-highmemory-32-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
             framework: pytorch_models
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_models_schedulers
           - name: Fast Flax CPU tests
             framework: flax
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: PyTorch Example CPU tests
             framework: pytorch_examples
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
 
     container:
       image: ${{ matrix.config.image }}
@@ -110,7 +118,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate
@@ -124,7 +131,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -133,7 +140,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -142,7 +149,7 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -151,8 +158,8 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m uv pip install peft timm
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
@@ -162,9 +169,9 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: pr_${{ matrix.config.report }}_test_reports
+        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
 
   run_staging_tests:
@@ -175,7 +182,8 @@ jobs:
         config:
           - name: Hub tests for models, schedulers, and pipelines
             framework: hub_tests_pytorch
-            runner: docker-cpu
+            runner:
+              group: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_hub
 
@@ -199,7 +207,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
 
@@ -223,7 +230,71 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
+
+  run_lora_tests:
+    needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+
+    name: LoRA tests with PEFT main
+
+    runs-on:
+      group: aws-general-8-plus
+
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        # TODO (sayakpaul, DN6): revisit `--no-deps`
+        python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
+        python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+
+    - name: Environment
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python utils/print_env.py
+
+    - name: Run fast PyTorch LoRA tests with PEFT
+      run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_peft_main \
+          tests/lora/
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+          -s -v \
+          --make-reports=tests_models_lora_peft_main \
+          tests/models/ -k "lora"
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: |
+        cat reports/tests_lora_failures_short.txt
+        cat reports/tests_models_lora_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: pr_main_test_reports
+        path: reports
+

@@ -186,7 +186,7 @@ class ContextCLIPTextEmbeddings(nn.Module):
         ctx_begin_pos: list,
         input_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if ctx_embeddings is None:
             ctx_len = 0

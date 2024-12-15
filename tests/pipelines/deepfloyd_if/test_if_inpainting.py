@@ -22,7 +22,15 @@ import torch
 from diffusers import IFInpaintingPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    load_numpy,
+    require_accelerator,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
@@ -57,7 +65,7 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
             "mask_image": mask_image,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -72,7 +80,8 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self):
         # Due to non-determinism in save load of the hf-internal-testing/tiny-random-t5 text encoder
         super().test_save_load_float16(expected_max_diff=1e-1)
@@ -92,6 +101,12 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
 @slow
 @require_torch_gpu
 class IFInpaintingPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -105,7 +120,6 @@ class IFInpaintingPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
 
-        # Super resolution test
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

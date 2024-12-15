@@ -18,18 +18,15 @@ import unittest
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
-from diffusers.loaders import AttnProcsLayers
 from diffusers.models import StableCascadeUNet
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_pt,
+    load_numpy,
+    numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
     skip_mps,
@@ -46,19 +43,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
-
-
-def create_prior_lora_layers(unet: nn.Module):
-    lora_attn_procs = {}
-    for name in unet.attn_processors.keys():
-        lora_attn_processor_class = (
-            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-        )
-        lora_attn_procs[name] = lora_attn_processor_class(
-            hidden_size=unet.config.c,
-        )
-    unet_lora_layers = AttnProcsLayers(lora_attn_procs)
-    return lora_attn_procs, unet_lora_layers
 
 
 class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -184,22 +168,12 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
 
         image_slice = image[0, 0, 0, -10:]
+
         image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
         assert image.shape == (1, 16, 24, 24)
 
         expected_slice = np.array(
-            [
-                96.139565,
-                -20.213179,
-                -116.40341,
-                -191.57129,
-                39.350136,
-                74.80767,
-                39.782352,
-                -184.67352,
-                -46.426907,
-                168.41783,
-            ]
+            [94.5498, -21.9481, -117.5025, -192.8760, 38.0117, 73.4709, 38.1142, -185.5593, -47.7869, 167.2853]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
@@ -239,19 +213,12 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
-        prior_lora_attn_procs, prior_lora_layers = create_prior_lora_layers(prior)
-
-        lora_components = {
-            "prior_lora_layers": prior_lora_layers,
-            "prior_lora_attn_procs": prior_lora_attn_procs,
-        }
-
-        return prior, prior_lora_config, lora_components
+        return prior, prior_lora_config
 
     @require_peft_backend
     @unittest.skip(reason="no lora support for now")
     def test_inference_with_prior_lora(self):
-        _, prior_lora_config, _ = self.get_lora_components()
+        _, prior_lora_config = self.get_lora_components()
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -273,10 +240,51 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         self.assertTrue(image_embed.shape == lora_image_embed.shape)
 
+    def test_stable_cascade_decoder_prompt_embeds(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A photograph of a shiba inu, wearing a hat"
+        (
+            prompt_embeds,
+            prompt_embeds_pooled,
+            negative_prompt_embeds,
+            negative_prompt_embeds_pooled,
+        ) = pipe.encode_prompt(device, 1, 1, False, prompt=prompt)
+        generator = torch.Generator(device=device)
+
+        output_prompt = pipe(
+            prompt=prompt,
+            num_inference_steps=1,
+            output_type="np",
+            generator=generator.manual_seed(0),
+        )
+        output_prompt_embeds = pipe(
+            prompt=None,
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+            num_inference_steps=1,
+            output_type="np",
+            generator=generator.manual_seed(0),
+        )
+
+        assert np.abs(output_prompt.image_embeddings - output_prompt_embeds.image_embeddings).max() < 1e-5
+
 
 @slow
 @require_torch_gpu
 class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -284,7 +292,9 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_stable_cascade_prior(self):
-        pipe = StableCascadePriorPipeline.from_pretrained("diffusers/StableCascade-prior", torch_dtype=torch.bfloat16)
+        pipe = StableCascadePriorPipeline.from_pretrained(
+            "stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16
+        )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -292,17 +302,12 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        output = pipe(prompt, num_inference_steps=10, generator=generator)
+        output = pipe(prompt, num_inference_steps=2, output_type="np", generator=generator)
         image_embedding = output.image_embeddings
-
-        expected_image_embedding = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
+        expected_image_embedding = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/stable_cascade_prior_image_embeddings.npy"
         )
-
         assert image_embedding.shape == (1, 16, 24, 24)
 
-        self.assertTrue(
-            np.allclose(
-                image_embedding.cpu().float().numpy(), expected_image_embedding.cpu().float().numpy(), atol=5e-2
-            )
-        )
+        max_diff = numpy_cosine_similarity_distance(image_embedding.flatten(), expected_image_embedding.flatten())
+        assert max_diff < 1e-4

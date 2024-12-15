@@ -34,7 +34,7 @@ Stable Diffusion XL은 Dustin Podell, Zion English, Kyle Lacey, Andreas Blattman
 SDXL을 사용하기 전에 `transformers`, `accelerate`, `safetensors` 와 `invisible_watermark`를 설치하세요.
 다음과 같이 라이브러리를 설치할 수 있습니다:
 
-```
+```sh
 pip install transformers
 pip install accelerate
 pip install safetensors
@@ -46,7 +46,7 @@ pip install invisible-watermark>=0.2.0
 Stable Diffusion XL로 이미지를 생성할 때 워터마크가 보이지 않도록 추가하는 것을 권장하는데, 이는 다운스트림(downstream) 어플리케이션에서 기계에 합성되었는지를 식별하는데 도움을 줄 수 있습니다. 그렇게 하려면 [invisible_watermark 라이브러리](https://pypi.org/project/invisible-watermark/)를 통해 설치해주세요:
 
 
-```
+```sh
 pip install invisible-watermark>=0.2.0
 ```
 
@@ -75,11 +75,11 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt=prompt).images[0]
 ```
 
-### Image-to-image 
+### Image-to-image
 
 *image-to-image*를 위해 다음과 같이 SDXL을 사용할 수 있습니다:
 
-```py 
+```py
 import torch
 from diffusers import StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
@@ -99,7 +99,7 @@ image = pipe(prompt, image=init_image).images[0]
 
 *inpainting*를 위해 다음과 같이 SDXL을 사용할 수 있습니다:
 
-```py 
+```py
 import torch
 from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
@@ -121,7 +121,7 @@ image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inferen
 
 ### 이미지 결과물을 정제하기
 
-[base 모델 체크포인트](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)에서, StableDiffusion-XL 또한 고주파 품질을 향상시키는 이미지를 생성하기 위해 낮은 노이즈 단계 이미지를 제거하는데 특화된 [refiner 체크포인트](huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0)를 포함하고 있습니다. 이 refiner 체크포인트는 이미지 품질을 향상시키기 위해 base 체크포인트를 실행한 후 "두 번째 단계" 파이프라인에 사용될 수 있습니다.
+[base 모델 체크포인트](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)에서, StableDiffusion-XL 또한 고주파 품질을 향상시키는 이미지를 생성하기 위해 낮은 노이즈 단계 이미지를 제거하는데 특화된 [refiner 체크포인트](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0)를 포함하고 있습니다. 이 refiner 체크포인트는 이미지 품질을 향상시키기 위해 base 체크포인트를 실행한 후 "두 번째 단계" 파이프라인에 사용될 수 있습니다.
 
 refiner를 사용할 때, 쉽게 사용할 수 있습니다
 - 1.) base 모델과 refiner을 사용하는데, 이는 *Denoisers의 앙상블*을 위한 첫 번째 제안된 [eDiff-I](https://research.nvidia.com/labs/dir/eDiff-I/)를 사용하거나
@@ -215,7 +215,7 @@ image = refiner(
 
 #### 2.) 노이즈가 완전히 제거된 기본 이미지에서 이미지 출력을 정제하기
 
-일반적인 [`StableDiffusionImg2ImgPipeline`] 방식에서, 기본 모델에서 생성된 완전히 노이즈가 제거된 이미지는 [refiner checkpoint](huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0)를 사용해 더 향상시킬 수 있습니다.
+일반적인 [`StableDiffusionImg2ImgPipeline`] 방식에서, 기본 모델에서 생성된 완전히 노이즈가 제거된 이미지는 [refiner checkpoint](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0)를 사용해 더 향상시킬 수 있습니다.
 
 이를 위해, 보통의 "base" text-to-image 파이프라인을 수행 후에 image-to-image 파이프라인으로써 refiner를 실행시킬 수 있습니다. base 모델의 출력을 잠재 공간에 남겨둘 수 있습니다.
 
@@ -352,7 +352,7 @@ out-of-memory 에러가 난다면, [`StableDiffusionXLPipeline.enable_model_cpu_
 
 **참고** Stable Diffusion XL을 `torch`가 2.0 버전 미만에서 실행시키고 싶을 때, xformers 어텐션을 사용해주세요:
 
-```
+```sh
 pip install xformers
 ```
 

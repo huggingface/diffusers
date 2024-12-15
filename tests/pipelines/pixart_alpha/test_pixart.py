@@ -25,7 +25,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     PixArtAlphaPipeline,
-    Transformer2DModel,
+    PixArtTransformer2DModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -53,7 +53,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = Transformer2DModel(
+        transformer = PixArtTransformer2DModel(
             sample_size=8,
             num_layers=2,
             patch_size=2,
@@ -331,6 +331,11 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
     ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
     prompt = "A small cactus with a happy face in the Sahara desert."
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def tearDown(self):
         super().tearDown()

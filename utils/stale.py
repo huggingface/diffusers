@@ -15,6 +15,7 @@
 Script to close stale issue. Taken in part from the AllenNLP repository.
 https://github.com/allenai/allennlp.
 """
+
 import os
 from datetime import datetime as dt
 from datetime import timezone
@@ -23,6 +24,7 @@ from github import Github
 
 
 LABELS_TO_EXEMPT = [
+    "close-to-merge",
     "good first issue",
     "good second issue",
     "good difficult issue",

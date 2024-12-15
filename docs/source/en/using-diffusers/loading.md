@@ -10,314 +10,395 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Load pipelines, models, and schedulers
+# Load pipelines
 
 [[open-in-colab]]
 
-Having an easy way to use a diffusion system for inference is essential to 🧨 Diffusers. Diffusion systems often consist of multiple components like parameterized models, tokenizers, and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API, while remaining flexible enough to be adapted for other use cases, such as loading each component individually as building blocks to assemble your own diffusion system.
-
-Everything you need for inference or training is accessible with the `from_pretrained()` method.
+Diffusion systems consist of multiple components like parameterized models and schedulers that interact in complex ways. That is why we designed the [`DiffusionPipeline`] to wrap the complexity of the entire diffusion system into an easy-to-use API. At the same time, the [`DiffusionPipeline`] is entirely customizable so you can modify each component to build a diffusion system for your use case.
 
 This guide will show you how to load:
 
 - pipelines from the Hub and locally
 - different components into a pipeline
+- multiple pipelines without increasing memory usage
 - checkpoint variants such as different floating point types or non-exponential mean averaged (EMA) weights
-- models and schedulers
 
-## Diffusion Pipeline
+## Load a pipeline
 
-<Tip>
+> [!TIP]
+> Skip to the [DiffusionPipeline explained](#diffusionpipeline-explained) section if you're interested in an explanation about how the [`DiffusionPipeline`] class works.
 
-💡 Skip to the [DiffusionPipeline explained](#diffusionpipeline-explained) section if you are interested in learning in more detail about how the [`DiffusionPipeline`] class works.
+There are two ways to load a pipeline for a task:
 
-</Tip>
+1. Load the generic [`DiffusionPipeline`] class and allow it to automatically detect the correct pipeline class from the checkpoint.
+2. Load a specific pipeline class for a specific task.
 
-The [`DiffusionPipeline`] class is the simplest and most generic way to load the latest trending diffusion model from the [Hub](https://huggingface.co/models?library=diffusers&sort=trending). The [`DiffusionPipeline.from_pretrained`] method automatically detects the correct pipeline class from the checkpoint, downloads, and caches all the required configuration and weight files, and returns a pipeline instance ready for inference.
+<hfoptions id="pipelines">
+<hfoption id="generic pipeline">
+
+The [`DiffusionPipeline`] class is a simple and generic way to load the latest trending diffusion model from the [Hub](https://huggingface.co/models?library=diffusers&sort=trending). It uses the [`~DiffusionPipeline.from_pretrained`] method to automatically detect the correct pipeline class for a task from the checkpoint, downloads and caches all the required configuration and weight files, and returns a pipeline ready for inference.
 
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-You can also load a checkpoint with its specific pipeline class. The example above loaded a Stable Diffusion model; to get the same result, use the [`StableDiffusionPipeline`] class:
+This same checkpoint can also be used for an image-to-image task. The [`DiffusionPipeline`] class can handle any task as long as you provide the appropriate inputs. For example, for an image-to-image task, you need to pass an initial image to the pipeline.
+
+```py
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
+
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png")
+prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=init_image).images[0]
+```
+
+</hfoption>
+<hfoption id="specific pipeline">
+
+Checkpoints can be loaded by their specific pipeline class if you already know it. For example, to load a Stable Diffusion model, use the [`StableDiffusionPipeline`] class.
 
 ```python
 from diffusers import StableDiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-A checkpoint (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) or [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) may also be used for more than one task, like text-to-image or image-to-image. To differentiate what task you want to use the checkpoint for, you have to load it directly with its corresponding task-specific pipeline class:
+This same checkpoint may also be used for another task like image-to-image. To differentiate what task you want to use the checkpoint for, you have to use the corresponding task-specific pipeline class. For example, to use the same checkpoint for image-to-image, use the [`StableDiffusionImg2ImgPipeline`] class.
 
-```python
+```py
 from diffusers import StableDiffusionImg2ImgPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
+pipeline = StableDiffusionImg2ImgPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
 ```
+
+</hfoption>
+</hfoptions>
+
+Use the Space below to gauge a pipeline's memory requirements before you download and load it to see if it runs on your hardware.
+
+<div class="block dark:hidden">
+	<iframe
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=light"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
+<div class="hidden dark:block">
+    <iframe
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=dark"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
 
 ### Local pipeline
 
-To load a diffusion pipeline locally, use [`git-lfs`](https://git-lfs.github.com/) to manually download the checkpoint (in this case, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) to your local disk. This creates a local folder, `./stable-diffusion-v1-5`, on your disk:
+To load a pipeline locally, use [git-lfs](https://git-lfs.github.com/) to manually download a checkpoint to your local disk.
 
 ```bash
 git-lfs install
-git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
 ```
 
-Then pass the local path to [`~DiffusionPipeline.from_pretrained`]:
+This creates a local folder, ./stable-diffusion-v1-5, on your disk and you should pass its path to [`~DiffusionPipeline.from_pretrained`].
 
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "./stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
+stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-The [`~DiffusionPipeline.from_pretrained`] method won't download any files from the Hub when it detects a local path, but this also means it won't download and cache the latest changes to a checkpoint.
+The [`~DiffusionPipeline.from_pretrained`] method won't download files from the Hub when it detects a local path, but this also means it won't download and cache the latest changes to a checkpoint.
 
-### Swap components in a pipeline
+## Customize a pipeline
 
-You can customize the default components of any pipeline with another compatible component. Customization is important because:
+You can customize a pipeline by loading different components into it. This is important because you can:
 
-- Changing the scheduler is important for exploring the trade-off between generation speed and quality.
-- Different components of a model are typically trained independently and you can swap out a component with a better-performing one.
-- During finetuning, usually only some components - like the UNet or text encoder - are trained.
+- change to a scheduler with faster generation speed or higher generation quality depending on your needs (call the `scheduler.compatibles` method on your pipeline to see compatible schedulers)
+- change a default pipeline component to a newer and better performing one
 
-To find out which schedulers are compatible for customization, you can use the `compatibles` method:
+For example, let's customize the default [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0) checkpoint with:
+
+- The [`HeunDiscreteScheduler`] to generate higher quality images at the expense of slower generation speed. You must pass the `subfolder="scheduler"` parameter in [`~HeunDiscreteScheduler.from_pretrained`] to load the scheduler configuration into the correct [subfolder](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/scheduler) of the pipeline repository.
+- A more stable VAE that runs in fp16.
 
 ```py
-from diffusers import DiffusionPipeline
+from diffusers import StableDiffusionXLPipeline, HeunDiscreteScheduler, AutoencoderKL
+import torch
 
-repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
-stable_diffusion.scheduler.compatibles
+scheduler = HeunDiscreteScheduler.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler")
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16, use_safetensors=True)
 ```
 
-Let's use the [`SchedulerMixin.from_pretrained`] method to replace the default [`PNDMScheduler`] with a more performant scheduler, [`EulerDiscreteScheduler`]. The `subfolder="scheduler"` argument is required to load the scheduler configuration from the correct [subfolder](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler) of the pipeline repository.
+Now pass the new scheduler and VAE to the [`StableDiffusionXLPipeline`].
 
-Then you can pass the new [`EulerDiscreteScheduler`] instance to the `scheduler` argument in [`DiffusionPipeline`]:
-
-```python
-from diffusers import DiffusionPipeline, EulerDiscreteScheduler
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler, use_safetensors=True)
+```py
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+  "stabilityai/stable-diffusion-xl-base-1.0",
+  scheduler=scheduler,
+  vae=vae,
+  torch_dtype=torch.float16,
+  variant="fp16",
+  use_safetensors=True
+).to("cuda")
 ```
 
-### Safety checker
+## Reuse a pipeline
 
-Diffusion models like Stable Diffusion can generate harmful content, which is why 🧨 Diffusers has a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) to check generated outputs against known hardcoded NSFW content. If you'd like to disable the safety checker for whatever reason, pass `None` to the `safety_checker` argument:
+When you load multiple pipelines that share the same model components, it makes sense to reuse the shared components instead of reloading everything into memory again, especially if your hardware is memory-constrained. For example:
+
+1. You generated an image with the [`StableDiffusionPipeline`] but you want to improve its quality with the [`StableDiffusionSAGPipeline`]. Both of these pipelines share the same pretrained model, so it'd be a waste of memory to load the same model twice.
+2. You want to add a model component, like a [`MotionAdapter`](../api/pipelines/animatediff#animatediffpipeline), to [`AnimateDiffPipeline`] which was instantiated from an existing [`StableDiffusionPipeline`]. Again, both pipelines share the same pretrained model, so it'd be a waste of memory to load an entirely new pipeline again.
+
+With the [`DiffusionPipeline.from_pipe`] API, you can switch between multiple pipelines to take advantage of their different features without increasing memory-usage. It is similar to turning on and off a feature in your pipeline.
+
+> [!TIP]
+> To switch between tasks (rather than features), use the [`~DiffusionPipeline.from_pipe`] method with the [AutoPipeline](../api/pipelines/auto_pipeline) class, which automatically identifies the pipeline class based on the task (learn more in the [AutoPipeline](../tutorials/autopipeline) tutorial).
+
+Let's start with a [`StableDiffusionPipeline`] and then reuse the loaded model components to create a [`StableDiffusionSAGPipeline`] to increase generation quality. You'll use the [`StableDiffusionPipeline`] with an [IP-Adapter](./ip_adapter) to generate a bear eating pizza.
+
+```python
+from diffusers import DiffusionPipeline, StableDiffusionSAGPipeline
+import torch
+import gc
+from diffusers.utils import load_image
+from accelerate.utils import compute_module_sizes
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_neg_embed.png")
+
+pipe_sd = DiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", torch_dtype=torch.float16)
+pipe_sd.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+pipe_sd.set_ip_adapter_scale(0.6)
+pipe_sd.to("cuda")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+out_sd = pipe_sd(
+    prompt="bear eats pizza",
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality",
+    ip_adapter_image=image,
+    num_inference_steps=50,
+    generator=generator,
+).images[0]
+out_sd
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_sd_0.png"/>
+</div>
+
+For reference, you can check how much memory this process consumed.
+
+```python
+def bytes_to_giga_bytes(bytes):
+    return bytes / 1024 / 1024 / 1024
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
+"Max memory allocated: 4.406213283538818 GB"
+```
+
+Now, reuse the same pipeline components from [`StableDiffusionPipeline`] in [`StableDiffusionSAGPipeline`] with the [`~DiffusionPipeline.from_pipe`] method.
+
+> [!WARNING]
+> Some pipeline methods may not function properly on new pipelines created with [`~DiffusionPipeline.from_pipe`]. For instance, the [`~DiffusionPipeline.enable_model_cpu_offload`] method installs hooks on the model components based on a unique offloading sequence for each pipeline. If the models are executed in a different order in the new pipeline, the CPU offloading may not work correctly.
+>
+> To ensure everything works as expected, we recommend re-applying a pipeline method on a new pipeline created with [`~DiffusionPipeline.from_pipe`].
+
+```python
+pipe_sag = StableDiffusionSAGPipeline.from_pipe(
+    pipe_sd
+)
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+out_sag = pipe_sag(
+    prompt="bear eats pizza",
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality",
+    ip_adapter_image=image,
+    num_inference_steps=50,
+    generator=generator,
+    guidance_scale=1.0,
+    sag_scale=0.75
+).images[0]
+out_sag
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_sag_1.png"/>
+</div>
+
+If you check the memory usage, you'll see it remains the same as before because [`StableDiffusionPipeline`] and [`StableDiffusionSAGPipeline`] are sharing the same pipeline components. This allows you to use them interchangeably without any additional memory overhead.
+
+```py
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
+"Max memory allocated: 4.406213283538818 GB"
+```
+
+Let's animate the image with the [`AnimateDiffPipeline`] and also add a [`MotionAdapter`] module to the pipeline. For the [`AnimateDiffPipeline`], you need to unload the IP-Adapter first and reload it *after* you've created your new pipeline (this only applies to the [`AnimateDiffPipeline`]).
+
+```py
+from diffusers import AnimateDiffPipeline, MotionAdapter, DDIMScheduler
+from diffusers.utils import export_to_gif
+
+pipe_sag.unload_ip_adapter()
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+
+pipe_animate = AnimateDiffPipeline.from_pipe(pipe_sd, motion_adapter=adapter)
+pipe_animate.scheduler = DDIMScheduler.from_config(pipe_animate.scheduler.config, beta_schedule="linear")
+# load IP-Adapter and LoRA weights again
+pipe_animate.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+pipe_animate.load_lora_weights("guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
+pipe_animate.to("cuda")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+pipe_animate.set_adapters("zoom-out", adapter_weights=0.75)
+out = pipe_animate(
+    prompt="bear eats pizza",
+    num_frames=16,
+    num_inference_steps=50,
+    ip_adapter_image=image,
+    generator=generator,
+).frames[0]
+export_to_gif(out, "out_animate.gif")
+```
+
+<div class="flex justify-center">
+  <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_animate_3.gif"/>
+</div>
+
+The [`AnimateDiffPipeline`] is more memory-intensive and consumes 15GB of memory (see the [Memory-usage of from_pipe](#memory-usage-of-from_pipe) section to learn what this means for your memory-usage).
+
+```py
+print(f"Max memory allocated: {bytes_to_giga_bytes(torch.cuda.max_memory_allocated())} GB")
+"Max memory allocated: 15.178664207458496 GB"
+```
+
+### Modify from_pipe components
+
+Pipelines loaded with [`~DiffusionPipeline.from_pipe`] can be customized with different model components or methods. However, whenever you modify the *state* of the model components, it affects all the other pipelines that share the same components. For example, if you call [`~diffusers.loaders.IPAdapterMixin.unload_ip_adapter`] on the [`StableDiffusionSAGPipeline`], you won't be able to use IP-Adapter with the [`StableDiffusionPipeline`] because it's been removed from their shared components.
+
+```py
+pipe.sag_unload_ip_adapter()
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+out_sd = pipe_sd(
+    prompt="bear eats pizza",
+    negative_prompt="wrong white balance, dark, sketches,worst quality,low quality",
+    ip_adapter_image=image,
+    num_inference_steps=50,
+    generator=generator,
+).images[0]
+"AttributeError: 'NoneType' object has no attribute 'image_projection_layers'"
+```
+
+### Memory usage of from_pipe
+
+The memory requirement of loading multiple pipelines with [`~DiffusionPipeline.from_pipe`] is determined by the pipeline with the highest memory-usage regardless of the number of pipelines you create.
+
+| Pipeline | Memory usage (GB) |
+|---|---|
+| StableDiffusionPipeline | 4.400 |
+| StableDiffusionSAGPipeline | 4.400 |
+| AnimateDiffPipeline | 15.178 |
+
+The [`AnimateDiffPipeline`] has the highest memory requirement, so the *total memory-usage* is based only on the [`AnimateDiffPipeline`]. Your memory-usage will not increase if you create additional pipelines as long as their memory requirements doesn't exceed that of the [`AnimateDiffPipeline`]. Each pipeline can be used interchangeably without any additional memory overhead.
+
+## Safety checker
+
+Diffusers implements a [safety checker](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) for Stable Diffusion models which can generate harmful content. The safety checker screens the generated output against known hardcoded not-safe-for-work (NSFW) content. If for whatever reason you'd like to disable the safety checker, pass `safety_checker=None` to the [`~DiffusionPipeline.from_pretrained`] method.
 
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None, use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", safety_checker=None, use_safetensors=True)
 """
 You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide by the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend keeping the safety filter enabled in all public-facing circumstances, disabling it only for use cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
 """
-```
-
-### Reuse components across pipelines
-
-You can also reuse the same components in multiple pipelines to avoid loading the weights into RAM twice. Use the [`~DiffusionPipeline.components`] method to save the components:
-
-```python
-from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
-
-model_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
-
-components = stable_diffusion_txt2img.components
-```
-
-Then you can pass the `components` to another pipeline without reloading the weights into RAM:
-
-```py
-stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
-```
-
-You can also pass the components individually to the pipeline if you want more flexibility over which components to reuse or disable. For example, to reuse the same components in the text-to-image pipeline, except for the safety checker and feature extractor, in the image-to-image pipeline:
-
-```py
-from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
-
-model_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
-stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(
-    vae=stable_diffusion_txt2img.vae,
-    text_encoder=stable_diffusion_txt2img.text_encoder,
-    tokenizer=stable_diffusion_txt2img.tokenizer,
-    unet=stable_diffusion_txt2img.unet,
-    scheduler=stable_diffusion_txt2img.scheduler,
-    safety_checker=None,
-    feature_extractor=None,
-    requires_safety_checker=False,
-)
 ```
 
 ## Checkpoint variants
 
 A checkpoint variant is usually a checkpoint whose weights are:
 
-- Stored in a different floating point type for lower precision and lower storage, such as [`torch.float16`](https://pytorch.org/docs/stable/tensors.html#data-types), because it only requires half the bandwidth and storage to download. You can't use this variant if you're continuing training or using a CPU.
-- Non-exponential mean averaged (EMA) weights, which shouldn't be used for inference. You should use these to continue fine-tuning a model.
+- Stored in a different floating point type, such as [torch.float16](https://pytorch.org/docs/stable/tensors.html#data-types), because it only requires half the bandwidth and storage to download. You can't use this variant if you're continuing training or using a CPU.
+- Non-exponential mean averaged (EMA) weights which shouldn't be used for inference. You should use this variant to continue finetuning a model.
 
-<Tip>
+> [!TIP]
+> When the checkpoints have identical model structures, but they were trained on different datasets and with a different training setup, they should be stored in separate repositories. For example, [stabilityai/stable-diffusion-2](https://hf.co/stabilityai/stable-diffusion-2) and [stabilityai/stable-diffusion-2-1](https://hf.co/stabilityai/stable-diffusion-2-1) are stored in separate repositories.
 
-💡 When the checkpoints have identical model structures, but they were trained on different datasets and with a different training setup, they should be stored in separate repositories instead of variations (for example, [`stable-diffusion-v1-4`] and [`stable-diffusion-v1-5`]).
+Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [safetensors](./using_safetensors)), model structure, and their weights have identical tensor shapes.
 
-</Tip>
+| **checkpoint type** | **weight name**                             | **argument for loading weights** |
+|---------------------|---------------------------------------------|----------------------------------|
+| original            | diffusion_pytorch_model.safetensors         |                                  |
+| floating point      | diffusion_pytorch_model.fp16.safetensors    | `variant`, `torch_dtype`         |
+| non-EMA             | diffusion_pytorch_model.non_ema.safetensors | `variant`                        |
 
-Otherwise, a variant is **identical** to the original checkpoint. They have exactly the same serialization format (like [Safetensors](./using_safetensors)), model structure, and weights that have identical tensor shapes.
+There are two important arguments for loading variants:
 
-| **checkpoint type** | **weight name**                     | **argument for loading weights** |
-|---------------------|-------------------------------------|----------------------------------|
-| original            | diffusion_pytorch_model.bin         |                                  |
-| floating point      | diffusion_pytorch_model.fp16.bin    | `variant`, `torch_dtype`         |
-| non-EMA             | diffusion_pytorch_model.non_ema.bin | `variant`                        |
+- `torch_dtype` specifies the floating point precision of the loaded checkpoint. For example, if you want to save bandwidth by loading a fp16 variant, you should set `variant="fp16"` and `torch_dtype=torch.float16` to *convert the weights* to fp16. Otherwise, the fp16 weights are converted to the default fp32 precision.
 
-There are two important arguments to know for loading variants:
+  If you only set `torch_dtype=torch.float16`, the default fp32 weights are downloaded first and then converted to fp16.
 
-- `torch_dtype` defines the floating point precision of the loaded checkpoints. For example, if you want to save bandwidth by loading a `fp16` variant, you should specify `torch_dtype=torch.float16` to *convert the weights* to `fp16`. Otherwise, the `fp16` weights are converted to the default `fp32` precision. You can also load the original checkpoint without defining the `variant` argument, and convert it to `fp16` with `torch_dtype=torch.float16`. In this case, the default `fp32` weights are downloaded first, and then they're converted to `fp16` after loading.
+- `variant` specifies which files should be loaded from the repository. For example, if you want to load a non-EMA variant of a UNet from [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main/unet), set `variant="non_ema"` to download the `non_ema` file.
 
-- `variant` defines which files should be loaded from the repository. For example, if you want to load a `non_ema` variant from the [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) repository, you should specify `variant="non_ema"` to download the `non_ema` files.
+<hfoptions id="variants">
+<hfoption id="fp16">
 
-```python
+```py
 from diffusers import DiffusionPipeline
 import torch
 
-# load fp16 variant
-stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16, use_safetensors=True
-)
-# load non_ema variant
-stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", variant="non_ema", use_safetensors=True
+pipeline = DiffusionPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16, use_safetensors=True
 )
 ```
 
-To save a checkpoint stored in a different floating-point type or as a non-EMA variant, use the [`DiffusionPipeline.save_pretrained`] method and specify the `variant` argument. You should try and save a variant to the same folder as the original checkpoint, so you can load both from the same folder:
+</hfoption>
+<hfoption id="non-EMA">
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="non_ema", use_safetensors=True
+)
+```
+
+</hfoption>
+</hfoptions>
+
+Use the `variant` parameter in the [`DiffusionPipeline.save_pretrained`] method to save a checkpoint as a different floating point type or as a non-EMA variant. You should try save a variant to the same folder as the original checkpoint, so you have the option of loading both from the same folder.
+
+<hfoptions id="save">
+<hfoption id="fp16">
 
 ```python
 from diffusers import DiffusionPipeline
 
-# save as fp16 variant
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="fp16")
-# save as non-ema variant
-stable_diffusion.save_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
+pipeline.save_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16")
 ```
 
-If you don't save the variant to an existing folder, you must specify the `variant` argument otherwise it'll throw an `Exception` because it can't find the original checkpoint:
+</hfoption>
+<hfoption id="non_ema">
+
+```py
+pipeline.save_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", variant="non_ema")
+```
+
+</hfoption>
+</hfoptions>
+
+If you don't save the variant to an existing folder, you must specify the `variant` argument otherwise it'll throw an `Exception` because it can't find the original checkpoint.
 
 ```python
 # 👎 this won't work
-stable_diffusion = DiffusionPipeline.from_pretrained(
+pipeline = DiffusionPipeline.from_pretrained(
     "./stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
 )
 # 👍 this works
-stable_diffusion = DiffusionPipeline.from_pretrained(
+pipeline = DiffusionPipeline.from_pretrained(
     "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16, use_safetensors=True
 )
-```
-
-<!--
-TODO(Patrick) - Make sure to uncomment this part as soon as things are deprecated.
-
-#### Using `revision` to load pipeline variants is deprecated
-
-Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to
-load model variants, e.g.:
-
-```python
-from diffusers import DiffusionPipeline
-
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16", use_safetensors=True)
-```
-
-However, this behavior is now deprecated since the "revision" argument should (just as it's done in GitHub) better be used to load model checkpoints from a specific commit or branch in development.
-
-The above example is therefore deprecated and won't be supported anymore for `diffusers >= 1.0.0`.
-
-<Tip warning={true}>
-
-If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`,
-please make sure to update the code and use `variant="fp16"` or `variation="non_ema"` respectively
-instead.
-
-</Tip>
--->
-
-## Models
-
-Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
-
-Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for `runwayml/stable-diffusion-v1-5` are stored in the [`unet`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/unet) subfolder:
-
-```python
-from diffusers import UNet2DConditionModel
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet", use_safetensors=True)
-```
-
-Or directly from a repository's [directory](https://huggingface.co/google/ddpm-cifar10-32/tree/main):
-
-```python
-from diffusers import UNet2DModel
-
-repo_id = "google/ddpm-cifar10-32"
-model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
-```
-
-You can also load and save model variants by specifying the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`]:
-
-```python
-from diffusers import UNet2DConditionModel
-
-model = UNet2DConditionModel.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
-)
-model.save_pretrained("./local-unet", variant="non_ema")
-```
-
-## Schedulers
-
-Schedulers are loaded from the [`SchedulerMixin.from_pretrained`] method, and unlike models, schedulers are **not parameterized** or **trained**; they are defined by a configuration file.
-
-Loading schedulers does not consume any significant amount of memory and the same configuration file can be used for a variety of different schedulers.
-For example, the following schedulers are compatible with [`StableDiffusionPipeline`], which means you can load the same scheduler configuration file in any of these classes:
-
-```python
-from diffusers import StableDiffusionPipeline
-from diffusers import (
-    DDPMScheduler,
-    DDIMScheduler,
-    PNDMScheduler,
-    LMSDiscreteScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    DPMSolverMultistepScheduler,
-)
-
-repo_id = "runwayml/stable-diffusion-v1-5"
-
-ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
-lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
-dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
-
-# replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler_anc`, `euler`
-pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm, use_safetensors=True)
 ```
 
 ## DiffusionPipeline explained
@@ -327,12 +408,12 @@ As a class method, [`DiffusionPipeline.from_pretrained`] is responsible for two 
 - Download the latest version of the folder structure required for inference and cache it. If the latest folder structure is available in the local cache, [`DiffusionPipeline.from_pretrained`] reuses the cache and won't redownload the files.
 - Load the cached weights into the correct pipeline [class](../api/pipelines/overview#diffusers-summary) - retrieved from the `model_index.json` file - and return an instance of it.
 
-The pipelines' underlying folder structure corresponds directly with their class instances. For example, the [`StableDiffusionPipeline`] corresponds to the folder structure in [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5).
+The pipelines' underlying folder structure corresponds directly with their class instances. For example, the [`StableDiffusionPipeline`] corresponds to the folder structure in [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5).
 
 ```python
 from diffusers import DiffusionPipeline
 
-repo_id = "runwayml/stable-diffusion-v1-5"
+repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 print(pipeline)
 ```
@@ -380,7 +461,7 @@ StableDiffusionPipeline {
 }
 ```
 
-Compare the components of the pipeline instance to the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main) folder structure, and you'll see there is a separate folder for each of the components in the repository:
+Compare the components of the pipeline instance to the [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main) folder structure, and you'll see there is a separate folder for each of the components in the repository:
 
 ```
 .
@@ -443,7 +524,7 @@ CLIPTokenizer(
 )
 ```
 
-Every pipeline expects a [`model_index.json`](https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/model_index.json) file that tells the [`DiffusionPipeline`]:
+Every pipeline expects a [`model_index.json`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/model_index.json) file that tells the [`DiffusionPipeline`]:
 
 - which pipeline class to load from `_class_name`
 - which version of 🧨 Diffusers was used to create the model in `_diffusers_version`

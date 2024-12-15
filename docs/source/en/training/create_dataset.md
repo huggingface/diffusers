@@ -1,6 +1,6 @@
 # Create a dataset for training
 
-There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or want to use your own, you can create a dataset with the 🤗 [Datasets](hf.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. The most basic dataset structure is a directory of images for tasks like unconditional image generation. Another dataset structure may be a directory of images and a text file containing their corresponding text captions for tasks like text-to-image generation.
+There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or want to use your own, you can create a dataset with the 🤗 [Datasets](https://huggingface.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. The most basic dataset structure is a directory of images for tasks like unconditional image generation. Another dataset structure may be a directory of images and a text file containing their corresponding text captions for tasks like text-to-image generation.
 
 This guide will show you two ways to create a dataset to finetune on:
 
@@ -9,7 +9,7 @@ This guide will show you two ways to create a dataset to finetune on:
 
 <Tip>
 
-💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide. 
+💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide.
 
 </Tip>
 
@@ -39,7 +39,7 @@ accelerate launch train_unconditional.py \
 
 </Tip>
 
-Start by creating a dataset with the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) feature, which creates an `image` column containing the PIL-encoded images. 
+Start by creating a dataset with the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) feature, which creates an `image` column containing the PIL-encoded images.
 
 You can use the `data_dir` or `data_files` parameters to specify the location of the dataset. The `data_files` parameter supports mapping specific files to dataset splits like `train` or `test`:
 
@@ -78,7 +78,7 @@ Now the dataset is available for training by passing the dataset name to the `--
 
 ```bash
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>
 ```

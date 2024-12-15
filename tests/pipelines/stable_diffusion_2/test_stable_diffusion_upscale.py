@@ -29,7 +29,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
-    numpy_cosine_similarity_distance,
+    require_accelerator,
     require_torch_gpu,
     slow,
     torch_device,
@@ -40,6 +40,12 @@ enable_full_determinism()
 
 
 class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -284,7 +290,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_prompt_embeds_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    @require_accelerator
     def test_stable_diffusion_upscale_fp16(self):
         """Test that stable diffusion upscale works with fp16"""
         unet = self.dummy_cond_unet_upscale
@@ -377,6 +383,12 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -461,7 +473,6 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
             model_id,
             torch_dtype=torch.float16,
         )
-        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -480,73 +491,3 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.9 GB is allocated
         assert mem_bytes < 2.9 * 10**9
-
-    def test_download_ckpt_diff_format_is_same(self):
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/low_res_cat.png"
-        )
-
-        prompt = "a cat sitting on a park bench"
-        model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id)
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator("cpu").manual_seed(0)
-        output = pipe(prompt=prompt, image=image, generator=generator, output_type="np", num_inference_steps=3)
-        image_from_pretrained = output.images[0]
-
-        single_file_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
-        )
-        pipe_from_single_file = StableDiffusionUpscalePipeline.from_single_file(single_file_path)
-        pipe_from_single_file.enable_model_cpu_offload()
-
-        generator = torch.Generator("cpu").manual_seed(0)
-        output_from_single_file = pipe_from_single_file(
-            prompt=prompt, image=image, generator=generator, output_type="np", num_inference_steps=3
-        )
-        image_from_single_file = output_from_single_file.images[0]
-
-        assert image_from_pretrained.shape == (512, 512, 3)
-        assert image_from_single_file.shape == (512, 512, 3)
-        assert (
-            numpy_cosine_similarity_distance(image_from_pretrained.flatten(), image_from_single_file.flatten()) < 1e-3
-        )
-
-    def test_single_file_component_configs(self):
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(
-            "stabilityai/stable-diffusion-x4-upscaler", variant="fp16"
-        )
-
-        ckpt_path = (
-            "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
-        )
-        single_file_pipe = StableDiffusionUpscalePipeline.from_single_file(ckpt_path, load_safety_checker=True)
-
-        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
-            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
-                continue
-            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
-        for param_name, param_value in single_file_pipe.unet.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.vae.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.vae.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
-
-        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert (
-                pipe.safety_checker.config.to_dict()[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"

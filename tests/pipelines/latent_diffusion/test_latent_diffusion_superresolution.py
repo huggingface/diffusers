@@ -26,6 +26,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     nightly,
+    require_accelerator,
     require_torch,
     torch_device,
 )
@@ -84,7 +85,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
         init_image = self.dummy_image.to(device)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = ldm(image=init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ldm(image=init_image, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -93,7 +94,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    @require_accelerator
     def test_inference_superresolution_fp16(self):
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
@@ -109,7 +110,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
 
         init_image = self.dummy_image.to(torch_device)
 
-        image = ldm(init_image, num_inference_steps=2, output_type="numpy").images
+        image = ldm(init_image, num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 64, 64, 3)
 
@@ -124,11 +125,11 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((64, 64), resample=PIL_INTERPOLATION["lanczos"])
 
-        ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
+        ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution")
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ldm(image=init_image, generator=generator, num_inference_steps=20, output_type="numpy").images
+        image = ldm(image=init_image, generator=generator, num_inference_steps=20, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 

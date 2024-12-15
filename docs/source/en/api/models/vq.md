@@ -24,4 +24,4 @@ The abstract from the paper is:
 
 ## VQEncoderOutput
 
-[[autodoc]] models.vq_model.VQEncoderOutput
+[[autodoc]] models.autoencoders.vq_model.VQEncoderOutput

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import unittest
 
 import numpy as np
@@ -21,7 +20,12 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AmusedPipeline, AmusedScheduler, UVit2DModel, VQModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    require_torch_accelerator,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -38,17 +42,17 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = UVit2DModel(
-            hidden_size=32,
+            hidden_size=8,
             use_bias=False,
             hidden_dropout=0.0,
-            cond_embed_dim=32,
+            cond_embed_dim=8,
             micro_cond_encode_dim=2,
             micro_cond_embed_dim=10,
-            encoder_hidden_size=32,
+            encoder_hidden_size=8,
             vocab_size=32,
-            codebook_size=32,
-            in_channels=32,
-            block_out_channels=32,
+            codebook_size=8,
+            in_channels=8,
+            block_out_channels=8,
             num_res_blocks=1,
             downsample=True,
             upsample=True,
@@ -56,7 +60,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_hidden_layers=1,
             num_attention_heads=1,
             attention_dropout=0.0,
-            intermediate_size=32,
+            intermediate_size=8,
             layer_norm_eps=1e-06,
             ln_elementwise_affine=True,
         )
@@ -64,20 +68,16 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vqvae = VQModel(
             act_fn="silu",
-            block_out_channels=[32],
-            down_block_types=[
-                "DownEncoderBlock2D",
-            ],
+            block_out_channels=[8],
+            down_block_types=["DownEncoderBlock2D"],
             in_channels=3,
-            latent_channels=32,
-            layers_per_block=2,
-            norm_num_groups=32,
-            num_vq_embeddings=32,
+            latent_channels=8,
+            layers_per_block=1,
+            norm_num_groups=8,
+            num_vq_embeddings=8,
             out_channels=3,
-            sample_size=32,
-            up_block_types=[
-                "UpDecoderBlock2D",
-            ],
+            sample_size=8,
+            up_block_types=["UpDecoderBlock2D"],
             mid_block_add_attention=False,
             lookup_from_codebook=True,
         )
@@ -85,18 +85,17 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=64,
+            hidden_size=8,
+            intermediate_size=8,
             layer_norm_eps=1e-05,
-            num_attention_heads=8,
-            num_hidden_layers=3,
+            num_attention_heads=1,
+            num_hidden_layers=1,
             pad_token_id=1,
             vocab_size=1000,
-            projection_dim=32,
+            projection_dim=8,
         )
         text_encoder = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
         components = {
             "transformer": transformer,
             "scheduler": scheduler,
@@ -130,52 +129,42 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AmusedPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
         pipe = AmusedPipeline.from_pretrained("amused/amused-256")
         pipe.to(torch_device)
-
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
-
         image_slice = image[0, -3:, -3:, -1].flatten()
-
         assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.4011, 0.3992, 0.3790, 0.3856, 0.3772, 0.3711, 0.3919, 0.3850, 0.3625])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        expected_slice = np.array([0.4011, 0.3992, 0.379, 0.3856, 0.3772, 0.3711, 0.3919, 0.385, 0.3625])
+        assert np.abs(image_slice - expected_slice).max() < 0.003
 
     def test_amused_256_fp16(self):
         pipe = AmusedPipeline.from_pretrained("amused/amused-256", variant="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
-
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
-
         image_slice = image[0, -3:, -3:, -1].flatten()
-
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.0554, 0.05129, 0.0344, 0.0452, 0.0476, 0.0271, 0.0495, 0.0527, 0.0158])
-        assert np.abs(image_slice - expected_slice).max() < 7e-3
+        assert np.abs(image_slice - expected_slice).max() < 0.007
 
     def test_amused_512(self):
         pipe = AmusedPipeline.from_pretrained("amused/amused-512")
         pipe.to(torch_device)
-
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
-
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9960, 0.9960, 0.9946, 0.9980, 0.9947, 0.9932, 0.9960, 0.9961, 0.9947])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        expected_slice = np.array([0.1199, 0.1171, 0.1229, 0.1188, 0.1210, 0.1147, 0.1260, 0.1346, 0.1152])
+        assert np.abs(image_slice - expected_slice).max() < 0.003
 
     def test_amused_512_fp16(self):
         pipe = AmusedPipeline.from_pretrained("amused/amused-512", variant="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
-
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
-
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9983, 1.0, 1.0, 1.0, 1.0, 0.9989, 0.9994, 0.9976, 0.9977])
-        assert np.abs(image_slice - expected_slice).max() < 3e-3
+        expected_slice = np.array([0.1509, 0.1492, 0.1531, 0.1485, 0.1501, 0.1465, 0.1581, 0.1690, 0.1499])
+        assert np.abs(image_slice - expected_slice).max() < 0.003

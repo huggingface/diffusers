@@ -34,7 +34,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 
 ___
 
-### Pokemon example
+### Naruto example
 
 For all our examples, we will directly store the trained weights on the Hub, so we need to be logged in and add the `--push_to_hub` flag. In order to do that, you have to be a registered user on the 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to the [User Access Tokens](https://huggingface.co/docs/hub/security-tokens) guide.
 
@@ -44,20 +44,20 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-We also use [Weights and Biases](https://docs.wandb.ai/quickstart) logging by default, because it is really useful to monitor the training progress by regularly generating sample images during training. To install wandb, run 
+We also use [Weights and Biases](https://docs.wandb.ai/quickstart) logging by default, because it is really useful to monitor the training progress by regularly generating sample images during training. To install wandb, run
 
 ```bash
 pip install wandb
 ```
 
-To disable wandb logging, remove the `--report_to=="wandb"` and `--validation_prompts="A robot pokemon, 4k photo"` flags from below examples
+To disable wandb logging, remove the `--report_to=="wandb"` and `--validation_prompts="A robot naruto, 4k photo"` flags from below examples
 
 #### Fine-tune decoder
 <br>
 
 <!-- accelerate_snippet_start -->
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
   --dataset_name=$DATASET_NAME \
@@ -70,10 +70,10 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
   --max_grad_norm=1 \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-decoder-pokemon-model" 
+  --output_dir="kandi2-decoder-naruto-model"
 ```
 <!-- accelerate_snippet_end -->
 
@@ -95,14 +95,14 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_decoder.py \
   --max_grad_norm=1 \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi22-decoder-pokemon-model" 
+  --output_dir="kandi22-decoder-naruto-model"
 ```
 
 
-Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `kandi22-decoder-pokemon-model`. To load the fine-tuned model for inference just pass that path to `AutoPipelineForText2Image`
+Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `kandi22-decoder-naruto-model`. To load the fine-tuned model for inference just pass that path to `AutoPipelineForText2Image`
 
 ```python
 from diffusers import AutoPipelineForText2Image
@@ -111,9 +111,9 @@ import torch
 pipe = AutoPipelineForText2Image.from_pretrained(output_dir, torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
-prompt='A robot pokemon, 4k photo'
+prompt='A robot naruto, 4k photo'
 images = pipe(prompt=prompt).images
-images[0].save("robot-pokemon.png")
+images[0].save("robot-naruto.png")
 ```
 
 Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
@@ -127,11 +127,11 @@ unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
 pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
-image = pipe(prompt="A robot pokemon, 4k photo").images[0]
-image.save("robot-pokemon.png")
+image = pipe(prompt="A robot naruto, 4k photo").images[0]
+image.save("robot-naruto.png")
 ```
 
-#### Fine-tune prior 
+#### Fine-tune prior
 
 You can fine-tune the Kandinsky prior model with `train_text_to_image_prior.py` script. Note that we currently do not support `--gradient_checkpointing` for prior model fine-tuning.
 
@@ -139,7 +139,7 @@ You can fine-tune the Kandinsky prior model with `train_text_to_image_prior.py` 
 
 <!-- accelerate_snippet_start -->
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
   --dataset_name=$DATASET_NAME \
@@ -151,15 +151,15 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
   --max_grad_norm=1 \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-prior-pokemon-model" 
+  --output_dir="kandi2-prior-naruto-model"
 ```
 <!-- accelerate_snippet_end -->
 
 
-To perform inference with the fine-tuned prior model, you will need to first create a prior pipeline by passing the `output_dir` to `DiffusionPipeline`. Then create a `KandinskyV22CombinedPipeline` from a pretrained or fine-tuned decoder checkpoint along with all the modules of the prior pipeline you just created. 
+To perform inference with the fine-tuned prior model, you will need to first create a prior pipeline by passing the `output_dir` to `DiffusionPipeline`. Then create a `KandinskyV22CombinedPipeline` from a pretrained or fine-tuned decoder checkpoint along with all the modules of the prior pipeline you just created.
 
 ```python
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
@@ -170,12 +170,12 @@ prior_components = {"prior_" + k: v for k,v in pipe_prior.components.items()}
 pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
-prompt='A robot pokemon, 4k photo'
+prompt='A robot naruto, 4k photo'
 images = pipe(prompt=prompt, negative_prompt=negative_prompt).images
 images[0]
 ```
 
-If you want to use a fine-tuned decoder checkpoint along with your fine-tuned prior checkpoint, you can simply replace the "kandinsky-community/kandinsky-2-2-decoder" in above code with your custom model repo name. Note that in order to be able to create a `KandinskyV22CombinedPipeline`, your model repository need to have a prior tag. If you have created your model repo using our training script, the prior tag is automatically included. 
+If you want to use a fine-tuned decoder checkpoint along with your fine-tuned prior checkpoint, you can simply replace the "kandinsky-community/kandinsky-2-2-decoder" in above code with your custom model repo name. Note that in order to be able to create a `KandinskyV22CombinedPipeline`, your model repository need to have a prior tag. If you have created your model repo using our training script, the prior tag is automatically included.
 
 #### Training with multiple GPUs
 
@@ -183,7 +183,7 @@ If you want to use a fine-tuned decoder checkpoint along with your fine-tuned pr
 for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image_decoder.py \
   --dataset_name=$DATASET_NAME \
@@ -196,10 +196,10 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image_deco
   --max_grad_norm=1 \
   --checkpoints_total_limit=3 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --validation_prompts="A robot pokemon, 4k photo" \
+  --validation_prompts="A robot naruto, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-decoder-pokemon-model" 
+  --output_dir="kandi2-decoder-naruto-model"
 ```
 
 
@@ -227,13 +227,13 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as explained in the [installation](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as explained in the [installation](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder) and the [Narutos dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
 
 
-#### Train decoder 
+#### Train decoder
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image_decoder_lora.py \
   --dataset_name=$DATASET_NAME --caption_column="text" \
@@ -244,7 +244,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_decoder_lora.py \
   --seed=42 \
   --rank=4 \
   --gradient_checkpointing \
-  --output_dir="kandi22-decoder-pokemon-lora" \
+  --output_dir="kandi22-decoder-naruto-lora" \
   --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub \
 ```
@@ -252,7 +252,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_decoder_lora.py \
 #### Train prior
 
 ```bash
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
   --dataset_name=$DATASET_NAME --caption_column="text" \
@@ -262,7 +262,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
   --rank=4 \
-  --output_dir="kandi22-prior-pokemon-lora" \
+  --output_dir="kandi22-prior-naruto-lora" \
   --validation_prompt="cute dragon creature" --report_to="wandb" \
   --push_to_hub \
 ```
@@ -274,7 +274,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
 
 #### Inference using fine-tuned LoRA checkpoint for decoder
 
-Once you have trained a Kandinsky decoder model using the above command, inference can be done with the `AutoPipelineForText2Image` after loading the trained LoRA weights.  You need to pass the `output_dir` for loading the LoRA weights, which in this case is `kandi22-decoder-pokemon-lora`.
+Once you have trained a Kandinsky decoder model using the above command, inference can be done with the `AutoPipelineForText2Image` after loading the trained LoRA weights.  You need to pass the `output_dir` for loading the LoRA weights, which in this case is `kandi22-decoder-naruto-lora`.
 
 
 ```python
@@ -285,9 +285,9 @@ pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-
 pipe.unet.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 
-prompt='A robot pokemon, 4k photo'
+prompt='A robot naruto, 4k photo'
 image = pipe(prompt=prompt).images[0]
-image.save("robot_pokemon.png")
+image.save("robot_naruto.png")
 ```
 
 #### Inference using fine-tuned LoRA checkpoint for prior
@@ -300,9 +300,9 @@ pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-
 pipe.prior_prior.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 
-prompt='A robot pokemon, 4k photo'
+prompt='A robot naruto, 4k photo'
 image = pipe(prompt=prompt).images[0]
-image.save("robot_pokemon.png")
+image.save("robot_naruto.png")
 image
 ```
 

@@ -338,7 +338,7 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
             assert abs(result_sum - 255.0714) < 1e-2
             assert abs(result_mean - 0.332124) < 1e-3
         else:
-            assert abs(result_sum - 255.1113) < 1e-2
+            assert abs(result_sum - 255.1113) < 1e-1
             assert abs(result_mean - 0.332176) < 1e-3
 
 

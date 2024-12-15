@@ -22,14 +22,13 @@ We enormously value feedback from the community, so please do not be afraid to s
 
 ## Overview
 
-You can contribute in many ways ranging from answering questions on issues to adding new diffusion models to
-the core library.
+You can contribute in many ways ranging from answering questions on issues and discussions to adding new diffusion models to the core library.
 
 In the following, we give an overview of different ways to contribute, ranked by difficulty in ascending order. All of them are valuable to the community.
 
 * 1. Asking and answering questions on [the Diffusers discussion forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers) or on [Discord](https://discord.gg/G7tWnz98XR).
-* 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose).
-* 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues).
+* 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose) or new discussions on [the GitHub Discussions tab](https://github.com/huggingface/diffusers/discussions/new/choose).
+* 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues) or discussions on [the GitHub Discussions tab](https://github.com/huggingface/diffusers/discussions).
 * 4. Fix a simple issue, marked by the "Good first issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 * 5. Contribute to the [documentation](https://github.com/huggingface/diffusers/tree/main/docs/source).
 * 6. Contribute a [Community Pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acommunity-examples).
@@ -63,7 +62,7 @@ In the same spirit, you are of immense help to the community by answering such q
 
 **Please** keep in mind that the more effort you put into asking or answering a question, the higher
 the quality of the publicly documented knowledge. In the same way, well-posed and well-answered questions create a high-quality knowledge database accessible to everybody, while badly posed questions or answers reduce the overall quality of the public knowledge database.
-In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accessible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
+In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accessible*, and *well-formatted/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
 **NOTE about channels**:
 [*The forum*](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) is much better indexed by search engines, such as Google. Posts are ranked by popularity rather than chronologically. Hence, it's easier to look up questions and answers that we posted some time ago.
@@ -99,7 +98,7 @@ This means in more detail:
 - Format your code.
 - Do not include any external libraries except for Diffusers depending on them.
 - **Always** provide all necessary information about your environment; for this, you can run: `diffusers-cli env` in your shell and copy-paste the displayed information to the issue.
-- Explain the issue. If the reader doesn't know what the issue is and why it is an issue, she cannot solve it.
+- Explain the issue. If the reader doesn't know what the issue is and why it is an issue, (s)he cannot solve it.
 - **Always** make sure the reader can reproduce your issue with as little effort as possible. If your code snippet cannot be run because of missing libraries or undefined variables, the reader cannot help you. Make sure your reproducible code snippet is as minimal as possible and can be copy-pasted into a simple Python shell.
 - If in order to reproduce your issue a model and/or dataset is required, make sure the reader has access to that model or dataset. You can always upload your model or dataset to the [Hub](https://huggingface.co) to make it easily downloadable. Try to keep your model and dataset as small as possible, to make the reproduction of your issue as effortless as possible.
 
@@ -198,38 +197,81 @@ Anything displayed on [the official Diffusers doc page](https://huggingface.co/d
 
 Please have a look at [this page](https://github.com/huggingface/diffusers/tree/main/docs) on how to verify changes made to the documentation locally.
 
-
 ### 6. Contribute a community pipeline
 
-[Pipelines](https://huggingface.co/docs/diffusers/api/pipelines/overview) are usually the first point of contact between the Diffusers library and the user.
-Pipelines are examples of how to use Diffusers [models](https://huggingface.co/docs/diffusers/api/models/overview) and [schedulers](https://huggingface.co/docs/diffusers/api/schedulers/overview).
-We support two types of pipelines:
+> [!TIP]
+> Read the [Community pipelines](../using-diffusers/custom_pipeline_overview#community-pipelines) guide to learn more about the difference between a GitHub and Hugging Face Hub community pipeline. If you're interested in why we have community pipelines, take a look at GitHub Issue [#841](https://github.com/huggingface/diffusers/issues/841) (basically, we can't maintain all the possible ways diffusion models can be used for inference but we also don't want to prevent the community from building them).
 
-- Official Pipelines
-- Community Pipelines
+Contributing a community pipeline is a great way to share your creativity and work with the community. It lets you build on top of the [`DiffusionPipeline`] so that anyone can load and use it by setting the `custom_pipeline` parameter. This section will walk you through how to create a simple pipeline where the UNet only does a single forward pass and calls the scheduler once (a "one-step" pipeline).
 
-Both official and community pipelines follow the same design and consist of the same type of components.
+1. Create a one_step_unet.py file for your community pipeline. This file can contain whatever package you want to use as long as it's installed by the user. Make sure you only have one pipeline class that inherits from [`DiffusionPipeline`] to load model weights and the scheduler configuration from the Hub. Add a UNet and scheduler to the `__init__` function.
 
-Official pipelines are tested and maintained by the core maintainers of Diffusers. Their code
-resides in [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
-In contrast, community pipelines are contributed and maintained purely by the **community** and are **not** tested.
-They reside in [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and while they can be accessed via the [PyPI diffusers package](https://pypi.org/project/diffusers/), their code is not part of the PyPI distribution.
+    You should also add the `register_modules` function to ensure your pipeline and its components can be saved with [`~DiffusionPipeline.save_pretrained`].
 
-The reason for the distinction is that the core maintainers of the Diffusers library cannot maintain and test all
-possible ways diffusion models can be used for inference, but some of them may be of interest to the community.
-Officially released diffusion pipelines,
-such as Stable Diffusion are added to the core src/diffusers/pipelines package which ensures
-high quality of maintenance, no backward-breaking code changes, and testing.
-More bleeding edge pipelines should be added as community pipelines. If usage for a community pipeline is high, the pipeline can be moved to the official pipelines upon request from the community. This is one of the ways we strive to be a community-driven library.
+```py
+from diffusers import DiffusionPipeline
+import torch
 
-To add a community pipeline, one should add a <name-of-the-community>.py file to [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) and adapt the [examples/community/README.md](https://github.com/huggingface/diffusers/tree/main/examples/community/README.md) to include an example of the new pipeline.
+class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
+    def __init__(self, unet, scheduler):
+        super().__init__()
 
-An example can be seen [here](https://github.com/huggingface/diffusers/pull/2400).
+        self.register_modules(unet=unet, scheduler=scheduler)
+```
 
-Community pipeline PRs are only checked at a superficial level and ideally they should be maintained by their original authors.
+1. In the forward pass (which we recommend defining as `__call__`), you can add any feature you'd like. For the "one-step" pipeline, create a random image and call the UNet and scheduler once by setting `timestep=1`.
 
-Contributing a community pipeline is a great way to understand how Diffusers models and schedulers work. Having contributed a community pipeline is usually the first stepping stone to contributing an official pipeline to the
-core package.
+```py
+  from diffusers import DiffusionPipeline
+  import torch
+
+  class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
+      def __init__(self, unet, scheduler):
+          super().__init__()
+
+          self.register_modules(unet=unet, scheduler=scheduler)
+
+      def __call__(self):
+          image = torch.randn(
+              (1, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
+          )
+          timestep = 1
+
+          model_output = self.unet(image, timestep).sample
+          scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
+
+          return scheduler_output
+```
+
+Now you can run the pipeline by passing a UNet and scheduler to it or load pretrained weights if the pipeline structure is identical.
+
+```py
+from diffusers import DDPMScheduler, UNet2DModel
+
+scheduler = DDPMScheduler()
+unet = UNet2DModel()
+
+pipeline = UnetSchedulerOneForwardPipeline(unet=unet, scheduler=scheduler)
+output = pipeline()
+# load pretrained weights
+pipeline = UnetSchedulerOneForwardPipeline.from_pretrained("google/ddpm-cifar10-32", use_safetensors=True)
+output = pipeline()
+```
+
+You can either share your pipeline as a GitHub community pipeline or Hub community pipeline.
+
+<hfoptions id="pipeline type">
+<hfoption id="GitHub pipeline">
+
+Share your GitHub pipeline by opening a pull request on the Diffusers [repository](https://github.com/huggingface/diffusers) and add the one_step_unet.py file to the [examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) subfolder.
+
+</hfoption>
+<hfoption id="Hub pipeline">
+
+Share your Hub pipeline by creating a model repository on the Hub and uploading the one_step_unet.py file to it.
+
+</hfoption>
+</hfoptions>
 
 ### 7. Contribute to training examples
 
@@ -245,7 +287,7 @@ The official training examples are maintained by the Diffusers' core maintainers
 This is because of the same reasons put forward in [6. Contribute a community pipeline](#6-contribute-a-community-pipeline) for official pipelines vs. community pipelines: It is not feasible for the core maintainers to maintain all possible training methods for diffusion models.
 If the Diffusers core maintainers and the community consider a certain training paradigm to be too experimental or not popular enough, the corresponding training code should be put in the `research_projects` folder and maintained by the author.
 
-Both official training and research examples consist of a directory that contains one or more training scripts, a requirements.txt file, and a README.md file. In order for the user to make use of the
+Both official training and research examples consist of a directory that contains one or more training scripts, a `requirements.txt` file, and a `README.md` file. In order for the user to make use of the
 training examples, it is required to clone the repository:
 
 ```bash
@@ -255,7 +297,8 @@ git clone https://github.com/huggingface/diffusers
 as well as to install all additional dependencies required for training:
 
 ```bash
-pip install -r /examples/<your-example-folder>/requirements.txt
+cd diffusers
+pip install -r examples/<your-example-folder>/requirements.txt
 ```
 
 Therefore when adding an example, the `requirements.txt` file shall define all pip dependencies required for your training example so that once all those are installed, the user can run the example's training script. See, for example, the [DreamBooth `requirements.txt` file](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/requirements.txt).
@@ -273,7 +316,7 @@ Once an example script works, please make sure to add a comprehensive `README.md
 - A link to some training results (logs, models, etc.) that show what the user can expect as shown [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
 - If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training example which includes your git handle as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
 
-If you are contributing to the official training examples, please also make sure to add a test to [examples/test_examples.py](https://github.com/huggingface/diffusers/blob/main/examples/test_examples.py). This is not necessary for non-official training examples.
+If you are contributing to the official training examples, please also make sure to add a test to its folder such as [examples/dreambooth/test_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/test_dreambooth.py). This is not necessary for non-official training examples.
 
 ### 8. Fixing a "Good second issue"
 
@@ -375,7 +418,7 @@ You will need basic `git` proficiency to be able to contribute to
 manual. Type `git --help` in a shell and enjoy. If you prefer books, [Pro
 Git](https://git-scm.com/book/en/v2) is a very good reference.
 
-Follow these steps to start contributing ([supported Python versions](https://github.com/huggingface/diffusers/blob/main/setup.py#L244)):
+Follow these steps to start contributing ([supported Python versions](https://github.com/huggingface/diffusers/blob/83bc6c94eaeb6f7704a2a428931cf2d9ad973ae9/setup.py#L270)):
 
 1. Fork the [repository](https://github.com/huggingface/diffusers) by
 clicking on the 'Fork' button on the repository's page. This creates a copy of the code

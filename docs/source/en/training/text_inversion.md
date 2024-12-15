@@ -67,7 +67,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -193,7 +193,7 @@ One more thing before you launch the script. If you're interested in following a
 <hfoption id="PyTorch">
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATA_DIR="./cat"
 
 accelerate launch textual_inversion.py \
@@ -248,7 +248,7 @@ After training is complete, you can use your newly trained model for inference l
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 pipeline.load_textual_inversion("sd-concepts-library/cat-toy")
 image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
 image.save("cat-train.png")

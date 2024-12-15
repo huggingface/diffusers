@@ -28,9 +28,11 @@ _CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 
 CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
+WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.bin.index.json"
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
+SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 SAFETENSORS_FILE_EXTENSION = "safetensors"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")

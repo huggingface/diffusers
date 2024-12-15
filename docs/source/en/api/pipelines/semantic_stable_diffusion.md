@@ -30,6 +30,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- all
 	- __call__
 
-## StableDiffusionSafePipelineOutput
+## SemanticStableDiffusionPipelineOutput
 [[autodoc]] pipelines.semantic_stable_diffusion.pipeline_output.SemanticStableDiffusionPipelineOutput
 	- all

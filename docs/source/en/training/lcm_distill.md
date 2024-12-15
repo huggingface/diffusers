@@ -53,7 +53,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -193,7 +193,7 @@ Now you're ready to launch the training script and start distilling!
 For this guide, you'll use the `--train_shards_path_or_url` to specify the path to the [Conceptual Captions 12M](https://github.com/google-research-datasets/conceptual-12m) dataset stored on the Hub [here](https://huggingface.co/datasets/laion/conceptual-captions-12m-webdataset). Set the `MODEL_DIR` environment variable to the name of the teacher model and `OUTPUT_DIR` to where you want to save the model.
 
 ```bash
-export MODEL_DIR="runwayml/stable-diffusion-v1-5"
+export MODEL_DIR="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export OUTPUT_DIR="path/to/saved/model"
 
 accelerate launch train_lcm_distill_sd_wds.py \
@@ -225,7 +225,7 @@ from diffusers import UNet2DConditionModel, DiffusionPipeline, LCMScheduler
 import torch
 
 unet = UNet2DConditionModel.from_pretrained("your-username/your-model", torch_dtype=torch.float16, variant="fp16")
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16")
 
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipeline.to("cuda")

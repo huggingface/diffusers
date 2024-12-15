@@ -113,7 +113,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion import (
             StableDiffusionPipeline,
             StableDiffusionPipelineOutput,
-            StableDiffusionSafetyChecker,
         )
         from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
         from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline

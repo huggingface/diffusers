@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import itertools
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -86,16 +87,16 @@ class TemporalDecoder(nn.Module):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
-        image_only_indicator: torch.FloatTensor,
+        sample: torch.Tensor,
+        image_only_indicator: torch.Tensor,
         num_frames: int = 1,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         r"""The forward method of the `Decoder` class."""
 
         sample = self.conv_in(sample)
 
-        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
-        if self.training and self.gradient_checkpointing:
+        upscale_dtype = next(itertools.chain(self.up_blocks.parameters(), self.up_blocks.buffers())).dtype
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
 
             def create_custom_forward(module):
                 def custom_forward(*inputs):
@@ -228,14 +229,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
 
-        sample_size = (
-            self.config.sample_size[0]
-            if isinstance(self.config.sample_size, (list, tuple))
-            else self.config.sample_size
-        )
-        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor = 0.25
-
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, TemporalDecoder)):
             module.gradient_checkpointing = value
@@ -253,7 +246,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+                processors[f"{name}.processor"] = module.get_processor()
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -315,19 +308,21 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
+        self, x: torch.Tensor, return_dict: bool = True
     ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
         Args:
-            x (`torch.FloatTensor`): Input batch of images.
+            x (`torch.Tensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
+                Whether to return a [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] instead of a plain
+                tuple.
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
-                [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
+                [`~models.autoencoders.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is
+                returned.
         """
         h = self.encoder(x)
         moments = self.quant_conv(h)
@@ -341,15 +336,15 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self,
-        z: torch.FloatTensor,
+        z: torch.Tensor,
         num_frames: int,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, torch.Tensor]:
         """
         Decode a batch of images.
 
         Args:
-            z (`torch.FloatTensor`): Input batch of latent vectors.
+            z (`torch.Tensor`): Input batch of latent vectors.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
@@ -370,15 +365,15 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
         num_frames: int = 1,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, torch.Tensor]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): Input sample.
+            sample (`torch.Tensor`): Input sample.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):

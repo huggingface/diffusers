@@ -133,8 +133,8 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 100,
         return_dict: bool = True,
-        output_type: str = "numpy",
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        output_type: str = "np",
+        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
     ) -> Union[AudioPipelineOutput, Tuple]:
         if (callback_steps is None) or (
@@ -157,11 +157,11 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
                 expense of slower inference.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
-            output_type (`str`, *optional*, defaults to `"numpy"`):
+            output_type (`str`, *optional*, defaults to `"np"`):
                 The output format of the generated audio.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+                following arguments: `callback(step: int, timestep: int, latents: torch.Tensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
@@ -249,16 +249,16 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
 
             logger.info("Generated segment", i)
 
-        if output_type == "numpy" and not is_onnx_available():
+        if output_type == "np" and not is_onnx_available():
             raise ValueError(
                 "Cannot return output in 'np' format if ONNX is not available. Make sure to have ONNX installed or set 'output_type' to 'mel'."
             )
-        elif output_type == "numpy" and self.melgan is None:
+        elif output_type == "np" and self.melgan is None:
             raise ValueError(
                 "Cannot return output in 'np' format if melgan component is not defined. Make sure to define `self.melgan` or set 'output_type' to 'mel'."
             )
 
-        if output_type == "numpy":
+        if output_type == "np":
             output = self.melgan(input_features=full_pred_mel.astype(np.float32))
         else:
             output = full_pred_mel

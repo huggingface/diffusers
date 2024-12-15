@@ -52,7 +52,7 @@ images = pipe(
 ).images
 ```
 
-Now use the [`~utils.export_to_gif`] function to turn the list of image frames into a gif of the 3D object.
+이제 [`~utils.export_to_gif`] 함수를 사용해 이미지 프레임 리스트를 3D 오브젝트의 gif로 변환합니다.
 
 ```py
 from diffusers.utils import export_to_gif

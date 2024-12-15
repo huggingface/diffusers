@@ -30,7 +30,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             raise OptionalDependencyNotAvailable()
 
     except OptionalDependencyNotAvailable:
-        from ..utils.dummy_pt_objects import *  # noqa F403
+        from ...utils.dummy_pt_objects import *  # noqa F403
     else:
         from .scheduling_karras_ve import KarrasVeScheduler
         from .scheduling_sde_vp import ScoreSdeVpScheduler

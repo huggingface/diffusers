@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -34,7 +35,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import concatenate_datasets, load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
@@ -49,18 +50,21 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
-from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.import_utils import is_torch_npu_available, is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
+if is_torch_npu_available():
+    import torch_npu
 
+    torch.npu.config.allow_internal_format = False
 
 DATASET_NAME_MAPPING = {
-    "lambdalabs/pokemon-blip-captions": ("image", "text"),
+    "lambdalabs/naruto-blip-captions": ("image", "text"),
 }
 
 
@@ -460,6 +464,9 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
+        "--enable_npu_flash_attention", action="store_true", help="Whether or not to use npu flash attention."
+    )
+    parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
@@ -476,7 +483,6 @@ def parse_args(input_args=None):
     # Sanity checks
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
-
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
@@ -535,6 +541,9 @@ def compute_vae_encodings(batch, vae):
     with torch.no_grad():
         model_input = vae.encode(pixel_values).latent_dist.sample()
     model_input = model_input * vae.config.scaling_factor
+
+    # There might have slightly performance improvement
+    # by changing model_input.cpu() to accelerator.gather(model_input)
     return {"model_input": model_input.cpu()}
 
 
@@ -590,12 +599,22 @@ def main(args):
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
+
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -705,14 +724,19 @@ def main(args):
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
         )
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
-
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            unet.enable_npu_flash_attention()
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -731,7 +755,8 @@ def main(args):
                     model.save_pretrained(os.path.join(output_dir, "unet"))
 
                     # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
+                    if weights:
+                        weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -798,9 +823,7 @@ def main(args):
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
+            args.dataset_name, args.dataset_config_name, cache_dir=args.cache_dir, data_dir=args.train_data_dir
         )
     else:
         data_files = {}
@@ -903,7 +926,7 @@ def main(args):
         train_dataset_with_vae = train_dataset.map(
             compute_vae_encodings_fn,
             batched=True,
-            batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
+            batch_size=args.train_batch_size,
             new_fingerprint=new_fingerprint_for_vae,
         )
         precomputed_dataset = concatenate_datasets(
@@ -911,9 +934,13 @@ def main(args):
         )
         precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
+    del compute_vae_encodings_fn, compute_embeddings_fn, text_encoder_one, text_encoder_two
     del text_encoders, tokenizers, vae
     gc.collect()
-    torch.cuda.empty_cache()
+    if is_torch_npu_available():
+        torch_npu.npu.empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     def collate_fn(examples):
         model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
@@ -978,6 +1005,11 @@ def main(args):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
         return model
+
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1057,15 +1089,14 @@ def main(args):
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps).to(dtype=weight_dtype)
 
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
                     target_size = (args.resolution, args.resolution)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
-                    add_time_ids = torch.tensor([add_time_ids])
-                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
+                    add_time_ids = torch.tensor([add_time_ids], device=accelerator.device, dtype=weight_dtype)
                     return add_time_ids
 
                 add_time_ids = torch.cat(
@@ -1074,7 +1105,7 @@ def main(args):
 
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
-                prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
+                prompt_embeds = batch["prompt_embeds"].to(accelerator.device, dtype=weight_dtype)
                 pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
                 model_pred = unet(
@@ -1143,7 +1174,8 @@ def main(args):
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if accelerator.is_main_process:
+                # DeepSpeed requires saving weights on every device; saving weights only on the main process would cause issues.
+                if accelerator.distributed_type == DistributedType.DEEPSPEED or accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1212,7 +1244,7 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
@@ -1233,7 +1265,14 @@ def main(args):
                         )
 
                 del pipeline
-                torch.cuda.empty_cache()
+                if is_torch_npu_available():
+                    torch_npu.npu.empty_cache()
+                elif torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1267,7 +1306,8 @@ def main(args):
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.cuda.amp.autocast():
+
+            with autocast_ctx:
                 images = [
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)

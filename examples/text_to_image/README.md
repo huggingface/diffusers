@@ -34,7 +34,7 @@ accelerate config
 
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
-### Pokemon example
+### Naruto example
 
 You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree.
 
@@ -57,7 +57,7 @@ With `gradient_checkpointing` and `mixed_precision` it should be possible to fin
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -71,7 +71,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 <!-- accelerate_snippet_end -->
 
@@ -95,11 +95,11 @@ accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 
 
-Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `sd-pokemon-model`. To load the fine-tuned model for inference just pass that path to `StableDiffusionPipeline`
+Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `sd-naruto-model`. To load the fine-tuned model for inference just pass that path to `StableDiffusionPipeline`
 
 ```python
 import torch
@@ -110,7 +110,7 @@ pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.flo
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
@@ -126,7 +126,7 @@ pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, tor
 pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
-image.save("yoda-pokemon.png")
+image.save("yoda-naruto.png")
 ```
 
 #### Training with multiple GPUs
@@ -136,7 +136,7 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -150,7 +150,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 
 
@@ -166,9 +166,22 @@ You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/tex
 * Training with the Min-SNR weighting strategy (`snr_gamma` set to 5.0)
 * Training with the Min-SNR weighting strategy (`snr_gamma` set to 1.0)
 
-For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
+For our small Narutos dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
 
 Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
+
+
+#### Training with EMA weights
+
+Through the `EMAModel` class, we support a convenient method of tracking an exponential moving average of model parameters.  This helps to smooth out noise in model parameter updates and generally improves model performance.  If enabled with the `--use_ema` argument, the final model checkpoint that is saved at the end of training will use the EMA weights.
+
+EMA weights require an additional full-precision copy of the model parameters to be stored in memory, but otherwise have very little performance overhead.  `--foreach_ema` can be used to further reduce the overhead.  If you are short on VRAM and still want to use EMA weights, you can store them in CPU RAM by using the `--offload_ema` argument.  This will keep the EMA weights in pinned CPU memory during the training step.  Then, once every model parameter update, it will transfer the EMA weights back to the GPU which can then update the parameters on the GPU, before sending them back to the CPU.  Both of these transfers are set up as non-blocking, so CUDA devices should be able to overlap this transfer with other computations.  With sufficient bandwidth between the host and device and a sufficiently long gap between model parameter updates, storing EMA weights in CPU RAM should have no additional performance overhead, as long as no other calls force synchronization.
+
+#### Training with DREAM
+
+We support training epsilon (noise) prediction models using the [DREAM (Diffusion Rectification and Estimation-Adaptive Models) strategy](https://arxiv.org/abs/2312.00210). DREAM claims to increase model fidelity for the performance cost of an extra grad-less unet `forward` step in the training loop.  You can turn on DREAM training by using the `--dream_training` argument. The `--dream_detail_preservation` argument controls the detail preservation variable p and is the default of 1 from the paper.
+
+
 
 ## Training with LoRA
 
@@ -187,7 +200,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Narutos dataset](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions).
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -195,7 +208,7 @@ First, you need to set up your development environment as is explained in the [i
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 ```
 
 For this example we want to directly store the trained LoRA embeddings on the Hub, so
@@ -216,7 +229,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_lora.py \
   --num_train_epochs=100 --checkpointing_steps=5000 \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
-  --output_dir="sd-pokemon-model-lora" \
+  --output_dir="sd-naruto-model-lora" \
   --validation_prompt="cute dragon creature" --report_to="wandb"
 ```
 
@@ -231,7 +244,7 @@ You can check some inference samples that were logged during the course of the f
 ### Inference
 
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline` after loading the trained LoRA weights.  You
-need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-pokemon-model-lora`.
+need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-naruto-model-lora`.
 
 ```python
 from diffusers import StableDiffusionPipeline
@@ -242,9 +255,9 @@ pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", 
 pipe.unet.load_attn_procs(model_path)
 pipe.to("cuda")
 
-prompt = "A pokemon with green eyes and red legs."
+prompt = "A naruto with green eyes and red legs."
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
-image.save("pokemon.png")
+image.save("naruto.png")
 ```
 
 If you are loading the LoRA parameters from the Hub and if the Hub repository has
@@ -277,7 +290,7 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/naruto-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
@@ -288,7 +301,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 
 To run on your own training files prepare the dataset according to the format required by `datasets`, you can find the instructions for how to do that in this [document](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder-with-metadata).
@@ -307,7 +320,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model"
+  --output_dir="sd-naruto-model"
 ```
 
 ### Training with xFormers:

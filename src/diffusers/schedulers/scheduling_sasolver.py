@@ -22,9 +22,13 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
+from ..utils import deprecate, is_scipy_available
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+
+
+if is_scipy_available():
+    import scipy.stats
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -62,7 +66,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -92,19 +96,20 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         predictor_order (`int`, defaults to 2):
-            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for guided
-            sampling, and `predictor_order=3` for unconditional sampling.
+            The predictor order which can be `1` or `2` or `3` or '4'. It is recommended to use `predictor_order=2` for
+            guided sampling, and `predictor_order=3` for unconditional sampling.
         corrector_order (`int`, defaults to 2):
-            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for guided
-            sampling, and `corrector_order=3` for unconditional sampling.
+            The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for
+            guided sampling, and `corrector_order=3` for unconditional sampling.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
         tau_func (`Callable`, *optional*):
-            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`. SA-Solver
-            will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample from vanilla
-            diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check https://arxiv.org/abs/2309.05019
+            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`.
+            SA-Solver will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample
+            from vanilla diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check
+            https://arxiv.org/abs/2309.05019
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -114,13 +119,18 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
         algorithm_type (`str`, defaults to `data_prediction`):
-            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use `data_prediction`
-            with `solver_order=2` for guided sampling like in Stable Diffusion.
+            Algorithm type for the solver; can be `data_prediction` or `noise_prediction`. It is recommended to use
+            `data_prediction` with `solver_order=2` for guided sampling like in Stable Diffusion.
         lower_order_final (`bool`, defaults to `True`):
             Whether to use lower-order solvers in the final steps. Default = True.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
+        use_exponential_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use exponential sigmas for step sizes in the noise schedule during the sampling process.
+        use_beta_sigmas (`bool`, *optional*, defaults to `False`):
+            Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
+            Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
         lambda_min_clipped (`float`, defaults to `-inf`):
             Clipping threshold for the minimum value of `lambda(t)` for numerical stability. This is critical for the
             cosine (`squaredcos_cap_v2`) noise schedule.
@@ -131,9 +141,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -157,11 +165,19 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "data_prediction",
         lower_order_final: bool = True,
         use_karras_sigmas: Optional[bool] = False,
+        use_exponential_sigmas: Optional[bool] = False,
+        use_beta_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if self.config.use_beta_sigmas and not is_scipy_available():
+            raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
+        if sum([self.config.use_beta_sigmas, self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+            raise ValueError(
+                "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
+            )
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -181,7 +197,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
@@ -195,7 +211,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         if algorithm_type not in ["data_prediction", "noise_prediction"]:
-            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+            raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None
@@ -218,7 +234,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -279,11 +295,21 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        log_sigmas = np.log(sigmas)
         if self.config.use_karras_sigmas:
-            log_sigmas = np.log(sigmas)
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+        elif self.config.use_exponential_sigmas:
+            sigmas = np.flip(sigmas).copy()
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+        elif self.config.use_beta_sigmas:
+            sigmas = np.flip(sigmas).copy()
+            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
             sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
@@ -306,7 +332,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
-    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
@@ -371,7 +397,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return alpha_t, sigma_t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
         # Hack to make sure that other schedulers which copy this function don't break
@@ -396,33 +422,87 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
+    def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
+        """Constructs an exponential noise schedule."""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = np.exp(np.linspace(math.log(sigma_max), math.log(sigma_min), num_inference_steps))
+        return sigmas
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
+    def _convert_to_beta(
+        self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
+    ) -> torch.Tensor:
+        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
+
+        sigmas = np.array(
+            [
+                sigma_min + (ppf * (sigma_max - sigma_min))
+                for ppf in [
+                    scipy.stats.beta.ppf(timestep, alpha, beta)
+                    for timestep in 1 - np.linspace(0, 1, num_inference_steps)
+                ]
+            ]
+        )
+        return sigmas
+
     def convert_model_output(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor = None,
+        sample: torch.Tensor = None,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
-        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs. Noise_prediction is
-        designed to discretize an integral of the noise prediction model, and data_prediction is designed to discretize an
-        integral of the data prediction model.
+        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs.
+        Noise_prediction is designed to discretize an integral of the noise prediction model, and data_prediction is
+        designed to discretize an integral of the data prediction model.
 
         <Tip>
 
-        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both noise
-        prediction and data prediction models.
+        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both
+        noise prediction and data prediction models.
 
         </Tip>
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The converted model output.
         """
         timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
@@ -687,29 +767,29 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def stochastic_adams_bashforth_update(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         *args,
-        sample: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        sample: torch.Tensor,
+        noise: torch.Tensor,
         order: int,
-        tau: torch.FloatTensor,
+        tau: torch.Tensor,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the SA-Predictor.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model at the current timestep.
             prev_timestep (`int`):
                 The previous discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             order (`int`):
                 The order of SA-Predictor at this timestep.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
         prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
@@ -814,32 +894,32 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def stochastic_adams_moulton_update(
         self,
-        this_model_output: torch.FloatTensor,
+        this_model_output: torch.Tensor,
         *args,
-        last_sample: torch.FloatTensor,
-        last_noise: torch.FloatTensor,
-        this_sample: torch.FloatTensor,
+        last_sample: torch.Tensor,
+        last_noise: torch.Tensor,
+        this_sample: torch.Tensor,
         order: int,
-        tau: torch.FloatTensor,
+        tau: torch.Tensor,
         **kwargs,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         """
         One step for the SA-Corrector.
 
         Args:
-            this_model_output (`torch.FloatTensor`):
+            this_model_output (`torch.Tensor`):
                 The model outputs at `x_t`.
             this_timestep (`int`):
                 The current timestep `t`.
-            last_sample (`torch.FloatTensor`):
+            last_sample (`torch.Tensor`):
                 The generated sample before the last predictor `x_{t-1}`.
-            this_sample (`torch.FloatTensor`):
+            this_sample (`torch.Tensor`):
                 The generated sample after the last predictor `x_{t}`.
             order (`int`):
                 The order of SA-Corrector at this step.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 The corrected sample tensor at the current timestep.
         """
 
@@ -980,9 +1060,9 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: torch.FloatTensor,
+        model_output: torch.Tensor,
         timestep: int,
-        sample: torch.FloatTensor,
+        sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
@@ -991,11 +1071,11 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         the SA-Solver.
 
         Args:
-            model_output (`torch.FloatTensor`):
+            model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
             timestep (`int`):
                 The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
@@ -1080,17 +1160,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def scale_model_input(self, sample: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`torch.Tensor`):
                 The input sample.
 
         Returns:
-            `torch.FloatTensor`:
+            `torch.Tensor`:
                 A scaled input sample.
         """
         return sample
@@ -1098,10 +1178,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
         self,
-        original_samples: torch.FloatTensor,
-        noise: torch.FloatTensor,
+        original_samples: torch.Tensor,
+        noise: torch.Tensor,
         timesteps: torch.IntTensor,
-    ) -> torch.FloatTensor:
+    ) -> torch.Tensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls

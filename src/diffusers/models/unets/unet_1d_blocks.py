@@ -66,7 +66,7 @@ class DownResnetBlock1D(nn.Module):
         if add_downsample:
             self.downsample = Downsample1D(out_channels, use_conv=True, padding=1)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         output_states = ()
 
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -128,10 +128,10 @@ class UpResnetBlock1D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Optional[Tuple[torch.FloatTensor, ...]] = None,
-        temb: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Optional[Tuple[torch.Tensor, ...]] = None,
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if res_hidden_states_tuple is not None:
             res_hidden_states = res_hidden_states_tuple[-1]
             hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
@@ -161,7 +161,7 @@ class ValueFunctionMidBlock1D(nn.Module):
         self.res2 = ResidualTemporalBlock1D(in_channels // 2, in_channels // 4, embed_dim=embed_dim)
         self.down2 = Downsample1D(out_channels // 4, use_conv=True)
 
-    def forward(self, x: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         x = self.res1(x, temb)
         x = self.down1(x)
         x = self.res2(x, temb)
@@ -200,7 +200,7 @@ class MidResTemporalBlock1D(nn.Module):
 
         self.upsample = None
         if add_upsample:
-            self.upsample = Downsample1D(out_channels, use_conv=True)
+            self.upsample = Upsample1D(out_channels, use_conv=True)
 
         self.downsample = None
         if add_downsample:
@@ -209,7 +209,7 @@ class MidResTemporalBlock1D(nn.Module):
         if self.upsample and self.downsample:
             raise ValueError("Block cannot downsample and upsample")
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for resnet in self.resnets[1:]:
             hidden_states = resnet(hidden_states, temb)
@@ -230,7 +230,7 @@ class OutConv1DBlock(nn.Module):
         self.final_conv1d_act = get_activation(act_fn)
         self.final_conv1d_2 = nn.Conv1d(embed_dim, out_channels, 1)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.final_conv1d_1(hidden_states)
         hidden_states = rearrange_dims(hidden_states)
         hidden_states = self.final_conv1d_gn(hidden_states)
@@ -251,7 +251,7 @@ class OutValueFunctionBlock(nn.Module):
             ]
         )
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor) -> torch.Tensor:
         hidden_states = hidden_states.view(hidden_states.shape[0], -1)
         hidden_states = torch.cat((hidden_states, temb), dim=-1)
         for layer in self.final_block:
@@ -288,7 +288,7 @@ class Downsample1d(nn.Module):
         self.pad = kernel_1d.shape[0] // 2 - 1
         self.register_buffer("kernel", kernel_1d)
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = F.pad(hidden_states, (self.pad,) * 2, self.pad_mode)
         weight = hidden_states.new_zeros([hidden_states.shape[1], hidden_states.shape[1], self.kernel.shape[0]])
         indices = torch.arange(hidden_states.shape[1], device=hidden_states.device)
@@ -305,7 +305,7 @@ class Upsample1d(nn.Module):
         self.pad = kernel_1d.shape[0] // 2 - 1
         self.register_buffer("kernel", kernel_1d)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = F.pad(hidden_states, ((self.pad + 1) // 2,) * 2, self.pad_mode)
         weight = hidden_states.new_zeros([hidden_states.shape[1], hidden_states.shape[1], self.kernel.shape[0]])
         indices = torch.arange(hidden_states.shape[1], device=hidden_states.device)
@@ -335,7 +335,7 @@ class SelfAttention1d(nn.Module):
         new_projection = projection.view(new_projection_shape).permute(0, 2, 1, 3)
         return new_projection
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = hidden_states
         batch, channel_dim, seq = hidden_states.shape
 
@@ -390,7 +390,7 @@ class ResConvBlock(nn.Module):
             self.group_norm_2 = nn.GroupNorm(1, out_channels)
             self.gelu_2 = nn.GELU()
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = self.conv_skip(hidden_states) if self.has_conv_skip else hidden_states
 
         hidden_states = self.conv_1(hidden_states)
@@ -435,7 +435,7 @@ class UNetMidBlock1D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
         for attn, resnet in zip(self.attentions, self.resnets):
             hidden_states = resnet(hidden_states)
@@ -466,7 +466,7 @@ class AttnDownBlock1D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -490,7 +490,7 @@ class DownBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
 
         for resnet in self.resnets:
@@ -512,7 +512,7 @@ class DownBlock1DNoSkip(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = torch.cat([hidden_states, temb], dim=1)
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
@@ -542,10 +542,10 @@ class AttnUpBlock1D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -574,10 +574,10 @@ class UpBlock1D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -604,10 +604,10 @@ class UpBlock1DNoSkip(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 

@@ -55,7 +55,7 @@ class OnnxStableDiffusionImg2ImgPipelineFastTests(OnnxPipelineTesterMixin, unitt
             "num_inference_steps": 3,
             "strength": 0.75,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -210,10 +210,10 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         lms_scheduler = LMSDiscreteScheduler.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
+            "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
         )
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
+            "stable-diffusion-v1-5/stable-diffusion-v1-5",
             revision="onnx",
             scheduler=lms_scheduler,
             safety_checker=None,

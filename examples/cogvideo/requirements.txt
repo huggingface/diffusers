@@ -1,0 +1,10 @@
+accelerate>=0.31.0
+torchvision
+transformers>=4.41.2
+ftfy
+tensorboard
+Jinja2
+peft>=0.11.1
+sentencepiece
+decord>=0.6.0
+imageio-ffmpeg

@@ -15,12 +15,11 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...image_processor import PipelineImageInput
+from ...loaders import IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_motion_model import MotionAdapter
@@ -34,7 +33,9 @@ from ...schedulers import (
 )
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
+from ..free_noise_utils import AnimateDiffFreeNoiseMixin
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -52,14 +53,21 @@ EXAMPLE_DOC_STRING = """
         >>> from io import BytesIO
         >>> from PIL import Image
 
-        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
-        >>> pipe = AnimateDiffVideoToVideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
+        >>> adapter = MotionAdapter.from_pretrained(
+        ...     "guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16
+        ... )
+        >>> pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(
+        ...     "SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter
+        ... ).to("cuda")
+        >>> pipe.scheduler = DDIMScheduler(
+        ...     beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace"
+        ... )
+
 
         >>> def load_video(file_path: str):
         ...     images = []
-        ...
-        ...     if file_path.startswith(('http://', 'https://')):
+
+        ...     if file_path.startswith(("http://", "https://")):
         ...         # If the file_path is a URL
         ...         response = requests.get(file_path)
         ...         response.raise_for_status()
@@ -68,41 +76,24 @@ EXAMPLE_DOC_STRING = """
         ...     else:
         ...         # Assuming it's a local file path
         ...         vid = imageio.get_reader(file_path)
-        ...
+
         ...     for frame in vid:
         ...         pil_image = Image.fromarray(frame)
         ...         images.append(pil_image)
-        ...
+
         ...     return images
 
-        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
-        >>> output = pipe(video=video, prompt="panda playing a guitar, on a boat, in the ocean, high quality", strength=0.5)
+
+        >>> video = load_video(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+        ... )
+        >>> output = pipe(
+        ...     video=video, prompt="panda playing a guitar, on a boat, in the ocean, high quality", strength=0.5
+        ... )
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
         ```
 """
-
-
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output)
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
-
-    return outputs
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -125,9 +116,10 @@ def retrieve_timesteps(
     num_inference_steps: Optional[int] = None,
     device: Optional[Union[str, torch.device]] = None,
     timesteps: Optional[List[int]] = None,
+    sigmas: Optional[List[float]] = None,
     **kwargs,
 ):
-    """
+    r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
@@ -135,19 +127,23 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`List[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
         `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
     if timesteps is not None:
         accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accepts_timesteps:
@@ -156,6 +152,16 @@ def retrieve_timesteps(
                 f" timestep schedules. Please check whether you are using the correct scheduler."
             )
         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     else:
@@ -169,8 +175,9 @@ class AnimateDiffVideoToVideoPipeline(
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
-    LoraLoaderMixin,
+    StableDiffusionLoraLoaderMixin,
     FreeInitMixin,
+    AnimateDiffFreeNoiseMixin,
 ):
     r"""
     Pipeline for video-to-video generation.
@@ -180,8 +187,8 @@ class AnimateDiffVideoToVideoPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
@@ -237,9 +244,8 @@ class AnimateDiffVideoToVideoPipeline(
             image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
         self,
         prompt,
@@ -247,8 +253,8 @@ class AnimateDiffVideoToVideoPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -268,10 +274,10 @@ class AnimateDiffVideoToVideoPipeline(
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
@@ -283,7 +289,7 @@ class AnimateDiffVideoToVideoPipeline(
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+        if lora_scale is not None and isinstance(self, StableDiffusionLoraLoaderMixin):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
@@ -292,7 +298,7 @@ class AnimateDiffVideoToVideoPipeline(
             else:
                 scale_lora_layers(self.text_encoder, lora_scale)
 
-        if prompt is not None and isinstance(prompt, str):
+        if prompt is not None and isinstance(prompt, (str, dict)):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
@@ -415,9 +421,10 @@ class AnimateDiffVideoToVideoPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -450,6 +457,9 @@ class AnimateDiffVideoToVideoPipeline(
     def prepare_ip_adapter_image_embeds(
         self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
+        image_embeds = []
+        if do_classifier_free_guidance:
+            negative_image_embeds = []
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
@@ -459,7 +469,6 @@ class AnimateDiffVideoToVideoPipeline(
                     f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
                 )
 
-            image_embeds = []
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
@@ -467,46 +476,52 @@ class AnimateDiffVideoToVideoPipeline(
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
-                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-                single_negative_image_embeds = torch.stack(
-                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
-                )
 
+                image_embeds.append(single_image_embeds[None, :])
                 if do_classifier_free_guidance:
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                    single_image_embeds = single_image_embeds.to(device)
-
-                image_embeds.append(single_image_embeds)
+                    negative_image_embeds.append(single_negative_image_embeds[None, :])
         else:
-            repeat_dims = [1]
-            image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
-                    )
-                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                else:
-                    single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
-                    )
+                    negative_image_embeds.append(single_negative_image_embeds)
                 image_embeds.append(single_image_embeds)
 
-        return image_embeds
+        ip_adapter_image_embeds = []
+        for i, single_image_embeds in enumerate(image_embeds):
+            single_image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
+            if do_classifier_free_guidance:
+                single_negative_image_embeds = torch.cat([negative_image_embeds[i]] * num_images_per_prompt, dim=0)
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds], dim=0)
 
-    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
-    def decode_latents(self, latents):
+            single_image_embeds = single_image_embeds.to(device=device)
+            ip_adapter_image_embeds.append(single_image_embeds)
+
+        return ip_adapter_image_embeds
+
+    def encode_video(self, video, generator, decode_chunk_size: int = 16) -> torch.Tensor:
+        latents = []
+        for i in range(0, len(video), decode_chunk_size):
+            batch_video = video[i : i + decode_chunk_size]
+            batch_video = retrieve_latents(self.vae.encode(batch_video), generator=generator)
+            latents.append(batch_video)
+        return torch.cat(latents)
+
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.AnimateDiffPipeline.decode_latents
+    def decode_latents(self, latents, decode_chunk_size: int = 16):
         latents = 1 / self.vae.config.scaling_factor * latents
 
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
-        image = self.vae.decode(latents).sample
-        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
+        video = []
+        for i in range(0, latents.shape[0], decode_chunk_size):
+            batch_latents = latents[i : i + decode_chunk_size]
+            batch_latents = self.vae.decode(batch_latents).sample
+            video.append(batch_latents)
+
+        video = torch.cat(video)
+        video = video[None, :].reshape((batch_size, num_frames, -1) + video.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
@@ -566,8 +581,8 @@ class AnimateDiffVideoToVideoPipeline(
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
             )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        elif prompt is not None and not isinstance(prompt, (str, list, dict)):
+            raise ValueError(f"`prompt` has to be of type `str`, `list` or `dict` but is {type(prompt)}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -612,31 +627,20 @@ class AnimateDiffVideoToVideoPipeline(
 
     def prepare_latents(
         self,
-        video,
-        height,
-        width,
-        num_channels_latents,
-        batch_size,
-        timestep,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        # video must be a list of list of images
-        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video
-        # as a list of images
-        if not isinstance(video[0], list):
-            video = [video]
-        if latents is None:
-            video = torch.cat(
-                [self.image_processor.preprocess(vid, height=height, width=width).unsqueeze(0) for vid in video], dim=0
-            )
-            video = video.to(device=device, dtype=dtype)
-            num_frames = video.shape[1]
-        else:
-            num_frames = latents.shape[2]
-
+        video: Optional[torch.Tensor] = None,
+        height: int = 64,
+        width: int = 64,
+        num_channels_latents: int = 4,
+        batch_size: int = 1,
+        timestep: Optional[int] = None,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        decode_chunk_size: int = 16,
+        add_noise: bool = False,
+    ) -> torch.Tensor:
+        num_frames = video.shape[1] if latents is None else latents.shape[2]
         shape = (
             batch_size,
             num_channels_latents,
@@ -658,20 +662,12 @@ class AnimateDiffVideoToVideoPipeline(
                 self.vae.to(dtype=torch.float32)
 
             if isinstance(generator, list):
-                if len(generator) != batch_size:
-                    raise ValueError(
-                        f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                        f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                    )
-
                 init_latents = [
-                    retrieve_latents(self.vae.encode(video[i]), generator=generator[i]).unsqueeze(0)
+                    self.encode_video(video[i], generator[i], decode_chunk_size).unsqueeze(0)
                     for i in range(batch_size)
                 ]
             else:
-                init_latents = [
-                    retrieve_latents(self.vae.encode(vid), generator=generator).unsqueeze(0) for vid in video
-                ]
+                init_latents = [self.encode_video(vid, generator, decode_chunk_size).unsqueeze(0) for vid in video]
 
             init_latents = torch.cat(init_latents, dim=0)
 
@@ -702,7 +698,12 @@ class AnimateDiffVideoToVideoPipeline(
             if shape != latents.shape:
                 # [B, C, F, H, W]
                 raise ValueError(f"`latents` expected to have {shape=}, but found {latents.shape=}")
+
             latents = latents.to(device, dtype=dtype)
+
+            if add_noise:
+                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                latents = self.scheduler.add_noise(latents, noise, timestep)
 
         return latents
 
@@ -729,6 +730,10 @@ class AnimateDiffVideoToVideoPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     def __call__(
         self,
@@ -737,24 +742,27 @@ class AnimateDiffVideoToVideoPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        enforce_inference_steps: bool = False,
         timesteps: Optional[List[int]] = None,
+        sigmas: Optional[List[float]] = None,
         guidance_scale: float = 7.5,
         strength: float = 0.8,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
+        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_chunk_size: int = 16,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -771,6 +779,14 @@ class AnimateDiffVideoToVideoPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
                 expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             strength (`float`, *optional*, defaults to 0.8):
                 Higher strength leads to more differences between original video and generated video.
             guidance_scale (`float`, *optional*, defaults to 7.5):
@@ -785,30 +801,28 @@ class AnimateDiffVideoToVideoPipeline(
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`. Latents should be of shape
                 `(batch_size, num_channel, num_frames, height, width)`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
+            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
-                `np.array`.
+                The output format of the generated video. Choose between `torch.Tensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`AnimateDiffPipelineOutput`] instead
-                of a plain tuple.
+                Whether or not to return a [`AnimateDiffPipelineOutput`] instead of a plain tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -823,13 +837,15 @@ class AnimateDiffVideoToVideoPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
+            decode_chunk_size (`int`, defaults to `16`):
+                The number of frames to decode at a time when calling `decode_latents` method.
 
         Examples:
 
         Returns:
-            [`AnimateDiffPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffPipelineOutput`] is
+            [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
 
@@ -858,9 +874,10 @@ class AnimateDiffVideoToVideoPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._interrupt = False
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
+        if prompt is not None and isinstance(prompt, (str, dict)):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
@@ -868,29 +885,85 @@ class AnimateDiffVideoToVideoPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        dtype = self.dtype
 
-        # 3. Encode input prompt
+        # 3. Prepare timesteps
+        if not enforce_inference_steps:
+            timesteps, num_inference_steps = retrieve_timesteps(
+                self.scheduler, num_inference_steps, device, timesteps, sigmas
+            )
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+        else:
+            denoising_inference_steps = int(num_inference_steps / strength)
+            timesteps, denoising_inference_steps = retrieve_timesteps(
+                self.scheduler, denoising_inference_steps, device, timesteps, sigmas
+            )
+            timesteps = timesteps[-num_inference_steps:]
+            latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
+
+        # 4. Prepare latent variables
+        if latents is None:
+            video = self.video_processor.preprocess_video(video, height=height, width=width)
+            # Move the number of frames before the number of channels.
+            video = video.permute(0, 2, 1, 3, 4)
+            video = video.to(device=device, dtype=dtype)
+        num_channels_latents = self.unet.config.in_channels
+        latents = self.prepare_latents(
+            video=video,
+            height=height,
+            width=width,
+            num_channels_latents=num_channels_latents,
+            batch_size=batch_size * num_videos_per_prompt,
+            timestep=latent_timestep,
+            dtype=dtype,
+            device=device,
+            generator=generator,
+            latents=latents,
+            decode_chunk_size=decode_chunk_size,
+            add_noise=enforce_inference_steps,
+        )
+
+        # 5. Encode input prompt
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt,
-            device,
-            num_videos_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
-        )
+        num_frames = latents.shape[2]
+        if self.free_noise_enabled:
+            prompt_embeds, negative_prompt_embeds = self._encode_prompt_free_noise(
+                prompt=prompt,
+                num_frames=num_frames,
+                device=device,
+                num_videos_per_prompt=num_videos_per_prompt,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                negative_prompt=negative_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
+                clip_skip=self.clip_skip,
+            )
+        else:
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+                prompt,
+                device,
+                num_videos_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=text_encoder_lora_scale,
+                clip_skip=self.clip_skip,
+            )
 
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            if self.do_classifier_free_guidance:
+                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
+            prompt_embeds = prompt_embeds.repeat_interleave(repeats=num_frames, dim=0)
+
+        # 6. Prepare IP-Adapter embeddings
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
@@ -900,30 +973,10 @@ class AnimateDiffVideoToVideoPipeline(
                 self.do_classifier_free_guidance,
             )
 
-        # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
-
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            video=video,
-            height=height,
-            width=width,
-            num_channels_latents=num_channels_latents,
-            batch_size=batch_size * num_videos_per_prompt,
-            timestep=latent_timestep,
-            dtype=prompt_embeds.dtype,
-            device=device,
-            generator=generator,
-            latents=latents,
-        )
-
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Add image embeds for IP-Adapter
+        # 8. Add image embeds for IP-Adapter
         added_cond_kwargs = (
             {"image_embeds": image_embeds}
             if ip_adapter_image is not None or ip_adapter_image_embeds is not None
@@ -942,9 +995,13 @@ class AnimateDiffVideoToVideoPipeline(
 
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            # 8. Denoising loop
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+
+            # 9. Denoising loop
+            with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
+
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -980,18 +1037,14 @@ class AnimateDiffVideoToVideoPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
+        # 10. Post-processing
         if output_type == "latent":
-            return AnimateDiffPipelineOutput(frames=latents)
-
-        # 9. Post-processing
-        video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
+            video = latents
         else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+            video_tensor = self.decode_latents(latents, decode_chunk_size)
+            video = self.video_processor.postprocess_video(video=video_tensor, output_type=output_type)
 
-        # 10. Offload all models
+        # 11. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

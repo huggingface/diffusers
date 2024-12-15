@@ -18,6 +18,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
+  HF_HUB_ENABLE_HF_TRANSFER: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
@@ -29,28 +30,29 @@ jobs:
         config:
           - name: Fast PyTorch CPU tests on Ubuntu
             framework: pytorch
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
           - name: Fast Flax CPU tests on Ubuntu
             framework: flax
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
             framework: onnxruntime
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
           - name: PyTorch Example CPU tests on Ubuntu
             framework: pytorch_examples
-            runner: docker-cpu
+            runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
 
     name: ${{ matrix.config.name }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on:
+      group: ${{ matrix.config.runner }}
 
     container:
       image: ${{ matrix.config.image }}
@@ -68,7 +70,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
 
@@ -81,7 +82,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -90,7 +91,7 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -99,7 +100,7 @@ jobs:
       if: ${{ matrix.config.framework == 'onnxruntime' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -108,8 +109,8 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m uv pip install peft timm
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
@@ -119,7 +120,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

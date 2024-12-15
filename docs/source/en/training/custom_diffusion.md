@@ -54,7 +54,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -84,7 +84,7 @@ Many of the basic parameters are described in the [DreamBooth](dreambooth#script
 - `--freeze_model`: freezes the key and value parameters in the cross-attention layer; the default is `crossattn_kv`, but you can set it to `crossattn` to train all the parameters in the cross-attention layer
 - `--concepts_list`: to learn multiple concepts, provide a path to a JSON file containing the concepts
 - `--modifier_token`: a special word used to represent the learned concept
-- `--initializer_token`:
+- `--initializer_token`: a special word used to initialize the embeddings of the `modifier_token`
 
 ### Prior preservation loss
 
