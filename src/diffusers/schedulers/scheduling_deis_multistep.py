@@ -501,10 +501,13 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             x0_pred = model_output
         elif self.config.prediction_type == "v_prediction":
             x0_pred = alpha_t * sample - sigma_t * model_output
+        elif self.config.prediction_type == "flow_prediction":
+            sigma_t = self.sigmas[self.step_index]
+            x0_pred = sample - sigma_t * model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                " `v_prediction` for the DEISMultistepScheduler."
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, "
+                "`v_prediction`, or `flow_prediction` for the DEISMultistepScheduler."
             )
 
         if self.config.thresholding:

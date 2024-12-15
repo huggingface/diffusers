@@ -538,8 +538,8 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 x0_pred = sample - sigma_t * model_output
             else:
                 raise ValueError(
-                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`,"
-                    " `v_prediction`, or `flow_prediction` for the DPMSolverMultistepScheduler."
+                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, "
+                    "`v_prediction`, or `flow_prediction` for the DPMSolverMultistepScheduler."
                 )
 
             if self.config.thresholding:
