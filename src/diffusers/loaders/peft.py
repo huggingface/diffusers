@@ -317,7 +317,7 @@ class PeftAdapterMixin:
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            # To handle scnearios where we cannot successfully set state dict. If it's unsucessful,
+            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
             # we should also delete the `peft_config` associated to the `adapter_name`.
             try:
                 inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
