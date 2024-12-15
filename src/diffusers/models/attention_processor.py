@@ -5567,8 +5567,8 @@ class PAGIdentitySanaLinearAttnProcessor2_0:
         key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
         value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
 
-        query = self.kernel_func(query)
-        key = self.kernel_func(key)
+        query = F.relu(query)
+        key = F.relu(key)
 
         query, key, value = query.float(), key.float(), value.float()
 

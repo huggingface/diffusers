@@ -140,6 +140,7 @@ class SanaPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 32,
             "max_sequence_length": 16,
             "output_type": "pt",
+            "complex_human_instruction": None,
         }
         return inputs
 
