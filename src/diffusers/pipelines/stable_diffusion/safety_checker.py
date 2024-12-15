@@ -64,7 +64,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             "NOMAL": 0.00,
             "STRONG": 0.01,
             "MAX": 0.10,
-            }
+        }
 
         # If the provided Level is a predefined string, convert it to the corresponding float value
         if Level in Level_dict:
@@ -75,7 +75,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             setattr(self, "adjustment", Level)  # Set the adjustment attribute to the Level value
         else:
             # Raise an error if Level is not a valid type or predefined string
-            raise ValueError("`int` or `float` or one of the following ['WEAK'], ['MEDIUM'], ['NOMAL'], ['STRONG'], ['MAX']")
+            raise ValueError(
+                "`int` or `float` or one of the following ['WEAK'], ['MEDIUM'], ['NOMAL'], ['STRONG'], ['MAX']"
+            )
 
         # Log a warning if the adjustment level is weakened (negative value)
         if self.adjustment < 0:

@@ -1957,7 +1957,9 @@ class StableDiffusionMixin:
                 self.safety_checker.update_safety_checker_Level(level)
             else:
                 # Log a warning if the method is not found in safety_checker
-                logger.warning("`safety_checker_level` is ignored because `update_safety_checker_Level` is not in `safety_checker`.")
+                logger.warning(
+                    "`safety_checker_level` is ignored because `update_safety_checker_Level` is not in `safety_checker`."
+                )
         else:
             # Log a warning if safety_checker is not present
             logger.warning("Since there is no `safety_checker`, `safety_checker_level` is ignored.")
