@@ -27,7 +27,7 @@ transformer = SanaTransformer2DModel.from_pretrained("Efficient-Large-Model/Sana
 
 ## SanaTransformer2DModel
 
-[[autodoc]] SanaPlusTransformer2DModel
+[[autodoc]] SanaTransformer2DModel
 
 ## Transformer2DModelOutput
 
