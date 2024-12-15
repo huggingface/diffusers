@@ -16,7 +16,7 @@ import sys
 import unittest
 
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel, UMT5EncoderModel
 
 from diffusers import (
     AuraFlowPipeline,
@@ -59,7 +59,9 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     }
     transformer_cls = AuraFlowTransformer2DModel
     tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
-    text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
+    text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
+
+    text_encoder_target_modules = ["q", "k", "v", "o"]
 
     vae_kwargs = {
         "sample_size": 32,

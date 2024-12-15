@@ -1646,7 +1646,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`AuraFlowTransformer2DModel`] Specific to [`AuraFlowPipeline`].
     """
 
-    _lora_loadable_modules = ["transformer"]
+    _lora_loadable_modules = ["transformer", "text_encoder"]
     transformer_name = TRANSFORMER_NAME
 
     @classmethod
@@ -1747,48 +1747,75 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer`
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
         See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
         loaded.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
+        loaded into `self.unet`.
+
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
+        dict is loaded into `self.text_encoder`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
+            kwargs (`dict`, *optional*):
+                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
+
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+            raise ValueError(
+                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
             pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key or "dora_scale" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_transformer(
+        self.load_lora_into_unet(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            network_alphas=network_alphas,
+            unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             adapter_name=adapter_name,
             _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
+        self.load_lora_into_text_encoder(
+            state_dict,
+            network_alphas=network_alphas,
+            text_encoder=getattr(self, self.text_encoder_name)
+            if not hasattr(self, "text_encoder")
+            else self.text_encoder,
+            lora_scale=self.lora_scale,
+            adapter_name=adapter_name,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
     @classmethod
@@ -1827,6 +1854,158 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder
+    def load_lora_into_text_encoder(
+        cls,
+        state_dict,
+        network_alphas,
+        text_encoder,
+        prefix=None,
+        lora_scale=1.0,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+    ):
+        """
+        This will load the LoRA layers specified in `state_dict` into `text_encoder`
+
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The key should be prefixed with an
+                additional `text_encoder` to distinguish between unet lora layers.
+            network_alphas (`Dict[str, float]`):
+                The value of the network alpha used for stable learning and preventing underflow. This value has the
+                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
+                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
+            text_encoder (`CLIPTextModel`):
+                The text encoder model to load the LoRA layers into.
+            prefix (`str`):
+                Expected prefix of the `text_encoder` in the `state_dict`.
+            lora_scale (`float`):
+                How much to scale the output of the lora linear layer before it is added with the output of the regular
+                lora layer.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+            low_cpu_mem_usage (`bool`, *optional*):
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        peft_kwargs = {}
+        if low_cpu_mem_usage:
+            if not is_peft_version(">=", "0.13.1"):
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
+                )
+            if not is_transformers_version(">", "4.45.2"):
+                # Note from sayakpaul: It's not in `transformers` stable yet.
+                # https://github.com/huggingface/transformers/pull/33725/
+                raise ValueError(
+                    "`low_cpu_mem_usage=True` is not compatible with this `transformers` version. Please update it with `pip install -U transformers`."
+                )
+            peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+        from peft import LoraConfig
+
+        # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
+        # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
+        # their prefixes.
+        keys = list(state_dict.keys())
+        prefix = cls.text_encoder_name if prefix is None else prefix
+
+        # Safe prefix to check with.
+        if any(cls.text_encoder_name in key for key in keys):
+            # Load the layers corresponding to text encoder and make necessary adjustments.
+            text_encoder_keys = [k for k in keys if k.startswith(prefix) and k.split(".")[0] == prefix]
+            text_encoder_lora_state_dict = {
+                k.replace(f"{prefix}.", ""): v for k, v in state_dict.items() if k in text_encoder_keys
+            }
+
+            if len(text_encoder_lora_state_dict) > 0:
+                logger.info(f"Loading {prefix}.")
+                rank = {}
+                text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
+
+                # convert state dict
+                text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+
+                for name, _ in text_encoder_attn_modules(text_encoder):
+                    for module in ("out_proj", "q_proj", "k_proj", "v_proj"):
+                        rank_key = f"{name}.{module}.lora_B.weight"
+                        if rank_key not in text_encoder_lora_state_dict:
+                            continue
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+
+                for name, _ in text_encoder_mlp_modules(text_encoder):
+                    for module in ("fc1", "fc2"):
+                        rank_key = f"{name}.{module}.lora_B.weight"
+                        if rank_key not in text_encoder_lora_state_dict:
+                            continue
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
+
+                if network_alphas is not None:
+                    alpha_keys = [
+                        k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix
+                    ]
+                    network_alphas = {
+                        k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+                    }
+
+                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+
+                if "use_dora" in lora_config_kwargs:
+                    if lora_config_kwargs["use_dora"]:
+                        if is_peft_version("<", "0.9.0"):
+                            raise ValueError(
+                                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<", "0.9.0"):
+                            lora_config_kwargs.pop("use_dora")
+
+                if "lora_bias" in lora_config_kwargs:
+                    if lora_config_kwargs["lora_bias"]:
+                        if is_peft_version("<=", "0.13.2"):
+                            raise ValueError(
+                                "You need `peft` 0.14.0 at least to use `bias` in LoRAs. Please upgrade your installation of `peft`."
+                            )
+                    else:
+                        if is_peft_version("<=", "0.13.2"):
+                            lora_config_kwargs.pop("lora_bias")
+
+                lora_config = LoraConfig(**lora_config_kwargs)
+
+                # adapter_name
+                if adapter_name is None:
+                    adapter_name = get_adapter_name(text_encoder)
+
+                is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
+                # inject LoRA layers and load the state dict
+                # in transformers we automatically check whether the adapter name is already in use or not
+                text_encoder.load_adapter(
+                    adapter_name=adapter_name,
+                    adapter_state_dict=text_encoder_lora_state_dict,
+                    peft_config=lora_config,
+                    **peft_kwargs,
+                )
+
+                # scale LoRA layers with `lora_scale`
+                scale_lora_layers(text_encoder, weight=lora_scale)
+
+                text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
+                # Offload back.
+                if is_model_cpu_offload:
+                    _pipeline.enable_model_cpu_offload()
+                elif is_sequential_cpu_offload:
+                    _pipeline.enable_sequential_cpu_offload()
+                # Unsafe code />
 
     @classmethod
     def save_lora_weights(
