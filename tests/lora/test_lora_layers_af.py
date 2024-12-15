@@ -16,7 +16,7 @@ import sys
 import unittest
 
 import torch
-from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel, UMT5EncoderModel
+from transformers import AutoTokenizer, UMT5EncoderModel
 
 from diffusers import (
     AuraFlowPipeline,
@@ -41,7 +41,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
     uses_flow_matching = True
     transformer_kwargs = {
@@ -60,6 +60,7 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     transformer_cls = AuraFlowTransformer2DModel
     tokenizer_cls, tokenizer_id = AutoTokenizer, "hf-internal-testing/tiny-random-t5"
     text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
+    attention_kwargs_name = "joint_attention_kwargs"
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
 
@@ -103,3 +104,11 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipeline_inputs.update({"generator": generator})
 
         return noise, input_ids, pipeline_inputs
+
+    @unittest.skip("Not supported in AuraFlow.")
+    def test_modify_padding_mode(self):
+        pass
+
+    @unittest.skip("Not supported in AuraFlow.")
+    def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
+        pass
