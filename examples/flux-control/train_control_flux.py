@@ -541,7 +541,7 @@ def parse_args(input_args=None):
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
-    parser.add_argument("--offload", action="store_true", help="Whether to do model offloading")
+    parser.add_argument("--offload", action="store_true", help="Whether to offload the VAE and the text encoders to CPU when they are not used.")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
