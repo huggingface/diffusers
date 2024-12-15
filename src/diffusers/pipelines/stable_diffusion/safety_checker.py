@@ -51,8 +51,12 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
     
     def update_safety_checker_Level(self, Level):
         """
-        Args:
-            Level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`])
+        Adjust the safety checker level.
+
+        Parameters:
+            Level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`]):
+                The level of safety checker adjustment, either as an integer, a float, or one of the predefined levels.
+                Negative values decrease the filtering strength, while positive values increase it.
         """
         Level_dict = {
             "WEAK": -0.10,
@@ -61,16 +65,22 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             "STRONG": 0.01,
             "MAX": 0.10,
             }
+
+        # If the provided Level is a predefined string, convert it to the corresponding float value
         if Level in Level_dict:
             Level = Level_dict[Level]
+
+        # Check if the Level is a float or an integer
         if isinstance(Level, (float, int)): 
-            setattr(self,"adjustment",Level)
+            setattr(self, "adjustment", Level)  # Set the adjustment attribute to the Level value
         else:
+            # Raise an error if Level is not a valid type or predefined string
             raise ValueError("`int` or `float` or one of the following ['WEAK'], ['MEDIUM'], ['NOMAL'], ['STRONG'], ['MAX']")
-        
-        if self.adjustment<0:
+
+        # Log a warning if the adjustment level is weakened (negative value)
+        if self.adjustment < 0:
             logger.warning(
-                f"You have weakened the filtering strength of safety checker. Ensure"
+                "You have weakened the filtering strength of safety checker. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"

@@ -1939,23 +1939,33 @@ class StableDiffusionMixin:
     
     def safety_checker_level(self, level):
         """
-        Adjust the filter intensity.
-        
+        Adjust the safety checker level.
+
         Args:
-            level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`])
+            Level (`int` or `float` or one of the following [`WEAK`], [`MEDIUM`], [`NOMAL`], [`STRONG`], [`MAX`]):
+                The level of safety checker adjustment, either as an integer, a float, or one of the predefined levels.
+                Negative values decrease the filtering strength, while positive values increase it.
         """
+        # Retrieve the safety_checker attribute from the instance
         _safety_checker = getattr(self, "safety_checker", None)
+
+        # Check if the safety_checker exists
         if _safety_checker is not None:
+            # Check if the safety_checker has the update_safety_checker_Level method
             if hasattr(_safety_checker, "update_safety_checker_Level"):
+                # Update the safety checker level using the provided method
                 self.safety_checker.update_safety_checker_Level(level)
             else:
+                # Log a warning if the method is not found in safety_checker
                 logger.warning("`safety_checker_level` is ignored because `update_safety_checker_Level` is not in `safety_checker`.")
         else:
+            # Log a warning if safety_checker is not present
             logger.warning("Since there is no `safety_checker`, `safety_checker_level` is ignored.")
 
+    @property
     def filter_level(self):
         """
         Return:
             `int` ,`float` or None
         """
-        return getattr(getattr(self,"safety_checker",None), "adjustment", None)
+        return getattr(getattr(self, "safety_checker", None), "adjustment", None)
