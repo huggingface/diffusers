@@ -702,7 +702,7 @@ class FromSingleFileMixin:
         ```
         """
         # Retrieve information about the path or repo ID
-        path_info  = get_keyword_types(pretrained_model_name_or_path)
+        path_info = get_keyword_types(pretrained_model_name_or_path)
 
         # Obtain a loading method. One of the following [None, "from_pretrained", "from_single_file"]
         load_method_name = path_info["loading_method"]

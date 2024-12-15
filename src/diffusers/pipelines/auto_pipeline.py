@@ -198,144 +198,99 @@ _AUTO_INPAINT_DECODER_PIPELINES_MAPPING = OrderedDict(
 
 SINGLE_FILE_CHECKPOINT_TEXT2IMAGE_PIPELINE_MAPPING = OrderedDict(
     [
-        # Animated Diffusion Pipelines
         ("animatediff_rgb", AnimateDiffPipeline),
         ("animatediff_scribble", AnimateDiffPipeline),
         ("animatediff_sdxl_beta", AnimateDiffSDXLPipeline),
         ("animatediff_v1", AnimateDiffPipeline),
         ("animatediff_v2", AnimateDiffPipeline),
         ("animatediff_v3", AnimateDiffPipeline),
-
-        # Cascade Stages
         ("stable_cascade_stage_b", None),
         ("stable_cascade_stage_b_lite", None),
         ("stable_cascade_stage_c", None),
         ("stable_cascade_stage_c_lite", None),
-
-        # ControlNet Pipelines
         ("controlnet", StableDiffusionControlNetPipeline),
         ("controlnet_xl", StableDiffusionXLControlNetPipeline),
         ("controlnet_xl_large", StableDiffusionXLControlNetPipeline),
         ("controlnet_xl_mid", StableDiffusionXLControlNetPipeline),
         ("controlnet_xl_small", StableDiffusionXLControlNetPipeline),
-
-        # Flux Pipelines
         ("flux_dev", FluxPipeline),
         ("flux_schnell", FluxPipeline),
-
-        # Stable Diffusion Pipelines
         ("sd3", StableDiffusion3Pipeline),
         ("sd35_large", StableDiffusion3Pipeline),
         ("v1", StableDiffusionPipeline),
         ("v2", StableDiffusionPipeline),
-
-        # Stable Diffusion XL Pipelines
         ("playground-v2-5", StableDiffusionXLPipeline),
         ("xl_base", StableDiffusionXLPipeline),
         ("xl_refiner", StableDiffusionXLPipeline),
-
-        # Inpainting Pipelines
         ("inpainting", None),
         ("inpainting_v2", None),
         ("xl_inpaint", None),
-
-        # Others
         ("upscale", StableDiffusionUpscalePipeline),
     ]
 )
 
 SINGLE_FILE_CHECKPOINT_IMAGE2IMAGE_PIPELINE_MAPPING = OrderedDict(
     [
-        # Animated Diffusion Pipelines
         ("animatediff_rgb", AnimateDiffPipeline),
         ("animatediff_scribble", AnimateDiffPipeline),
         ("animatediff_sdxl_beta", AnimateDiffSDXLPipeline),
         ("animatediff_v1", AnimateDiffPipeline),
         ("animatediff_v2", AnimateDiffPipeline),
         ("animatediff_v3", AnimateDiffPipeline),
-
-        # Cascade Stages
         ("stable_cascade_stage_b", None),
         ("stable_cascade_stage_b_lite", None),
         ("stable_cascade_stage_c", None),
         ("stable_cascade_stage_c_lite", None),
-
-        # ControlNet Pipelines
         ("controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("controlnet_xl", StableDiffusionXLControlNetImg2ImgPipeline),
         ("controlnet_xl_large", StableDiffusionXLControlNetImg2ImgPipeline),
         ("controlnet_xl_mid", StableDiffusionXLControlNetImg2ImgPipeline),
         ("controlnet_xl_small", StableDiffusionXLControlNetImg2ImgPipeline),
-
-        # Flux Pipelines
         ("flux_dev", FluxImg2ImgPipeline),
         ("flux_schnell", FluxImg2ImgPipeline),
-
-        # Stable Diffusion Pipelines
         ("sd3", StableDiffusion3Img2ImgPipeline),
         ("sd35_large", StableDiffusion3Img2ImgPipeline),
         ("v1", StableDiffusionImg2ImgPipeline),
         ("v2", StableDiffusionImg2ImgPipeline),
-
-        # Stable Diffusion XL Pipelines
         ("playground-v2-5", StableDiffusionXLImg2ImgPipeline),
         ("xl_base", StableDiffusionXLImg2ImgPipeline),
         ("xl_refiner", StableDiffusionXLImg2ImgPipeline),
-
-        # Inpainting Pipelines
         ("inpainting", None),
         ("inpainting_v2", None),
         ("xl_inpaint", None),
-
-        # Others
         ("upscale", StableDiffusionUpscalePipeline),
     ]
 )
 
 SINGLE_FILE_CHECKPOINT_INPAINT_PIPELINE_MAPPING = OrderedDict(
     [
-        # Animated Diffusion Pipelines
         ("animatediff_rgb", None),
         ("animatediff_scribble", None),
         ("animatediff_sdxl_beta", None),
         ("animatediff_v1", None),
         ("animatediff_v2", None),
         ("animatediff_v3", None),
-
-        # Cascade Stages
         ("stable_cascade_stage_b", None),
         ("stable_cascade_stage_b_lite", None),
         ("stable_cascade_stage_c", None),
         ("stable_cascade_stage_c_lite", None),
-
-        # ControlNet Pipelines
         ("controlnet", None),
         ("controlnet_xl", None),
         ("controlnet_xl_large", None),
         ("controlnet_xl_mid", None),
         ("controlnet_xl_small", None),
-
-        # Flux Pipelines
         ("flux_dev", None),
         ("flux_schnell", None),
-
-        # Stable Diffusion Pipelines
         ("sd3", None),
         ("sd35_large", None),
         ("v1", None),
         ("v2", None),
-
-        # Stable Diffusion XL Pipelines
         ("playground-v2-5", None),
         ("xl_base", None),
         ("xl_refiner", None),
-
-        # Inpainting Pipelines
         ("inpainting", StableDiffusionInpaintPipeline),
         ("inpainting_v2", StableDiffusionInpaintPipeline),
         ("xl_inpaint", StableDiffusionXLInpaintPipeline),
-
-        # Others
         ("upscale", StableDiffusionUpscalePipeline),
     ]
 )
