@@ -582,7 +582,7 @@ class SanaPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 300,
-        complex_human_instruction: list[str] = [
+        complex_human_instruction: List[str] = [
             "Given a user prompt, generate an 'Enhanced prompt' that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
             "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
             "- If the prompt is already detailed, refine and enhance the existing details slightly without overcomplicating.",
@@ -670,7 +670,7 @@ class SanaPipeline(DiffusionPipeline):
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to `300`):
                 Maximum sequence length to use with the `prompt`.
-            complex_human_instruction (`list[str]`, *optional*):
+            complex_human_instruction (`List[str]`, *optional*):
                 Instructions for complex human attention:
                 https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.
 

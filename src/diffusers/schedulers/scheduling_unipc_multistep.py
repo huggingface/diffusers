@@ -206,6 +206,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
+        use_flow_sigmas: Optional[bool] = False,
+        flow_shift: Optional[float] = 1.0,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
@@ -374,6 +376,11 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
                 )
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
+        elif self.config.use_flow_sigmas:
+            alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
+            sigmas = 1.0 - alphas
+            sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1]
+            timesteps = (sigmas * self.config.num_train_timesteps).copy()
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             if self.config.final_sigmas_type == "sigma_min":
@@ -464,8 +471,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
-        alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
-        sigma_t = sigma * alpha_t
+        if self.config.use_flow_sigmas:
+            alpha_t = 1 - sigma
+            sigma_t = sigma
+        else:
+            alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
+            sigma_t = sigma * alpha_t
 
         return alpha_t, sigma_t
 
