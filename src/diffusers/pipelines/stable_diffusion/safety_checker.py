@@ -46,9 +46,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
         self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
-        
+
         self.adjustment = 0.0
-    
+
     def update_safety_checker_Level(self, Level):
         """
         Adjust the safety checker level.
@@ -71,7 +71,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
             Level = Level_dict[Level]
 
         # Check if the Level is a float or an integer
-        if isinstance(Level, (float, int)): 
+        if isinstance(Level, (float, int)):
             setattr(self, "adjustment", Level)  # Set the adjustment attribute to the Level value
         else:
             # Raise an error if Level is not a valid type or predefined string
@@ -86,7 +86,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " When reducing the filtering strength, take the same action as when disabling the safety checker."
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."             
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
     @torch.no_grad()

@@ -1936,7 +1936,7 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
-    
+
     def safety_checker_level(self, level):
         """
         Adjust the safety checker level.
