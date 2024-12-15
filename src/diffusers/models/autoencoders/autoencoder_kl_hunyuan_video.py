@@ -105,6 +105,13 @@ class HunyuanVideoUpsampleCausal3D(nn.Module):
         ).unsqueeze(2)
 
         if num_frames > 1:
+            # See: https://github.com/pytorch/pytorch/issues/81665
+            # Unless you have a version of pytorch where non-contiguous implementation of F.interpolate
+            # is fixed, this will raise either a runtime error, or fail silently with bad outputs.
+            # If you are encountering an error here, make sure to try running encoding/decoding with
+            # `vae.enable_tiling()` first. If that doesn't work, open an issue at:
+            # https://github.com/huggingface/diffusers/issues
+            other_frames = other_frames.contiguous()
             other_frames = F.interpolate(other_frames, scale_factor=self.upsample_factor, mode="nearest")
             hidden_states = torch.cat((first_frame, other_frames), dim=2)
         else:
@@ -786,14 +793,12 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
         self.tile_sample_min_width = 256
-
-        # The minimal tile temporal batch size for temporal tiling to be used
-        self.tile_sample_min_tsize = 64
-        self.tile_overlap_factor = 0.25
+        self.tile_sample_min_num_frames = 64
 
         # The minimal distance between two spatial tiles
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
+        self.tile_sample_stride_num_frames = 48
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (HunyuanVideoEncoder3D, HunyuanVideoDecoder3D)):
@@ -803,8 +808,10 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self,
         tile_sample_min_height: Optional[int] = None,
         tile_sample_min_width: Optional[int] = None,
+        tile_sample_min_num_frames: Optional[int] = None,
         tile_sample_stride_height: Optional[float] = None,
         tile_sample_stride_width: Optional[float] = None,
+        tile_sample_stride_num_frames: Optional[float] = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -816,18 +823,26 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
                 The minimum height required for a sample to be separated into tiles across the height dimension.
             tile_sample_min_width (`int`, *optional*):
                 The minimum width required for a sample to be separated into tiles across the width dimension.
+            tile_sample_min_num_frames (`int`, *optional*):
+                The minimum number of frames required for a sample to be separated into tiles across the frame
+                dimension.
             tile_sample_stride_height (`int`, *optional*):
                 The minimum amount of overlap between two consecutive vertical tiles. This is to ensure that there are
                 no tiling artifacts produced across the height dimension.
             tile_sample_stride_width (`int`, *optional*):
                 The stride between two consecutive horizontal tiles. This is to ensure that there are no tiling
                 artifacts produced across the width dimension.
+            tile_sample_stride_num_frames (`int`, *optional*):
+                The stride between two consecutive frame tiles. This is to ensure that there are no tiling artifacts
+                produced across the frame dimension.
         """
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
+        self.tile_sample_min_num_frames = tile_sample_min_num_frames or self.tile_sample_min_num_frames
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
+        self.tile_sample_stride_num_frames = tile_sample_stride_num_frames or self.tile_sample_stride_num_frames
 
     def disable_tiling(self) -> None:
         r"""
@@ -853,8 +868,8 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape
 
-        if self.use_framewise_decoding and num_frames > self.tile_sample_min_tsize:
-            return self.temporal_tiled_encode(x)
+        if self.use_framewise_decoding and num_frames > self.tile_sample_min_num_frames:
+            return self._temporal_tiled_encode(x)
 
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
@@ -895,10 +910,10 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_stride_width // self.spatial_compression_ratio
-        tile_latent_min_num_frames = self.tile_sample_min_tsize // self.temporal_compression_ratio
+        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
 
         if self.use_framewise_decoding and num_frames > tile_latent_min_num_frames:
-            return self.temporal_tiled_decode(z, return_dict=return_dict)
+            return self._temporal_tiled_decode(z, return_dict=return_dict)
 
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
@@ -1069,52 +1084,51 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             return (dec,)
         return DecoderOutput(sample=dec)
 
-    def temporal_tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
-        B, C, T, H, W = x.shape
-        tile_latent_min_tsize = self.tile_sample_min_tsize // self.temporal_compression_ratio
-        overlap_size = int(self.tile_sample_min_tsize * (1 - self.tile_overlap_factor))
-        blend_extent = int(tile_latent_min_tsize * self.tile_overlap_factor)
-        t_limit = tile_latent_min_tsize - blend_extent
+    def _temporal_tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
+        batch_size, num_channels, num_frames, height, width = x.shape
+        latent_num_frames = (num_frames - 1) // self.temporal_compression_ratio + 1
 
-        # Split the video into tiles and encode them separately.
+        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
+        tile_latent_stride_num_frames = self.tile_sample_stride_num_frames // self.temporal_compression_ratio
+        blend_num_frames = tile_latent_min_num_frames - tile_latent_stride_num_frames
+
         row = []
-        for i in range(0, T, overlap_size):
-            tile = x[:, :, i : i + self.tile_sample_min_tsize + 1, :, :]
-            if self.use_tiling and (
-                tile.shape[-1] > self.tile_sample_min_size or tile.shape[-2] > self.tile_sample_min_size
-            ):
-                tile = self.tiled_encode(tile, return_moments=True)
+        for i in range(0, num_frames, self.tile_sample_stride_num_frames):
+            tile = x[:, :, i : i + self.tile_sample_min_num_frames + 1, :, :]
+            if self.use_tiling and (height > self.tile_sample_min_height or width > self.tile_sample_min_width):
+                tile = self.tiled_encode(tile)
             else:
                 tile = self.encoder(tile)
                 tile = self.quant_conv(tile)
             if i > 0:
                 tile = tile[:, :, 1:, :, :]
             row.append(tile)
+
         result_row = []
         for i, tile in enumerate(row):
             if i > 0:
-                tile = self.blend_t(row[i - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :t_limit, :, :])
+                tile = self.blend_t(row[i - 1], tile, blend_num_frames)
+                result_row.append(tile[:, :, :tile_latent_stride_num_frames, :, :])
             else:
-                result_row.append(tile[:, :, : t_limit + 1, :, :])
+                result_row.append(tile[:, :, : tile_latent_stride_num_frames + 1, :, :])
 
-        enc = torch.cat(result_row, dim=2)
+        enc = torch.cat(result_row, dim=2)[:, :, :latent_num_frames]
         return enc
 
-    def temporal_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
-        # Split z into overlapping tiles and decode them separately.
+    def _temporal_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        batch_size, num_channels, num_frames, height, width = z.shape
+        num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
-        B, C, T, H, W = z.shape
-        tile_latent_min_tsize = self.tile_sample_min_tsize // self.temporal_compression_ratio
-        overlap_size = int(tile_latent_min_tsize * (1 - self.tile_overlap_factor))
-        blend_extent = int(self.tile_sample_min_tsize * self.tile_overlap_factor)
-        t_limit = self.tile_sample_min_tsize - blend_extent
-        tile_latent_min_size = self.tile_sample_min_size // self.spatial_compression_ratio
+        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
+        tile_latent_stride_num_frames = self.tile_sample_stride_num_frames // self.temporal_compression_ratio
+        blend_num_frames = self.tile_sample_min_num_frames - self.tile_sample_stride_num_frames
 
         row = []
-        for i in range(0, T, overlap_size):
-            tile = z[:, :, i : i + tile_latent_min_tsize + 1, :, :]
-            if self.use_tiling and (tile.shape[-1] > tile_latent_min_size or tile.shape[-2] > tile_latent_min_size):
+        for i in range(0, num_frames, tile_latent_stride_num_frames):
+            tile = z[:, :, i : i + tile_latent_min_num_frames + 1, :, :]
+            if self.use_tiling and (tile.shape[-1] > tile_latent_min_width or tile.shape[-2] > tile_latent_min_height):
                 decoded = self.tiled_decode(tile, return_dict=True).sample
             else:
                 tile = self.post_quant_conv(tile)
@@ -1122,18 +1136,20 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             if i > 0:
                 decoded = decoded[:, :, 1:, :, :]
             row.append(decoded)
+
         result_row = []
         for i, tile in enumerate(row):
             if i > 0:
-                tile = self.blend_t(row[i - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :t_limit, :, :])
+                tile = self.blend_t(row[i - 1], tile, blend_num_frames)
+                result_row.append(tile[:, :, : self.tile_sample_stride_num_frames, :, :])
             else:
-                result_row.append(tile[:, :, : t_limit + 1, :, :])
+                result_row.append(tile[:, :, : self.tile_sample_stride_num_frames + 1, :, :])
 
-        dec = torch.cat(result_row, dim=2)
+        print("this:", torch.cat(result_row, dim=2).shape)
+        dec = torch.cat(result_row, dim=2)[:, :, :num_sample_frames]
+
         if not return_dict:
             return (dec,)
-
         return DecoderOutput(sample=dec)
 
     def forward(

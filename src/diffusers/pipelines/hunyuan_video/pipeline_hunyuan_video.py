@@ -603,7 +603,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             device,
             sigmas=sigmas,
         )
-        print(self.scheduler.sigmas)
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels

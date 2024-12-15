@@ -28,6 +28,7 @@ def remap_txt_in_(key, state_dict):
         new_key = new_key.replace("t_embedder.mlp.0", "time_text_embed.timestep_embedder.linear_1")
         new_key = new_key.replace("t_embedder.mlp.2", "time_text_embed.timestep_embedder.linear_2")
         new_key = new_key.replace("c_embedder", "time_text_embed.text_embedder")
+        new_key = new_key.replace("mlp", "ff")
         return new_key
 
     if "self_attn_qkv" in key:
