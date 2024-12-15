@@ -54,7 +54,18 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        # TODO(aryan): once the weights are hosted
+        >>> import torch
+        >>> from diffusers import SanaPipeline
+
+        >>> pipe = SanaPipeline.from_pretrained(
+        ...     "Efficient-Large-Model/Sana_1600M_1024px_diffusers", torch_dtype=torch.float32
+        ... )
+        >>> pipe.to("cuda")
+        >>> pipe.text_encoder.to(torch.bfloat16)
+        >>> pipe.transformer = pipe.transformer.to(torch.float16)
+
+        >>> image = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"')[0]
+        >>> image[0].save("output.png")
         ```
 """
 
