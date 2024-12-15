@@ -160,7 +160,7 @@ class HunyuanVideoResnetBlockCausal3D(nn.Module):
         self.conv1 = HunyuanVideoCausalConv3d(in_channels, out_channels, 3, 1, 0)
 
         self.norm2 = nn.GroupNorm(groups, out_channels, eps=eps, affine=True)
-        self.dropout = torch.nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
         self.conv2 = HunyuanVideoCausalConv3d(out_channels, out_channels, 3, 1, 0)
 
         self.conv_shortcut = None
@@ -604,7 +604,6 @@ class HunyuanVideoDecoder3D(nn.Module):
         self.layers_per_block = layers_per_block
 
         self.conv_in = HunyuanVideoCausalConv3d(in_channels, block_out_channels[-1], kernel_size=3, stride=1)
-        self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
         # mid
@@ -1145,7 +1144,6 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
             else:
                 result_row.append(tile[:, :, : self.tile_sample_stride_num_frames + 1, :, :])
 
-        print("this:", torch.cat(result_row, dim=2).shape)
         dec = torch.cat(result_row, dim=2)[:, :, :num_sample_frames]
 
         if not return_dict:

@@ -21,7 +21,7 @@ from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenize
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...models import AutoencoderKLHunyuanVideo, HunyuanVideoTransformer3DModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -149,9 +149,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLHunyuanVideo`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
-        text_encoder_2 ([`T5EncoderModel`]):
-            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
-            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
         text_encoder_2 ([`CLIPTextModel`]):
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
