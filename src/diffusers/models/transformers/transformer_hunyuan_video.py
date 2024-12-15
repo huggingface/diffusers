@@ -131,7 +131,7 @@ class HunyuanVideoAttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class PatchEmbed(nn.Module):
+class HunyuanVideoPatchEmbed(nn.Module):
     def __init__(
         self,
         patch_size: Union[int, Tuple[int, int, int]] = 16,
@@ -523,7 +523,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin):
         out_channels = out_channels or in_channels
 
         # 1. Latent and condition embedders
-        self.x_embedder = PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
+        self.x_embedder = HunyuanVideoPatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
         self.context_embedder = HunyuanVideoTokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
