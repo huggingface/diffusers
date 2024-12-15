@@ -736,7 +736,7 @@ class UNetMidBlock2D(nn.Module):
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1155,7 +1155,7 @@ class AttnDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1167,7 +1167,6 @@ class AttnDownBlock2D(nn.Module):
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                cross_attention_kwargs.update({"scale": lora_scale})
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
@@ -1177,8 +1176,7 @@ class AttnDownBlock2D(nn.Module):
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
                 output_states = output_states + (hidden_states,)
             else:
-                cross_attention_kwargs.update({"scale": lora_scale})
-                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
                 output_states = output_states + (hidden_states,)
 
@@ -2402,8 +2400,8 @@ class AttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-        self.resolution_idx = resolution_idx
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -2423,9 +2421,8 @@ class AttnUpBlock2D(nn.Module):
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
-            cross_attention_kwargs = {"scale": scale}
 
-            if self.training and self.gradient_checkpointing:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -2443,10 +2440,10 @@ class AttnUpBlock2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
-                hidden_states = attn(hidden_states, **cross_attention_kwargs)
+                hidden_states = attn(hidden_states)
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = attn(hidden_states, **cross_attention_kwargs)
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
