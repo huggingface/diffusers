@@ -31,14 +31,18 @@ import torch
 from diffusers import AutoencoderKLLTXVideo, LTXImageToVideoPipeline, LTXVideoTransformer3DModel
 
 single_file_url = "https://huggingface.co/Lightricks/LTX-Video/ltx-video-2b-v0.9.safetensors"
-transformer = LTXVideoTransformer3DModel.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
+transformer = LTXVideoTransformer3DModel.from_single_file(
+  single_file_url, torch_dtype=torch.bfloat16
+)
 vae = AutoencoderKLLTXVideo.from_single_file(single_file_url, torch_dtype=torch.bfloat16)
-pipe = LTXImageToVideoPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, vae=vae, torch_dtype=torch.bfloat16)
+pipe = LTXImageToVideoPipeline.from_pretrained(
+  "Lightricks/LTX-Video", transformer=transformer, vae=vae, torch_dtype=torch.bfloat16
+)
 
 # ... inference code ...
 ```
 
-Alternatively, the pipeline can be used to load the weights with [~FromSingleFileMixin.from_single_file`].
+Alternatively, the pipeline can be used to load the weights with [`~FromSingleFileMixin.from_single_file`].
 
 ```python
 import torch
@@ -46,10 +50,18 @@ from diffusers import LTXImageToVideoPipeline
 from transformers import T5EncoderModel, T5Tokenizer
 
 single_file_url = "https://huggingface.co/Lightricks/LTX-Video/ltx-video-2b-v0.9.safetensors"
-text_encoder = T5EncoderModel.from_pretrained("Lightricks/LTX-Video", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-tokenizer = T5Tokenizer.from_pretrained("Lightricks/LTX-Video", subfolder="tokenizer", torch_dtype=torch.bfloat16)
-pipe = LTXImageToVideoPipeline.from_single_file(single_file_url, text_encoder=text_encoder, tokenizer=tokenizer, torch_dtype=torch.bfloat16)
+text_encoder = T5EncoderModel.from_pretrained(
+  "Lightricks/LTX-Video", subfolder="text_encoder", torch_dtype=torch.bfloat16
+)
+tokenizer = T5Tokenizer.from_pretrained(
+  "Lightricks/LTX-Video", subfolder="tokenizer", torch_dtype=torch.bfloat16
+)
+pipe = LTXImageToVideoPipeline.from_single_file(
+  single_file_url, text_encoder=text_encoder, tokenizer=tokenizer, torch_dtype=torch.bfloat16
+)
 ```
+
+Refer to [this section](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogvideox#memory-optimization) to learn more about optimizing memory consumption.
 
 ## LTXPipeline
 
