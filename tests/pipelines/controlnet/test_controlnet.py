@@ -514,6 +514,18 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert image.shape == (4, 64, 64, 3)
 
+    @unittest.skip("Test not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_to_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        pass
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -696,6 +708,18 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_mco_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_to_raises_error_device_mapped_components(self):
+        pass
+
+    @unittest.skip("Test not supported.")
+    def test_calling_sco_raises_error_device_mapped_components(self):
+        pass
 
 
 @slow
