@@ -1,10 +1,14 @@
+import copy
 import math
 from dataclasses import astuple
 
 import torch
+from detectron2.model_zoo.configs.common.models.mask_rcnn_vitdet import num_heads
 from torch import nn
+from torch.nn.modules.transformer import _get_activation_fn
 from torchvision.ops import RoIAlign
 
+_DEFAULT_SCALE_CLAMP = math.log(1000.0 / 16)
 
 def convert_boxes_to_pooler_format(bboxes):
     B, N = bboxes.shape[:2]
@@ -34,12 +38,83 @@ def assign_boxes_to_levels(
     return level_assignments.to(torch.int64) - min_level
 
 
-class DynamicHead(nn.Module):
-    def __init__(self):
+class SinusoidalPositionEmbeddings(nn.Module):
+    def __init__(self, dim):
         super().__init__()
+        self.dim = dim
 
-    def forward(self, features, x_boxes, t, targets):
-        pass
+    def forward(self, time):
+        device = time.device
+        half_dim = self.dim // 2
+        embeddings = math.log(10000) / (half_dim - 1)
+        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
+        embeddings = time[:, None] * embeddings[None, :]
+        embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
+        return embeddings
+
+
+class DynamicHead(nn.Module):
+    def __init__(self, config, roi_input_shape):
+        super().__init__()
+        num_classes = 80
+
+        ddet_head = DiffusionDetHead(config, roi_input_shape, num_classes)
+        self.num_head = config.num_heads
+        self.head_series = nn.ModuleList([copy.deepcopy(ddet_head) for i in range(num_heads)])
+        self.return_intermediate = config.deep_supervision
+
+        # Gaussian random feature embedding layer for time
+        self.hidden_dim = config.hidden_dim
+        time_dim = self.hidden_dim * 4
+        self.time_mlp = nn.Sequential(
+            SinusoidalPositionEmbeddings(self.hidden_dim),
+            nn.Linear(self.hidden_dim, time_dim),
+            nn.GELU(),
+            nn.Linear(time_dim, time_dim),
+        )
+
+        # Init parameters.
+        self.use_focal = config.use_focal
+        self.use_fed_loss = config.use_fed_loss
+        self.num_classes = num_classes
+        if self.use_focal or self.use_fed_loss:
+            prior_prob = config.prior_prob
+            self.bias_value = -math.log((1 - prior_prob) / prior_prob)
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        # init all parameters.
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+            # initialize the bias for focal loss and fed loss.
+            if self.use_focal or self.use_fed_loss:
+                if p.shape[-1] == self.num_classes or p.shape[-1] == self.num_classes + 1:
+                    nn.init.constant_(p, self.bias_value)
+
+
+    def forward(self, features, bboxes, t, targets):
+        # assert t shape (batch_size)
+        time = self.time_mlp(t)
+
+        inter_class_logits = []
+        inter_pred_bboxes = []
+
+        bs = len(features[0])
+
+        class_logits, pred_bboxes = None, None
+        for head_idx, rcnn_head in enumerate(self.head_series):
+            class_logits, pred_bboxes, proposal_features = rcnn_head(features, bboxes, time)
+            if self.return_intermediate:
+                inter_class_logits.append(class_logits)
+                inter_pred_bboxes.append(pred_bboxes)
+            bboxes = pred_bboxes.detach()
+
+        if self.return_intermediate:
+            return torch.stack(inter_class_logits), torch.stack(inter_pred_bboxes)
+
+        return class_logits[None], pred_bboxes[None]
 
 
 class DynamicConv(nn.Module):
@@ -87,9 +162,14 @@ class DynamicConv(nn.Module):
 
 
 class DiffusionDetHead(nn.Module):
-    def __init__(self, config, roi_input_shape, d_model, num_classes, dim_feedforward=2048, nhead=8, dropout=0.1):
+    def __init__(self, config, roi_input_shape, num_classes):
         super().__init__()
 
+        hidden_dim = config.hidden_dim
+        dim_feedforward = config.dim_feedforward
+        nhead = config.num_attn_heads
+        dropout = config.dropout
+        activation = config.activation
         in_features = config.roi_head_in_features
         pooler_resolution = config.pooler_resolution
         pooler_scales = tuple(1.0 / roi_input_shape[k]['stride'] for k in in_features)
@@ -102,19 +182,53 @@ class DiffusionDetHead(nn.Module):
         )
 
         # dynamic.
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-        self.inst_interact = DynamicConv(cfg)
+        self.self_attn = nn.MultiheadAttention(hidden_dim, nhead, dropout=dropout)
+        self.inst_interact = DynamicConv(config)
 
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.linear1 = nn.Linear(hidden_dim, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.linear2 = nn.Linear(dim_feedforward, hidden_dim)
 
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.norm3 = nn.LayerNorm(hidden_dim)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
+
+        self.activation = _get_activation_fn(activation)
+
+        # block time mlp
+        self.block_time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(hidden_dim * 4, hidden_dim * 2))
+
+        # cls.
+        num_cls = config.num_cls
+        cls_module = list()
+        for _ in range(num_cls):
+            cls_module.append(nn.Linear(hidden_dim, hidden_dim, False))
+            cls_module.append(nn.LayerNorm(hidden_dim))
+            cls_module.append(nn.ReLU(inplace=True))
+        self.cls_module = nn.ModuleList(cls_module)
+
+        # reg.
+        num_reg = config.num_reg
+        reg_module = list()
+        for _ in range(num_reg):
+            reg_module.append(nn.Linear(hidden_dim, hidden_dim, False))
+            reg_module.append(nn.LayerNorm(hidden_dim))
+            reg_module.append(nn.ReLU(inplace=True))
+        self.reg_module = nn.ModuleList(reg_module)
+
+        # pred.
+        self.use_focal = config.use_focal
+        self.use_fed_loss = config.use_fed_loss
+        if self.use_focal or self.use_fed_loss:
+            self.class_logits = nn.Linear(hidden_dim, num_classes)
+        else:
+            self.class_logits = nn.Linear(hidden_dim, num_classes + 1)
+        self.bboxes_delta = nn.Linear(hidden_dim, 4)
+        self.scale_clamp = _DEFAULT_SCALE_CLAMP
+        self.bbox_weights = (2.0, 2.0, 1.0, 1.0)
 
     def forward(self, features, bboxes, time_emb):
         B, N = bboxes.shape[:2]
@@ -122,19 +236,19 @@ class DiffusionDetHead(nn.Module):
         # roi_feature.
         roi_features = self.pooler(features, bboxes)
 
-        pro_features = roi_features.view(B, N, self.d_model, -1).mean(-1)
+        pro_features = roi_features.view(B, N, self.hidden_dim, -1).mean(-1)
 
-        roi_features = roi_features.view(B * N, self.d_model, -1).permute(2, 0, 1)
+        roi_features = roi_features.view(B * N, self.hidden_dim, -1).permute(2, 0, 1)
 
         # self_att.
-        pro_features = pro_features.view(B, N, self.d_model).permute(1, 0, 2)
+        pro_features = pro_features.view(B, N, self.hidden_dim).permute(1, 0, 2)
         pro_features2 = self.self_attn(pro_features, pro_features, value=pro_features)[0]
         pro_features = pro_features + self.dropout1(pro_features2)
         pro_features = self.norm1(pro_features)
 
         # inst_interact.
-        pro_features = pro_features.view(N, B, self.d_model).permute(1, 0, 2).reshape(1, B * N,
-                                                                                      self.d_model)
+        pro_features = pro_features.view(N, B, self.hidden_dim).permute(1, 0, 2).reshape(1, B * N,
+                                                                                      self.hidden_dim)
         pro_features2 = self.inst_interact(pro_features, roi_features)
         pro_features = pro_features + self.dropout2(pro_features2)
         obj_features = self.norm2(pro_features)
