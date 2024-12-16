@@ -364,12 +364,12 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep: torch.LongTensor,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
+        if cross_attention_kwargs is not None:
+            cross_attention_kwargs = cross_attention_kwargs.copy()
+            lora_scale = cross_attention_kwargs.pop("scale", 1.0)
         else:
             lora_scale = 1.0
 
@@ -377,9 +377,9 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+            if cross_attention_kwargs is not None and cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                    "Passing `scale` via `cross_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
