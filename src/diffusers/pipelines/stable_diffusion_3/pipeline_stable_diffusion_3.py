@@ -702,6 +702,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         skip_layer_guidance_scale: int = 2.8,
         skip_layer_guidance_stop: int = 0.2,
         skip_layer_guidance_start: int = 0.01,
+        mu: Optional[float] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -802,6 +803,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 `skip_guidance_layers` will start. The guidance will be applied to the layers specified in
                 `skip_guidance_layers` from the fraction specified in `skip_layer_guidance_start`. Recommended value by
                 StabiltyAI for Stable Diffusion 3.5 Medium is 0.01.
+            mu (`float`, *optional*): `mu` value used for `dynamic_shifting`.
 
         Examples:
 
@@ -883,7 +885,13 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
