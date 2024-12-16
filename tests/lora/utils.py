@@ -1148,12 +1148,14 @@ class PeftLoraLoaderMixinTests:
                 )
 
         scale_with_wrong_components = {"foo": 0.0, "bar": 0.0, "tik": 0.0}
-        with self.assertRaises(ValueError) as err_context:
+        logger = logging.get_logger("diffusers.loaders.lora_base")
+        logger.setLevel(30)
+        with CaptureLogger(logger) as cap_logger:
             pipe.set_adapters("adapter-1", adapter_weights=scale_with_wrong_components)
 
         wrong_components = sorted(set(scale_with_wrong_components.keys()))
-        msg = f"The following components in `adapter_weights` are not part of the pipeline: {wrong_components}"
-        self.assertTrue(msg in str(err_context.exception))
+        msg = f"The following components in `adapter_weights` are not part of the pipeline: {wrong_components}. "
+        self.assertTrue(msg in str(cap_logger.out))
 
         # test this works.
         pipe.set_adapters("adapter-1")

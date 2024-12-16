@@ -532,10 +532,12 @@ class LoraBaseMixin:
 
             invalid_components = sorted(components_passed - lora_components)
             if invalid_components:
-                raise ValueError(
+                logger.warning(
                     f"The following components in `adapter_weights` are not part of the pipeline: {invalid_components}. "
-                    f"Available components that are LoRA-compatible: {self._lora_loadable_modules}"
+                    f"Available components that are LoRA-compatible: {self._lora_loadable_modules}. So, weights belonging "
+                    "to the invalid components will be removed and ignored."
                 )
+                adapter_weights = {k: v for k, v in adapter_weights.items() if k not in invalid_components}
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
         adapter_weights = copy.deepcopy(adapter_weights)
