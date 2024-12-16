@@ -25,7 +25,6 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
-from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
@@ -182,7 +181,6 @@ def load_model_dict_into_meta(
         device = device or torch.device("cpu")
     dtype = dtype or torch.float32
     is_quantized = hf_quantizer is not None
-    is_quant_method_bnb = getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
 
     accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
     empty_state_dict = model.state_dict()
@@ -215,12 +213,12 @@ def load_model_dict_into_meta(
         # bnb params are flattened.
         if empty_state_dict[param_name].shape != param.shape:
             if (
-                is_quant_method_bnb
+                is_quantized
                 and hf_quantizer.pre_quantized
                 and hf_quantizer.check_if_quantized_param(model, param, param_name, state_dict, param_device=device)
             ):
                 hf_quantizer.check_quantized_param_shape(param_name, empty_state_dict[param_name].shape, param.shape)
-            elif not is_quant_method_bnb:
+            else:
                 model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
                 raise ValueError(
                     f"Cannot load {model_name_or_path_str} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
