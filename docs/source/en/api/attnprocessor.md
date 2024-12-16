@@ -28,6 +28,10 @@ An attention processor is a class for applying different types of attention mech
 
 [[autodoc]] models.attention_processor.FusedAttnProcessor2_0
 
+## Allegro
+
+[[autodoc]] models.attention_processor.AllegroAttnProcessor2_0
+
 ## AuraFlow
 
 [[autodoc]] models.attention_processor.AuraFlowAttnProcessor2_0
@@ -106,6 +110,22 @@ An attention processor is a class for applying different types of attention mech
 
 [[autodoc]] models.attention_processor.LuminaAttnProcessor2_0
 
+## Mochi
+
+[[autodoc]] models.attention_processor.MochiAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.MochiVaeAttnProcessor2_0
+
+## Sana
+
+[[autodo]] models.attention_processor.SanaLinearAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.SanaMultscaleAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.PAGCFGSanaLinearAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.PAGIdentitySanaLinearAttnProcessor2_0
+
 ## Stable Audio
 
 [[autodoc]] models.attention_processor.StableAudioAttnProcessor2_0
@@ -121,3 +141,7 @@ An attention processor is a class for applying different types of attention mech
 [[autodoc]] models.attention_processor.XFormersAttnProcessor
 
 [[autodoc]] models.attention_processor.XFormersAttnAddedKVProcessor
+
+## XLAFlashAttnProcessor2_0
+
+[[autodoc]] models.attention_processor.XLAFlashAttnProcessor2_0
