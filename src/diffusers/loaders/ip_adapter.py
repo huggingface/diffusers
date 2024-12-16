@@ -358,13 +358,13 @@ class SD3IPAdapterMixin:
 
     @property
     def is_ip_adapter_active(self) -> bool:
-        r"""Checks if any ip_adapter attention processor have scale > 0.
+        """Checks if IP-Adapter is loaded and scale > 0.
 
         IP-Adapter scale controls the influence of the image prompt versus text prompt. When this value is set to 0,
-        image is irrelevant.
+        the image context is irrelevant.
 
         Returns:
-            `bool`: True when ip_adapter is loaded and any ip_adapter layer scale > 0.
+            `bool`: True when IP-Adapter is loaded and any layer has scale > 0.
         """
         scales = [
             attn_proc.scale
@@ -382,7 +382,7 @@ class SD3IPAdapterMixin:
         weight_name: str,
         image_encoder_folder: Optional[str] = "image_encoder",
         **kwargs,
-    ):
+    ) -> None:
         """
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -500,19 +500,19 @@ class SD3IPAdapterMixin:
                         image_encoder_subfolder = Path(image_encoder_folder).as_posix()
 
                     # Commons args for loading image encoder and image processor
-                    args = dict(
-                        pretrained_model_name_or_path_or_dict,
-                        subfolder=image_encoder_subfolder,
-                        low_cpu_mem_usage=low_cpu_mem_usage,
-                        cache_dir=cache_dir,
-                        local_files_only=local_files_only,
-                    )
+                    kwargs = {
+                        "low_cpu_mem_usage": low_cpu_mem_usage,
+                        "cache_dir": cache_dir,
+                        "local_files_only": local_files_only,
+                    }
 
                     self.register_modules(
-                        feature_extractor=SiglipImageProcessor.from_pretrained(**args).to(
+                        feature_extractor=SiglipImageProcessor.from_pretrained(image_encoder_subfolder, **kwargs).to(
                             self.device, dtype=self.dtype
                         ),
-                        image_encoder=SiglipVisionModel.from_pretrained(**args).to(self.device, dtype=self.dtype),
+                        image_encoder=SiglipVisionModel.from_pretrained(image_encoder_subfolder, **kwargs).to(
+                            self.device, dtype=self.dtype
+                        ),
                     )
                 else:
                     raise ValueError(
@@ -527,11 +527,11 @@ class SD3IPAdapterMixin:
         # Load IP-Adapter into transformer
         self.transformer._load_ip_adapter_weights(state_dict, low_cpu_mem_usage=low_cpu_mem_usage)
 
-    def set_ip_adapter_scale(self, scale: float):
+    def set_ip_adapter_scale(self, scale: float) -> None:
         """
-        Controls image/text prompt conditioning. A value of 1.0 means the model is only conditioned on the image
-        prompt, and 0.0 only conditioned by the text prompt. Lowering this value encourages the model to produce more
-        diverse images, but they may not be as aligned with the image prompt.
+        Set IP-Adapter scale, which controls image prompt conditioning. A value of 1.0 means the model is only
+        conditioned on the image prompt, and 0.0 only conditioned by the text prompt. Lowering this value encourages
+        the model to produce more diverse images, but they may not be as aligned with the image prompt.
 
         Example:
 
@@ -540,12 +540,17 @@ class SD3IPAdapterMixin:
         >>> pipeline.set_ip_adapter_scale(0.6)
         >>> ...
         ```
+
+        Args:
+            scale (float):
+                IP-Adapter scale to be set.
+
         """
         for attn_processor in self.transformer.attn_processors.values():
             if isinstance(attn_processor, IPAdapterJointAttnProcessor2_0):
                 attn_processor.scale = scale
 
-    def unload_ip_adapter(self):
+    def unload_ip_adapter(self) -> None:
         """
         Unloads the IP Adapter weights.
 

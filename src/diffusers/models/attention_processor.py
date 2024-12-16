@@ -5149,7 +5149,22 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
 
 
 class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
-    """Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections."""
+    """
+    Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections, with
+    additional image-based information and timestep embeddings.
+
+    Args:
+        hidden_size (`int`):
+            The number of hidden channels.
+        ip_hidden_states_dim (`int`):
+            The image feature dimension.
+        head_dim (`int`):
+            The number of head channels.
+        timesteps_emb_dim (`int`, defaults to 1280):
+            The number of input channels for timestep embedding.
+        scale (`float`, defaults to 0.5):
+            IP-Adapter scale.
+    """
 
     def __init__(
         self,
@@ -5181,6 +5196,28 @@ class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
         ip_hidden_states: torch.FloatTensor = None,
         temb: torch.FloatTensor = None,
     ) -> torch.FloatTensor:
+        """
+        Perform the attention computation, integrating image features (if provided) and timestep embeddings.
+
+        If `ip_hidden_states` is `None`, this is equivalent to using JointAttnProcessor2_0.
+
+        Args:
+            attn (`Attention`):
+                Attention instance.
+            hidden_states (`torch.FloatTensor`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.FloatTensor`, *optional*):
+                The encoder hidden states.
+            attention_mask (`torch.FloatTensor`, *optional*):
+                Attention mask.
+            ip_hidden_states (`torch.FloatTensor`, *optional*):
+                Image embeddings.
+            temb (`torch.FloatTensor`, *optional*):
+                Timestep embeddings.
+
+        Returns:
+            `torch.FloatTensor`: Output hidden states.
+        """
         residual = hidden_states
 
         batch_size = hidden_states.shape[0]

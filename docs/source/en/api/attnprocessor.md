@@ -52,3 +52,6 @@ An attention processor is a class for applying different types of attention mech
 
 ## AttnProcessorNPU
 [[autodoc]] models.attention_processor.AttnProcessorNPU
+
+## IPAdapterJointAttnProcessor2_0
+[[autodoc]] models.attention_processor.IPAdapterJointAttnProcessor2_0

@@ -680,7 +680,16 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         return self._interrupt
 
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
-    def encode_image(self, image):
+    def encode_image(self, image: PipelineImageInput) -> torch.Tensor:
+        """Encodes the given image into a feature representation using a pre-trained image encoder.
+
+        Args:
+            image (`PipelineImageInput`):
+                Input image to be encoded.
+
+        Returns:
+            `torch.Tensor`: The encoded image feature representation.
+        """
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
@@ -690,17 +699,42 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
 
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
-    ):
-        if ip_adapter_image_embeds is None:
+        self,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
+        device: Optional[torch.device] = None,
+        num_images_per_prompt: int = 1,
+        do_classifier_free_guidance: bool = True,
+    ) -> torch.Tensor:
+        """Prepares image embeddings for use in the IP-Adapter.
+
+        Either `ip_adapter_image` or `ip_adapter_image_embeds` must be passed.
+
+        Args:
+            ip_adapter_image (`PipelineImageInput`, *optional*):
+                The input image to extract features from for IP-Adapter.
+            ip_adapter_image_embeds (`torch.Tensor`, *optional*):
+                Precomputed image embeddings.
+            device: (`torch.device`, *optional*):
+                Torch device.
+            num_images_per_prompt (`int`, defaults to 1):
+                Number of images that should be generated per prompt.
+            do_classifier_free_guidance (`bool`, defaults to True):
+                Whether to use classifier free guidance or not.
+        """
+        device = device or self._execution_device
+
+        if ip_adapter_image_embeds is not None:
+            if do_classifier_free_guidance:
+                single_negative_image_embeds, single_image_embeds = ip_adapter_image_embeds.chunk(2)
+            else:
+                single_image_embeds = ip_adapter_image_embeds
+        elif ip_adapter_image is not None:
             single_image_embeds = self.encode_image(ip_adapter_image)
             if do_classifier_free_guidance:
                 single_negative_image_embeds = torch.zeros_like(single_image_embeds)
         else:
-            if do_classifier_free_guidance:
-                single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-            else:
-                single_image_embeds = ip_adapter_image_embeds
+            raise ValueError("Neither `ip_adapter_image_embeds` or `ip_adapter_image_embeds` were provided.")
 
         image_embeds = torch.cat([single_image_embeds] * num_images_per_prompt, dim=0)
 
@@ -733,7 +767,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
+        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -810,11 +844,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
             ip_adapter_image (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
-                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
-                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+            ip_adapter_image_embeds (`torch.Tensor`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. Should be a tensor of shape `(batch_size, num_images,
+                emb_dim)`. It should contain the negative image embedding if `do_classifier_free_guidance` is set to
+                `True`. If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -950,8 +983,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         # 6. Prepare image embeddings
-        # Either image is passed and ip_adapter is active
-        # Or image_embeds are passed directly
         if (ip_adapter_image is not None and self.is_ip_adapter_active) or ip_adapter_image_embeds is not None:
             ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,

@@ -2119,6 +2119,19 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
 
 
 class IPAdapterTimeImageProjectionBlock(nn.Module):
+    """Block for IPAdapterTimeImageProjection.
+
+    Args:
+        hidden_dim (`int`, defaults to 1280):
+            The number of hidden channels.
+        dim_head (`int`, defaults to 64):
+            The number of head channels.
+        heads (`int`, defaults to 20):
+            Parallel attention heads.
+        ffn_ratio (`int`, defaults to 4):
+            The expansion ratio of feedforward network hidden layer channels.
+    """
+
     def __init__(
         self,
         hidden_dim: int = 1280,
@@ -2152,7 +2165,21 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         self.attn.to_k = None
         self.attn.to_v = None
 
-    def forward(self, x, latents, timestep_emb):
+    def forward(self, x: torch.Tensor, latents: torch.Tensor, timestep_emb: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x (`torch.Tensor`):
+                Image features.
+            latents (`torch.Tensor`):
+                Latent features.
+            timestep_emb (`torch.Tensor`):
+                Timestep embedding.
+
+        Returns:
+            `torch.Tensor`: Output latent features.
+        """
+
         # Shift and scale for AdaLayerNorm
         emb = self.adaln_proj(self.adaln_silu(timestep_emb))
         shift_msa, scale_msa, shift_mlp, scale_mlp = emb.chunk(4, dim=1)
@@ -2192,6 +2219,33 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
 
 # Modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
 class IPAdapterTimeImageProjection(nn.Module):
+    """Resampler of SD3 IP-Adapter with timestep embedding.
+
+    Args:
+        embed_dim (`int`, defaults to 1152):
+            The feature dimension.
+        output_dim (`int`, defaults to 2432):
+            The number of output channels.
+        hidden_dim (`int`, defaults to 1280):
+            The number of hidden channels.
+        depth (`int`, defaults to 4):
+            The number of blocks.
+        dim_head (`int`, defaults to 64):
+            The number of head channels.
+        heads (`int`, defaults to 20):
+            Parallel attention heads.
+        num_queries (`int`, defaults to 64):
+            The number of queries.
+        ffn_ratio (`int`, defaults to 4):
+            The expansion ratio of feedforward network hidden layer channels.
+        timestep_in_dim (`int`, defaults to 320):
+            The number of input channels for timestep embedding.
+        timestep_flip_sin_to_cos (`bool`, defaults to True):
+            Flip the timestep embedding order to `cos, sin` (if True) or `sin, cos` (if False).
+        timestep_freq_shift (`int`, defaults to 0):
+            Controls the timestep delta between frequencies between dimensions.
+    """
+
     def __init__(
         self,
         embed_dim: int = 1152,
@@ -2217,7 +2271,17 @@ class IPAdapterTimeImageProjection(nn.Module):
         self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
         self.time_embedding = TimestepEmbedding(timestep_in_dim, hidden_dim, act_fn="silu")
 
-    def forward(self, x, timestep):
+    def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass.
+
+        Args:
+            x (`torch.Tensor`):
+                Image features.
+            timestep (`torch.Tensor`):
+                Timestep in denoising process.
+        Returns:
+            `Tuple`[`torch.Tensor`, `torch.Tensor`]: The pair (latents, timestep_emb).
+        """
         timestep_emb = self.time_proj(timestep).to(dtype=x.dtype)
         timestep_emb = self.time_embedding(timestep_emb)
 

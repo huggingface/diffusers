@@ -331,7 +331,19 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool):
+    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool) -> None:
+        """Sets IP-Adapter attention processors, image projection, and loads state_dict.
+
+        Args:
+            state_dict (`Dict`):
+                PyTorch state dict with keys "ip_adapter", which contains parameters for attention processors, and
+                "image_proj", which contains parameters for image projection net.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
+        """
         # IP-Adapter cross attention parameters
         hidden_size = self.config.attention_head_dim * self.config.num_attention_heads
         ip_hidden_states_dim = self.config.attention_head_dim * self.config.num_attention_heads
