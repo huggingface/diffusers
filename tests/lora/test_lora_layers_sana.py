@@ -35,7 +35,7 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
     scheduler_kwargs = {}
