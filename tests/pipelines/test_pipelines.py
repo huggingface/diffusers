@@ -47,8 +47,6 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
-    FlowMatchEulerDiscreteScheduler,
-    FluxPipeline,
     LMSDiscreteScheduler,
     ModelMixin,
     PNDMScheduler,
@@ -1813,32 +1811,6 @@ class PipelineFastTests(unittest.TestCase):
 
         assert "is of type" in str(error_context.exception)
         assert "but should be" in str(error_context.exception)
-
-    def test_wrong_model_scheduler_type(self):
-        scheduler = EulerDiscreteScheduler.from_pretrained("hf-internal-testing/tiny-flux-pipe", subfolder="scheduler")
-        with self.assertLogs(
-            logging.get_logger("diffusers.pipelines.pipeline_utils"), level="WARNING"
-        ) as warning_context:
-            _ = FluxPipeline.from_pretrained("hf-internal-testing/tiny-flux-pipe", scheduler=scheduler)
-
-        assert any("Expected" in message for message in warning_context.output)
-        assert any("scheduler" in message for message in warning_context.output)
-        assert any("EulerDiscreteScheduler" in message for message in warning_context.output)
-
-    def test_wrong_model_scheduler_enum(self):
-        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-            "hf-internal-testing/diffusers-stable-diffusion-tiny-all", subfolder="scheduler"
-        )
-        with self.assertLogs(
-            logging.get_logger("diffusers.pipelines.pipeline_utils"), level="WARNING"
-        ) as warning_context:
-            _ = StableDiffusionPipeline.from_pretrained(
-                "hf-internal-testing/diffusers-stable-diffusion-tiny-all", scheduler=scheduler
-            )
-
-        assert any("Expected" in message for message in warning_context.output)
-        assert any("scheduler" in message for message in warning_context.output)
-        assert any("FlowMatchEulerDiscreteScheduler" in message for message in warning_context.output)
 
 
 @slow

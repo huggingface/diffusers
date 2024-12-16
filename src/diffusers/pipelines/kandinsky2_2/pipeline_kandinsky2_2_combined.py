@@ -140,13 +140,13 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDPMScheduler, UnCLIPScheduler],
+        scheduler: DDPMScheduler,
         movq: VQModel,
         prior_prior: PriorTransformer,
         prior_image_encoder: CLIPVisionModelWithProjection,
         prior_text_encoder: CLIPTextModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
-        prior_scheduler: Union[DDPMScheduler, UnCLIPScheduler],
+        prior_scheduler: UnCLIPScheduler,
         prior_image_processor: CLIPImageProcessor,
     ):
         super().__init__()

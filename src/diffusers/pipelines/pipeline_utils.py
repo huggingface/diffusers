@@ -46,8 +46,7 @@ from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
-from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
-from ..schedulers.scheduling_utils_flax import FlaxSchedulerMixin
+from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
@@ -839,6 +838,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for key in init_dict.keys():
             if key not in passed_class_obj:
                 continue
+            if "scheduler" in key:
+                continue
 
             class_obj = passed_class_obj[key]
             _expected_class_types = []
@@ -849,16 +850,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     _expected_class_types.append(expected_type.__name__)
 
             _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
-            if (
-                isinstance(class_obj, SchedulerMixin) or isinstance(class_obj, FlaxSchedulerMixin)
-            ) and not _is_valid_type:
-                _requires_flow_match = any("FlowMatch" in class_type for class_type in _expected_class_types)
-                _is_flow_match = "FlowMatch" in class_obj.__class__.__name__
-                if _requires_flow_match and not _is_flow_match:
-                    logger.warning(f"Expected FlowMatch scheduler, got {class_obj.__class__.__name__}.")
-                elif not _requires_flow_match and _is_flow_match:
-                    logger.warning(f"Expected non-FlowMatch scheduler, got {class_obj.__class__.__name__}.")
-            elif not _is_valid_type:
+            if not _is_valid_type:
                 logger.warning(
                     f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
                 )
