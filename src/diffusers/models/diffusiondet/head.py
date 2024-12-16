@@ -6,22 +6,14 @@ from torch import nn
 from torchvision.ops import RoIAlign
 
 
-def _fmt_box_list(box_tensor, batch_index: int):
-    repeated_index = torch.full(
-        (len(box_tensor), 1),
-        batch_index,
-        dtype=box_tensor.dtype,
-        device=box_tensor.device,
+def convert_boxes_to_pooler_format(bboxes):
+    B, N = bboxes.shape[:2]
+    sizes = torch.full((B,), N)
+    aggregated_bboxes = bboxes.view(B * N, -1)
+    indices = torch.repeat_interleave(
+        torch.arange(len(sizes), dtype=aggregated_bboxes.dtype, device=aggregated_bboxes.device), sizes
     )
-    return torch.cat((repeated_index, box_tensor), dim=1)
-
-
-def convert_boxes_to_pooler_format(box_lists):
-    pooler_fmt_boxes = torch.cat(
-        [_fmt_box_list(box_list, i) for i, box_list in enumerate(box_lists)],
-        dim=0,
-    )
-    return pooler_fmt_boxes
+    return torch.cat([indices[:, None], aggregated_bboxes], dim=1)
 
 
 def assign_boxes_to_levels(
