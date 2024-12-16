@@ -17,13 +17,15 @@ def convert_boxes_to_pooler_format(bboxes):
 
 
 def assign_boxes_to_levels(
-        box_lists,
+        bboxes,
         min_level,
         max_level,
         canonical_box_size,
         canonical_level,
 ):
-    box_sizes = torch.sqrt(torch.cat([boxes.area() for boxes in box_lists]))
+    aggregated_bboxes = bboxes.view(bboxes.shape[0] * bboxes.shape[1], -1)
+    area = (aggregated_bboxes[:, 2] - aggregated_bboxes[:, 0]) * (aggregated_bboxes[:, 3] - aggregated_bboxes[:, 1])
+    box_sizes = torch.sqrt(area)
     # Eqn.(1) in FPN paper
     level_assignments = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + 1e-8))
     # clamp level to (min, max), in case the box size is too large or too small
