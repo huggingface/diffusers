@@ -593,6 +593,7 @@ def get_3d_rotary_pos_embed(
     use_real: bool = True,
     grid_type: str = "linspace",
     max_size: Optional[Tuple[int, int]] = None,
+    device: Optional[torch.device] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """
     RoPE for video tokens with 3D structure.
@@ -620,16 +621,22 @@ def get_3d_rotary_pos_embed(
     if grid_type == "linspace":
         start, stop = crops_coords
         grid_size_h, grid_size_w = grid_size
-        grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
-        grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
-        grid_t = np.arange(temporal_size, dtype=np.float32)
-        grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+        grid_h = torch.linspace(
+            start[0], stop[0] * (grid_size_h - 1) / grid_size_h, grid_size_h, device=device, dtype=torch.float32
+        )
+        grid_w = torch.linspace(
+            start[1], stop[1] * (grid_size_w - 1) / grid_size_w, grid_size_w, device=device, dtype=torch.float32
+        )
+        grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32)
+        grid_t = torch.linspace(
+            0, temporal_size * (temporal_size - 1) / temporal_size, temporal_size, device=device, dtype=torch.float32
+        )
     elif grid_type == "slice":
         max_h, max_w = max_size
         grid_size_h, grid_size_w = grid_size
-        grid_h = np.arange(max_h, dtype=np.float32)
-        grid_w = np.arange(max_w, dtype=np.float32)
-        grid_t = np.arange(temporal_size, dtype=np.float32)
+        grid_h = torch.arange(max_h, device=device, dtype=torch.float32)
+        grid_w = torch.arange(max_w, device=device, dtype=torch.float32)
+        grid_t = torch.arange(temporal_size, device=device, dtype=torch.float32)
     else:
         raise ValueError("Invalid value passed for `grid_type`.")
 
@@ -639,10 +646,10 @@ def get_3d_rotary_pos_embed(
     dim_w = embed_dim // 8 * 3
 
     # Temporal frequencies
-    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, use_real=True)
+    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, theta=theta, use_real=True)
     # Spatial frequencies for height and width
-    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h, use_real=True)
-    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w, use_real=True)
+    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h, theta=theta, use_real=True)
+    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w, theta=theta, use_real=True)
 
     # BroadCast and concatenate temporal and spaial frequencie (height and width) into a 3d tensor
     def combine_time_height_width(freqs_t, freqs_h, freqs_w):
@@ -685,14 +692,21 @@ def get_3d_rotary_pos_embed_allegro(
     temporal_size,
     interpolation_scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     theta: int = 10000,
+    device: Optional[torch.device] = None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     # TODO(aryan): docs
     start, stop = crops_coords
     grid_size_h, grid_size_w = grid_size
     interpolation_scale_t, interpolation_scale_h, interpolation_scale_w = interpolation_scale
-    grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
-    grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
-    grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+    grid_t = torch.linspace(
+        0, temporal_size * (temporal_size - 1) / temporal_size, temporal_size, device=device, dtype=torch.float32
+    )
+    grid_h = torch.linspace(
+        start[0], stop[0] * (grid_size_h - 1) / grid_size_h, grid_size_h, device=device, dtype=torch.float32
+    )
+    grid_w = torch.linspace(
+        start[1], stop[1] * (grid_size_w - 1) / grid_size_w, grid_size_w, device=device, dtype=torch.float32
+    )
 
     # Compute dimensions for each axis
     dim_t = embed_dim // 3
