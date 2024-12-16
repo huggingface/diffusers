@@ -39,7 +39,7 @@ class DiffusionDet(nn.Module):
             x_boxes = torch.rand(1, 300, 4)
             t = torch.rand(1)
 
-            outputs_class, outputs_coord = self.head(features, x_boxes, t, None)
+            outputs_class, outputs_coord = self.head(features, x_boxes, t)
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
             # loss_dict = self.criterion(output, targets)
