@@ -26,37 +26,8 @@ from ..activations import get_activation
 from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm, get_normalization
+from ..transformers.sana_transformer import GLUMBConv
 from .vae import DecoderOutput, EncoderOutput
-
-
-class GLUMBConv(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int) -> None:
-        super().__init__()
-
-        hidden_channels = 4 * in_channels
-
-        self.nonlinearity = nn.SiLU()
-
-        self.conv_inverted = nn.Conv2d(in_channels, hidden_channels * 2, 1, 1, 0)
-        self.conv_depth = nn.Conv2d(hidden_channels * 2, hidden_channels * 2, 3, 1, 1, groups=hidden_channels * 2)
-        self.conv_point = nn.Conv2d(hidden_channels, out_channels, 1, 1, 0, bias=False)
-        self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        residual = hidden_states
-
-        hidden_states = self.conv_inverted(hidden_states)
-        hidden_states = self.nonlinearity(hidden_states)
-
-        hidden_states = self.conv_depth(hidden_states)
-        hidden_states, gate = torch.chunk(hidden_states, 2, dim=1)
-        hidden_states = hidden_states * self.nonlinearity(gate)
-
-        hidden_states = self.conv_point(hidden_states)
-        # move channel to the last dimension so we apply RMSnorm across channel dimension
-        hidden_states = self.norm(hidden_states.movedim(1, -1)).movedim(-1, 1)
-
-        return hidden_states + residual
 
 
 class ResBlock(nn.Module):
@@ -115,6 +86,7 @@ class EfficientViTBlock(nn.Module):
         self.conv_out = GLUMBConv(
             in_channels=in_channels,
             out_channels=in_channels,
+            norm_type="rms_norm",
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
