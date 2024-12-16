@@ -134,8 +134,8 @@ class ROIPooler(nn.Module):
             output_size = (output_size, output_size)
         assert len(output_size) == 2 and isinstance(output_size[0], int) and isinstance(output_size[1], int)
         assert math.isclose(min_level, int(min_level)) and math.isclose(max_level, int(max_level))
-        assert (len(scales) == self.max_level - self.min_level + 1)
-        assert 0 <= self.min_level <= self.max_level
+        assert (len(scales) == max_level - min_level + 1)
+        assert 0 <= min_level <= max_level
         assert canonical_box_size > 0
 
         self.output_size = output_size
