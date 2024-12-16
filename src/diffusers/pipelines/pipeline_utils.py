@@ -848,7 +848,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     _expected_class_types.append(expected_type.__name__)
 
             _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
-            if isinstance(class_obj, SchedulerMixin) and not _is_valid_type:
+            if (isinstance(class_obj, SchedulerMixin) or isinstance(class_obj, FlaxSchedulerMixin)) and not _is_valid_type:
                 _requires_flow_match = any("FlowMatch" in class_type for class_type in _expected_class_types)
                 _is_flow_match = "FlowMatch" in class_obj.__class__.__name__
                 if _requires_flow_match and not _is_flow_match:
