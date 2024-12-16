@@ -5735,6 +5735,7 @@ AttentionProcessor = Union[
     AttnProcessorNPU,
     AttnProcessor2_0,
     MochiVaeAttnProcessor2_0,
+    MochiAttnProcessor2_0,
     StableAudioAttnProcessor2_0,
     HunyuanAttnProcessor2_0,
     FusedHunyuanAttnProcessor2_0,
