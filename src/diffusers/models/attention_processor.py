@@ -5426,6 +5426,7 @@ class LoRAAttnProcessor:
     r"""
     Processor for implementing attention with LoRA.
     """
+
     def __init__(self):
         pass
 
@@ -5434,6 +5435,7 @@ class LoRAAttnProcessor2_0:
     r"""
     Processor for implementing attention with LoRA (enabled by default if you're using PyTorch 2.0).
     """
+
     def __init__(self):
         pass
 
@@ -5442,6 +5444,7 @@ class LoRAXFormersAttnProcessor:
     r"""
     Processor for implementing attention with LoRA using xFormers.
     """
+
     def __init__(self):
         pass
 
@@ -5450,6 +5453,7 @@ class LoRAAttnAddedKVProcessor:
     r"""
     Processor for implementing attention with LoRA with extra learnable key and value matrices for the text encoder.
     """
+
     def __init__(self):
         pass
 
