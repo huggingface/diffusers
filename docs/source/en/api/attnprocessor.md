@@ -120,7 +120,7 @@ An attention processor is a class for applying different types of attention mech
 
 [[autodo]] models.attention_processor.SanaLinearAttnProcessor2_0
 
-[[autodoc]] models.attention_processor.SanaMultscaleAttnProcessor2_0
+[[autodoc]] models.attention_processor.SanaMultiscaleAttnProcessor2_0
 
 [[autodoc]] models.attention_processor.PAGCFGSanaLinearAttnProcessor2_0
 
