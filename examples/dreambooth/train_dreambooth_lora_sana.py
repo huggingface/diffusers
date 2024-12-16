@@ -287,7 +287,7 @@ def parse_args(input_args=None):
         "--complex_human_instruction",
         type=str,
         default=None,
-        help="TODO",
+        help="Instructions for complex human attention: https://github.com/NVlabs/Sana/blob/main/configs/sana_app_config/Sana_1600M_app.yaml#L55.",
     )
     parser.add_argument(
         "--validation_prompt",
