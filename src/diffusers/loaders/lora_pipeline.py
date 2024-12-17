@@ -2397,7 +2397,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer_module_names = sorted({name for name, _ in transformer.named_modules()})
         unexpected_modules = set(lora_module_names) - set(transformer_module_names)
         if unexpected_modules:
-            logger.info(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
+            logger.debug(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
 
         is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for k in lora_module_names:
