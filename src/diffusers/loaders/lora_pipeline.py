@@ -2405,18 +2405,16 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 continue
 
             base_param_name = (
-                f"{k.replace(f'{cls.transformer_name}.', '')}.base_layer.weight"
-                if is_peft_loaded
-                else f"{k.replace(f'{cls.transformer_name}.', '')}.weight"
+                f"{k.replace(prefix, '')}.base_layer.weight" if is_peft_loaded else f"{k.replace(prefix, '')}.weight"
             )
             base_weight_param = transformer_state_dict[base_param_name]
-            lora_A_param = lora_state_dict[f"{cls.transformer_name}.{k}.lora_A.weight"]
+            lora_A_param = lora_state_dict[f"{prefix}{k}.lora_A.weight"]
 
             if base_weight_param.shape[1] > lora_A_param.shape[1]:
                 shape = (lora_A_param.shape[0], base_weight_param.shape[1])
                 expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
                 expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
-                lora_state_dict[f"{k}.lora_A.weight"] = expanded_state_dict_weight
+                lora_state_dict[f"{prefix}{k}.lora_A.weight"] = expanded_state_dict_weight
                 expanded_module_names.add(k)
             elif base_weight_param.shape[1] < lora_A_param.shape[1]:
                 raise NotImplementedError(
@@ -2425,8 +2423,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         if expanded_module_names:
             logger.info(
-                f"Found some LoRA modules for which the weights were zero-padded: {expanded_module_names}. Please open an issue if you think this was unexpected - https://github.com/huggingface/diffusers/issues/new."
+                f"The following LoRA modules were zero padded to match the state dict of {cls.transformer_name}: {expanded_module_names}. Please open an issue if you think this was unexpected - https://github.com/huggingface/diffusers/issues/new."
             )
+
         return lora_state_dict
 
 

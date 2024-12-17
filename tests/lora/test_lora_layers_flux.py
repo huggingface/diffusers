@@ -627,7 +627,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         lora_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        self.assertTrue("Found some LoRA modules for which the weights were zero-padded" in cap_logger.out)
+        self.assertTrue("The following LoRA modules were zero padded to match the state dict of" in cap_logger.out)
         self.assertTrue(pipe.transformer.x_embedder.weight.data.shape[1] == in_features * 2)
         self.assertFalse(np.allclose(original_output, lora_output, atol=1e-3, rtol=1e-3))
 
