@@ -2407,7 +2407,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 expanded_module_names.add(k)
             elif base_weight_param.shape[1] < lora_A_param.shape[1]:
                 raise NotImplementedError(
-                    "We currently don't support loading LoRAs for this use case. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
+                    f"This LoRA param ({k}.lora_A.weight) has an incompatible shape {lora_A_param.shape}. Please open an issue to file for a feature request - https://github.com/huggingface/diffusers/issues/new."
                 )
 
         if expanded_module_names:
