@@ -2530,8 +2530,6 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
         image_projection: Optional[List[torch.Tensor]] = None,
         ip_adapter_masks: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-        if image_projection is None:
-            raise ValueError("image_projection is None")
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
 
         # `sample` projections.
@@ -2606,8 +2604,7 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             ip_query = hidden_states_query_proj
             ip_attn_output = None
             # for ip-adapter
-            # TODO: fix for multiple
-            # NOTE: run zeros image embed at the same time?
+            # TODO: support for multiple adapters
             for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
                 ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
             ):
