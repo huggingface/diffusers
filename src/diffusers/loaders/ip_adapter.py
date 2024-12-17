@@ -386,8 +386,8 @@ class FluxIPAdapterMixin:
             image_encoder_pretrained_model_name_or_path (`str`, *optional*, defaults to `./image_encoder`):
                 Can be either:
 
-                    - A string, the *model id* (for example `openai/clip-vit-large-patch14`) of a pretrained model hosted on
-                      the Hub.
+                    - A string, the *model id* (for example `openai/clip-vit-large-patch14`) of a pretrained model
+                      hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`ModelMixin.save_pretrained`].
             cache_dir (`Union[str, os.PathLike]`, *optional*):
