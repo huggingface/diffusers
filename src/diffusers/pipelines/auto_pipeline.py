@@ -23,6 +23,7 @@ from ..loaders.single_file_utils import (
     infer_diffusers_model_type,
     load_single_file_checkpoint,
 )
+from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .animatediff import AnimateDiffPipeline, AnimateDiffSDXLPipeline
 from .aura_flow import AuraFlowPipeline
@@ -34,6 +35,9 @@ from .controlnet import (
     StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetUnionImg2ImgPipeline,
+    StableDiffusionXLControlNetUnionInpaintPipeline,
+    StableDiffusionXLControlNetUnionPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
 from .flux import (
@@ -118,6 +122,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky3", Kandinsky3Pipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
         ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
@@ -149,6 +154,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionImg2ImgPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-pag", StableDiffusionXLControlNetPAGImg2ImgPipeline),
         ("lcm", LatentConsistencyModelImg2ImgPipeline),
@@ -168,6 +174,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
         ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGInpaintPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
+        ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionInpaintPipeline),
         ("stable-diffusion-xl-pag", StableDiffusionXLPAGInpaintPipeline),
         ("flux", FluxInpaintPipeline),
         ("flux-controlnet", FluxControlNetInpaintPipeline),
@@ -578,7 +585,10 @@ class AutoPipelineForText2Image(ConfigMixin):
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
-            orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetUnionPipeline")
+            else:
+                orig_class_name = config["_class_name"].replace("Pipeline", "ControlNetPipeline")
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
@@ -1036,7 +1046,10 @@ class AutoPipelineForImage2Image(ConfigMixin):
         to_replace = "Img2ImgPipeline" if "Img2Img" in config["_class_name"] else "Pipeline"
 
         if "controlnet" in kwargs:
-            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+            else:
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
@@ -1499,7 +1512,10 @@ class AutoPipelineForInpainting(ConfigMixin):
         to_replace = "InpaintPipeline" if "Inpaint" in config["_class_name"] else "Pipeline"
 
         if "controlnet" in kwargs:
-            orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
+            if isinstance(kwargs["controlnet"], ControlNetUnionModel):
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNetUnion" + to_replace)
+            else:
+                orig_class_name = orig_class_name.replace(to_replace, "ControlNet" + to_replace)
         if "enable_pag" in kwargs:
             enable_pag = kwargs.pop("enable_pag")
             if enable_pag:
