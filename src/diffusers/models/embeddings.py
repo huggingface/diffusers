@@ -542,7 +542,6 @@ class PatchEmbed(nn.Module):
             height, width = latent.shape[-2:]
         else:
             height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
-
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
