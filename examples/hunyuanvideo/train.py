@@ -1165,8 +1165,8 @@ def main(args):
     transformer.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
-    # if args.gradient_checkpointing:
-    #     transformer.enable_gradient_checkpointing()
+    if args.gradient_checkpointing:
+        transformer.enable_gradient_checkpointing()
 
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
