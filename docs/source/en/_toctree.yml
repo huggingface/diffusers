@@ -159,6 +159,8 @@
     title: bitsandbytes
   - local: quantization/gguf
     title: gguf
+  - local: quantization/torchao
+    title: torchao
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -254,6 +256,8 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
+      - local: api/models/controlnet_union
+        title: ControlNetUnionModel
       title: ControlNets
     - sections:
       - local: api/models/allegro_transformer3d
@@ -270,10 +274,14 @@
         title: FluxTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuan_video_transformer_3d
+        title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/ltx_video_transformer3d
+        title: LTXVideoTransformer3DModel
       - local: api/models/mochi_transformer3d
         title: MochiTransformer3DModel
       - local: api/models/pixart_transformer2d
@@ -282,6 +290,8 @@
         title: PriorTransformer
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
+      - local: api/models/sana_transformer2d
+        title: SanaTransformer2DModel
       - local: api/models/stable_audio_transformer
         title: StableAudioDiTModel
       - local: api/models/transformer2d
@@ -312,6 +322,10 @@
         title: AutoencoderKLAllegro
       - local: api/models/autoencoderkl_cogvideox
         title: AutoencoderKLCogVideoX
+      - local: api/models/autoencoder_kl_hunyuan_video
+        title: AutoencoderKLHunyuanVideo
+      - local: api/models/autoencoderkl_ltx_video
+        title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/asymmetricautoencoderkl
@@ -370,6 +384,8 @@
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
       title: ControlNet-XS with Stable Diffusion XL
+    - local: api/pipelines/controlnet_union
+      title: ControlNetUnion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -386,6 +402,8 @@
       title: Flux
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
+    - local: api/pipelines/hunyuan_video
+      title: HunyuanVideo
     - local: api/pipelines/i2vgenxl
       title: I2VGen-XL
     - local: api/pipelines/pix2pix
@@ -406,6 +424,8 @@
       title: Latte
     - local: api/pipelines/ledits_pp
       title: LEDITS++
+    - local: api/pipelines/ltx_video
+      title: LTX
     - local: api/pipelines/lumina
       title: Lumina-T2X
     - local: api/pipelines/marigold
@@ -426,6 +446,8 @@
       title: PixArt-α
     - local: api/pipelines/pixart_sigma
       title: PixArt-Σ
+    - local: api/pipelines/sana
+      title: Sana
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
