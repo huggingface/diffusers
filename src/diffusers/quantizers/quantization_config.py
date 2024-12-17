@@ -406,7 +406,7 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
     """
 
-    def __init__(self, compute_dtype: torch.dtype = None):
+    def __init__(self, compute_dtype: Optional["torch.dtype"] = None):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
         self.pre_quantized = True
