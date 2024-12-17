@@ -957,7 +957,9 @@ def get_3d_rotary_pos_embed_allegro(
     return freqs_t, freqs_h, freqs_w, grid_t, grid_h, grid_w
 
 
-def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, device: Optional[torch.device] = None):
+def get_2d_rotary_pos_embed(
+    embed_dim, crops_coords, grid_size, use_real=True, device: Optional[torch.device] = None, output_type: str = "np"
+):
     """
     RoPE for image tokens with 2d structure.
 
@@ -976,6 +978,19 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, d
     Returns:
         `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
     """
+    if output_type == "np":
+        deprecation_message = (
+            "`get_2d_sincos_pos_embed` uses `torch` and supports `device`."
+            " `from_numpy` is no longer required."
+            "  Pass `output_type='pt' to use the new version now."
+        )
+        deprecate("output_type=='np'", "0.33.0", deprecation_message, standard_warn=False)
+        return _get_2d_rotary_pos_embed_np(
+            embed_dim=embed_dim,
+            crops_coords=crops_coords,
+            grid_size=grid_size,
+            use_real=use_real,
+        )
     start, stop = crops_coords
     # scale end by (steps−1)/steps matches np.linspace(..., endpoint=False)
     grid_h = torch.linspace(
@@ -986,6 +1001,34 @@ def get_2d_rotary_pos_embed(embed_dim, crops_coords, grid_size, use_real=True, d
     )
     grid = torch.meshgrid(grid_w, grid_h, indexing="xy")
     grid = torch.stack(grid, dim=0)  # [2, W, H]
+
+    grid = grid.reshape([2, 1, *grid.shape[1:]])
+    pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)
+    return pos_embed
+
+
+def _get_2d_rotary_pos_embed_np(embed_dim, crops_coords, grid_size, use_real=True):
+    """
+    RoPE for image tokens with 2d structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size
+    crops_coords (`Tuple[int]`)
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the positional embedding.
+    use_real (`bool`):
+        If True, return real part and imaginary part separately. Otherwise, return complex numbers.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `( grid_size * grid_size, embed_dim/2)`.
+    """
+    start, stop = crops_coords
+    grid_h = np.linspace(start[0], stop[0], grid_size[0], endpoint=False, dtype=np.float32)
+    grid_w = np.linspace(start[1], stop[1], grid_size[1], endpoint=False, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)  # [2, W, H]
 
     grid = grid.reshape([2, 1, *grid.shape[1:]])
     pos_embed = get_2d_rotary_pos_embed_from_grid(embed_dim, grid, use_real=use_real)

@@ -822,6 +822,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
             grid_crops_coords,
             (grid_height, grid_width),
             device=device,
+            output_type="pt",
         )
 
         style = torch.tensor([0], device=device)
