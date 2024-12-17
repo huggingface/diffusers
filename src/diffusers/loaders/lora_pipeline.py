@@ -3104,7 +3104,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogVideoXTransformer3DModel
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->MochiTransformer3DModel
     def load_lora_into_transformer(
         cls, state_dict, transformer, adapter_name=None, _pipeline=None, low_cpu_mem_usage=False
     ):
@@ -3116,7 +3116,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            transformer (`CogVideoXTransformer3DModel`):
+            transformer (`MochiTransformer3DModel`):
                 The Transformer model to load the LoRA layers into.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
