@@ -479,6 +479,8 @@ def is_imageio_available():
 
 def is_gguf_available():
     return _is_gguf_available
+
+
 def is_torchao_available():
     return _is_torchao_available
 
@@ -622,7 +624,8 @@ GGUF_IMPORT_ERROR = """
 """
 
 TORCHAO_IMPORT_ERROR = """
-{0} requires the torchao library but it was not found in your environment. You can install it with pip: `pip install torchao`
+{0} requires the torchao library but it was not found in your environment. You can install it with pip: `pip install
+torchao`
 """
 
 BACKENDS_MAPPING = OrderedDict(

@@ -395,19 +395,29 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         return serializable_config_dict
 
 
+@dataclass
 class GGUFQuantizationConfig(QuantizationConfigMixin):
-    def __init__(self, compute_dtype=None, quant_storage=None, modules_to_not_convert=None):
+    """This is a config class for GGUF Quantization techniques.
+
+    Args:
+        compute_dtype: (`torch.dtype`, defaults to `torch.float32`):
+            This sets the computational type which might be different than the input type. For example, inputs might be
+            fp32, but computation can be set to bf16 for speedups.
+
+    """
+
+    def __init__(self, compute_dtype: torch.dtype = None):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
-        self.quant_storage = quant_storage
         self.pre_quantized = True
-        self.modules_to_not_convert = modules_to_not_convert
+
+        # TODO: (Dhruv) Add this as an init argument when we can support loading unquantized checkpoints.
+        self.modules_to_not_convert = []
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
 
-        if self.quant_storage is None:
-            self.quant_storage = torch.uint8
+
 @dataclass
 class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
