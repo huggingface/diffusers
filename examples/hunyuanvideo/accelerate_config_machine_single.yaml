@@ -1,0 +1,13 @@
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+deepspeed_config:
+  deepspeed_config_file: zero_stage2_config.json
+fsdp_config: {}
+machine_rank: 0
+main_process_ip: null
+main_process_port: 12345
+main_training_function: main
+num_machines: 1
+num_processes: 6
+gpu_ids: 0,1,2,3,4,5
+use_cpu: false
