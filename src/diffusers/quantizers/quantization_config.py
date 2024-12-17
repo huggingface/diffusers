@@ -412,7 +412,7 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
         self.pre_quantized = True
 
         # TODO: (Dhruv) Add this as an init argument when we can support loading unquantized checkpoints.
-        self.modules_to_not_convert = []
+        self.modules_to_not_convert = None
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32

@@ -487,6 +487,8 @@ def require_gguf_version_greater_or_equal(gguf_version):
             correct_gguf_version, f"Test requires gguf with the version greater than {gguf_version}."
         )(test_case)
 
+    return decorator
+
 
 def require_torchao_version_greater(torchao_version):
     def decorator(test_case):
