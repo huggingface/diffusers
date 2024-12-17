@@ -74,6 +74,20 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.16,
+):
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -224,6 +238,9 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         )
         self.tokenizer_max_length = self.tokenizer.model_max_length
         self.default_sample_size = self.transformer.config.sample_size
+        self.patch_size = (
+            self.transformer.config.patch_size if hasattr(self, "transformer") and self.transformer is not None else 2
+        )
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
@@ -538,6 +555,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         prompt,
         prompt_2,
         prompt_3,
+        height,
+        width,
         strength,
         negative_prompt=None,
         negative_prompt_2=None,
@@ -549,6 +568,15 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if (
+            height % (self.vae_scale_factor * self.patch_size) != 0
+            or width % (self.vae_scale_factor * self.patch_size) != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * self.patch_size} but are {height} and {width}."
+                f"You can use height {height - height % (self.vae_scale_factor * self.patch_size)} and width {width - width % (self.vae_scale_factor * self.patch_size)}."
+            )
+
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -824,6 +852,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 256,
+        mu: Optional[float] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -933,6 +962,7 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            mu (`float`, *optional*): `mu` value used for `dynamic_shifting`.
 
         Examples:
 
@@ -953,6 +983,8 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             prompt,
             prompt_2,
             prompt_3,
+            height,
+            width,
             strength,
             negative_prompt=negative_prompt,
             negative_prompt_2=negative_prompt_2,
@@ -1007,7 +1039,24 @@ class StableDiffusion3InpaintPipeline(DiffusionPipeline, SD3LoraLoaderMixin, Fro
             pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 
         # 3. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+        scheduler_kwargs = {}
+        if self.scheduler.config.get("use_dynamic_shifting", None) and mu is None:
+            image_seq_len = (int(height) // self.vae_scale_factor // self.transformer.config.patch_size) * (
+                int(width) // self.vae_scale_factor // self.transformer.config.patch_size
+            )
+            mu = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.base_image_seq_len,
+                self.scheduler.config.max_image_seq_len,
+                self.scheduler.config.base_shift,
+                self.scheduler.config.max_shift,
+            )
+            scheduler_kwargs["mu"] = mu
+        elif mu is not None:
+            scheduler_kwargs["mu"] = mu
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, sigmas=sigmas, **scheduler_kwargs
+        )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         # check that number of inference steps is not < 1 - as this doesn't make sense
         if num_inference_steps < 1:

@@ -2338,12 +2338,19 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                         f"this please open an issue at https://github.com/huggingface/diffusers/issues."
                     )
 
-                logger.debug(
+                debug_message = (
                     f'Expanding the nn.Linear input/output features for module="{name}" because the provided LoRA '
                     f"checkpoint contains higher number of features than expected. The number of input_features will be "
-                    f"expanded from {module_in_features} to {in_features}, and the number of output features will be "
-                    f"expanded from {module_out_features} to {out_features}."
+                    f"expanded from {module_in_features} to {in_features}"
                 )
+                if module_out_features != out_features:
+                    debug_message += (
+                        ", and the number of output features will be "
+                        f"expanded from {module_out_features} to {out_features}."
+                    )
+                else:
+                    debug_message += "."
+                logger.debug(debug_message)
 
                 has_param_with_shape_update = True
                 parent_module_name, _, current_module_name = name.rpartition(".")
