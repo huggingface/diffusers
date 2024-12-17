@@ -2353,21 +2353,24 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     parent_module_name, _, current_module_name = name.rpartition(".")
                     parent_module = transformer.get_submodule(parent_module_name)
 
-                    # TODO: consider initializing this under meta device for optims.
-                    expanded_module = torch.nn.Linear(
-                        in_features, out_features, bias=bias, device=module_weight.device, dtype=module_weight.dtype
-                    )
+                    with torch.device("meta"):
+                        expanded_module = torch.nn.Linear(
+                            in_features, out_features, bias=bias, dtype=module_weight.dtype
+                        )
                     # Only weights are expanded and biases are not.
                     new_weight = torch.zeros_like(
                         expanded_module.weight.data, device=module_weight.device, dtype=module_weight.dtype
                     )
                     slices = tuple(slice(0, dim) for dim in module_weight.shape)
                     new_weight[slices] = module_weight
-                    expanded_module.weight.data.copy_(new_weight)
+                    tmp_state_dict = {"weight": new_weight}
                     if module_bias is not None:
-                        expanded_module.bias.data.copy_(module_bias)
+                        tmp_state_dict["bias"] = module_bias
+                    expanded_module.load_state_dict(tmp_state_dict, strict=True, assign=True)
 
                     setattr(parent_module, current_module_name, expanded_module)
+
+                    del tmp_state_dict
 
                     if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
                         attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
