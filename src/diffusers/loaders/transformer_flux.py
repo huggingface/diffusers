@@ -62,10 +62,11 @@ class FluxTransformer2DLoadersMixin:
 
         if "proj.weight" in state_dict:
             # IP-Adapter
-            # TODO: fix for XLabs-AI/flux-ip-adapter-v2
             num_image_text_embeds = 4
+            if state_dict["proj.weight"].shape[0] == 65536:
+                num_image_text_embeds = 16
             clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
-            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+            cross_attention_dim = state_dict["proj.weight"].shape[0] // num_image_text_embeds
 
             with init_context():
                 image_projection = ImageProjection(
@@ -124,9 +125,11 @@ class FluxTransformer2DLoadersMixin:
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:
+                        num_image_text_embed = 4
+                        if state_dict["image_proj"]["proj.weight"].shape[0] == 65536:
+                            num_image_text_embed = 16
                         # IP-Adapter
-                        # TODO: change for XLabs-AI/flux-ip-adapter-v2
-                        num_image_text_embeds += [4]
+                        num_image_text_embeds += [num_image_text_embed]
 
                 with init_context():
                     attn_procs[name] = attn_processor_class(

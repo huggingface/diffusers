@@ -549,10 +549,14 @@ class FluxIPAdapterMixin:
         # load ip-adapter into transformer
         self.transformer._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
-    def set_ip_adapter_scale(self, scale):
+    def set_ip_adapter_scale(self, scale: Union[float, List[float], List[List[float]]]):
         """
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
-        granular control over each IP-Adapter behavior. A config can be a float or a dictionary.
+        granular control over each IP-Adapter behavior. A config can be a float or a list.
+
+        `float` is converted to list and repeated for the number of blocks and the number of IP adapters.
+        `List[float]` length match the number of blocks, it is repeated for each IP adapter.
+        `List[List[float]]` must match the number of IP adapters and each must match the number of blocks.
 
         Example:
 
@@ -560,14 +564,26 @@ class FluxIPAdapterMixin:
         # To use original IP-Adapter
         scale = 1.0
         pipeline.set_ip_adapter_scale(scale)
+        def LinearStrengthModel(start, finish, size):
+            return [
+                (start + (finish - start) * (i / (size - 1))) for i in range(size)
+            ]
+
+        ip_strengths = LinearStrengthModel(0.3, 0.92, 19)
+        pipeline.set_ip_adapter_scale(ip_strengths)
         ```
         """
         transformer = self.transformer
         if not isinstance(scale, list):
+            scale = [[scale] * transformer.config.num_layers]
+        elif isinstance(scale, list) and isinstance(scale[0], int) or isinstance(scale[0], float):
+            if len(scale) != transformer.config.num_layers:
+                raise ValueError(f"Expected list of {transformer.config.num_layers} scales, got {len(scale)}.")
             scale = [scale]
 
         scale_configs = scale
 
+        key_id = 0
         for attn_name, attn_processor in transformer.attn_processors.items():
             if isinstance(attn_processor, (FluxIPAdapterJointAttnProcessor2_0)):
                 if len(scale_configs) != len(attn_processor.scale):
@@ -578,7 +594,8 @@ class FluxIPAdapterMixin:
                 elif len(scale_configs) == 1:
                     scale_configs = scale_configs * len(attn_processor.scale)
                 for i, scale_config in enumerate(scale_configs):
-                    attn_processor.scale[i] = scale_config
+                    attn_processor.scale[i] = scale_config[key_id]
+                key_id += 1
 
     def unload_ip_adapter(self):
         """
