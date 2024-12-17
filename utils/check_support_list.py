@@ -7,11 +7,6 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """
 Utility that checks that modules like attention processors are listed in the documentation file.
 
@@ -21,124 +16,109 @@ python utils/check_support_list.py
 
 It has no auto-fix mode.
 """
+
 import os
 import re
 
 
-# All paths are set with the intent you should run this script from the root of the repo with the command
-# python utils/check_doctest_list.py
+# All paths are set with the intent that you run this script from the root of the repo
 REPO_PATH = "."
 
 
-def check_attention_processors():
-    with open(os.path.join(REPO_PATH, "docs/source/en/api/attnprocessor.md"), "r") as f:
+def read_documented_classes(doc_path, autodoc_regex=r"\[\[autodoc\]\]\s([^\n]+)"):
+    """
+    Reads documented classes from a doc file using a regex to find lines like [[autodoc]] my.module.Class.
+    Returns a list of documented class names (just the class name portion).
+    """
+    with open(os.path.join(REPO_PATH, doc_path), "r") as f:
         doctext = f.read()
-        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
-        documented_attention_processors = [match.split(".")[-1] for match in matches]
+    matches = re.findall(autodoc_regex, doctext)
+    return [match.split(".")[-1] for match in matches]
 
-    with open(os.path.join(REPO_PATH, "src/diffusers/models/attention_processor.py"), "r") as f:
+
+def read_source_classes(src_path, class_regex, exclude_conditions=None):
+    """
+    Reads class names from a source file using a regex that captures class definitions.
+    Optionally exclude classes based on a list of conditions (functions that take class name and return bool).
+    """
+    if exclude_conditions is None:
+        exclude_conditions = []
+    with open(os.path.join(REPO_PATH, src_path), "r") as f:
         doctext = f.read()
-        processor_classes = re.findall(r"class\s+(\w+Processor(?:\d*_?\d*))[(:]", doctext)
-        processor_classes = [proc for proc in processor_classes if "LoRA" not in proc and proc != "Attention"]
-
-    undocumented_attn_processors = set()
-    for processor in processor_classes:
-        if processor not in documented_attention_processors:
-            undocumented_attn_processors.add(processor)
-
-    if undocumented_attn_processors:
-        raise ValueError(
-            f"The following attention processors should be in listed in the attention processor documentation but are not: {list(undocumented_attn_processors)}. Please update the documentation."
-        )
+    classes = re.findall(class_regex, doctext)
+    # Filter out classes that meet any of the exclude conditions
+    filtered_classes = [c for c in classes if not any(cond(c) for cond in exclude_conditions)]
+    return filtered_classes
 
 
-def check_image_processors():
-    with open(os.path.join(REPO_PATH, "docs/source/en/api/image_processor.md"), "r") as f:
-        doctext = f.read()
-        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
-        documented_image_processors = [match.split(".")[-1] for match in matches]
+def check_documentation(doc_path, src_path, doc_regex, src_regex, exclude_conditions=None):
+    """
+    Generic function to check if all classes defined in `src_path` are documented in `doc_path`.
+    Returns a set of undocumented class names.
+    """
+    documented = set(read_documented_classes(doc_path, doc_regex))
+    source_classes = set(read_source_classes(src_path, src_regex, exclude_conditions=exclude_conditions))
 
-    with open(os.path.join(REPO_PATH, "src/diffusers/image_processor.py"), "r") as f:
-        doctext = f.read()
-        processor_classes = re.findall(r"class\s+(\w+Processor(?:\d*_?\d*))[(:]", doctext)
-
-    undocumented_img_processors = set()
-    for processor in processor_classes:
-        if processor not in documented_image_processors:
-            undocumented_img_processors.add(processor)
-            raise ValueError(
-                f"The following image processors should be in listed in the image processor documentation but are not: {list(undocumented_img_processors)}. Please update the documentation."
-            )
-
-
-def check_activations():
-    with open(os.path.join(REPO_PATH, "docs/source/en/api/activations.md"), "r") as f:
-        doctext = f.read()
-        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
-        documented_activations = [match.split(".")[-1] for match in matches]
-
-    with open(os.path.join(REPO_PATH, "src/diffusers/models/activations.py"), "r") as f:
-        doctext = f.read()
-        activation_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
-
-    undocumented_activations = set()
-    for activation in activation_classes:
-        if activation not in documented_activations:
-            undocumented_activations.add(activation)
-
-    if undocumented_activations:
-        raise ValueError(
-            f"The following activations should be in listed in the activations documentation but are not: {list(undocumented_activations)}. Please update the documentation."
-        )
-
-
-def check_normalizations():
-    with open(os.path.join(REPO_PATH, "docs/source/en/api/normalization.md"), "r") as f:
-        doctext = f.read()
-        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
-        documented_normalizations = [match.split(".")[-1] for match in matches]
-
-    with open(os.path.join(REPO_PATH, "src/diffusers/models/normalization.py"), "r") as f:
-        doctext = f.read()
-        normalization_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
-        # LayerNorm is an exception because adding doc for is confusing.
-        normalization_classes = [norm for norm in normalization_classes if norm != "LayerNorm"]
-
-    undocumented_norms = set()
-    for norm in normalization_classes:
-        if norm not in documented_normalizations:
-            undocumented_norms.add(norm)
-
-    if undocumented_norms:
-        raise ValueError(
-            f"The following norms should be in listed in the normalizations documentation but are not: {list(undocumented_norms)}. Please update the documentation."
-        )
-
-
-def check_lora_mixins():
-    with open(os.path.join(REPO_PATH, "docs/source/en/api/loaders/lora.md"), "r") as f:
-        doctext = f.read()
-        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
-        documented_loras = [match.split(".")[-1] for match in matches]
-
-    with open(os.path.join(REPO_PATH, "src/diffusers/loaders/lora_pipeline.py"), "r") as f:
-        doctext = f.read()
-        lora_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
-
-    undocumented_loras = set()
-    for lora in lora_classes:
-        if lora not in documented_loras:
-            undocumented_loras.add(lora)
-
-    if undocumented_loras:
-        raise ValueError(
-            f"The following LoRA mixins should be in listed in the LoRA loader documentation but are not: {list(undocumented_loras)}. Please update the documentation."
-        )
+    # Find which classes in source are not documented in a deterministic way.
+    undocumented = sorted(source_classes - documented)
+    return undocumented
 
 
 if __name__ == "__main__":
-    check_attention_processors()
-    check_image_processors()
-    check_activations()
-    check_normalizations()
-    check_lora_mixins()
+    # Define the checks we need to perform
+    checks = {
+        "Attention Processors": {
+            "doc_path": "docs/source/en/api/attnprocessor.md",
+            "src_path": "src/diffusers/models/attention_processor.py",
+            "doc_regex": r"\[\[autodoc\]\]\s([^\n]+)",
+            "src_regex": r"class\s+(\w+Processor(?:\d*_?\d*))[:(]",
+            "exclude_conditions": [lambda c: "LoRA" in c, lambda c: c == "Attention"],
+        },
+        "Image Processors": {
+            "doc_path": "docs/source/en/api/image_processor.md",
+            "src_path": "src/diffusers/image_processor.py",
+            "doc_regex": r"\[\[autodoc\]\]\s([^\n]+)",
+            "src_regex": r"class\s+(\w+Processor(?:\d*_?\d*))[:(]",
+        },
+        "Activations": {
+            "doc_path": "docs/source/en/api/activations.md",
+            "src_path": "src/diffusers/models/activations.py",
+            "doc_regex": r"\[\[autodoc\]\]\s([^\n]+)",
+            "src_regex": r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):",
+        },
+        "Normalizations": {
+            "doc_path": "docs/source/en/api/normalization.md",
+            "src_path": "src/diffusers/models/normalization.py",
+            "doc_regex": r"\[\[autodoc\]\]\s([^\n]+)",
+            "src_regex": r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):",
+            "exclude_conditions": [
+                # Exclude LayerNorm as it's an intentional exception
+                lambda c: c == "LayerNorm"
+            ],
+        },
+        "LoRA Mixins": {
+            "doc_path": "docs/source/en/api/loaders/lora.md",
+            "src_path": "src/diffusers/loaders/lora_pipeline.py",
+            "doc_regex": r"\[\[autodoc\]\]\s([^\n]+)",
+            "src_regex": r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):",
+        },
+    }
+
+    missing_items = {}
+    for category, params in checks.items():
+        undocumented = check_documentation(
+            doc_path=params["doc_path"],
+            src_path=params["src_path"],
+            doc_regex=params["doc_regex"],
+            src_regex=params["src_regex"],
+            exclude_conditions=params.get("exclude_conditions"),
+        )
+        if undocumented:
+            missing_items[category] = undocumented
+
+    # If we have any missing items, raise a single combined error
+    if missing_items:
+        error_msg = ["Some classes are not documented properly:\n"]
+        for category, classes in missing_items.items():
+            error_msg.append(f"- {category}: {', '.join(sorted(classes))}")
+        raise ValueError("\n".join(error_msg))
