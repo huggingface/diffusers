@@ -30,7 +30,7 @@ from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, RMSNorm
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-n
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class MochiModulatedRMSNorm(nn.Module):
