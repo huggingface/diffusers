@@ -361,7 +361,10 @@ class FluxPipeline(
                 scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
 
         if do_true_cfg and negative_prompt is not None:
             negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
