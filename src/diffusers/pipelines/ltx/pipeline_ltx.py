@@ -198,7 +198,6 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
             self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 128
         )
 
-    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->128
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,

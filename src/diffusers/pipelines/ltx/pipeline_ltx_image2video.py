@@ -221,7 +221,6 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         self.default_width = 704
         self.default_frames = 121
 
-    # Copied from diffusers.pipelines.mochi.pipeline_mochi.MochiPipeline._get_t5_prompt_embeds with 256->128
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
