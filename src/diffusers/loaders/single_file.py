@@ -308,6 +308,8 @@ class FromSingleFileMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
+            no_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to use mmap when loading the model.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
@@ -383,6 +385,7 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             local_files_only=local_files_only,
             revision=revision,
+            no_mmap=no_mmap,
         )
 
         if config is None:
