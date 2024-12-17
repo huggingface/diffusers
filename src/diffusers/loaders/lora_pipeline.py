@@ -2400,9 +2400,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             lora_A_param = lora_state_dict[f"{k}.lora_A.weight"]
 
             if base_weight_param.shape[1] > lora_A_param.shape[1]:
-                # could be made more advanced with `repeats`.
-                # have tried zero-padding but that doesn't work, either.
-                expanded_state_dict_weight = torch.cat([lora_A_param, lora_A_param], dim=1)
+                shape = (lora_A_param.shape[0], base_weight_param.shape[1])
+                expanded_state_dict_weight = torch.zeros(shape, device=base_weight_param.device)
+                expanded_state_dict_weight[:, : lora_A_param.shape[1]].copy_(lora_A_param)
                 lora_state_dict[f"{k}.lora_A.weight"] = expanded_state_dict_weight
                 expanded_module_names.add(k)
 
