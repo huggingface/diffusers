@@ -700,10 +700,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
-            if device_map is not None:
+            is_bnb_quantization_method = hf_quantizer.quantization_config.quant_method.value == "bitsandbytes"
+            if is_bnb_quantization_method and device_map is not None:
                 raise NotImplementedError(
-                    "Currently, `device_map` is automatically inferred for quantized models. Support for providing `device_map` as an input will be added in the future."
+                    "Currently, `device_map` is automatically inferred for quantized bitsandbytes models. Support for providing `device_map` as an input will be added in the future."
                 )
+
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
@@ -858,13 +860,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if device_map is None and not is_sharded:
                     # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
                     # It would error out during the `validate_environment()` call above in the absence of cuda.
-                    is_quant_method_bnb = (
-                        getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-                    )
                     if hf_quantizer is None:
                         param_device = "cpu"
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
-                    elif is_quant_method_bnb:
+                    else:
                         param_device = torch.device(torch.cuda.current_device())
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)

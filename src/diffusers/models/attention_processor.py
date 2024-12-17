@@ -254,14 +254,22 @@ class Attention(nn.Module):
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_kv_dim, bias=added_proj_bias)
             if self.context_pre_only is not None:
                 self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+        else:
+            self.add_q_proj = None
+            self.add_k_proj = None
+            self.add_v_proj = None
 
         if not self.pre_only:
             self.to_out = nn.ModuleList([])
             self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
             self.to_out.append(nn.Dropout(dropout))
+        else:
+            self.to_out = None
 
         if self.context_pre_only is not None and not self.context_pre_only:
             self.to_add_out = nn.Linear(self.inner_dim, self.out_context_dim, bias=out_bias)
+        else:
+            self.to_add_out = None
 
         if qk_norm is not None and added_kv_proj_dim is not None:
             if qk_norm == "fp32_layer_norm":
@@ -782,7 +790,11 @@ class Attention(nn.Module):
                 self.to_kv.bias.copy_(concatenated_bias)
 
         # handle added projections for SD3 and others.
-        if hasattr(self, "add_q_proj") and hasattr(self, "add_k_proj") and hasattr(self, "add_v_proj"):
+        if (
+            getattr(self, "add_q_proj", None) is not None
+            and getattr(self, "add_k_proj", None) is not None
+            and getattr(self, "add_v_proj", None) is not None
+        ):
             concatenated_weights = torch.cat(
                 [self.add_q_proj.weight.data, self.add_k_proj.weight.data, self.add_v_proj.weight.data]
             )
@@ -3938,7 +3950,7 @@ class MochiAttnProcessor2_0:
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
-        if hasattr(attn, "to_add_out"):
+        if getattr(attn, "to_add_out", None) is not None:
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
         return hidden_states, encoder_hidden_states
@@ -5411,21 +5423,37 @@ class SanaMultiscaleAttnProcessor2_0:
 
 
 class LoRAAttnProcessor:
+    r"""
+    Processor for implementing attention with LoRA.
+    """
+
     def __init__(self):
         pass
 
 
 class LoRAAttnProcessor2_0:
+    r"""
+    Processor for implementing attention with LoRA (enabled by default if you're using PyTorch 2.0).
+    """
+
     def __init__(self):
         pass
 
 
 class LoRAXFormersAttnProcessor:
+    r"""
+    Processor for implementing attention with LoRA using xFormers.
+    """
+
     def __init__(self):
         pass
 
 
 class LoRAAttnAddedKVProcessor:
+    r"""
+    Processor for implementing attention with LoRA with extra learnable key and value matrices for the text encoder.
+    """
+
     def __init__(self):
         pass
 
@@ -5439,6 +5467,165 @@ class FluxSingleAttnProcessor2_0(FluxAttnProcessor2_0):
         deprecation_message = "`FluxSingleAttnProcessor2_0` is deprecated and will be removed in a future version. Please use `FluxAttnProcessor2_0` instead."
         deprecate("FluxSingleAttnProcessor2_0", "0.32.0", deprecation_message)
         super().__init__()
+
+
+class SanaLinearAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product linear attention.
+    """
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        original_dtype = hidden_states.dtype
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
+        key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
+        value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
+
+        query = F.relu(query)
+        key = F.relu(key)
+
+        query, key, value = query.float(), key.float(), value.float()
+
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
+        scores = torch.matmul(value, key)
+        hidden_states = torch.matmul(scores, query)
+
+        hidden_states = hidden_states[:, :, :-1] / (hidden_states[:, :, -1:] + 1e-15)
+        hidden_states = hidden_states.flatten(1, 2).transpose(1, 2)
+        hidden_states = hidden_states.to(original_dtype)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if original_dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+
+        return hidden_states
+
+
+class PAGCFGSanaLinearAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product linear attention.
+    """
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        original_dtype = hidden_states.dtype
+
+        hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
+        hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
+
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
+        key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
+        value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
+
+        query = F.relu(query)
+        key = F.relu(key)
+
+        query, key, value = query.float(), key.float(), value.float()
+
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
+        scores = torch.matmul(value, key)
+        hidden_states_org = torch.matmul(scores, query)
+
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + 1e-15)
+        hidden_states_org = hidden_states_org.flatten(1, 2).transpose(1, 2)
+        hidden_states_org = hidden_states_org.to(original_dtype)
+
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+
+        # perturbed path (identity attention)
+        hidden_states_ptb = attn.to_v(hidden_states_ptb).to(original_dtype)
+
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+
+        if original_dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+
+        return hidden_states
+
+
+class PAGIdentitySanaLinearAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product linear attention.
+    """
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        original_dtype = hidden_states.dtype
+
+        hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
+
+        query = attn.to_q(hidden_states_org)
+        key = attn.to_k(hidden_states_org)
+        value = attn.to_v(hidden_states_org)
+
+        query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
+        key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
+        value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
+
+        query = F.relu(query)
+        key = F.relu(key)
+
+        query, key, value = query.float(), key.float(), value.float()
+
+        value = F.pad(value, (0, 0, 0, 1), mode="constant", value=1.0)
+        scores = torch.matmul(value, key)
+        hidden_states_org = torch.matmul(scores, query)
+
+        if hidden_states_org.dtype in [torch.float16, torch.bfloat16]:
+            hidden_states_org = hidden_states_org.float()
+
+        hidden_states_org = hidden_states_org[:, :, :-1] / (hidden_states_org[:, :, -1:] + 1e-15)
+        hidden_states_org = hidden_states_org.flatten(1, 2).transpose(1, 2)
+        hidden_states_org = hidden_states_org.to(original_dtype)
+
+        hidden_states_org = attn.to_out[0](hidden_states_org)
+        hidden_states_org = attn.to_out[1](hidden_states_org)
+
+        # perturbed path (identity attention)
+        hidden_states_ptb = attn.to_v(hidden_states_ptb).to(original_dtype)
+
+        hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
+        hidden_states_ptb = attn.to_out[1](hidden_states_ptb)
+
+        hidden_states = torch.cat([hidden_states_org, hidden_states_ptb])
+
+        if original_dtype == torch.float16:
+            hidden_states = hidden_states.clip(-65504, 65504)
+
+        return hidden_states
 
 
 ADDED_KV_ATTENTION_PROCESSORS = (
@@ -5493,6 +5680,12 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor2_0,
     SlicedAttnProcessor,
     SlicedAttnAddedKVProcessor,
+    SanaLinearAttnProcessor2_0,
+    PAGCFGSanaLinearAttnProcessor2_0,
+    PAGIdentitySanaLinearAttnProcessor2_0,
+    SanaMultiscaleLinearAttention,
+    SanaMultiscaleAttnProcessor2_0,
+    SanaMultiscaleAttentionProjection,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
