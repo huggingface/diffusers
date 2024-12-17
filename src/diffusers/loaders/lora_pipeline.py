@@ -2307,7 +2307,6 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                             in_features,
                             out_features,
                             bias=bias,
-                            device=module_weight.device,
                             dtype=module_weight.dtype,
                         )
 
@@ -2423,6 +2422,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                     logger.info(f"Set the {attribute_name} attribute of the model to {new_value} from {old_value}.")
 
                     # For `unload_lora_weights()`.
+                    # TODO: this could lead to more memory overhead if the number of overwritten params
+                    # are large. Should be revisited later and tackled through a `discard_original_layers` arg.
                     overwritten_params[f"{current_module_name}.weight"] = module_weight
                     if module_bias is not None:
                         overwritten_params[f"{current_module_name}.bias"] = module_bias
