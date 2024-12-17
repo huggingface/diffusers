@@ -217,7 +217,7 @@ class MidResTemporalBlock1D(nn.Module):
         if self.upsample:
             hidden_states = self.upsample(hidden_states)
         if self.downsample:
-            self.downsample = self.downsample(hidden_states)
+            hidden_states = self.downsample(hidden_states)
 
         return hidden_states
 
