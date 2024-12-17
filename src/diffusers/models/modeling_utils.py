@@ -803,6 +803,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder or "",
                 )
                 if hf_quantizer is not None:
+                    is_torchao_quantization_method = quantization_config.quant_method == QuantizationMethod.TORCHAO
+                    if device_map is not None and is_torchao_quantization_method:
+                        raise NotImplementedError(
+                            "Loading sharded checkpoints, while passing `device_map`, is not supported with `torchao` quantization. This will be supported in the near future."
+                        )
+
                     model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False
