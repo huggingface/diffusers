@@ -2310,11 +2310,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                             dtype=module_weight.dtype,
                         )
 
-                    original_module.weight.data.copy_(current_param_weight)
+                    tmp_state_dict = {"weight": current_param_weight}
                     if module_bias is not None:
-                        original_module.bias.data.copy_(overwritten_params[f"{name}.bias"])
-
+                        tmp_state_dict.update({"bias": overwritten_params[f"{name}.bias"]})
+                    original_module.load_state_dict(tmp_state_dict, assign=True, strict=True)
                     setattr(parent_module, current_module_name, original_module)
+
+                    del tmp_state_dict
 
                     if current_module_name in _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX:
                         attribute_name = _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX[current_module_name]
