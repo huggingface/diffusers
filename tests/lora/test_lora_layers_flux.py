@@ -340,21 +340,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         self.assertTrue(pipe.transformer.config.in_channels == 2 * in_features)
         self.assertTrue(cap_logger.out.startswith("Expanding the nn.Linear input/output features for module"))
 
-        components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        dummy_lora_A = torch.nn.Linear(1, rank, bias=False)
-        dummy_lora_B = torch.nn.Linear(rank, out_features, bias=False)
-        lora_state_dict = {
-            "transformer.x_embedder.lora_A.weight": dummy_lora_A.weight,
-            "transformer.x_embedder.lora_B.weight": dummy_lora_B.weight,
-        }
-        # We should error out because lora input features is less than original. We only
-        # support expanding the module, not shrinking it
-        with self.assertRaises(RuntimeError):
-            pipe.load_lora_weights(lora_state_dict, "adapter-1")
-
     @require_peft_version_greater("0.13.2")
     def test_lora_B_bias(self):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
@@ -486,7 +471,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         lora_output_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        self.assertTrue("Found some LoRA modules for which the weights were zero-padded" in cap_logger.out)
+        self.assertTrue("The following LoRA modules were zero padded to match the state dict of" in cap_logger.out)
         self.assertFalse(np.allclose(lora_output, lora_output_2, atol=1e-3, rtol=1e-3))
 
         # Test the opposite case where the first lora has the correct input features and the second lora has expanded input features.
