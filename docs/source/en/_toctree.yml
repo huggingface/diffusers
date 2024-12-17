@@ -157,6 +157,10 @@
     title: Getting Started
   - local: quantization/bitsandbytes
     title: bitsandbytes
+  - local: quantization/gguf
+    title: gguf
+  - local: quantization/torchao
+    title: torchao
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
