@@ -352,7 +352,7 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
         raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
 
 
-# Copied from diffusers.examples.model_search.pipeline_easy.get_keyword_types
+# Copied from diffusers.examples.model_search.pipeline_easy.load_pipeline_from_single_file
 @validate_hf_hub_args
 def auto_load_single_checkpoint(pretrained_model_or_path, pipeline_mapping, **kwargs):
     r"""
