@@ -554,9 +554,9 @@ class FluxIPAdapterMixin:
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
         granular control over each IP-Adapter behavior. A config can be a float or a list.
 
-        `float` is converted to list and repeated for the number of blocks and the number of IP adapters.
-        `List[float]` length match the number of blocks, it is repeated for each IP adapter.
-        `List[List[float]]` must match the number of IP adapters and each must match the number of blocks.
+        `float` is converted to list and repeated for the number of blocks and the number of IP adapters. `List[float]`
+        length match the number of blocks, it is repeated for each IP adapter. `List[List[float]]` must match the
+        number of IP adapters and each must match the number of blocks.
 
         Example:
 
@@ -564,10 +564,11 @@ class FluxIPAdapterMixin:
         # To use original IP-Adapter
         scale = 1.0
         pipeline.set_ip_adapter_scale(scale)
+
+
         def LinearStrengthModel(start, finish, size):
-            return [
-                (start + (finish - start) * (i / (size - 1))) for i in range(size)
-            ]
+            return [(start + (finish - start) * (i / (size - 1))) for i in range(size)]
+
 
         ip_strengths = LinearStrengthModel(0.3, 0.92, 19)
         pipeline.set_ip_adapter_scale(ip_strengths)
