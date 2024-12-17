@@ -357,6 +357,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        no_mmap = kwargs.pop("no_mmap", False)
 
         is_legacy_loading = False
 
