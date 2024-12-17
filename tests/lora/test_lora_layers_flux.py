@@ -352,7 +352,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         }
         # We should error out because lora input features is less than original. We only
         # support expanding the module, not shrinking it
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(RuntimeError):
             pipe.load_lora_weights(lora_state_dict, "adapter-1")
 
     @require_peft_version_greater("0.13.2")

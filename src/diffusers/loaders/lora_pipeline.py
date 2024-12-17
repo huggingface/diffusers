@@ -2387,17 +2387,30 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     def _maybe_expand_lora_state_dict(cls, transformer, lora_state_dict):
         expanded_module_names = set()
         transformer_state_dict = transformer.state_dict()
-        lora_module_names = sorted({k.replace(".lora_A.weight", "") for k in lora_state_dict if "lora_A" in k})
-        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
+        prefix = f"{cls.transformer_name}."
 
+        lora_module_names = [
+            key[: -len(".lora_A.weight")] for key in lora_state_dict if key.endswith(".lora_A.weight")
+        ]
+        lora_module_names = [name[len(prefix) :] for name in lora_module_names if name.startswith(prefix)]
+        lora_module_names = sorted(set(lora_module_names))
+        transformer_module_names = sorted({name for name, _ in transformer.named_modules()})
+        unexpected_modules = set(lora_module_names) - set(transformer_module_names)
+        if unexpected_modules:
+            logger.info(f"Found unexpected modules: {unexpected_modules}. These will be ignored.")
+
+        is_peft_loaded = getattr(transformer, "peft_config", None) is not None
         for k in lora_module_names:
+            if k in unexpected_modules:
+                continue
+
             base_param_name = (
                 f"{k.replace(f'{cls.transformer_name}.', '')}.base_layer.weight"
                 if is_peft_loaded
                 else f"{k.replace(f'{cls.transformer_name}.', '')}.weight"
             )
             base_weight_param = transformer_state_dict[base_param_name]
-            lora_A_param = lora_state_dict[f"{k}.lora_A.weight"]
+            lora_A_param = lora_state_dict[f"{cls.transformer_name}.{k}.lora_A.weight"]
 
             if base_weight_param.shape[1] > lora_A_param.shape[1]:
                 shape = (lora_A_param.shape[0], base_weight_param.shape[1])
