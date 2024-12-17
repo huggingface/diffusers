@@ -28,16 +28,12 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     floats_tensor,
-    is_peft_available,
     is_torch_version,
     require_peft_backend,
     skip_mps,
     torch_device,
 )
 
-
-if is_peft_available():
-    pass
 
 sys.path.append(".")
 
