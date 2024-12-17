@@ -19,19 +19,19 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders.transformers_sd3 import SD3Transformer2DLoadersMixin
 from ...models.attention import FeedForward, JointTransformerBlock
 from ...models.attention_processor import (
     Attention,
     AttentionProcessor,
     FusedJointAttnProcessor2_0,
-    IPAdapterJointAttnProcessor2_0,
     JointAttnProcessor2_0,
 )
-from ...models.modeling_utils import ModelMixin, load_model_dict_into_meta
+from ...models.modeling_utils import ModelMixin
 from ...models.normalization import AdaLayerNormContinuous, AdaLayerNormZero
 from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..embeddings import CombinedTimestepTextProjEmbeddings, IPAdapterTimeImageProjection, PatchEmbed
+from ..embeddings import CombinedTimestepTextProjEmbeddings, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 
 
@@ -104,7 +104,9 @@ class SD3SingleTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class SD3Transformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, SD3Transformer2DLoadersMixin
+):
     """
     The Transformer model introduced in Stable Diffusion 3.
 
@@ -330,89 +332,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
-
-    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool) -> None:
-        """Sets IP-Adapter attention processors, image projection, and loads state_dict.
-
-        Args:
-            state_dict (`Dict`):
-                PyTorch state dict with keys "ip_adapter", which contains parameters for attention processors, and
-                "image_proj", which contains parameters for image projection net.
-            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
-        """
-        # IP-Adapter cross attention parameters
-        hidden_size = self.config.attention_head_dim * self.config.num_attention_heads
-        ip_hidden_states_dim = self.config.attention_head_dim * self.config.num_attention_heads
-        timesteps_emb_dim = state_dict["ip_adapter"]["0.norm_ip.linear.weight"].shape[1]
-
-        # Dict where key is transformer layer index, value is attention processor's state dict
-        # ip_adapter state dict keys example: "0.norm_ip.linear.weight"
-        layer_state_dict = {idx: {} for idx in range(len(self.attn_processors))}
-        for key, weights in state_dict["ip_adapter"].items():
-            idx, name = key.split(".", maxsplit=1)
-            layer_state_dict[int(idx)][name] = weights
-
-        # Create IP-Adapter attention processor
-        attn_procs = {}
-        for idx, name in enumerate(self.attn_processors.keys()):
-            attn_procs[name] = IPAdapterJointAttnProcessor2_0(
-                hidden_size=hidden_size,
-                ip_hidden_states_dim=ip_hidden_states_dim,
-                head_dim=self.config.attention_head_dim,
-                timesteps_emb_dim=timesteps_emb_dim,
-            ).to(self.device, dtype=self.dtype)
-
-            if not low_cpu_mem_usage:
-                attn_procs[name].load_state_dict(layer_state_dict[idx], strict=True)
-            else:
-                load_model_dict_into_meta(
-                    attn_procs[name], layer_state_dict[idx], device=self.device, dtype=self.dtype
-                )
-
-        self.set_attn_processor(attn_procs)
-
-        # Convert image_proj state dict to diffusers
-        image_proj_state_dict = {}
-        for key, value in state_dict["image_proj"].items():
-            if key.startswith("layers."):
-                idx = key.split(".")[1]
-                key = key.replace(f"layers.{idx}.0.norm1", f"layers.{idx}.ln0")
-                key = key.replace(f"layers.{idx}.0.norm2", f"layers.{idx}.ln1")
-                key = key.replace(f"layers.{idx}.0.to_q", f"layers.{idx}.attn.to_q")
-                key = key.replace(f"layers.{idx}.0.to_kv", f"layers.{idx}.attn.to_kv")
-                key = key.replace(f"layers.{idx}.0.to_out", f"layers.{idx}.attn.to_out.0")
-                key = key.replace(f"layers.{idx}.1.0", f"layers.{idx}.adaln_norm")
-                key = key.replace(f"layers.{idx}.1.1", f"layers.{idx}.ff.net.0.proj")
-                key = key.replace(f"layers.{idx}.1.3", f"layers.{idx}.ff.net.2")
-                key = key.replace(f"layers.{idx}.2.1", f"layers.{idx}.adaln_proj")
-            image_proj_state_dict[key] = value
-
-        # Image projetion parameters
-        embed_dim = image_proj_state_dict["proj_in.weight"].shape[1]
-        output_dim = image_proj_state_dict["proj_out.weight"].shape[0]
-        hidden_dim = image_proj_state_dict["proj_in.weight"].shape[0]
-        heads = image_proj_state_dict["layers.0.attn.to_q.weight"].shape[0] // 64
-        num_queries = image_proj_state_dict["latents"].shape[1]
-        timestep_in_dim = image_proj_state_dict["time_embedding.linear_1.weight"].shape[1]
-
-        # Image projection
-        self.image_proj = IPAdapterTimeImageProjection(
-            embed_dim=embed_dim,
-            output_dim=output_dim,
-            hidden_dim=hidden_dim,
-            heads=heads,
-            num_queries=num_queries,
-            timestep_in_dim=timestep_in_dim,
-        ).to(device=self.device, dtype=self.dtype)
-
-        if not low_cpu_mem_usage:
-            self.image_proj.load_state_dict(image_proj_state_dict, strict=True)
-        else:
-            load_model_dict_into_meta(self.image_proj, image_proj_state_dict, device=self.device, dtype=self.dtype)
 
     def forward(
         self,

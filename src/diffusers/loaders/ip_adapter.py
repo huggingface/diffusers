@@ -40,9 +40,9 @@ from ..models.attention_processor import (
     AttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
-    IPAdapterJointAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
     JointAttnProcessor2_0,
+    SD3IPAdapterJointAttnProcessor2_0,
 )
 
 
@@ -369,7 +369,7 @@ class SD3IPAdapterMixin:
         scales = [
             attn_proc.scale
             for attn_proc in self.transformer.attn_processors.values()
-            if isinstance(attn_proc, IPAdapterJointAttnProcessor2_0)
+            if isinstance(attn_proc, SD3IPAdapterJointAttnProcessor2_0)
         ]
 
         return len(scales) > 0 and any(scale > 0 for scale in scales)
@@ -379,7 +379,7 @@ class SD3IPAdapterMixin:
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
         subfolder: str,
-        weight_name: str,
+        weight_name: str = "ip-adapter.safetensors",
         image_encoder_folder: Optional[str] = "image_encoder",
         **kwargs,
     ) -> None:
@@ -396,7 +396,7 @@ class SD3IPAdapterMixin:
             subfolder (`str`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally. If a
                 list is passed, it should have the same length as `weight_name`.
-            weight_name (`str`):
+            weight_name (`str`, defaults to "ip-adapter.safetensors"):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `subfolder`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
@@ -547,7 +547,7 @@ class SD3IPAdapterMixin:
 
         """
         for attn_processor in self.transformer.attn_processors.values():
-            if isinstance(attn_processor, IPAdapterJointAttnProcessor2_0):
+            if isinstance(attn_processor, SD3IPAdapterJointAttnProcessor2_0):
                 attn_processor.scale = scale
 
     def unload_ip_adapter(self) -> None:
@@ -577,7 +577,9 @@ class SD3IPAdapterMixin:
 
         # Restore original attention processors layers
         attn_procs = {
-            name: (JointAttnProcessor2_0() if isinstance(value, IPAdapterJointAttnProcessor2_0) else value.__class__())
+            name: (
+                JointAttnProcessor2_0() if isinstance(value, SD3IPAdapterJointAttnProcessor2_0) else value.__class__()
+            )
             for name, value in self.transformer.attn_processors.items()
         }
         self.transformer.set_attn_processor(attn_procs)

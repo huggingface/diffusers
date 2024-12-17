@@ -5160,7 +5160,7 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
         return hidden_states
 
 
-class IPAdapterJointAttnProcessor2_0(torch.nn.Module):
+class SD3IPAdapterJointAttnProcessor2_0(torch.nn.Module):
     """
     Attention processor for IP-Adapter used typically in processing the SD3-like self-attention projections, with
     additional image-based information and timestep embeddings.
@@ -5844,7 +5844,7 @@ AttentionProcessor = Union[
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
     IPAdapterXFormersAttnProcessor,
-    IPAdapterJointAttnProcessor2_0,
+    SD3IPAdapterJointAttnProcessor2_0,
     PAGIdentitySelfAttnProcessor2_0,
     PAGCFGIdentitySelfAttnProcessor2_0,
     LoRAAttnProcessor,
