@@ -34,3 +34,7 @@ Customized activation functions for supporting various models in 🤗 Diffusers.
 ## FP32SiLU
 
 [[autodoc]] models.activations.FP32SiLU
+
+## LinearActivation
+
+[[autodoc]] models.activations.LinearActivation

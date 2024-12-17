@@ -115,8 +115,30 @@ def check_normalizations():
         )
 
 
+def check_lora_mixins():
+    with open(os.path.join(REPO_PATH, "docs/source/en/api/loaders/lora.md"), "r") as f:
+        doctext = f.read()
+        matches = re.findall(r"\[\[autodoc\]\]\s([^\n]+)", doctext)
+        documented_loras = [match.split(".")[-1] for match in matches]
+
+    with open(os.path.join(REPO_PATH, "src/diffusers/loaders/lora_pipeline.py"), "r") as f:
+        doctext = f.read()
+        lora_classes = re.findall(r"class\s+(\w+)\s*\(.*?nn\.Module.*?\):", doctext)
+
+    undocumented_loras = set()
+    for lora in lora_classes:
+        if lora not in documented_loras:
+            undocumented_loras.add(lora)
+
+    if undocumented_loras:
+        raise ValueError(
+            f"The following LoRA mixins should be in listed in the LoRA loader documentation but are not: {list(undocumented_loras)}. Please update the documentation."
+        )
+
+
 if __name__ == "__main__":
     check_attention_processors()
     check_image_processors()
     check_activations()
     check_normalizations()
+    check_lora_mixins()
