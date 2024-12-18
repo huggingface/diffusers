@@ -128,6 +128,7 @@ else:
     ]
     _import_structure["flux"] = [
         "FluxControlPipeline",
+        "FluxControlInpaintPipeline",
         "FluxControlImg2ImgPipeline",
         "FluxControlNetPipeline",
         "FluxControlNetImg2ImgPipeline",
@@ -539,6 +540,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .flux import (
             FluxControlImg2ImgPipeline,
+            FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
