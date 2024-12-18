@@ -243,7 +243,7 @@ Benefits of using a single-file layout include:
 ### DDUF
 
 > [!WARNING]
->DDUF is an experimental file format and APIs related to it can change in the future.
+> DDUF is an experimental file format and APIs related to it can change in the future.
 
 DDUF (**D**DUF **D**iffusion **U**nified **F**ormat) is a file format designed to make storing, distributing, and using diffusion models much easier. Built on the ZIP file format, DDUF offers a standardized, efficient, and flexible way to package all parts of a diffusion model into a single, easy-to-manage file. It provides a balance between Diffusers multi-folder format and the widely popular single-file format.
 
