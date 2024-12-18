@@ -27,9 +27,9 @@
 
 ## Quantization
 
-Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. Refer to the [Quantization](../../quantization/overview) to learn more about supported quantization backends and selecting a quantization backend that supports your use case.
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
-The example below demonstrates how to load a quantized [`MochiPipeline`] for inference with bitsandbytes.
+Refer to the [Quantization](../../quantization/overview) to learn more about supported quantization backends (bitsandbytes, torchao, gguf) and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`MochiPipeline`] for inference with bitsandbytes.
 
 ```py
 import torch
@@ -61,12 +61,12 @@ pipeline = MochiPipeline.from_pretrained(
     device_map="balanced",
 )
 
-frames = pipeline(
+video = pipeline(
   "Close-up of a cats eye, with the galaxy reflected in the cats eye. Ultra high resolution 4k.",
   num_inference_steps=28,
   guidance_scale=3.5
 ).frames[0]
-export_to_video(frames, "cat.mp4")
+export_to_video(video, "cat.mp4")
 ```
 
 ## Generating videos with Mochi-1 Preview
