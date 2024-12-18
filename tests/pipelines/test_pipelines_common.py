@@ -1718,6 +1718,27 @@ class PipelineTesterMixin:
 
         assert out_cfg.shape == out_no_cfg.shape
 
+    def test_timesteps(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if "timesteps" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        output_without_timesteps = pipe(**inputs)[0]
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["timesteps"] = [499]
+        output_with_timesteps = pipe(**inputs)[0]
+        max_diff = np.abs(output_without_timesteps - output_with_timesteps).max()
+        assert max_diff > 1e-4
+
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
         has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
