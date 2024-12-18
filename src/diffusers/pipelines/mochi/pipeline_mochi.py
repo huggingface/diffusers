@@ -15,7 +15,6 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
@@ -495,6 +494,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         num_frames: int = 19,
         num_inference_steps: int = 64,
         timesteps: List[int] = None,
+        sigmas: List[float] = None,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -652,10 +652,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 5. Prepare timestep
-        # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
-        threshold_noise = 0.025
-        sigmas = linear_quadratic_schedule(num_inference_steps, threshold_noise)
-        sigmas = np.array(sigmas)
+        if self.scheduler.schedule.__class__.__name__ != "FlowMatchLinearQuadratic":
+            self.scheduler._schedule.set_base_schedule("FlowMatchLinearQuadratic")
 
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,

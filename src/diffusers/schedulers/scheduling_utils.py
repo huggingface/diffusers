@@ -15,12 +15,17 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import BaseOutput, PushToHubMixin
+from .schedules.beta_schedule import BetaSchedule
+from .schedules.flow_schedule import FlowMatchSchedule
+from .sigmas.beta_sigmas import BetaSigmas
+from .sigmas.exponential_sigmas import ExponentialSigmas
+from .sigmas.karras_sigmas import KarrasSigmas
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
@@ -54,6 +59,17 @@ AysSchedules = {
     "StableDiffusionXLTimesteps": [999, 845, 730, 587, 443, 310, 193, 116, 53, 13],
     "StableDiffusionXLSigmas": [14.615, 6.315, 3.771, 2.181, 1.342, 0.862, 0.555, 0.380, 0.234, 0.113, 0.0],
     "StableDiffusionVideoSigmas": [700.00, 54.5, 15.886, 7.977, 4.248, 1.789, 0.981, 0.403, 0.173, 0.034, 0.0],
+}
+
+SCHEDULE_MAP = {
+    "BetaSchedule": BetaSchedule,
+    "FlowMatchSchedule": FlowMatchSchedule,
+}
+
+SIGMA_SCHEDULE_MAP = {
+    "BetaSigmas": BetaSigmas,
+    "ExponentialSigmas": ExponentialSigmas,
+    "KarrasSigmas": KarrasSigmas,
 }
 
 
@@ -90,6 +106,10 @@ class SchedulerMixin(PushToHubMixin):
     config_name = SCHEDULER_CONFIG_NAME
     _compatibles = []
     has_compatibles = True
+    schedule_configs = SCHEDULE_MAP
+    sigma_configs = SIGMA_SCHEDULE_MAP
+    _schedule = None
+    _sigma_schedule = None
 
     @classmethod
     @validate_hf_hub_args
@@ -191,3 +211,38 @@ class SchedulerMixin(PushToHubMixin):
             getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
         ]
         return compatible_classes
+
+    def set_schedule(self, schedule: Union[Dict]):
+        if isinstance(schedule, dict):
+            class_name = schedule.get("class_name", None)
+            if class_name is None:
+                raise ValueError("Schedule config `class_name` is None.")
+            elif class_name not in self.schedule_configs:
+                raise ValueError(f"Expected one of {self.schedule_configs.keys()}")
+            _class = self.schedule_configs[class_name]
+            self._schedule = _class(**schedule)
+        else:
+            self._schedule = schedule
+
+    def set_sigma_schedule(self, sigma_schedule: Union[Dict]):
+        if isinstance(sigma_schedule, dict):
+            if not sigma_schedule:
+                self._sigma_schedule = None
+                return
+            class_name = sigma_schedule.get("class_name", None)
+            if class_name is None:
+                raise ValueError("Schedule config `class_name` is None.")
+            elif class_name not in self.sigma_configs:
+                raise ValueError(f"Expected one of {self.sigma_configs.keys()}")
+            _class = self.sigma_configs[class_name]
+            sigma_min = getattr(self._schedule, "sigma_min", None) or sigma_schedule.get("sigma_min", None)
+            sigma_max = getattr(self._schedule, "sigma_max", None) or sigma_schedule.get("sigma_max", None)
+            sigma_schedule.update(
+                {
+                    "sigma_min": sigma_min,
+                    "sigma_max": sigma_max,
+                }
+            )
+            self._sigma_schedule = _class(**sigma_schedule)
+        else:
+            self._sigma_schedule = sigma_schedule

@@ -31,6 +31,7 @@ class BetaSigmas:
         sigma_max: Optional[float] = None,
         alpha: float = 0.6,
         beta: float = 0.6,
+        **kwargs,
     ):
         if not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -39,7 +40,7 @@ class BetaSigmas:
         self.alpha = alpha
         self.beta = beta
 
-    def __call__(self, in_sigmas: torch.Tensor):
+    def __call__(self, in_sigmas: torch.Tensor, **kwargs):
         if not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
         sigma_min = self.sigma_min

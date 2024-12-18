@@ -24,12 +24,13 @@ class KarrasSigmas:
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
         rho: float = 7.0,
+        **kwargs,
     ):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.rho = rho
 
-    def __call__(self, in_sigmas: torch.Tensor):
+    def __call__(self, in_sigmas: torch.Tensor, **kwargs):
         sigma_min = self.sigma_min
         if sigma_min is None:
             sigma_min = in_sigmas[-1].item()

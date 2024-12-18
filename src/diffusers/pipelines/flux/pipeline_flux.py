@@ -15,7 +15,6 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
@@ -699,7 +698,8 @@ class FluxPipeline(
         )
 
         # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if self.scheduler.schedule.__class__.__name__ != "FlowMatchFlux":
+            self.scheduler._schedule.set_base_schedule("FlowMatchFlux")
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
