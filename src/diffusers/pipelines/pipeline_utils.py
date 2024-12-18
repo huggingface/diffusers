@@ -787,8 +787,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     has_transformers_component = config_dict[k][0] == "transformers"
                     if has_transformers_component:
                         break
-            if has_transformers_component and not is_transformers_version(">", "4.47.2"):
-                raise ValueError("Please upgrade your `transformers` installation to use DDUF.")
+            if has_transformers_component and not is_transformers_version(">", "4.47.1"):
+                raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
 
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
