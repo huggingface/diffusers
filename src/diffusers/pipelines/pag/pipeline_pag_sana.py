@@ -23,19 +23,15 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
-from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, SanaTransformer2DModel
 from ...models.attention_processor import PAGCFGSanaLinearAttnProcessor2_0, PAGIdentitySanaLinearAttnProcessor2_0
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    USE_PEFT_BACKEND,
     is_bs4_available,
     is_ftfy_available,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -174,7 +170,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0()),
         )
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -189,7 +184,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         clean_caption: bool = False,
         max_sequence_length: int = 300,
         complex_human_instruction: Optional[List[str]] = None,
-        lora_scale: Optional[float] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -222,15 +216,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
         if device is None:
             device = self._execution_device
-
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, SanaLoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if self.text_encoder is not None and USE_PEFT_BACKEND:
-                scale_lora_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -326,11 +311,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         else:
             negative_prompt_embeds = None
             negative_prompt_attention_mask = None
-
-        if self.text_encoder is not None:
-            if isinstance(self, SanaLoraLoaderMixin) and USE_PEFT_BACKEND:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
