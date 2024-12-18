@@ -1,0 +1,90 @@
+
+name: PR Style Bot
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: 
+  contents: write
+  pull-requests: write
+
+jobs:
+  run-style-bot:
+    if: >
+      contains(github.event.comment.body, '@bot /style') &&
+      github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract PR details
+        id: pr_info
+        uses: actions/github-script@v6
+        with:
+            script: |
+                const prNumber = context.payload.issue.number;
+                const { data: pr } = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber
+                });
+                core.setOutput("prNumber", prNumber);
+                core.setOutput("headRef", pr.head.ref);
+
+      - name: Check out PR branch
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ steps.pr_info.outputs.headRef }}
+      
+      - name: Debug
+        run: echo "Full results ${{ steps.pr_info.outputs.headRef }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+
+      - name: Install dependencies
+        run: |
+          pip install .[quality]
+
+      - name: Run make style and make quality
+        run: |
+          make style && make quality
+
+      - name: Commit and push changes
+        id: commit_and_push
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # If there are changes after running style/quality, commit them
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "Apply style fixes"
+            # Push back to the PR branch
+            git push origin HEAD:${{ steps.pr_info.outputs.headRef }}
+            echo "changes_pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit."
+            echo "changes_pushed=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR with workflow run link
+        if: steps.commit_and_push.outputs.changes_pushed == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = parseInt(process.env.prNumber, 10);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+            
+            await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `Style fixes have been applied. [View the workflow run here](${runUrl}).`
+            });
+        env:
+          prNumber: ${{ steps.pr_info.outputs.prNumber }}
