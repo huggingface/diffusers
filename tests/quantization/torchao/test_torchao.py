@@ -75,6 +75,7 @@ if is_torch_available():
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
+    from torchao.utils import get_model_size_in_bytes
 
 
 @require_torch
@@ -138,11 +139,13 @@ class TorchAoTest(unittest.TestCase):
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
         )
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-        text_encoder_2 = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
+        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+        text_encoder_2 = T5EncoderModel.from_pretrained(
+            model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+        )
         tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
         tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
-        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
+        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16)
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -211,7 +214,7 @@ class TorchAoTest(unittest.TestCase):
     def _test_quant_type(self, quantization_config: TorchAoConfig, expected_slice: List[float]):
         components = self.get_dummy_components(quantization_config)
         pipe = FluxPipeline(**components)
-        pipe.to(device=torch_device, dtype=torch.bfloat16)
+        pipe.to(device=torch_device)
 
         inputs = self.get_dummy_inputs(torch_device)
         output = pipe(**inputs)[0]
@@ -315,6 +318,22 @@ class TorchAoTest(unittest.TestCase):
 
     def test_modules_to_not_convert(self):
         quantization_config = TorchAoConfig("int8_weight_only", modules_to_not_convert=["transformer_blocks.0"])
+        quantized_model_with_not_convert = FluxTransformer2DModel.from_pretrained(
+            "hf-internal-testing/tiny-flux-pipe",
+            subfolder="transformer",
+            quantization_config=quantization_config,
+            torch_dtype=torch.bfloat16,
+        )
+
+        unquantized_layer = quantized_model_with_not_convert.transformer_blocks[0].ff.net[2]
+        self.assertTrue(isinstance(unquantized_layer, torch.nn.Linear))
+        self.assertFalse(isinstance(unquantized_layer.weight, AffineQuantizedTensor))
+        self.assertEqual(unquantized_layer.weight.dtype, torch.bfloat16)
+
+        quantized_layer = quantized_model_with_not_convert.proj_out
+        self.assertTrue(isinstance(quantized_layer.weight, AffineQuantizedTensor))
+
+        quantization_config = TorchAoConfig("int8_weight_only")
         quantized_model = FluxTransformer2DModel.from_pretrained(
             "hf-internal-testing/tiny-flux-pipe",
             subfolder="transformer",
@@ -322,14 +341,10 @@ class TorchAoTest(unittest.TestCase):
             torch_dtype=torch.bfloat16,
         )
 
-        unquantized_layer = quantized_model.transformer_blocks[0].ff.net[2]
-        self.assertTrue(isinstance(unquantized_layer, torch.nn.Linear))
-        self.assertFalse(isinstance(unquantized_layer.weight, AffineQuantizedTensor))
-        self.assertEqual(unquantized_layer.weight.dtype, torch.bfloat16)
+        size_quantized_with_not_convert = get_model_size_in_bytes(quantized_model_with_not_convert)
+        size_quantized = get_model_size_in_bytes(quantized_model)
 
-        quantized_layer = quantized_model.proj_out
-        self.assertTrue(isinstance(quantized_layer.weight, AffineQuantizedTensor))
-        self.assertEqual(quantized_layer.weight.layout_tensor.data.dtype, torch.int8)
+        self.assertTrue(size_quantized < size_quantized_with_not_convert)
 
     def test_training(self):
         quantization_config = TorchAoConfig("int8_weight_only")
@@ -380,23 +395,6 @@ class TorchAoTest(unittest.TestCase):
         # Note: Seems to require higher tolerance
         self.assertTrue(np.allclose(normal_output, compile_output, atol=1e-2, rtol=1e-3))
 
-    @staticmethod
-    def _get_memory_footprint(module):
-        quantized_param_memory = 0.0
-        unquantized_param_memory = 0.0
-
-        for param in module.parameters():
-            if param.__class__.__name__ == "AffineQuantizedTensor":
-                data, scale, zero_point = param.layout_tensor.get_plain()
-                quantized_param_memory += data.numel() + data.element_size()
-                quantized_param_memory += scale.numel() + scale.element_size()
-                quantized_param_memory += zero_point.numel() + zero_point.element_size()
-            else:
-                unquantized_param_memory += param.data.numel() * param.data.element_size()
-
-        total_memory = quantized_param_memory + unquantized_param_memory
-        return total_memory, quantized_param_memory, unquantized_param_memory
-
     def test_memory_footprint(self):
         r"""
         A simple test to check if the model conversion has been done correctly by checking on the
@@ -407,20 +405,18 @@ class TorchAoTest(unittest.TestCase):
         transformer_int8wo = self.get_dummy_components(TorchAoConfig("int8wo"))["transformer"]
         transformer_bf16 = self.get_dummy_components(None)["transformer"]
 
-        total_int4wo, quantized_int4wo, unquantized_int4wo = self._get_memory_footprint(transformer_int4wo)
-        total_int4wo_gs32, quantized_int4wo_gs32, unquantized_int4wo_gs32 = self._get_memory_footprint(
-            transformer_int4wo_gs32
-        )
-        total_int8wo, quantized_int8wo, unquantized_int8wo = self._get_memory_footprint(transformer_int8wo)
-        total_bf16, quantized_bf16, unquantized_bf16 = self._get_memory_footprint(transformer_bf16)
+        total_int4wo = get_model_size_in_bytes(transformer_int4wo)
+        total_int4wo_gs32 = get_model_size_in_bytes(transformer_int4wo_gs32)
+        total_int8wo = get_model_size_in_bytes(transformer_int8wo)
+        total_bf16 = get_model_size_in_bytes(transformer_bf16)
 
-        self.assertTrue(quantized_bf16 == 0 and total_bf16 == unquantized_bf16)
-        # int4wo_gs32 has smaller group size, so more groups -> more scales and zero points
-        self.assertTrue(total_int8wo < total_bf16 < total_int4wo_gs32)
-        # int4 with default group size quantized very few linear layers compared to a smaller group size of 32
-        self.assertTrue(quantized_int4wo < quantized_int4wo_gs32 and unquantized_int4wo > unquantized_int4wo_gs32)
+        # Latter has smaller group size, so more groups -> more scales and zero points
+        self.assertTrue(total_int4wo < total_int4wo_gs32)
         # int8 quantizes more layers compare to int4 with default group size
-        self.assertTrue(quantized_int8wo < quantized_int4wo)
+        self.assertTrue(total_int8wo < total_int4wo)
+        # int4wo does not quantize too many layers because of default group size, but for the layers it does
+        # there is additional overhead of scales and zero points
+        self.assertTrue(total_bf16 < total_int4wo)
 
     def test_wrong_config(self):
         with self.assertRaises(ValueError):
@@ -555,11 +551,13 @@ class SlowTorchAoTests(unittest.TestCase):
             quantization_config=quantization_config,
             torch_dtype=torch.bfloat16,
         )
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-        text_encoder_2 = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder_2")
+        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+        text_encoder_2 = T5EncoderModel.from_pretrained(
+            model_id, subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+        )
         tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
         tokenizer_2 = AutoTokenizer.from_pretrained(model_id, subfolder="tokenizer_2")
-        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
+        vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.bfloat16)
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         return {
@@ -591,7 +589,7 @@ class SlowTorchAoTests(unittest.TestCase):
 
     def _test_quant_type(self, quantization_config, expected_slice):
         components = self.get_dummy_components(quantization_config)
-        pipe = FluxPipeline(**components).to(dtype=torch.bfloat16)
+        pipe = FluxPipeline(**components)
         pipe.enable_model_cpu_offload()
 
         inputs = self.get_dummy_inputs(torch_device)
