@@ -29,7 +29,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -1293,14 +1293,20 @@ def main(args):
 
             for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    transformer_model = unwrap_model(model)
+                    if args.upcast_before_saving:
+                        transformer_model.to(torch.float32 )
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))):  # or text_encoder_two
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and args.train_text_encoder:  # or text_encoder_two
                     # both text encoders are of the same class, so we check hidden size to distinguish between the two
                     hidden_size = unwrap_model(model).config.hidden_size
                     if hidden_size == 768:
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                     elif hidden_size == 1280:
                         text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and not args.train_text_encoder:
+                    text_encoder_one_lora_layers_to_save = None
+                    text_encoder_two_lora_layers_to_save = None
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1830,7 +1836,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
