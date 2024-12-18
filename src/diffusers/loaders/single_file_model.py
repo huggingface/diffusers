@@ -170,6 +170,8 @@ class FromOriginalModelMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            no_mmap ('bool', *optional*, defaults to 'False'):
+                Whether to use mmap when loading the model.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -214,6 +216,8 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        no_mmap = kwargs.pop("no_mmap", False)
+        logger.warning("no_mmap2: " + str(no_mmap))
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -226,6 +230,7 @@ class FromOriginalModelMixin:
                 cache_dir=cache_dir,
                 local_files_only=local_files_only,
                 revision=revision,
+                no_mmap=no_mmap,
             )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
