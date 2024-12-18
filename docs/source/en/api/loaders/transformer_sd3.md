@@ -24,6 +24,6 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 ## SD3Transformer2DLoadersMixin
 
-[[autodoc]] loaders.transformers_sd3.SD3Transformer2DLoadersMixin
+[[autodoc]] loaders.transformer_sd3.SD3Transformer2DLoadersMixin
     - all
     - _load_ip_adapter_weights
