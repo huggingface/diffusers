@@ -234,8 +234,9 @@ class FromOriginalModelMixin:
             )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
-
+        logger.warning(mapping_functions)
         checkpoint_mapping_fn = mapping_functions["checkpoint_mapping_fn"]
+        logger.warning(checkpoint_mapping_fn)
         if original_config is not None:
             if "config_mapping_fn" in mapping_functions:
                 config_mapping_fn = mapping_functions["config_mapping_fn"]
@@ -255,6 +256,7 @@ class FromOriginalModelMixin:
                 # If original_config is a URL or filepath fetch the original_config dict
                 original_config = fetch_original_config(original_config, local_files_only=local_files_only)
 
+            logger.warn("hi1")
             config_mapping_kwargs = _get_mapping_function_kwargs(config_mapping_fn, **kwargs)
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
@@ -312,14 +314,17 @@ class FromOriginalModelMixin:
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
+            logger.warn("hi2")
             model = cls.from_config(diffusers_model_config)
 
+        logger.warn("hi3")
         if is_accelerate_available():
             unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
 
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False, no_mmap=no_mmap)
 
+        logger.warn("hi4")
         if model._keys_to_ignore_on_load_unexpected is not None:
             for pat in model._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
