@@ -20,7 +20,12 @@ import pytest
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer, LlamaModel, LlamaTokenizerFast
 
-from diffusers import AutoencoderKLHunyuanVideo, FlowMatchEulerDiscreteScheduler, HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLHunyuanVideo,
+    FlowMatchEulerDiscreteScheduler,
+    HunyuanVideoPipeline,
+    HunyuanVideoTransformer3DModel,
+)
 from diffusers.utils.testing_utils import (
     floats_tensor,
     is_peft_available,
@@ -157,7 +162,13 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
 
             out = pipe(
-                prompt=inputs["prompt"], height=inputs["height"], width=inputs["width"], num_frames=inputs["num_frames"], num_inference_steps=inputs["num_inference_steps"], max_sequence_length=inputs["max_sequence_length"], output_type="np"
+                prompt=inputs["prompt"],
+                height=inputs["height"],
+                width=inputs["width"],
+                num_frames=inputs["num_frames"],
+                num_inference_steps=inputs["num_inference_steps"],
+                max_sequence_length=inputs["max_sequence_length"],
+                output_type="np",
             )[0]
 
             self.assertTrue(np.isnan(out).all())
