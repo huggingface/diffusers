@@ -517,15 +517,15 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         cross_attn_interval (`int`, defaults to `1`):
             The interval between cross-attention layers in the Transformer architecture. A larger value may reduce the
             frequency of cross-attention computations, which can help reduce computational overhead.
+        LFE_heads (`int`, defaults to `16`):
+            The number of attention heads used in the Local Facial Extractor (LFE) module. More heads may improve the
+            ability to capture diverse features, but can also increase computational complexity.
         LFE_num_tokens (`int`, defaults to `32`):
             The number of tokens to use in the Local Facial Extractor (LFE). This module is responsible for capturing
             high frequency representations of the face.
-        LFE_output_dim (`int`, defaults to `768`):
+        LFE_output_dim (`int`, defaults to `2048`):
             The output dimension of the Local Facial Extractor (LFE) module. This dimension determines the size of the
             feature vectors produced by the LFE module.
-        LFE_heads (`int`, defaults to `12`):
-            The number of attention heads used in the Local Facial Extractor (LFE) module. More heads may improve the
-            ability to capture diverse features, but can also increase computational complexity.
         local_face_scale (`float`, defaults to `1.0`):
             A scaling factor used to adjust the importance of local facial features in the model. This can influence
             how strongly the model focuses on high frequency face-related content.
@@ -564,9 +564,9 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         is_train_face: bool = False,
         is_kps: bool = False,
         cross_attn_interval: int = 1,
+        LFE_heads: int = 16,
         LFE_num_tokens: int = 32,
-        LFE_output_dim: int = 768,
-        LFE_heads: int = 12,
+        LFE_output_dim: int = 2048,
         local_face_scale: float = 1.0,
     ):
         super().__init__()
@@ -641,9 +641,9 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             self.inner_dim = inner_dim
             self.cross_attn_interval = cross_attn_interval
             self.num_ca = num_layers // cross_attn_interval
+            self.LFE_heads = LFE_heads
             self.LFE_num_tokens = LFE_num_tokens
             self.LFE_output_dim = LFE_output_dim
-            self.LFE_heads = LFE_heads
             self.LFE_final_output_dim = int(self.inner_dim / 3 * 2)
             self.local_face_scale = local_face_scale
             self._init_face_inputs()
@@ -653,8 +653,10 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     def _init_face_inputs(self):
         device = self.device
-        weight_dtype = next(self.transformer_blocks.parameters()).dtype
-        self.local_facial_extractor = LocalFacialExtractor()
+        weight_dtype = self.dtype
+        self.local_facial_extractor = LocalFacialExtractor(
+            heads=self.LFE_heads, num_queries=self.LFE_num_tokens, output_dim=self.LFE_output_dim
+        )
         self.local_facial_extractor.to(device, dtype=weight_dtype)
         self.perceiver_cross_attention = nn.ModuleList(
             [
@@ -793,6 +795,10 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # fuse clip and insightface
         if self.is_train_face:
             assert id_cond is not None and id_vit_hidden is not None
+            id_cond = id_cond.to(device=hidden_states.device, dtype=hidden_states.dtype)
+            id_vit_hidden = [
+                tensor.to(device=hidden_states.device, dtype=hidden_states.dtype) for tensor in id_vit_hidden
+            ]
             valid_face_emb = self.local_facial_extractor(
                 id_cond, id_vit_hidden
             )  # torch.Size([1, 1280]), list[5](torch.Size([1, 577, 1024]))  ->  torch.Size([1, 32, 2048])

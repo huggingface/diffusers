@@ -752,6 +752,7 @@ class CogVideoXPatchEmbed(nn.Module):
             else:
                 pos_embedding = self.pos_embedding
 
+            pos_embedding = pos_embedding.to(embeds.device)
             embeds = embeds + pos_embedding
 
         return embeds

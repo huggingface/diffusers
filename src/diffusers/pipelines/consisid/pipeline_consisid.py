@@ -725,6 +725,11 @@ class ConsisIDPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            use_dynamic_cfg (`bool`, *optional*, defaults to `False`):
+                If True, dynamically adjusts the guidance scale during inference. This allows the model to use a
+                progressive guidance scale, improving the balance between text-guided generation and image quality over
+                the course of the inference steps. Typically, early inference steps use a higher guidance scale for
+                more faithful image generation, while later steps reduce it for more diverse and natural results.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -898,7 +903,14 @@ class ConsisIDPipeline(DiffusionPipeline):
                 # perform guidance
                 if use_dynamic_cfg:
                     self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - timesteps_cpu[i].item()) / num_inference_steps) ** 5.0)) / 2
+                        (
+                            1
+                            - math.cos(
+                                math.pi
+                                * ((num_inference_steps - timesteps_cpu[i].item()) / num_inference_steps) ** 5.0
+                            )
+                        )
+                        / 2
                     )
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
