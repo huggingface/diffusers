@@ -22,9 +22,6 @@ from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeli
 from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend
 
 
-if is_peft_available():
-    pass
-
 sys.path.append(".")
 
 from utils import PeftLoraLoaderMixinTests  # noqa: E402
