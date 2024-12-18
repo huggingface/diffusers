@@ -43,6 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> # !pip install consisid_eva_clip insightface facexlib
         >>> import torch
         >>> from diffusers import ConsisIDPipeline
         >>> from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
