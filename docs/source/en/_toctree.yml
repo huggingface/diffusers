@@ -406,6 +406,8 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video
