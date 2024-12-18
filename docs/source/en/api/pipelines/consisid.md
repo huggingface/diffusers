@@ -36,46 +36,6 @@ There are two official ConsisID checkpoints for identity-preserving text-to-vide
 | [`BestWishYsh/ConsisID-preview`](https://huggingface.co/BestWishYsh/ConsisID-preview) | torch.bfloat16 |
 | [`BestWishYsh/ConsisID-1.5`](https://huggingface.co/BestWishYsh/ConsisID-preview) | torch.bfloat16 |
 
-## Inference
-
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
-
-First, load the pipeline:
-
-```python
-# !pip install consisid_eva_clip insightface facexlib
-import torch
-from diffusers import ConsisIDPipeline
-from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer
-from diffusers.utils import export_to_video
-from huggingface_hub import snapshot_download
-
-snapshot_download(repo_id="BestWishYsh/ConsisID-preview", local_dir="BestWishYsh/ConsisID-preview")
-face_helper_1, face_helper_2, face_clip_model, face_main_model, eva_transform_mean, eva_transform_std = prepare_face_models("BestWishYsh/ConsisID-preview", device="cuda", dtype=torch.bfloat16)
-pipe = ConsisIDPipeline.from_pretrained("BestWishYsh/ConsisID-preview", torch_dtype=torch.bfloat16)
-```
-
-Then change the memory layout of the pipelines `transformer` component to `torch.channels_last`:
-
-```python
-pipe.transformer.to(memory_format=torch.channels_last)
-```
-
-Compile the components and run inference:
-
-```python
-pipe.transformer = torch.compile(pipeline.transformer, mode="max-autotune", fullgraph=True)
-
-# ConsisID works well with long and well-described prompts and image contain clear face (e.g., preferably half-body or full-body).
-prompt = "The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured, timeless quality to the image, evoking a sense of nostalgia. Around him, the cityscape is filled with vintage buildings, cobblestone sidewalks, and softly blurred figures passing by, their outlines faint and indistinct. Streetlights cast a gentle glow, while shadows play across the boy's path, adding depth to the scene. The lighting highlights the boy's subtle smile, hinting at a fleeting moment of curiosity. The overall cinematic atmosphere, complete with classic film still aesthetics and dramatic contrasts, gives the scene an evocative and introspective feel."
-image = "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/2.png?raw=true"
-
-id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, "cuda", torch.bfloat16, image, is_align_face=True)
-
-video = pipe(image=image, prompt=prompt, num_inference_steps=50, guidance_scale=6.0, use_dynamic_cfg=False, id_vit_hidden=id_vit_hidden, id_cond=id_cond, kps_cond=face_kps, generator=torch.Generator("cuda").manual_seed(42))
-export_to_video(video.frames[0], "output.mp4", fps=8)
-```
-
 ### Memory optimization
 
 ConsisID requires about 44 GB of GPU memory to decode 49 frames (6 seconds of video at 8 FPS) with output resolution 720x480 (W x H), which makes it not possible to run on consumer GPUs or free-tier T4 Colab. The following memory optimizations could be used to reduce the memory footprint. For replication, you can refer to [this](https://gist.github.com/SHYuanBest/bc4207c36f454f9e969adbb50eaf8258) script.
@@ -87,14 +47,6 @@ ConsisID requires about 44 GB of GPU memory to decode 49 frames (6 seconds of vi
 | enable_sequential_cpu_offload  | 16 GB                | 22 GB               |
 | vae.enable_slicing             | 16 GB                | 22 GB               |
 | vae.enable_tiling              | 5 GB                 | 7 GB                |
-
-### Quantized inference
-
-[torchao](https://github.com/pytorch/ao) and [optimum-quanto](https://github.com/huggingface/optimum-quanto/) can be used to quantize the text encoder, transformer and VAE modules to lower the memory requirements. This makes it possible to run the model on a free-tier T4 Colab or lower VRAM GPUs!
-
-It is also worth noting that torchao quantization is fully compatible with [torch.compile](/optimization/torch2.0#torchcompile), which allows for much faster inference speed. Additionally, models can be serialized and stored in a quantized datatype to save disk space with torchao. Find examples and benchmarks in the gists below.
-- [torchao](https://gist.github.com/a-r-r-o-w/4d9732d17412888c885480c6521a9897)
-- [quanto](https://gist.github.com/a-r-r-o-w/31be62828b00a9292821b85c1017effa)
 
 ## ConsisIDPipeline
 
