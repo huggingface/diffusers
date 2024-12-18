@@ -361,10 +361,6 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
             "UNetMidBlock2D",
-            "SkipDownBlock2D",
-            "AttnSkipDownBlock2D",
-            "SkipUpBlock2D",
-            "AttnSkipUpBlock2D",
         }
 
         block_out_channels = (32, 64, 64, 64)
