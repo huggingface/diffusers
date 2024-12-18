@@ -40,7 +40,7 @@ from transformers import BitsAndBytesConfig as BitsAndBytesConfig, T5EncoderMode
 quant_config = BitsAndBytesConfig(load_in_8bit=True)
 text_encoder_8bit = T5EncoderModel.from_pretrained(
     "genmo/mochi-1-preview",
-    subfolder="text_encoder2",
+    subfolder="text_encoder",
     quantization_config=quant_config,
     torch_dtype=torch.float16,
 )
