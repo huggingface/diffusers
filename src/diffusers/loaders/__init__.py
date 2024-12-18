@@ -70,6 +70,7 @@ if is_torch_available():
             "FluxLoraLoaderMixin",
             "CogVideoXLoraLoaderMixin",
             "Mochi1LoraLoaderMixin",
+            "SanaLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin", "FluxIPAdapterMixin"]
@@ -93,6 +94,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
+                SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
