@@ -1805,7 +1805,7 @@ class PipelineFastTests(unittest.TestCase):
         assert sd._offload_gpu_id == 5
 
     @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.0")
+    @require_transformers_version_greater("4.47.1")
     @parameterized.expand([torch.float32, torch.float16])
     def test_load_dduf_from_hub(self, dtype):
         with tempfile.TemporaryDirectory() as tmpdir:

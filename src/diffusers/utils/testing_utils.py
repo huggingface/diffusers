@@ -487,6 +487,8 @@ def require_hf_hub_version_greater(hf_hub_version):
             correct_hf_hub_version, f"Test requires huggingface_hub with the version greater than {hf_hub_version}."
         )(test_case)
 
+    return decorator
+
 
 def require_gguf_version_greater_or_equal(gguf_version):
     def decorator(test_case):

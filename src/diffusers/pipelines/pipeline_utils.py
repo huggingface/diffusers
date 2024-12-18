@@ -780,6 +780,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         config_dict = cls.load_config(cached_folder, dduf_entries=dduf_entries)
 
+        if dduf_file:
+            has_transformers_component = False
+            for k in config_dict:
+                if isinstance(config_dict[k], list):
+                    has_transformers_component = config_dict[k][0] == "transformers"
+                    if has_transformers_component:
+                        break
+            if has_transformers_component and not is_transformers_version(">", "4.47.2"):
+                raise ValueError("Please upgrade your `transformers` installation to use DDUF.")
+
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
 
