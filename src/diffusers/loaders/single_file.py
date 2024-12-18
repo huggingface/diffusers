@@ -363,7 +363,7 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         no_mmap = kwargs.pop("no_mmap", False)
-        logger.warning("no_mmap: " + no_mmap)
+        logger.warning("no_mmap: " + str(no_mmap))
 
         is_legacy_loading = False
 
