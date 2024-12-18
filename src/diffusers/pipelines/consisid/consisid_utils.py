@@ -18,14 +18,20 @@ _facexlib_available = importlib.util.find_spec("facexlib") is not None
 if _insightface_available:
     import insightface
     from insightface.app import FaceAnalysis
+else:
+    raise ImportError("insightface is not available. Please install it using 'pip install insightface'.")
 
 if _consisid_eva_clip_available:
     from consisid_eva_clip import create_model_and_transforms
     from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
+else:
+    raise ImportError("consisid_eva_clip is not available. Please install it using 'pip install consisid_eva_clip'.")
 
 if _facexlib_available:
     from facexlib.parsing import init_parsing_model
     from facexlib.utils.face_restoration_helper import FaceRestoreHelper
+else:
+    raise ImportError("facexlib is not available. Please install it using 'pip install facexlib'.")
 
 
 def resize_numpy_image_long(image, resize_long_edge=768):
