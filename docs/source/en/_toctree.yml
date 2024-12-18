@@ -157,6 +157,10 @@
     title: Getting Started
   - local: quantization/bitsandbytes
     title: bitsandbytes
+  - local: quantization/gguf
+    title: gguf
+  - local: quantization/torchao
+    title: torchao
   title: Quantization Methods
 - sections:
   - local: optimization/fp16
@@ -396,6 +400,8 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video

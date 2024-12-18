@@ -170,7 +170,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0()),
         )
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -840,7 +839,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 # perform guidance
                 if self.do_perturbed_attention_guidance:
                     noise_pred = self._apply_perturbed_attention_guidance(
-                        noise_pred, self.do_classifier_free_guidance, guidance_scale, timestep
+                        noise_pred, self.do_classifier_free_guidance, guidance_scale, t
                     )
                 elif self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
