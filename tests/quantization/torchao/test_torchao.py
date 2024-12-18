@@ -36,7 +36,7 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_torch,
     require_torch_gpu,
-    require_torchao_version_greater,
+    require_torchao_version_greater_or_equal,
     slow,
     torch_device,
 )
@@ -74,13 +74,12 @@ if is_torch_available():
 
 if is_torchao_available():
     from torchao.dtypes import AffineQuantizedTensor
-    from torchao.dtypes.affine_quantized_tensor import TensorCoreTiledLayoutType
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
 
 
 @require_torch
 @require_torch_gpu
-@require_torchao_version_greater("0.6.0")
+@require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
         """
@@ -125,7 +124,7 @@ class TorchAoConfigTest(unittest.TestCase):
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
 @require_torch_gpu
-@require_torchao_version_greater("0.6.0")
+@require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
@@ -276,7 +275,6 @@ class TorchAoTest(unittest.TestCase):
         self.assertTrue(isinstance(weight, AffineQuantizedTensor))
         self.assertEqual(weight.quant_min, 0)
         self.assertEqual(weight.quant_max, 15)
-        self.assertTrue(isinstance(weight.layout_type, TensorCoreTiledLayoutType))
 
     def test_offload(self):
         """
@@ -432,7 +430,7 @@ class TorchAoTest(unittest.TestCase):
 # This class is not to be run as a test by itself. See the tests that follow this class
 @require_torch
 @require_torch_gpu
-@require_torchao_version_greater("0.6.0")
+@require_torchao_version_greater_or_equal("0.7.0")
 class TorchAoSerializationTest(unittest.TestCase):
     model_name = "hf-internal-testing/tiny-flux-pipe"
     quant_method, quant_method_kwargs = None, None
@@ -541,7 +539,7 @@ class TorchAoSerializationINTA16W8CPUTest(TorchAoSerializationTest):
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
 @require_torch_gpu
-@require_torchao_version_greater("0.6.0")
+@require_torchao_version_greater_or_equal("0.7.0")
 @slow
 @nightly
 class SlowTorchAoTests(unittest.TestCase):
