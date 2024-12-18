@@ -67,7 +67,7 @@ An IP-Adapter lets you prompt SD3 with images, in addition to the text prompt. T
 - `feature_extractor`: Image processor that prepares the input image for the chosen `image_encoder`.
 - `ip_adapter_id`: Checkpoint containing parameters of image cross attention layers and image projection. 
 
-IP-Adapters are trained for a specific model architecture, so they also work in finetuned variations of the base model. You can use the `set_ip_adapter_scale()` function to adjust how strongly the output aligns with the image prompt. The higher the value, the more closely the model follows the image prompt. A default value of 0.5 is typically a good balance, ensuring the model considers both the text and image prompts equally.
+IP-Adapters are trained for a specific model architecture, so they also work in finetuned variations of the base model. You can use the [`~SD3IPAdapterMixin.set_ip_adapter_scale`] function to adjust how strongly the output aligns with the image prompt. The higher the value, the more closely the model follows the image prompt. A default value of 0.5 is typically a good balance, ensuring the model considers both the text and image prompts equally.
 
 ```python
 import torch
