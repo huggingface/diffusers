@@ -56,7 +56,7 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "pooled_projection_dim": 768,
         "text_embed_dim": 4096,
         "in_channels": 16,
-        "mlp_ratio": 4.0,
+        "mlp_ratio": 1.0,
         "out_channels": 16,
         "patch_size": 2,
         "patch_size_t": 1,
@@ -87,14 +87,14 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "scaling_factor": 0.476986,
         "spatial_compression_ratio": 8,
         "temporal_compression_ratio": 4,
-        "block_out_channels": (1, 1, 1, 512),
+        "block_out_channels": (1, 1, 1, 1),
     }
     vae_cls = AutoencoderKLHunyuanVideo
     has_two_text_encoders = True
-    tokenizer_cls, tokenizer_id = LlamaTokenizerFast, "tencent/HunyuanVideo/tokenizer"
-    tokenizer_2_cls, tokenizer_2_id = CLIPTokenizer, "tencent/HunyuanVideo/tokenizer_2"
-    text_encoder_cls, text_encoder_id = LlamaModel, "tencent/HunyuanVideo/text_encoder"
-    text_encoder_2_cls, text_encoder_2_id = CLIPTextModel, "tencent/HunyuanVideo/text_encoder_2"
+    tokenizer_cls, tokenizer_id = LlamaTokenizerFast, "HunyuanVideo/tokenizer"
+    tokenizer_2_cls, tokenizer_2_id = CLIPTokenizer, "HunyuanVideo/tokenizer_2"
+    text_encoder_cls, text_encoder_id = LlamaModel, "HunyuanVideo/text_encoder"
+    text_encoder_2_cls, text_encoder_2_id = CLIPTextModel, "HunyuanVideo/text_encoder_2"
 
     @property
     def output_shape(self):
@@ -115,7 +115,7 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipeline_inputs = {
             "prompt": "dance monkey",
             "num_frames": num_frames,
-            "num_inference_steps": 4,
+            "num_inference_steps": 1,
             "guidance_scale": 6.0,
             # Cannot reduce because convolution kernel becomes bigger than sample
             "height": 16,
@@ -157,7 +157,7 @@ class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
 
             out = pipe(
-                "test", num_inference_steps=1, max_sequence_length=inputs["max_sequence_length"], output_type="np"
+                prompt=inputs["prompt"], height=inputs["height"], width=inputs["width"], num_frames=inputs["num_frames"], num_inference_steps=inputs["num_inference_steps"], max_sequence_length=inputs["max_sequence_length"], output_type="np"
             )[0]
 
             self.assertTrue(np.isnan(out).all())
