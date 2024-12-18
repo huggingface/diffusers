@@ -463,6 +463,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         width = width // self.vae_spatial_compression_ratio
 
         # TODO: should video_processor take care of it? Because for Cog, we get a 5D tensor here.
+        # `video` memory layout is (num_frames, num_channels, height, width)
         if video.ndim == 4:
             video = video.unsqueeze(0)
 
@@ -490,7 +491,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 retrieve_latents(self.vae.encode(video[i].unsqueeze(0).permute(0, 2, 1, 3, 4)), generator[i])
                 for i in range(batch_size)
             ]
-        else:
+        else: # `premute()` because we want `batch_size, num_channels, num_frames, height, width`
             init_latents = [
                 retrieve_latents(self.vae.encode(vid.unsqueeze(0).permute(0, 2, 1, 3, 4)), generator) for vid in video
             ]
