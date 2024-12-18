@@ -19,7 +19,7 @@ import torch
 from transformers import Gemma2ForCausalLM, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, is_peft_available, require_peft_backend
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
