@@ -285,11 +285,8 @@ class StableDiffusionXLInpaintPipeline(
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
-        "negative_prompt_embeds",
         "add_text_embeds",
         "add_time_ids",
-        "negative_pooled_prompt_embeds",
-        "add_neg_time_ids",
         "mask",
         "masked_image_latents",
     ]
@@ -1671,13 +1668,8 @@ class StableDiffusionXLInpaintPipeline(
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
                     add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
-                    negative_pooled_prompt_embeds = callback_outputs.pop(
-                        "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
-                    )
                     add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
-                    add_neg_time_ids = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids)
                     mask = callback_outputs.pop("mask", mask)
                     masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 

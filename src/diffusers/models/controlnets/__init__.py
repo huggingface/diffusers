@@ -15,7 +15,7 @@ if is_torch_available():
         SparseControlNetModel,
         SparseControlNetOutput,
     )
-    from .controlnet_union import ControlNetUnionInput, ControlNetUnionInputProMax, ControlNetUnionModel
+    from .controlnet_union import ControlNetUnionModel
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
     from .multicontrolnet import MultiControlNetModel
 

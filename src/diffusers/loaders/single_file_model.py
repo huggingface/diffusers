@@ -17,8 +17,10 @@ import re
 from contextlib import nullcontext
 from typing import Optional
 
+import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
+from ..quantizers import DiffusersAutoQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
@@ -214,6 +216,8 @@ class FromOriginalModelMixin:
         subfolder = kwargs.pop("subfolder", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        quantization_config = kwargs.pop("quantization_config", None)
+        device = kwargs.pop("device", None)
 
         if isinstance(pretrained_model_link_or_path_or_dict, dict):
             checkpoint = pretrained_model_link_or_path_or_dict
@@ -227,6 +231,12 @@ class FromOriginalModelMixin:
                 local_files_only=local_files_only,
                 revision=revision,
             )
+        if quantization_config is not None:
+            hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
+            hf_quantizer.validate_environment()
+
+        else:
+            hf_quantizer = None
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
@@ -309,8 +319,36 @@ class FromOriginalModelMixin:
         with ctx():
             model = cls.from_config(diffusers_model_config)
 
+        # Check if `_keep_in_fp32_modules` is not None
+        use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+        )
+        if use_keep_in_fp32_modules:
+            keep_in_fp32_modules = cls._keep_in_fp32_modules
+            if not isinstance(keep_in_fp32_modules, list):
+                keep_in_fp32_modules = [keep_in_fp32_modules]
+
+        else:
+            keep_in_fp32_modules = []
+
+        if hf_quantizer is not None:
+            hf_quantizer.preprocess_model(
+                model=model,
+                device_map=None,
+                state_dict=diffusers_format_checkpoint,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
+
         if is_accelerate_available():
-            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+            param_device = torch.device(device) if device else torch.device("cpu")
+            unexpected_keys = load_model_dict_into_meta(
+                model,
+                diffusers_format_checkpoint,
+                dtype=torch_dtype,
+                device=param_device,
+                hf_quantizer=hf_quantizer,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+            )
 
         else:
             _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
@@ -324,7 +362,11 @@ class FromOriginalModelMixin:
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
-        if torch_dtype is not None:
+        if hf_quantizer is not None:
+            hf_quantizer.postprocess_model(model)
+            model.hf_quantizer = hf_quantizer
+
+        if torch_dtype is not None and hf_quantizer is None:
             model.to(torch_dtype)
 
         model.eval()
