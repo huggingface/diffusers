@@ -164,3 +164,15 @@ class ApproximateGELU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
         return x * torch.sigmoid(1.702 * x)
+
+
+class LinearActivation(nn.Module):
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True, activation: str = "silu"):
+        super().__init__()
+
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
+        self.activation = get_activation(activation)
+
+    def forward(self, hidden_states):
+        hidden_states = self.proj(hidden_states)
+        return self.activation(hidden_states)
