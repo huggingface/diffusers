@@ -140,7 +140,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             if no_mmap:
                 logger.warning("fast load: " + str(checkpoint_file))
-                return safetensors.torch.load(open(checkpoint_file, "rb"), device="cpu")
+                return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
                 logger.warning("slow load: " + str(checkpoint_file))
                 return safetensors.torch.load_file(checkpoint_file, device="cpu")
