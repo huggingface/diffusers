@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# FluxControlInpain
+# FluxControlInpaint
 
 FluxControlInpaintPipeline is an implementation of Inpainting for Flux.1 Depth/Canny models. It is a pipeline that allows you to inpaint images using the Flux.1 Depth/Canny models. The pipeline takes an image and a mask as input and returns the inpainted image.
 
@@ -79,7 +79,7 @@ output = pipe(
 make_image_grid([image, control_image, mask_image, output.resize(image.size)], rows=1, cols=4).save("output.png")
 ```
 
-## FluxControlNetPipeline
+## FluxControlInpaintPipeline
 [[autodoc]] FluxControlInpaintPipeline
 	- all
 	- __call__

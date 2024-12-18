@@ -370,8 +370,6 @@
       title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
-    - local: api/pipelines/control_flux_inpaint
-      title: FluxControlInpain
     - local: api/pipelines/controlnet
       title: ControlNet
     - local: api/pipelines/controlnet_flux
@@ -402,6 +400,8 @@
       title: DiT
     - local: api/pipelines/flux
       title: Flux
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpaint
     - local: api/pipelines/hunyuandit
       title: Hunyuan-DiT
     - local: api/pipelines/hunyuan_video
