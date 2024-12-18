@@ -183,6 +183,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->text_encoder_3->transformer->vae"
+    _exclude_from_cpu_offload = ["image_encoder"]
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "negative_pooled_prompt_embeds"]
 
@@ -694,12 +695,14 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         return self._interrupt
 
     # Adapted from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_image
-    def encode_image(self, image: PipelineImageInput) -> torch.Tensor:
+    def encode_image(self, image: PipelineImageInput, device: torch.device) -> torch.Tensor:
         """Encodes the given image into a feature representation using a pre-trained image encoder.
 
         Args:
             image (`PipelineImageInput`):
                 Input image to be encoded.
+            device: (`torch.device`):
+                Torch device.
 
         Returns:
             `torch.Tensor`: The encoded image feature representation.
@@ -707,7 +710,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=self.device, dtype=self.dtype)
+        image = image.to(device=device, dtype=self.dtype)
 
         return self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
 
@@ -744,7 +747,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             else:
                 single_image_embeds = ip_adapter_image_embeds
         elif ip_adapter_image is not None:
-            single_image_embeds = self.encode_image(ip_adapter_image)
+            single_image_embeds = self.encode_image(ip_adapter_image, device)
             if do_classifier_free_guidance:
                 single_negative_image_embeds = torch.zeros_like(single_image_embeds)
         else:

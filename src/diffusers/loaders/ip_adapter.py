@@ -378,8 +378,8 @@ class SD3IPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        subfolder: str,
         weight_name: str = "ip-adapter.safetensors",
+        subfolder: Optional[str] = None,
         image_encoder_folder: Optional[str] = "image_encoder",
         **kwargs,
     ) -> None:
@@ -393,12 +393,12 @@ class SD3IPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-            subfolder (`str`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally. If a
-                list is passed, it should have the same length as `weight_name`.
             weight_name (`str`, defaults to "ip-adapter.safetensors"):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `subfolder`.
+            subfolder (`str`, *optional*):
+                The subfolder location of a model file within a larger model repository on the Hub or locally. If a
+                list is passed, it should have the same length as `weight_name`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
                 The subfolder location of the image encoder within a larger model repository on the Hub or locally.
                 Pass `None` to not load the image encoder. If the image encoder is located in a folder inside
