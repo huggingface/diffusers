@@ -318,7 +318,7 @@ class FromOriginalModelMixin:
             unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
 
         else:
-            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False)
+            _, unexpected_keys = model.load_state_dict(diffusers_format_checkpoint, strict=False, no_mmap=no_mmap)
 
         if model._keys_to_ignore_on_load_unexpected is not None:
             for pat in model._keys_to_ignore_on_load_unexpected:

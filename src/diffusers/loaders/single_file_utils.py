@@ -382,7 +382,8 @@ def load_single_file_checkpoint(
             revision=revision,
         )
 
-    checkpoint = load_state_dict(pretrained_model_link_or_path, no_mmap)
+    logger.warn("before load_state_dict. no_mmap: " + str(no_mmap))
+    checkpoint = load_state_dict(pretrained_model_link_or_path, no_mmap=no_mmap)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
