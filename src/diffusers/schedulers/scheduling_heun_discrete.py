@@ -22,7 +22,11 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_scipy_available
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
-from .sigmas import BetaSigmas, ExponentialSigmas, KarrasSigmas
+from .sigmas import ExponentialSigmas, KarrasSigmas
+
+
+if is_scipy_available():
+    from .sigmas import BetaSigmas
 
 
 @dataclass
