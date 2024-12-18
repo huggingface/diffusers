@@ -106,6 +106,7 @@ def load_single_file_sub_model(
             subfolder=name,
             torch_dtype=torch_dtype,
             local_files_only=local_files_only,
+            no_mmap=True,
             **kwargs,
         )
 
