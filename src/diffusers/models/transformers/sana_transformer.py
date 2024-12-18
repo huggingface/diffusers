@@ -18,7 +18,8 @@ import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import is_torch_version, logging
+from ...loaders import PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import (
     Attention,
     AttentionProcessor,
@@ -180,7 +181,7 @@ class SanaTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SanaTransformer2DModel(ModelMixin, ConfigMixin):
+class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     r"""
     A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
 
@@ -363,8 +364,24 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         timestep: torch.LongTensor,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -460,6 +477,11 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 5, 1, 3, 2, 4)
         output = hidden_states.reshape(batch_size, -1, post_patch_height * p, post_patch_width * p)
 
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
+
         if not return_dict:
             return (output,)
+
         return Transformer2DModelOutput(sample=output)
