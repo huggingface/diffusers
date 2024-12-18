@@ -18,8 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...loaders.transformers_sd3 import SD3Transformer2DLoadersMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2DLoadersMixin
 from ...models.attention import FeedForward, JointTransformerBlock
 from ...models.attention_processor import (
     Attention,
