@@ -360,6 +360,8 @@
       title: CogView3
     - local: api/pipelines/consistency_models
       title: Consistency Models
+    - local: api/pipelines/control_flux_inpaint
+      title: FluxControlInpain
     - local: api/pipelines/controlnet
       title: ControlNet
     - local: api/pipelines/controlnet_flux
