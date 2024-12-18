@@ -31,7 +31,7 @@ _import_structure = {
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "pipelines": [],
-    "quantizers.quantization_config": ["BitsAndBytesConfig"],
+    "quantizers.quantization_config": ["BitsAndBytesConfig", "GGUFQuantizationConfig", "TorchAoConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -84,6 +84,7 @@ else:
             "AutoencoderKL",
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
+            "AutoencoderKLHunyuanVideo",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMochi",
             "AutoencoderKLTemporalDecoder",
@@ -103,6 +104,7 @@ else:
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
             "HunyuanDiT2DMultiControlNetModel",
+            "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
             "LatteTransformer3DModel",
@@ -115,6 +117,7 @@ else:
             "MultiControlNetModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "SanaTransformer2DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
@@ -288,6 +291,7 @@ else:
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
+            "HunyuanVideoPipeline",
             "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
@@ -334,6 +338,8 @@ else:
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
             "ReduxImageEncoder",
+            "SanaPAGPipeline",
+            "SanaPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -346,6 +352,7 @@ else:
             "StableDiffusion3ControlNetPipeline",
             "StableDiffusion3Img2ImgPipeline",
             "StableDiffusion3InpaintPipeline",
+            "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3PAGImg2ImgPipeline",
             "StableDiffusion3PAGPipeline",
             "StableDiffusion3Pipeline",
@@ -564,7 +571,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .quantizers.quantization_config import BitsAndBytesConfig
+    from .quantizers.quantization_config import BitsAndBytesConfig, GGUFQuantizationConfig, TorchAoConfig
 
     try:
         if not is_onnx_available():
@@ -588,6 +595,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKL,
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
+            AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
             AutoencoderKLMochi,
             AutoencoderKLTemporalDecoder,
@@ -607,6 +615,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
             HunyuanDiT2DMultiControlNetModel,
+            HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
             LatteTransformer3DModel,
@@ -619,6 +628,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MultiControlNetModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            SanaTransformer2DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
@@ -771,6 +781,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
             HunyuanDiTPipeline,
+            HunyuanVideoPipeline,
             I2VGenXLPipeline,
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
@@ -817,6 +828,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
             ReduxImageEncoder,
+            SanaPAGPipeline,
+            SanaPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
