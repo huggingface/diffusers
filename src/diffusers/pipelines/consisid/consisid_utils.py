@@ -1,19 +1,31 @@
+import importlib.util
 import os
 
 import cv2
-import insightface
 import numpy as np
 import torch
-from consisid_eva_clip import create_model_and_transforms
-from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from facexlib.parsing import init_parsing_model
-from facexlib.utils.face_restoration_helper import FaceRestoreHelper
-from insightface.app import FaceAnalysis
 from PIL import Image, ImageOps
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
 
-from diffusers.utils import load_image
+from ...utils import load_image
+
+
+_insightface_available = importlib.util.find_spec("insightface") is not None
+_consisid_eva_clip_available = importlib.util.find_spec("consisid_eva_clip") is not None
+_facexlib_available = importlib.util.find_spec("facexlib") is not None
+
+if _insightface_available:
+    import insightface
+    from insightface.app import FaceAnalysis
+
+if _consisid_eva_clip_available:
+    from consisid_eva_clip import create_model_and_transforms
+    from consisid_eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
+
+if _facexlib_available:
+    from facexlib.parsing import init_parsing_model
+    from facexlib.utils.face_restoration_helper import FaceRestoreHelper
 
 
 def resize_numpy_image_long(image, resize_long_edge=768):
