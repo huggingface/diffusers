@@ -114,7 +114,7 @@ image.save("result.jpg")
 ```
 
 <div class="justify-center">
-    <img src="https://github.com/user-attachments/assets/bc93dd29-ff50-48de-971f-c306653a3a10"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd3_ip_adapter_example.png"/>
     <figcaption class="mt-2 text-sm text-center text-gray-500">IP-Adapter examples with prompt "a cat"</figcaption>
 </div>
 
