@@ -24,6 +24,7 @@ Model weights may be stored in separate subfolders on the Hub or locally, in whi
 
 
 ```python
+# !pip install consisid_eva_clip insightface facexlib
 import torch
 from diffusers import ConsisIDPipeline
 from diffusers.pipelines.consisid.consisid_utils import prepare_face_models, process_face_embeddings_infer

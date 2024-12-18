@@ -481,7 +481,7 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         dropout (`float`, defaults to `0.0`):
             The dropout probability to use.
         attention_bias (`bool`, defaults to `True`):
-            Whether or not to use bias in the attention projection layers.
+            Whether to use bias in the attention projection layers.
         sample_width (`int`, defaults to `90`):
             The width of the input latents.
         sample_height (`int`, defaults to `60`):
@@ -502,7 +502,7 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         timestep_activation_fn (`str`, defaults to `"silu"`):
             Activation function to use when generating the timestep embeddings.
         norm_elementwise_affine (`bool`, defaults to `True`):
-            Whether or not to use elementwise affine in normalization layers.
+            Whether to use elementwise affine in normalization layers.
         norm_eps (`float`, defaults to `1e-5`):
             The epsilon value to use in normalization layers.
         spatial_interpolation_scale (`float`, defaults to `1.875`):
