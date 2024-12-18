@@ -50,7 +50,6 @@ video = pipe(
     guidance_scale=6,
     generator=torch.Generator(device="cuda").manual_seed(42),
 ).frames[0]
-
 export_to_video(video, "output.mp4", fps=8)
 ```
 
@@ -94,6 +93,10 @@ video = pipe(
 export_to_video(video, "output.mp4", fps=15)
 ```
 
+<div class="flex justify-center">
+  <img src="https://huggingface.co/Lightricks/LTX-Video/resolve/main/media/ltx-video_example_00014.gif"/>
+</div>
+
 </hfoption>
 <hfoption id="LTX-Video">
 
@@ -117,6 +120,10 @@ video = pipe(
 export_to_video(video, "output.mp4", fps=24)
 ```
 
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hunyuan-video-output.gif"/>
+</div>
+
 </hfoption>
 <hfoption id="Mochi-1">
 
@@ -135,9 +142,12 @@ pipe.enable_vae_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 video = pipe(prompt, num_frames=84).frames[0]
-
 export_to_video(video, "output.mp4", fps=30)
 ```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/mochi-video-output.gif"/>
+</div>
 
 </hfoption>
 </hfoptions>
@@ -456,3 +466,9 @@ If memory is not an issue and you want to optimize for speed, try wrapping the U
 + pipeline.to("cuda")
 + pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
+
+## Quantization
+
+Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
+
+Refer to the [Quantization](../../quantization/overview) to learn more about supported quantization backends (bitsandbytes, torchao, gguf) and selecting a quantization backend that supports your use case.
