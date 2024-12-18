@@ -818,7 +818,11 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         base_size = 512 // 8 // self.transformer.config.patch_size
         grid_crops_coords = get_resize_crop_region_for_grid((grid_height, grid_width), base_size)
         image_rotary_emb = get_2d_rotary_pos_embed(
-            self.transformer.inner_dim // self.transformer.num_heads, grid_crops_coords, (grid_height, grid_width)
+            self.transformer.inner_dim // self.transformer.num_heads,
+            grid_crops_coords,
+            (grid_height, grid_width),
+            device=device,
+            output_type="pt",
         )
 
         style = torch.tensor([0], device=device)
