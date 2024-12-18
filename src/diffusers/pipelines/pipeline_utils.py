@@ -45,6 +45,7 @@ from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
+from ..quantizers.torchao.utils import _check_torchao_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -388,6 +389,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device = device or device_arg
         pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
+        pipeline_has_torchao = any(_check_torchao_status(module) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -411,7 +413,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
         if device and torch.device(device).type == "cuda":
-            if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
+            if pipeline_is_sequentially_offloaded and not (pipeline_has_bnb or pipeline_has_torchao):
                 raise ValueError(
                     "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
                 )
@@ -419,6 +421,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif pipeline_has_bnb and is_accelerate_version("<", "1.1.0.dev0"):
                 raise ValueError(
                     "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+                )
+            elif pipeline_has_torchao:
+                raise ValueError(
+                    "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `torchao`. This is not supported. There are two options on what could be done to fix this error:\n"
+                    "1. Move the individual components of the model to the desired device directly using `.to()` on each.\n"
+                    '2. Pass `device_map="balanced"` when initializing the pipeline to let `accelerate` handle the device placement.'
                 )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
