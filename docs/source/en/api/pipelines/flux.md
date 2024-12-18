@@ -143,18 +143,77 @@ image = pipe(
 image.save("output.png")
 ```
 
+Canny Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install -U controlnet-aux
+import torch
+from controlnet_aux import CannyDetector
+from diffusers import FluxControlPipeline
+from diffusers.utils import load_image
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = CannyDetector()
+control_image = processor(control_image, low_threshold=50, high_threshold=200, detect_resolution=1024, image_resolution=1024)
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=50,
+    guidance_scale=30.0,
+).images[0]
+image.save("output.png")
+```
+
 ### Depth Control
 
 **Note:** `black-forest-labs/Flux.1-Depth-dev` is _not_ a ControlNet model. [`ControlNetModel`] models are a separate component from the UNet/Transformer whose residuals are added to the actual underlying model. Depth Control is an alternate architecture that achieves effectively the same results as a ControlNet model would, by using channel-wise concatenation with input control condition and ensuring the transformer learns structure control by following the condition as closely as possible.
 
 ```python
-# !pip install git+https://github.com/asomoza/image_gen_aux.git
+# !pip install git+https://github.com/huggingface/image_gen_aux
 import torch
 from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
 pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", torch_dtype=torch.bfloat16).to("cuda")
+
+prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
+control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
+
+processor = DepthPreprocessor.from_pretrained("LiheYoung/depth-anything-large-hf")
+control_image = processor(control_image)[0].convert("RGB")
+
+image = pipe(
+    prompt=prompt,
+    control_image=control_image,
+    height=1024,
+    width=1024,
+    num_inference_steps=30,
+    guidance_scale=10.0,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("output.png")
+```
+
+Depth Control is also possible with a LoRA variant of this condition. The usage is as follows:
+
+```python
+# !pip install git+https://github.com/huggingface/image_gen_aux
+import torch
+from diffusers import FluxControlPipeline, FluxTransformer2DModel
+from diffusers.utils import load_image
+from image_gen_aux import DepthPreprocessor
+
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")

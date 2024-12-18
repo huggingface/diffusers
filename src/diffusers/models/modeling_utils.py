@@ -208,6 +208,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_npu_flash_attention(False)
 
+    def set_use_xla_flash_attention(
+        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None
+    ) -> None:
+        # Recursively walk through all the children.
+        # Any children which exposes the set_use_xla_flash_attention method
+        # gets the message
+        def fn_recursive_set_flash_attention(module: torch.nn.Module):
+            if hasattr(module, "set_use_xla_flash_attention"):
+                module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec)
+
+            for child in module.children():
+                fn_recursive_set_flash_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_flash_attention(module)
+
+    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None):
+        r"""
+        Enable the flash attention pallals kernel for torch_xla.
+        """
+        self.set_use_xla_flash_attention(True, partition_spec)
+
+    def disable_xla_flash_attention(self):
+        r"""
+        Disable the flash attention pallals kernel for torch_xla.
+        """
+        self.set_use_xla_flash_attention(False)
+
     def set_use_memory_efficient_attention_xformers(
         self, valid: bool, attention_op: Optional[Callable] = None
     ) -> None:
@@ -338,7 +367,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", False)
+            private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
@@ -671,10 +700,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
-            if device_map is not None:
+            is_bnb_quantization_method = hf_quantizer.quantization_config.quant_method.value == "bitsandbytes"
+            if is_bnb_quantization_method and device_map is not None:
                 raise NotImplementedError(
-                    "Currently, `device_map` is automatically inferred for quantized models. Support for providing `device_map` as an input will be added in the future."
+                    "Currently, `device_map` is automatically inferred for quantized bitsandbytes models. Support for providing `device_map` as an input will be added in the future."
                 )
+
             hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
 
@@ -829,14 +860,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if device_map is None and not is_sharded:
                     # `torch.cuda.current_device()` is fine here when `hf_quantizer` is not None.
                     # It would error out during the `validate_environment()` call above in the absence of cuda.
-                    is_quant_method_bnb = (
-                        getattr(model, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES
-                    )
                     if hf_quantizer is None:
                         param_device = "cpu"
                     # TODO (sayakpaul,  SunMarc): remove this after model loading refactor
-                    elif is_quant_method_bnb:
-                        param_device = torch.cuda.current_device()
+                    else:
+                        param_device = torch.device(torch.cuda.current_device())
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
 
@@ -1010,14 +1038,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     dtype_present_in_args = True
                     break
 
-        # Checks if the model has been loaded in 4-bit or 8-bit with BNB
-        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
+        if getattr(self, "is_quantized", False):
             if dtype_present_in_args:
                 raise ValueError(
-                    "You cannot cast a bitsandbytes model in a new `dtype`. Make sure to load the model using `from_pretrained` using the"
-                    " desired `dtype` by passing the correct `torch_dtype` argument."
+                    "Casting a quantized model to a new `dtype` is unsupported. To set the dtype of unquantized layers, please "
+                    "use the `torch_dtype` argument when loading the model using `from_pretrained` or `from_single_file`"
                 )
 
+        if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
             if getattr(self, "is_loaded_in_8bit", False):
                 raise ValueError(
                     "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
