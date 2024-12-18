@@ -170,7 +170,6 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
             pag_attn_processors=(PAGCFGSanaLinearAttnProcessor2_0(), PAGIdentitySanaLinearAttnProcessor2_0()),
         )
 
-    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
