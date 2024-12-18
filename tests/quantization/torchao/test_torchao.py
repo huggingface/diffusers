@@ -337,7 +337,6 @@ class TorchAoTest(unittest.TestCase):
                 output = quantized_model(**inputs)[0]
                 output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
 
-                expected_slice = np.array([0.3457, -0.0366, 0.0105, -0.2275, -0.4941, 0.4395, -0.166, -0.6641, 0.4375])
                 self.assertTrue(np.allclose(output_slice, expected_slice, atol=1e-3, rtol=1e-3))
 
     def test_modules_to_not_convert(self):
