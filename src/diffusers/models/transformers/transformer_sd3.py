@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2DLoadersMixin
 from ...models.attention import FeedForward, JointTransformerBlock
 from ...models.attention_processor import (
     Attention,
@@ -103,7 +103,9 @@ class SD3SingleTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class SD3Transformer2DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, SD3Transformer2DLoadersMixin
+):
     """
     The Transformer model introduced in Stable Diffusion 3.
 
@@ -336,6 +338,7 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
+        ip_adapter_image_embeds: Optional[torch.FloatTensor] = None,
         block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
@@ -349,10 +352,12 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 Input `hidden_states`.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
-                from the embeddings of input conditions.
+            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`):
+                Embeddings projected from the embeddings of input conditions.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
+            ip_adapter_image_embeds (`torch.FloatTensor`):
+                Image embeddings for IP-Adapter.
             block_controlnet_hidden_states (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
@@ -389,6 +394,15 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         hidden_states = self.pos_embed(hidden_states)  # takes care of adding positional embeddings too.
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        if ip_adapter_image_embeds is not None:
+            ip_hidden_states, ip_temb = self.image_proj(ip_adapter_image_embeds, timestep)
+            ip_embeds = {"ip_hidden_states": ip_hidden_states, "temb": ip_temb}
+
+            if joint_attention_kwargs is None:
+                joint_attention_kwargs = ip_embeds
+            else:
+                joint_attention_kwargs.update(**ip_embeds)
 
         for index_block, block in enumerate(self.transformer_blocks):
             # Skip specified layers
