@@ -23,16 +23,12 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
 from diffusers.utils.testing_utils import (
     floats_tensor,
-    is_peft_available,
     is_torch_version,
     require_peft_backend,
     skip_mps,
     torch_device,
 )
 
-
-if is_peft_available():
-    pass
 
 sys.path.append(".")
 
@@ -108,7 +104,7 @@ class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         return noise, input_ids, pipeline_inputs
 
     @pytest.mark.xfail(
-        condtion=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
+        condition=torch.device(torch_device).type == "cpu" and is_torch_version(">=", "2.5"),
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
         strict=True,
     )

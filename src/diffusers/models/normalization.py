@@ -234,33 +234,6 @@ class LuminaRMSNormZero(nn.Module):
         return x, gate_msa, scale_mlp, gate_mlp
 
 
-class MochiRMSNormZero(nn.Module):
-    r"""
-    Adaptive RMS Norm used in Mochi.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-    """
-
-    def __init__(
-        self, embedding_dim: int, hidden_dim: int, eps: float = 1e-5, elementwise_affine: bool = False
-    ) -> None:
-        super().__init__()
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, hidden_dim)
-        self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
-
-    def forward(
-        self, hidden_states: torch.Tensor, emb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        emb = self.linear(self.silu(emb))
-        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
-        hidden_states = self.norm(hidden_states) * (1 + scale_msa[:, None])
-
-        return hidden_states, gate_msa, scale_mlp, gate_mlp
-
-
 class AdaLayerNormSingle(nn.Module):
     r"""
     Norm layer adaptive layer norm single (adaLN-single).
@@ -512,6 +485,46 @@ else:
 
 
 class RMSNorm(nn.Module):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True, bias: bool = False):
+        super().__init__()
+
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+
+        if isinstance(dim, numbers.Integral):
+            dim = (dim,)
+
+        self.dim = torch.Size(dim)
+
+        self.weight = None
+        self.bias = None
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(dim))
+            if bias:
+                self.bias = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+        if self.weight is not None:
+            # convert into half-precision if necessary
+            if self.weight.dtype in [torch.float16, torch.bfloat16]:
+                hidden_states = hidden_states.to(self.weight.dtype)
+            hidden_states = hidden_states * self.weight
+            if self.bias is not None:
+                hidden_states = hidden_states + self.bias
+        else:
+            hidden_states = hidden_states.to(input_dtype)
+
+        return hidden_states
+
+
+# TODO: (Dhruv) This can be replaced with regular RMSNorm in Mochi once `_keep_in_fp32_modules` is supported
+# for sharded checkpoints, see: https://github.com/huggingface/diffusers/issues/10013
+class MochiRMSNorm(nn.Module):
     def __init__(self, dim, eps: float, elementwise_affine: bool = True):
         super().__init__()
 
@@ -533,12 +546,8 @@ class RMSNorm(nn.Module):
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
 
         if self.weight is not None:
-            # convert into half-precision if necessary
-            if self.weight.dtype in [torch.float16, torch.bfloat16]:
-                hidden_states = hidden_states.to(self.weight.dtype)
             hidden_states = hidden_states * self.weight
-        else:
-            hidden_states = hidden_states.to(input_dtype)
+        hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 
@@ -566,3 +575,21 @@ class LpNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         return F.normalize(hidden_states, p=self.p, dim=self.dim, eps=self.eps)
+
+
+def get_normalization(
+    norm_type: str = "batch_norm",
+    num_features: Optional[int] = None,
+    eps: float = 1e-5,
+    elementwise_affine: bool = True,
+    bias: bool = True,
+) -> nn.Module:
+    if norm_type == "rms_norm":
+        norm = RMSNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "layer_norm":
+        norm = nn.LayerNorm(num_features, eps=eps, elementwise_affine=elementwise_affine, bias=bias)
+    elif norm_type == "batch_norm":
+        norm = nn.BatchNorm2d(num_features, eps=eps, affine=elementwise_affine)
+    else:
+        raise ValueError(f"{norm_type=} is not supported.")
+    return norm
