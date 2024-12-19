@@ -311,8 +311,8 @@ class FromSingleFileMixin:
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing the pipeline
                       component configs in Diffusers format.
             no_mmap ('bool', *optional*, defaults to 'False'):
-                Whether to disable mmap when loading the model. This option can perform better when the model is on
-                a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+                Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
+                is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
