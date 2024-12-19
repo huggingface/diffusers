@@ -538,6 +538,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions of the axes to use in the RoPE layer.
     """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
