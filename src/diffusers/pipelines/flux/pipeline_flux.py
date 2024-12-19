@@ -471,10 +471,8 @@ class FluxPipeline(
                 single_image_embeds = self.encode_image(single_ip_adapter_image, device, 1)
 
                 image_embeds.append(single_image_embeds[None, :])
-                image_embeds = self.transformer.encoder_hid_proj(image_embeds)
         else:
             for single_image_embeds in ip_adapter_image_embeds:
-                image_embeds = self.transformer.encoder_hid_proj(single_image_embeds)
                 image_embeds.append(single_image_embeds)
 
         ip_adapter_image_embeds = []
@@ -913,7 +911,6 @@ class FluxPipeline(
                 device,
                 batch_size * num_images_per_prompt,
             )
-            self._joint_attention_kwargs["image_projection"] = image_embeds
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             negative_image_embeds = self.prepare_ip_adapter_image_embeds(
                 negative_ip_adapter_image,
@@ -928,7 +925,8 @@ class FluxPipeline(
                 if self.interrupt:
                     continue
 
-                self._joint_attention_kwargs["image_projection"] = image_embeds
+                if image_embeds is not None:
+                    self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -945,7 +943,8 @@ class FluxPipeline(
                 )[0]
 
                 if do_true_cfg:
-                    self._joint_attention_kwargs["image_projection"] = negative_image_embeds
+                    if negative_image_embeds is not None:
+                        self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
                     neg_noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
