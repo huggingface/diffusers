@@ -519,15 +519,47 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         cross_attn_interval (`int`, defaults to `2`):
             The interval between cross-attention layers in the Transformer architecture. A larger value may reduce the
             frequency of cross-attention computations, which can help reduce computational overhead.
-        LFE_num_heads (`int`, defaults to `16`):
-            The number of attention heads used in the Local Facial Extractor (LFE) module. More heads may improve the
-            ability to capture diverse features, but can also increase computational complexity.
-        LFE_num_querie (`int`, defaults to `32`):
-            The number of tokens to use in the Local Facial Extractor (LFE). This module is responsible for capturing
-            high frequency representations of the face.
-        LFE_output_dim (`int`, defaults to `2048`):
-            The output dimension of the Local Facial Extractor (LFE) module. This dimension determines the size of the
-            feature vectors produced by the LFE module.
+        cross_attn_dim_head (`int`, optional, defaults to `128`):
+            The dimensionality of each attention head in the cross-attention layers of the Transformer architecture. A
+            larger value increases the capacity to attend to more complex patterns, but also increases memory and
+            computation costs.
+        cross_attn_num_heads (`int`, optional, defaults to `16`):
+            The number of attention heads in the cross-attention layers. More heads allow for more parallel attention
+            mechanisms, capturing diverse relationships between different components of the input, but can also
+            increase computational requirements.
+        LFE_id_dim (`int`, optional, defaults to `1280`):
+            The dimensionality of the identity vector used in the Local Facial Extractor (LFE). This vector represents
+            the identity features of a face, which are important for tasks like face recognition and identity
+            preservation across different frames.
+        LFE_vit_dim (`int`, optional, defaults to `1024`):
+            The dimension of the vision transformer (ViT) output used in the Local Facial Extractor (LFE). This value
+            dictates the size of the transformer-generated feature vectors that will be processed for facial feature
+            extraction.
+        LFE_depth (`int`, optional, defaults to `10`):
+            The number of layers in the Local Facial Extractor (LFE). Increasing the depth allows the model to capture
+            more complex representations of facial features, but also increases the computational load.
+        LFE_dim_head (`int`, optional, defaults to `64`):
+            The dimensionality of each attention head in the Local Facial Extractor (LFE). This parameter affects how
+            finely the model can process and focus on different parts of the facial features during the extraction
+            process.
+        LFE_num_heads (`int`, optional, defaults to `16`):
+            The number of attention heads in the Local Facial Extractor (LFE). More heads can improve the model's
+            ability to capture diverse facial features, but at the cost of increased computational complexity.
+        LFE_num_id_token (`int`, optional, defaults to `5`):
+            The number of identity tokens used in the Local Facial Extractor (LFE). This defines how many
+            identity-related tokens the model will process to ensure face identity preservation during feature
+            extraction.
+        LFE_num_querie (`int`, optional, defaults to `32`):
+            The number of query tokens used in the Local Facial Extractor (LFE). These tokens are used to capture
+            high-frequency face-related information that aids in accurate facial feature extraction.
+        LFE_output_dim (`int`, optional, defaults to `2048`):
+            The output dimension of the Local Facial Extractor (LFE). This dimension determines the size of the feature
+            vectors produced by the LFE module, which will be used for subsequent tasks such as face recognition or
+            tracking.
+        LFE_ff_mult (`int`, optional, defaults to `4`):
+            The multiplication factor applied to the feed-forward network's hidden layer size in the Local Facial
+            Extractor (LFE). A higher value increases the model's capacity to learn more complex facial feature
+            transformations, but also increases the computation and memory requirements.
         local_face_scale (`float`, defaults to `1.0`):
             A scaling factor used to adjust the importance of local facial features in the model. This can influence
             how strongly the model focuses on high frequency face-related content.
