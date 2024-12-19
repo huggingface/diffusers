@@ -802,7 +802,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     revision=revision,
                     subfolder=subfolder or "",
                 )
-                if hf_quantizer is not None:
+                if hf_quantizer is not None and is_bnb_quantization_method:
                     model_file = _merge_sharded_checkpoints(sharded_ckpt_cached_folder, sharded_metadata)
                     logger.info("Merged sharded checkpoints as `hf_quantizer` is not None.")
                     is_sharded = False
