@@ -33,8 +33,8 @@ If you are new to the quantization field, we recommend you to check out these be
 ## When to use what?
 
 Diffusers currently supports the following quantization methods.
-- [BitsandBytes]()
-- [TorchAO]()
-- [GGUF]()
+- [BitsandBytes](./bitsandbytes.md)
+- [TorchAO](./torchao.md)
+- [GGUF](./gguf.md)
 
 [This resource](https://huggingface.co/docs/transformers/main/en/quantization/overview#when-to-use-what) provides a good overview of the pros and cons of different quantization techniques.
