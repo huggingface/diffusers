@@ -691,7 +691,7 @@ class CogVideoXPatchEmbed(nn.Module):
             output_type="pt",
         )
         pos_embedding = pos_embedding.flatten(0, 1)
-        joint_pos_embedding = torch.zeros(
+        joint_pos_embedding = pos_embedding.new_zeros(
             1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
         )
         joint_pos_embedding.data[:, self.max_text_seq_length :].copy_(pos_embedding)
