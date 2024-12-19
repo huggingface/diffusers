@@ -1033,6 +1033,11 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 self.do_classifier_free_guidance,
             )
 
+            if self.joint_attention_kwargs is None:
+                self._joint_attention_kwargs = {"ip_adapter_image_embeds": ip_adapter_image_embeds}
+            else:
+                self._joint_attention_kwargs.update(ip_adapter_image_embeds=ip_adapter_image_embeds)
+
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1047,7 +1052,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
-                    ip_adapter_image_embeds=ip_adapter_image_embeds,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
                     joint_attention_kwargs=self.joint_attention_kwargs,

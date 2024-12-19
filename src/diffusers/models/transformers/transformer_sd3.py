@@ -338,7 +338,6 @@ class SD3Transformer2DModel(
         encoder_hidden_states: torch.FloatTensor = None,
         pooled_projections: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        ip_adapter_image_embeds: Optional[torch.FloatTensor] = None,
         block_controlnet_hidden_states: List = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
@@ -356,8 +355,6 @@ class SD3Transformer2DModel(
                 Embeddings projected from the embeddings of input conditions.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
-            ip_adapter_image_embeds (`torch.FloatTensor`):
-                Image embeddings for IP-Adapter.
             block_controlnet_hidden_states (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
@@ -395,14 +392,11 @@ class SD3Transformer2DModel(
         temb = self.time_text_embed(timestep, pooled_projections)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        if ip_adapter_image_embeds is not None:
+        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
+            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
             ip_hidden_states, ip_temb = self.image_proj(ip_adapter_image_embeds, timestep)
-            ip_embeds = {"ip_hidden_states": ip_hidden_states, "temb": ip_temb}
 
-            if joint_attention_kwargs is None:
-                joint_attention_kwargs = ip_embeds
-            else:
-                joint_attention_kwargs.update(**ip_embeds)
+            joint_attention_kwargs.update(ip_hidden_states=ip_hidden_states, temb=ip_temb)
 
         for index_block, block in enumerate(self.transformer_blocks):
             # Skip specified layers
