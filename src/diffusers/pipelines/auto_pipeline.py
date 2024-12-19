@@ -66,6 +66,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaText2ImgPipeline
 from .pag import (
+    StableDiffusionControlNetPAGImg2ImgPipeline,
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
     StableDiffusion3PAGImg2ImgPipeline,
@@ -146,6 +147,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("kandinsky3", Kandinsky3Img2ImgPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGImg2ImgPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionImg2ImgPipeline),
