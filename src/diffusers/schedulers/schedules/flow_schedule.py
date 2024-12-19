@@ -1,21 +1,32 @@
+import math
 from typing import List, Optional, Union
 
-import math
 import numpy as np
 import torch
 
-from ...configuration_utils import ConfigMixin, register_to_config
 from ..sigmas.beta_sigmas import BetaSigmas
 from ..sigmas.exponential_sigmas import ExponentialSigmas
 from ..sigmas.karras_sigmas import KarrasSigmas
 
-class FlowMatchSD3:
-    
-    def _sigma_to_t(self, sigma):
-        return sigma * self.num_train_timesteps
 
-    def __call__(self, num_inference_steps: int, num_train_timesteps: int, shift: float, use_dynamic_shifting: bool = False, **kwargs):
-        self.num_train_timesteps = num_train_timesteps
+class FlowMatchSD3:
+    def __call__(
+        self,
+        num_inference_steps: int,
+        num_train_timesteps: int,
+        shift: float,
+        use_dynamic_shifting: bool = False,
+        **kwargs,
+    ) -> np.ndarray:
+        """
+        This is different to others that directly calculate `sigmas`.
+        It needs `sigma_min` and `sigma_max` after shift
+        https://github.com/huggingface/diffusers/blob/0ed09a17bbab784a78fb163b557b4827467b0468/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py#L89-L95
+        Then we calculate `sigmas` from that `sigma_min` and `sigma_max`.
+        https://github.com/huggingface/diffusers/blob/0ed09a17bbab784a78fb163b557b4827467b0468/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py#L238-L240
+        Shifting happens again after (outside of this).
+        https://github.com/huggingface/diffusers/blob/0ed09a17bbab784a78fb163b557b4827467b0468/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py#L248-L251
+        """
         timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
@@ -25,18 +36,20 @@ class FlowMatchSD3:
             sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)
         sigma_min = sigmas[-1].item()
         sigma_max = sigmas[0].item()
-        timesteps = np.linspace(
-            self._sigma_to_t(sigma_max), self._sigma_to_t(sigma_min), num_inference_steps
-        )
+        timesteps = np.linspace(sigma_max * num_train_timesteps, sigma_min * num_train_timesteps, num_inference_steps)
         sigmas = timesteps / num_train_timesteps
         return sigmas
 
+
 class FlowMatchFlux:
-    def __call__(self, num_inference_steps: int, **kwargs):
+    def __call__(self, num_inference_steps: int, **kwargs) -> np.ndarray:
         return np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
 
+
 class FlowMatchLinearQuadratic:
-    def __call__(self, num_inference_steps: int, threshold_noise: float = 0.25, linear_steps: Optional[int] = None, **kwargs):
+    def __call__(
+        self, num_inference_steps: int, threshold_noise: float = 0.25, linear_steps: Optional[int] = None, **kwargs
+    ) -> np.ndarray:
         if linear_steps is None:
             linear_steps = num_inference_steps // 2
         linear_sigma_schedule = [i * threshold_noise / linear_steps for i in range(linear_steps)]
@@ -49,22 +62,33 @@ class FlowMatchLinearQuadratic:
             quadratic_coef * (i**2) + linear_coef * i + const for i in range(linear_steps, num_inference_steps)
         ]
         sigma_schedule = linear_sigma_schedule + quadratic_sigma_schedule
-        sigma_schedule = [1.0 - x for x in sigma_schedule]
+        sigma_schedule = np.array([1.0 - x for x in sigma_schedule]).astype(np.float32)
         return sigma_schedule
 
+
 class FlowMatchHunyuanVideo:
-    def __call__(self, num_inference_steps: int, **kwargs):
+    def __call__(self, num_inference_steps: int, **kwargs) -> np.ndarray:
         return np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1].copy()
+
+
+class FlowMatchSANA:
+    def __call__(self, num_inference_steps: int, num_train_timesteps: int, shift: float, **kwargs) -> np.ndarray:
+        alphas = np.linspace(1, 1 / num_train_timesteps, num_inference_steps + 1)
+        sigmas = 1.0 - alphas
+        sigmas = np.flip(shift * sigmas / (1 + (shift - 1) * sigmas))[:-1].copy()
+        return sigmas
+
 
 BASE_SCHEDULE_MAP = {
     "FlowMatchHunyuanVideo": FlowMatchHunyuanVideo,
     "FlowMatchLinearQuadratic": FlowMatchLinearQuadratic,
     "FlowMatchFlux": FlowMatchFlux,
     "FlowMatchSD3": FlowMatchSD3,
+    "FlowMatchSANA": FlowMatchSANA,
 }
 
-class FlowMatchSchedule:
 
+class FlowMatchSchedule:
     scale_model_input = False
 
     base_schedules = BASE_SCHEDULE_MAP
@@ -145,7 +169,7 @@ class FlowMatchSchedule:
     ):
         shift = shift or self.shift
         if self.use_dynamic_shifting and mu is None:
-            raise ValueError(" you have a pass a value for `mu` when `use_dynamic_shifting` is set to be `True`")
+            raise ValueError("You have to pass a value for `mu` when `use_dynamic_shifting` is set to be `True`")
 
         if sigmas is None:
             sigmas = self.base_schedule(
@@ -155,9 +179,8 @@ class FlowMatchSchedule:
                 use_dynamic_shifting=self.use_dynamic_shifting,
             )
         else:
+            # NOTE: current usage is **without** `sigma_last` - different than BetaSchedule
             sigmas = np.array(sigmas).astype(np.float32)
-            num_inference_steps = len(sigmas)
-        self.num_inference_steps = num_inference_steps
 
         if self.use_dynamic_shifting:
             sigmas = self.time_shift(mu, 1.0, sigmas)

@@ -384,7 +384,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
-        noisy_samples = original_samples + noise * sigma
+        if self._schedule.__class__.__name__ == "FlowMatchSchedule":
+            noisy_samples = (1.0 - sigma) * original_samples + noise * sigma
+        else:
+            noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
     def __len__(self):

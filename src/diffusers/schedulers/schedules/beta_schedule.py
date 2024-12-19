@@ -1,13 +1,13 @@
+import math
 from typing import List, Optional, Union
 
-import math
 import numpy as np
 import torch
 
-from ...configuration_utils import ConfigMixin, register_to_config
 from ..sigmas.beta_sigmas import BetaSigmas
 from ..sigmas.exponential_sigmas import ExponentialSigmas
 from ..sigmas.karras_sigmas import KarrasSigmas
+
 
 def betas_for_alpha_bar(
     num_diffusion_timesteps,
@@ -52,6 +52,7 @@ def betas_for_alpha_bar(
         betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
 
+
 def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
@@ -89,7 +90,6 @@ def rescale_zero_terminal_snr(betas):
 
 
 class BetaSchedule:
-
     scale_model_input = True
 
     def __init__(
@@ -132,7 +132,7 @@ class BetaSchedule:
             # Close to 0 without being 0 so first sigma is not inf
             # FP16 smallest positive subnormal works well here
             self.alphas_cumprod[-1] = 2**-24
-        
+
         self.num_train_timesteps = num_train_timesteps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -181,6 +181,7 @@ class BetaSchedule:
     ):
         if sigmas is not None:
             log_sigmas = np.log(np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5))
+            # NOTE: current usage is **with** `sigma_last` - different than FlowMatch.
             sigmas = np.array(sigmas).astype(np.float32)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas[:-1]])
 
@@ -190,9 +191,9 @@ class BetaSchedule:
             else:
                 # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
                 if self.timestep_spacing == "linspace":
-                    timesteps = np.linspace(
-                        0, self.num_train_timesteps - 1, num_inference_steps, dtype=np.float32
-                    )[::-1].copy()
+                    timesteps = np.linspace(0, self.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
+                        ::-1
+                    ].copy()
                 elif self.timestep_spacing == "leading":
                     step_ratio = self.num_train_timesteps // num_inference_steps
                     # creates integer timesteps by multiplying by ratio
@@ -205,9 +206,7 @@ class BetaSchedule:
                     step_ratio = self.num_train_timesteps / num_inference_steps
                     # creates integer timesteps by multiplying by ratio
                     # casting to int to avoid issues when num_inference_step is power of 3
-                    timesteps = (
-                        (np.arange(self.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
-                    )
+                    timesteps = (np.arange(self.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
                     timesteps -= 1
                 else:
                     raise ValueError(
@@ -240,7 +239,7 @@ class BetaSchedule:
                 )
 
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
-        
+
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
 
         # TODO: Support the full EDM scalings for all prediction types and timestep types
@@ -248,5 +247,5 @@ class BetaSchedule:
             timesteps = torch.Tensor([0.25 * sigma.log() for sigma in sigmas[:-1]]).to(device=device)
         else:
             timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
-        
+
         return sigmas, timesteps

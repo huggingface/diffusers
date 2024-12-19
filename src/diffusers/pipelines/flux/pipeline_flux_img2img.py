@@ -562,7 +562,9 @@ class FluxImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFile
             image_latents = torch.cat([image_latents], dim=0)
 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+        # NOTE: `scale_noise` changed to `add_noise`
+        # the signature is `noise`, `timestep` instead of `timestep`, `noise`
+        latents = self.scheduler.add_noise(image_latents, noise, timestep)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
         return latents, latent_image_ids
 
