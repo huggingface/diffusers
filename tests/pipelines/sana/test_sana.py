@@ -148,7 +148,6 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        pipe.push_to_hub("hf-internal-testing/tiny-sana-pipe")
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
