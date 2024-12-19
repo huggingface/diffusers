@@ -1034,7 +1034,6 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             )
 
         # 7. Denoising loop
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -1045,21 +1044,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                if ip_adapter_image_embeds is not None:
-                    ip_hidden_states, temb = self.transformer.image_proj(
-                        ip_adapter_image_embeds, timestep.to(dtype=latents.dtype)
-                    )
-
-                    image_prompt_embeds = {"ip_hidden_states": ip_hidden_states, "temb": temb}
-
-                    if self.joint_attention_kwargs is None:
-                        self._joint_attention_kwargs = image_prompt_embeds
-                    else:
-                        self._joint_attention_kwargs.update(**image_prompt_embeds)
-
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,
+                    ip_adapter_image_embeds=ip_adapter_image_embeds,
                     encoder_hidden_states=prompt_embeds,
                     pooled_projections=pooled_prompt_embeds,
                     joint_attention_kwargs=self.joint_attention_kwargs,
@@ -1082,6 +1070,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
+                            ip_adapter_image_embeds=ip_adapter_image_embeds,
                             encoder_hidden_states=original_prompt_embeds,
                             pooled_projections=original_pooled_prompt_embeds,
                             joint_attention_kwargs=self.joint_attention_kwargs,
