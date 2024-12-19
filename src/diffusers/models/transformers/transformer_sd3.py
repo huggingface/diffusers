@@ -125,7 +125,6 @@ class SD3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["JointTransformerBlock", "SD3SingleTransformerBlock"]
 
     @register_to_config
     def __init__(

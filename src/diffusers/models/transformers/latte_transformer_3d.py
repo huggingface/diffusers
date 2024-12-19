@@ -27,7 +27,6 @@ from ..normalization import AdaLayerNormSingle
 
 class LatteTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["BasicTransformerBlock"]
 
     """
     A 3D Transformer model for video-like data, paper: https://arxiv.org/abs/2401.03048, offical code:
