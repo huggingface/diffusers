@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import Gemma2Config, Gemma2ForCausalLM, GemmaTokenizer
+from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 from diffusers.utils.testing_utils import (
@@ -101,7 +101,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         text_encoder_config = Gemma2Config(
             head_dim=16,
-            hidden_size=32,
+            hidden_size=8,
             initializer_range=0.02,
             intermediate_size=64,
             max_position_embeddings=8192,
@@ -112,7 +112,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vocab_size=8,
             attn_implementation="eager",
         )
-        text_encoder = Gemma2ForCausalLM(text_encoder_config)
+        text_encoder = Gemma2Model(text_encoder_config)
         tokenizer = GemmaTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         components = {
@@ -148,6 +148,7 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.push_to_hub("hf-internal-testing/tiny-sana-pipe")
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
