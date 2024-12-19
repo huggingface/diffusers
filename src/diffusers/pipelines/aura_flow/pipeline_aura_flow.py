@@ -132,8 +132,6 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
 
     _optional_components = []
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    transformer_name = "transformer"
-    text_encoder_name = "text_encoder"
 
     def __init__(
         self,
