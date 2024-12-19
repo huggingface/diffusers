@@ -221,6 +221,9 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             Scaling factor to apply in 3D positional embeddings across time dimension.
     """
 
+    _supports_gradient_checkpointing = True
+    _no_split_modules = ["AllegroTransformerBlock"]
+
     @register_to_config
     def __init__(
         self,

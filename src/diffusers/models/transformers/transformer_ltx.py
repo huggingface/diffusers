@@ -295,6 +295,7 @@ class LTXVideoTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin
     """
 
     _supports_gradient_checkpointing = True
+    _no_split_modules = ["LTXTransformerBlock"]
 
     @register_to_config
     def __init__(
