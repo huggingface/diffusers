@@ -53,6 +53,8 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "FluxTransformer2DModel": lambda model_cls, weights: weights,
     "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
     "MochiTransformer3DModel": lambda model_cls, weights: weights,
+    "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
+    "SanaTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -205,6 +207,7 @@ class PeftAdapterMixin:
                 weights.
         """
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -323,8 +326,22 @@ class PeftAdapterMixin:
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
-            inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
-            incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            # To handle scenarios where we cannot successfully set state dict. If it's unsucessful,
+            # we should also delete the `peft_config` associated to the `adapter_name`.
+            try:
+                inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
+            except RuntimeError as e:
+                for module in self.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        active_adapters = module.active_adapters
+                        for active_adapter in active_adapters:
+                            if adapter_name in active_adapter:
+                                module.delete_adapter(adapter_name)
+
+                self.peft_config.pop(adapter_name)
+                logger.error(f"Loading {adapter_name} was unsucessful with the following error: \n{e}")
+                raise
 
             warn_msg = ""
             if incompatible_keys is not None:
