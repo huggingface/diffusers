@@ -575,7 +575,7 @@ class Attention(nn.Module):
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
 
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
-        quiet_attn_parameters = {"ip_adapter_masks", "image_projection"}
+        quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
         unused_kwargs = [
             k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters
         ]
@@ -2698,7 +2698,7 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        image_projection: Optional[List[torch.Tensor]] = None,
+        ip_hidden_states: Optional[List[torch.Tensor]] = None,
         ip_adapter_masks: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         batch_size, _, _ = hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
@@ -2770,8 +2770,6 @@ class FluxIPAdapterJointAttnProcessor2_0(torch.nn.Module):
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
             # IP-adapter
-            ip_hidden_states = image_projection
-
             ip_query = hidden_states_query_proj
             ip_attn_output = None
             # for ip-adapter
