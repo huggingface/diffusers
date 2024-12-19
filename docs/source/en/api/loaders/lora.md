@@ -42,7 +42,6 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 [[autodoc]] loaders.lora_pipeline.SD3LoraLoaderMixin
 
-<<<<<<< HEAD
 ## FluxLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.FluxLoraLoaderMixin
@@ -54,11 +53,9 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## Mochi1LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.Mochi1LoraLoaderMixin
-=======
 ## AuraFlowLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.AuraFlowLoraLoaderMixin
->>>>>>> a45d48a56 (Add AuraFlowLoraLoaderMixin to documentation)
 
 ## AmusedLoraLoaderMixin
 
