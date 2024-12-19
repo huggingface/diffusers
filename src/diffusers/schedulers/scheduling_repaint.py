@@ -319,7 +319,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         prev_unknown_part = alpha_prod_t_prev**0.5 * pred_original_sample + pred_sample_direction + variance
 
         # 8. Algorithm 1 Line 5 https://arxiv.org/pdf/2201.09865.pdf
-        prev_known_part = (alpha_prod_t_prev**0.5) * original_image + ((1 - alpha_prod_t_prev) ** 0.5) * noise
+        prev_known_part = (alpha_prod_t_prev**0.5) * original_image + (1 - alpha_prod_t_prev) * noise
 
         # 9. Algorithm 1 Line 8 https://arxiv.org/pdf/2201.09865.pdf
         pred_prev_sample = mask * prev_known_part + (1.0 - mask) * prev_unknown_part

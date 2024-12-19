@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Genmo and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -188,6 +188,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
         transformer: MochiTransformer3DModel,
+        force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
 
@@ -205,12 +206,12 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_scale_factor)
         self.tokenizer_max_length = (
-            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 77
+            self.tokenizer.model_max_length if hasattr(self, "tokenizer") and self.tokenizer is not None else 256
         )
         self.default_height = 480
         self.default_width = 848
+        self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
-    # Adapted from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -233,9 +234,17 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             add_special_tokens=True,
             return_tensors="pt",
         )
+
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
         prompt_attention_mask = prompt_attention_mask.bool().to(device)
+
+        # The original Mochi implementation zeros out empty negative prompts
+        # but this can lead to overflow when placing the entire pipeline under the autocast context
+        # adding this here so that we can enable zeroing prompts if necessary
+        if self.config.force_zeros_for_empty_prompt and (prompt == "" or prompt[-1] == ""):
+            text_input_ids = torch.zeros_like(text_input_ids, device=device)
+            prompt_attention_mask = torch.zeros_like(prompt_attention_mask, dtype=torch.bool, device=device)
 
         untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
@@ -246,7 +255,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device))[0]
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -451,7 +460,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
+        latents = latents.to(dtype)
         return latents
 
     @property
@@ -483,7 +493,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_frames: int = 19,
-        num_inference_steps: int = 28,
+        num_inference_steps: int = 64,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
@@ -605,7 +615,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
         # 3. Prepare text embeddings
         (
             prompt_embeds,
@@ -624,10 +633,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        if self.do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
-
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -641,6 +646,10 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
             generator,
             latents,
         )
+
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 5. Prepare timestep
         # from https://github.com/genmoai/models/blob/075b6e36db58f1242921deff83a1066887b9c9e1/src/mochi_preview/infer.py#L77
@@ -676,6 +685,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
+                # Mochi CFG + Sampling runs in FP32
+                noise_pred = noise_pred.to(torch.float32)
 
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -683,7 +694,8 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents.to(torch.float32), return_dict=False)[0]
+                latents = latents.to(latents_dtype)
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():

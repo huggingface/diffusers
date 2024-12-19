@@ -234,33 +234,6 @@ class LuminaRMSNormZero(nn.Module):
         return x, gate_msa, scale_mlp, gate_mlp
 
 
-class MochiRMSNormZero(nn.Module):
-    r"""
-    Adaptive RMS Norm used in Mochi.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-    """
-
-    def __init__(
-        self, embedding_dim: int, hidden_dim: int, eps: float = 1e-5, elementwise_affine: bool = False
-    ) -> None:
-        super().__init__()
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, hidden_dim)
-        self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
-
-    def forward(
-        self, hidden_states: torch.Tensor, emb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        emb = self.linear(self.silu(emb))
-        scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
-        hidden_states = self.norm(hidden_states) * (1 + scale_msa[:, None])
-
-        return hidden_states, gate_msa, scale_mlp, gate_mlp
-
-
 class AdaLayerNormSingle(nn.Module):
     r"""
     Norm layer adaptive layer norm single (adaLN-single).
@@ -545,6 +518,36 @@ class RMSNorm(nn.Module):
                 hidden_states = hidden_states + self.bias
         else:
             hidden_states = hidden_states.to(input_dtype)
+
+        return hidden_states
+
+
+# TODO: (Dhruv) This can be replaced with regular RMSNorm in Mochi once `_keep_in_fp32_modules` is supported
+# for sharded checkpoints, see: https://github.com/huggingface/diffusers/issues/10013
+class MochiRMSNorm(nn.Module):
+    def __init__(self, dim, eps: float, elementwise_affine: bool = True):
+        super().__init__()
+
+        self.eps = eps
+
+        if isinstance(dim, numbers.Integral):
+            dim = (dim,)
+
+        self.dim = torch.Size(dim)
+
+        if elementwise_affine:
+            self.weight = nn.Parameter(torch.ones(dim))
+        else:
+            self.weight = None
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
+        if self.weight is not None:
+            hidden_states = hidden_states * self.weight
+        hidden_states = hidden_states.to(input_dtype)
 
         return hidden_states
 

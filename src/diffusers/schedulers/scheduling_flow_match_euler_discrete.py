@@ -99,9 +99,18 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
+        self._shift = shift
+
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
+
+    @property
+    def shift(self):
+        """
+        The value used for shifting.
+        """
+        return self._shift
 
     @property
     def step_index(self):
@@ -127,6 +136,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
+
+    def set_shift(self, shift: float):
+        self._shift = shift
 
     def scale_noise(
         self,
@@ -236,7 +248,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.use_dynamic_shifting:
             sigmas = self.time_shift(mu, 1.0, sigmas)
         else:
-            sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
+            sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)
 
         if self.config.shift_terminal:
             sigmas = self.stretch_shift_to_terminal(sigmas)

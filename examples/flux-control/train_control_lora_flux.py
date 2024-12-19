@@ -573,6 +573,11 @@ def parse_args(input_args=None):
         default=1.29,
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
+    parser.add_argument(
+        "--offload",
+        action="store_true",
+        help="Whether to offload the VAE and the text encoders to CPU when they are not used.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1140,8 +1145,10 @@ def main(args):
                 control_latents = encode_images(
                     batch["conditioning_pixel_values"], vae.to(accelerator.device), weight_dtype
                 )
-                # offload vae to CPU.
-                vae.cpu()
+
+                if args.offload:
+                    # offload vae to CPU.
+                    vae.cpu()
 
                 # Sample a random timestep for each image
                 # for weighting schemes where we sample timesteps non-uniformly
@@ -1205,7 +1212,8 @@ def main(args):
                 if args.proportion_empty_prompts and random.random() < args.proportion_empty_prompts:
                     prompt_embeds.zero_()
                     pooled_prompt_embeds.zero_()
-                text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+                if args.offload:
+                    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
 
                 # Predict.
                 model_pred = flux_transformer(
