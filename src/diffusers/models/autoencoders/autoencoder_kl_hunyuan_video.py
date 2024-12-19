@@ -1003,7 +1003,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         for i in range(0, height, self.tile_sample_stride_height):
             row = []
             for j in range(0, width, self.tile_sample_stride_width):
-                tile = x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_height]
+                tile = x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
                 tile = self.encoder(tile)
                 tile = self.quant_conv(tile)
                 row.append(tile)
