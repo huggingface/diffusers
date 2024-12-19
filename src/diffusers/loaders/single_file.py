@@ -60,6 +60,7 @@ def load_single_file_sub_model(
     local_files_only=False,
     torch_dtype=None,
     is_legacy_loading=False,
+    no_mmap=False,
     **kwargs,
 ):
     if is_pipeline_module:
