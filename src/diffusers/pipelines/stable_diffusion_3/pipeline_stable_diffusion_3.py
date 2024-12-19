@@ -759,7 +759,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             image_embeds = torch.cat([negative_image_embeds, image_embeds], dim=0)
 
         return image_embeds.to(device=device)
-    
+
     def enable_sequential_cpu_offload(self, *args, **kwargs):
         if self.image_encoder is not None and "image_encoder" not in self._exclude_from_cpu_offload:
             logger.warning(
