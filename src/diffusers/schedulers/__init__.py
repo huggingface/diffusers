@@ -72,6 +72,7 @@ else:
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
+    _import_structure["scheduling_vdm"] = ["VDMScheduler"]
     _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
 
@@ -172,6 +173,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
+        from .scheduling_vdm import VDMScheduler
         from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
 
