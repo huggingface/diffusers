@@ -209,10 +209,6 @@ class JointTransformerBlock(nn.Module):
                 encoder_hidden_states, emb=temb
             )
 
-        # Empty dict if None is passed
-        if joint_attention_kwargs is None:
-            joint_attention_kwargs = {}
-
         # Attention.
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
