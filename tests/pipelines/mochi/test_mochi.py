@@ -275,7 +275,7 @@ class MochiPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_cogvideox(self):
+    def test_mochi(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.float16)
