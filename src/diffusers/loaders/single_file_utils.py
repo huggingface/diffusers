@@ -81,8 +81,14 @@ CHECKPOINT_KEY_NAMES = {
     "open_clip_sd3": "text_encoders.clip_g.transformer.text_model.embeddings.position_embedding.weight",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
-    "sd3": "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
-    "sd35_large": "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
+    "sd3": [
+        "joint_blocks.0.context_block.adaLN_modulation.1.bias",
+        "model.diffusion_model.joint_blocks.0.context_block.adaLN_modulation.1.bias",
+    ],
+    "sd35_large": [
+        "joint_blocks.37.x_block.mlp.fc1.weight",
+        "model.diffusion_model.joint_blocks.37.x_block.mlp.fc1.weight",
+    ],
     "animatediff": "down_blocks.0.motion_modules.0.temporal_transformer.transformer_blocks.0.attention_blocks.0.pos_encoder.pe",
     "animatediff_v2": "mid_block.motion_modules.0.temporal_transformer.norm.bias",
     "animatediff_sdxl_beta": "up_blocks.2.motion_modules.0.temporal_transformer.norm.weight",
@@ -91,6 +97,12 @@ CHECKPOINT_KEY_NAMES = {
     "flux": [
         "double_blocks.0.img_attn.norm.key_norm.scale",
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
+    ],
+    "ltx-video": [
+        (
+            "model.diffusion_model.patchify_proj.weight",
+            "model.diffusion_model.transformer_blocks.27.scale_shift_table",
+        ),
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
@@ -139,7 +151,10 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "animatediff_scribble": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-scribble"},
     "animatediff_rgb": {"pretrained_model_name_or_path": "guoyww/animatediff-sparsectrl-rgb"},
     "flux-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-dev"},
+    "flux-fill": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Fill-dev"},
+    "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
+    "ltx-video": {"pretrained_model_name_or_path": "Lightricks/LTX-Video"},
     "autoencoder-dc-f128c512": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f128c512-mix-1.0-diffusers"},
     "autoencoder-dc-f64c128": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f64c128-mix-1.0-diffusers"},
     "autoencoder-dc-f32c32": {"pretrained_model_name_or_path": "mit-han-lab/dc-ae-f32c32-mix-1.0-diffusers"},
@@ -535,13 +550,20 @@ def infer_diffusers_model_type(checkpoint):
     ):
         model_type = "stable_cascade_stage_b"
 
-    elif CHECKPOINT_KEY_NAMES["sd3"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["sd3"]].shape[-1] == 9216:
-        if checkpoint["model.diffusion_model.pos_embed"].shape[1] == 36864:
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd3"]) and any(
+        checkpoint[key].shape[-1] == 9216 if key in checkpoint else False for key in CHECKPOINT_KEY_NAMES["sd3"]
+    ):
+        if "model.diffusion_model.pos_embed" in checkpoint:
+            key = "model.diffusion_model.pos_embed"
+        else:
+            key = "pos_embed"
+
+        if checkpoint[key].shape[1] == 36864:
             model_type = "sd3"
-        elif checkpoint["model.diffusion_model.pos_embed"].shape[1] == 147456:
+        elif checkpoint[key].shape[1] == 147456:
             model_type = "sd35_medium"
 
-    elif CHECKPOINT_KEY_NAMES["sd35_large"] in checkpoint:
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["sd35_large"]):
         model_type = "sd35_large"
 
     elif CHECKPOINT_KEY_NAMES["animatediff"] in checkpoint:
@@ -567,9 +589,18 @@ def infer_diffusers_model_type(checkpoint):
         if any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
-            model_type = "flux-dev"
+            if checkpoint["img_in.weight"].shape[1] == 384:
+                model_type = "flux-fill"
+
+            elif checkpoint["img_in.weight"].shape[1] == 128:
+                model_type = "flux-depth"
+            else:
+                model_type = "flux-dev"
         else:
             model_type = "flux-schnell"
+
+    elif any(all(key in checkpoint for key in key_list) for key_list in CHECKPOINT_KEY_NAMES["ltx-video"]):
+        model_type = "ltx-video"
 
     elif CHECKPOINT_KEY_NAMES["autoencoder-dc"] in checkpoint:
         encoder_key = "encoder.project_in.conv.conv.bias"
@@ -2219,6 +2250,96 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
         checkpoint.pop("final_layer.adaLN_modulation.1.bias")
     )
+
+    return converted_state_dict
+
+
+def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {
+        key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "model.diffusion_model." in key
+    }
+
+    TRANSFORMER_KEYS_RENAME_DICT = {
+        "model.diffusion_model.": "",
+        "patchify_proj": "proj_in",
+        "adaln_single": "time_embed",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+    }
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_ltx_vae_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae." in key}
+
+    def remove_keys_(key: str, state_dict):
+        state_dict.pop(key)
+
+    VAE_KEYS_RENAME_DICT = {
+        # common
+        "vae.": "",
+        # decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0",
+        "up_blocks.2": "up_blocks.1.upsamplers.0",
+        "up_blocks.3": "up_blocks.1",
+        "up_blocks.4": "up_blocks.2.conv_in",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        "up_blocks.7": "up_blocks.3.conv_in",
+        "up_blocks.8": "up_blocks.3.upsamplers.0",
+        "up_blocks.9": "up_blocks.3",
+        # encoder
+        "down_blocks.0": "down_blocks.0",
+        "down_blocks.1": "down_blocks.0.downsamplers.0",
+        "down_blocks.2": "down_blocks.0.conv_out",
+        "down_blocks.3": "down_blocks.1",
+        "down_blocks.4": "down_blocks.1.downsamplers.0",
+        "down_blocks.5": "down_blocks.1.conv_out",
+        "down_blocks.6": "down_blocks.2",
+        "down_blocks.7": "down_blocks.2.downsamplers.0",
+        "down_blocks.8": "down_blocks.3",
+        "down_blocks.9": "mid_block",
+        # common
+        "conv_shortcut": "conv_shortcut.conv",
+        "res_blocks": "resnets",
+        "norm3.norm": "norm3",
+        "per_channel_statistics.mean-of-means": "latents_mean",
+        "per_channel_statistics.std-of-means": "latents_std",
+    }
+
+    VAE_SPECIAL_KEYS_REMAP = {
+        "per_channel_statistics.channel": remove_keys_,
+        "per_channel_statistics.mean-of-means": remove_keys_,
+        "per_channel_statistics.mean-of-stds": remove_keys_,
+    }
+
+    for key in list(converted_state_dict.keys()):
+        new_key = key
+        for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
 

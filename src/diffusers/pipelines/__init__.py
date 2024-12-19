@@ -128,6 +128,7 @@ else:
     ]
     _import_structure["flux"] = [
         "FluxControlPipeline",
+        "FluxControlInpaintPipeline",
         "FluxControlImg2ImgPipeline",
         "FluxControlNetPipeline",
         "FluxControlNetImg2ImgPipeline",
@@ -162,6 +163,9 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetUnionPipeline",
+            "StableDiffusionXLControlNetUnionInpaintPipeline",
+            "StableDiffusionXLControlNetUnionImg2ImgPipeline",
         ]
     )
     _import_structure["pag"].extend(
@@ -182,6 +186,7 @@ else:
             "StableDiffusionXLControlNetPAGPipeline",
             "StableDiffusionXLPAGImg2ImgPipeline",
             "PixArtSigmaPAGPipeline",
+            "SanaPAGPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
@@ -210,6 +215,7 @@ else:
         "IFSuperResolutionPipeline",
     ]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["hunyuan_video"] = ["HunyuanVideoPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -247,6 +253,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["ltx"] = ["LTXPipeline", "LTXImageToVideoPipeline"]
     _import_structure["lumina"] = ["LuminaText2ImgPipeline"]
     _import_structure["marigold"].extend(
         [
@@ -259,6 +266,7 @@ else:
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
+    _import_structure["sana"] = ["SanaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
@@ -496,6 +504,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetUnionImg2ImgPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+            StableDiffusionXLControlNetUnionPipeline,
         )
         from .controlnet_hunyuandit import (
             HunyuanDiTControlNetPipeline,
@@ -529,6 +540,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .flux import (
             FluxControlImg2ImgPipeline,
+            FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
             FluxControlNetInpaintPipeline,
             FluxControlNetPipeline,
@@ -540,6 +552,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .hunyuan_video import HunyuanVideoPipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -579,6 +592,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .ltx import LTXImageToVideoPipeline, LTXPipeline
         from .lumina import LuminaText2ImgPipeline
         from .marigold import (
             MarigoldDepthPipeline,
@@ -591,6 +605,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiTPAGPipeline,
             KolorsPAGPipeline,
             PixArtSigmaPAGPipeline,
+            SanaPAGPipeline,
             StableDiffusion3PAGImg2ImgPipeline,
             StableDiffusion3PAGPipeline,
             StableDiffusionControlNetPAGInpaintPipeline,
@@ -607,6 +622,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+        from .sana import SanaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
