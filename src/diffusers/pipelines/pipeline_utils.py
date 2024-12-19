@@ -534,8 +534,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Override the default `torch.dtype` and load the model with another dtype. If "auto" is passed, the
                 dtype is automatically derived from the model's weights. To load submodels with different dtype pass a
                 `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`). Set the default dtype for
-                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default': torch.float16}`).
-                If a component is not specified and no default is set, `torch.float32` is used.
+                unspecified components with `default` (for example `{'transformer': torch.bfloat16, 'default':
+                torch.float16}`). If a component is not specified and no default is set, `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
                 <Tip warning={true}>
