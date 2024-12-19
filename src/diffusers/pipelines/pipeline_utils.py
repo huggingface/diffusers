@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import enum
 import fnmatch
 import importlib
 import inspect
@@ -45,7 +46,6 @@ from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
-from ..quantizers.torchao.utils import _check_torchao_status
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -389,7 +389,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device = device or device_arg
         pipeline_has_bnb = any(any((_check_bnb_status(module))) for _, module in self.components.items())
-        pipeline_has_torchao = any(_check_torchao_status(module) for _, module in self.components.items())
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -413,7 +412,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
         if device and torch.device(device).type == "cuda":
-            if pipeline_is_sequentially_offloaded and not (pipeline_has_bnb or pipeline_has_torchao):
+            if pipeline_is_sequentially_offloaded and not pipeline_has_bnb:
                 raise ValueError(
                     "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
                 )
@@ -421,12 +420,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif pipeline_has_bnb and is_accelerate_version("<", "1.1.0.dev0"):
                 raise ValueError(
                     "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
-                )
-            elif pipeline_has_torchao:
-                raise ValueError(
-                    "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `torchao`. This is not supported. There are two options on what could be done to fix this error:\n"
-                    "1. Move the individual components of the model to the desired device directly using `.to()` on each.\n"
-                    '2. Pass `device_map="balanced"` when initializing the pipeline to let `accelerate` handle the device placement.'
                 )
 
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
@@ -819,6 +812,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # in this case they are already instantiated in `kwargs`
         # extract them here
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        expected_types = pipeline_class._get_signature_types()
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
@@ -840,6 +834,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+        for key in init_dict.keys():
+            if key not in passed_class_obj:
+                continue
+            if "scheduler" in key:
+                continue
+
+            class_obj = passed_class_obj[key]
+            _expected_class_types = []
+            for expected_type in expected_types[key]:
+                if isinstance(expected_type, enum.EnumMeta):
+                    _expected_class_types.extend(expected_type.__members__.keys())
+                else:
+                    _expected_class_types.append(expected_type.__name__)
+
+            _is_valid_type = class_obj.__class__.__name__ in _expected_class_types
+            if not _is_valid_type:
+                logger.warning(
+                    f"Expected types for {key}: {_expected_class_types}, got {class_obj.__class__.__name__}."
+                )
 
         # Special case: safety_checker must be loaded separately when using `from_flax`
         if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
