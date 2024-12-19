@@ -99,7 +99,6 @@ def load_single_file_sub_model(
         if original_config:
             cached_model_config_path = None
 
-        logger.warning("dhipke1")
         loaded_sub_model = load_method(
             pretrained_model_link_or_path_or_dict=checkpoint,
             original_config=original_config,
@@ -112,7 +111,6 @@ def load_single_file_sub_model(
         )
 
     elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
-        logger.warning("dhipke2")
         loaded_sub_model = create_diffusers_clip_model_from_ldm(
             class_obj,
             checkpoint=checkpoint,
@@ -144,8 +142,6 @@ def load_single_file_sub_model(
         )
 
     else:
-        logger.warning("dhipke3")
-
         if not hasattr(class_obj, "from_pretrained"):
             raise ValueError(
                 (
@@ -363,7 +359,6 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         no_mmap = kwargs.pop("no_mmap", False)
-        logger.warning("no_mmap: " + str(no_mmap))
 
         is_legacy_loading = False
 
