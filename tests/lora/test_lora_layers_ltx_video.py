@@ -15,8 +15,6 @@
 import sys
 import unittest
 
-import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
@@ -26,18 +24,12 @@ from diffusers import (
     LTXPipeline,
     LTXVideoTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
-    floats_tensor,
-    is_torch_version,
-    require_peft_backend,
-    skip_mps,
-    torch_device,
-)
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
