@@ -456,9 +456,8 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
-        sigma: torch.Tensor = 1.0,
+        timestep: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # TODO: do we need the `conditioning_mask` here? I think `conditioning_mask` should be all ones.
         height = height // self.vae_spatial_compression_ratio
         width = width // self.vae_spatial_compression_ratio
 
@@ -471,14 +470,9 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             (num_frames - 1) // self.vae_temporal_compression_ratio + 1 if latents is None else latents.size(2)
         )
         shape = (batch_size, num_channels_latents, num_frames, height, width)
-        mask_shape = (batch_size, 1, num_frames, height, width)
 
         if latents is not None:
-            conditioning_mask = latents.new_ones(shape)
-            conditioning_mask = self._pack_latents(
-                conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            )
-            return latents.to(device=device, dtype=dtype), conditioning_mask
+            return latents.to(device=device, dtype=dtype)
 
         if isinstance(generator, list):
             if len(generator) != batch_size:
@@ -491,30 +485,21 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 retrieve_latents(self.vae.encode(video[i].unsqueeze(0).permute(0, 2, 1, 3, 4)), generator[i])
                 for i in range(batch_size)
             ]
-        else: # `premute()` because we want `batch_size, num_channels, num_frames, height, width`
+        else:  # `premute()` because we want `batch_size, num_channels, num_frames, height, width`
             init_latents = [
                 retrieve_latents(self.vae.encode(vid.unsqueeze(0).permute(0, 2, 1, 3, 4)), generator) for vid in video
             ]
 
         init_latents = torch.cat(init_latents, dim=0).to(dtype)
         init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
-        # `ones()` as we want to condition on all?
-        conditioning_mask = torch.ones(mask_shape, device=device, dtype=dtype)
-
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        # TODO: consider adding the noise w.r.t the flow equation? CogVideoX vid2vid
-        # adds this noise with `add_noise()`.
-        latents = (1 - sigma) * init_latents + sigma * noise
-        # latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
 
-        conditioning_mask = self._pack_latents(
-            conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-        ).squeeze(-1)
+        latents = self.scheduler.scale_noise(sample=init_latents, timestep=timestep, noise=noise)
         latents = self._pack_latents(
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )
 
-        return latents, conditioning_mask
+        return latents
 
     @property
     def guidance_scale(self):
@@ -536,6 +521,16 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
     def interrupt(self):
         return self._interrupt
 
+    # Copied from diffusers.pipelines.animatediff.pipeline_animatediff_video2video.AnimateDiffVideoToVideoPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, timesteps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = timesteps[t_start * self.scheduler.order :]
+
+        return timesteps, num_inference_steps - t_start
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -549,6 +544,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         frame_rate: int = 25,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
+        strength: float = 0.8,
         guidance_scale: float = 3,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -585,6 +581,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
+            strength: TODO
             guidance_scale (`float`, defaults to `3 `):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -643,7 +640,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs. Raise error if not correct
-        # TODO: check for the `video`
+        # TODO: check for the `video`, `strength`
         self.check_inputs(
             prompt=prompt,
             height=height,
@@ -726,15 +723,14 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             sigmas=sigmas,
             mu=mu,
         )
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        latent_sigma = torch.tensor(
-            sigmas[:1].repeat(batch_size * num_videos_per_prompt), dtype=prompt_embeds.dtype, device=device
-        )
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        latents, conditioning_mask = self.prepare_latents(
+        latents = self.prepare_latents(
             video,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -745,10 +741,8 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
             device,
             generator,
             latents,
-            sigma=latent_sigma,
+            timestep=latent_timestep,
         )
-        if self.do_classifier_free_guidance:
-            conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
 
         # 7. Prepare micro-conditions
         latent_frame_rate = frame_rate / self.vae_temporal_compression_ratio
@@ -769,8 +763,6 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
-                # timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
-                timestep = timestep.unsqueeze(-1)
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
@@ -788,7 +780,6 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    timestep, _ = timestep.chunk(2)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 noise_pred = self._unpack_latents(
@@ -807,12 +798,7 @@ class LTXVideoToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                     self.transformer_spatial_patch_size,
                     self.transformer_temporal_patch_size,
                 )
-
-                noise_pred = noise_pred[:, :, 1:]
-                noise_latents = latents[:, :, 1:]
-                pred_latents = self.scheduler.step(noise_pred, t, noise_latents, return_dict=False)[0]
-
-                latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
