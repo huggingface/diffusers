@@ -58,7 +58,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # ConsisID works well with long and well-described prompts. Make sure the face in the image is clearly visible (e.g., preferably half-body or full-body).
         >>> prompt = "The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured, timeless quality to the image, evoking a sense of nostalgia. Around him, the cityscape is filled with vintage buildings, cobblestone sidewalks, and softly blurred figures passing by, their outlines faint and indistinct. Streetlights cast a gentle glow, while shadows play across the boy's path, adding depth to the scene. The lighting highlights the boy's subtle smile, hinting at a fleeting moment of curiosity. The overall cinematic atmosphere, complete with classic film still aesthetics and dramatic contrasts, gives the scene an evocative and introspective feel."
-        >>> image = "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/2.png?raw=true"
+        >>> image = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_3.png?download=true"
 
         >>> id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(
         ...     face_helper_1,
@@ -610,21 +610,6 @@ class ConsisIDPipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-
-    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.fuse_qkv_projections
-    def fuse_qkv_projections(self) -> None:
-        r"""Enables fused QKV projections."""
-        self.fusing_transformer = True
-        self.transformer.fuse_qkv_projections()
-
-    # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.unfuse_qkv_projections
-    def unfuse_qkv_projections(self) -> None:
-        r"""Disable QKV projection fusion if enabled."""
-        if not self.fusing_transformer:
-            logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
-        else:
-            self.transformer.unfuse_qkv_projections()
-            self.fusing_transformer = False
 
     def _prepare_rotary_positional_embeddings(
         self,

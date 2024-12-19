@@ -48,7 +48,7 @@ For identity-preserving text-to-video, pass a text prompt and an image contain c
 from diffusers.utils import export_to_video
 
 prompt = "The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured, timeless quality to the image, evoking a sense of nostalgia. Around him, the cityscape is filled with vintage buildings, cobblestone sidewalks, and softly blurred figures passing by, their outlines faint and indistinct. Streetlights cast a gentle glow, while shadows play across the boy's path, adding depth to the scene. The lighting highlights the boy's subtle smile, hinting at a fleeting moment of curiosity. The overall cinematic atmosphere, complete with classic film still aesthetics and dramatic contrasts, gives the scene an evocative and introspective feel."
-image = "https://github.com/PKU-YuanGroup/ConsisID/blob/main/asserts/example_images/2.png?raw=true"
+image = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_3.png?download=true"
 
 id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(face_helper_1, face_clip_model, face_helper_2, eva_transform_mean, eva_transform_std, face_main_model, "cuda", torch.bfloat16, image, is_align_face=True)
 
@@ -62,24 +62,29 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
     <th style="text-align: center;">Description</th
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/be0257b5-9d90-47ba-93f4-5faf78fd1859" style="height: auto; width: 600px;"></td>
-    <td><img src="https://github.com/user-attachments/assets/f0e2803c-7214-4463-afd8-b28c0cd87c64" style="height: auto; width: 2000px;"></td>
-    <td>The video features a woman in exquisite hybrid armor adorned with iridescent gemstones, standing amidst gently falling cherry blossoms. Her piercing yet serene gaze hints at quiet determination, as a breeze catches a loose strand of her hair ......</td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_0.png?download=true" style="height: auto; width: 600px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_output_0.gif?download=true" style="height: auto; width: 2000px;"></td>
+    <td>The video, in a beautifully crafted animated style, features a confident woman riding a horse through a lush forest clearing. Her expression is focused yet serene as she adjusts her wide-brimmed hat with a practiced hand. She wears a flowy bohemian dress ......</td>
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/c1418804-3e5b-4f8b-87f1-25d4ddeee99e" style="height: auto; width: 600px;"></td>
-    <td><img src="https://github.com/user-attachments/assets/3491e75c-e01a-41d3-ae01-0c2535b7fa81" style="height: auto; width: 2000px;"></td>
-    <td>The video features a baby wearing a bright superhero cape, standing confidently with arms raised in a powerful pose. The baby has a determined look on their face, with eyes wide and lips pursed in concentration, as if ready to take on a challenge ......</td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_1.png?download=true" style="height: auto; width: 600px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_output_1.gif?download=true" style="height: auto; width: 2000px;"></td>
+    <td>The video, in a captivating animated style, shows a woman standing in the center of a snowy forest, her eyes narrowed in concentration as she extends her hand forward. She is dressed in a deep blue cloak, her breath visible in the cold air ......</td>
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/2c4ea113-47cd-4295-b643-a10e2a566823" style="height: auto; width: 600px;"></td>
-    <td><img src="https://github.com/user-attachments/assets/2ffb154f-23dc-4314-9976-95c0bd16810b" style="height: auto; width: 2000px;;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_2.png?download=true" style="height: auto; width: 600px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_output_2.gif?download=true" style="height: auto; width: 2000px;"></td>
+    <td>The animation features a whimsical portrait of a balloon seller standing in a gentle breeze, captured with soft, hazy brushstrokes that evoke the feel of a serene spring day. His face is framed by a gentle smile, his eyes ......</td>
+  </tr>
+  <tr>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_3.png?download=true" style="height: auto; width: 600px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_output_3.gif?download=true" style="height: auto; width: 2000px;"></td>
     <td>The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured ......</td>
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/d48cb0be-0a64-40fa-8f86-ac406548d592" style="height: auto; width: 600px;"></td>
-    <td><img src="https://github.com/user-attachments/assets/9eb298a3-4c2a-407e-b73b-32f88895df22" style="height: auto; width: 2000px;;"></td>
-    <td>The video features a man standing at an easel, focused intently as his brush dances across the canvas. His expression is one of deep concentration, with a hint of satisfaction as each brushstroke adds color and form ......</td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_image_4.png?download=true" style="height: auto; width: 600px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F406/diffusers/consisid/consisid_output_4.gif?download=true" style="height: auto; width: 2000px;"></td>
+    <td>The video features a baby wearing a bright superhero cape, standing confidently with arms raised in a powerful pose. The baby has a determined look on their face, with eyes wide and lips pursed in concentration, as if ready to take on a challenge ......</td>
   </tr>
 </table>
 
