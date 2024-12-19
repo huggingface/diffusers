@@ -501,6 +501,8 @@ class HunyuanVideoTransformerBlock(nn.Module):
 
 
 class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+    _supports_gradient_checkpointing = True
+
     @register_to_config
     def __init__(
         self,
