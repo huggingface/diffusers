@@ -99,10 +99,11 @@ CHECKPOINT_KEY_NAMES = {
         "model.diffusion_model.double_blocks.0.img_attn.norm.key_norm.scale",
     ],
     "ltx-video": [
-        (
-            "model.diffusion_model.patchify_proj.weight",
-            "model.diffusion_model.transformer_blocks.27.scale_shift_table",
-        ),
+        "model.diffusion_model.patchify_proj.weight",
+        "model.diffusion_model.transformer_blocks.27.scale_shift_table",
+        "patchify_proj.weight",
+        "transformer_blocks.27.scale_shift_table",
+        "vae.per_channel_statistics.mean-of-means",
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
@@ -599,7 +600,7 @@ def infer_diffusers_model_type(checkpoint):
         else:
             model_type = "flux-schnell"
 
-    elif any(all(key in checkpoint for key in key_list) for key_list in CHECKPOINT_KEY_NAMES["ltx-video"]):
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx-video"]):
         model_type = "ltx-video"
 
     elif CHECKPOINT_KEY_NAMES["autoencoder-dc"] in checkpoint:
@@ -2255,9 +2256,7 @@ def convert_flux_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 
 def convert_ltx_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
-    converted_state_dict = {
-        key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "model.diffusion_model." in key
-    }
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys()) if "vae" not in key}
 
     TRANSFORMER_KEYS_RENAME_DICT = {
         "model.diffusion_model.": "",
