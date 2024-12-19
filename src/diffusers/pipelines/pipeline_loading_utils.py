@@ -555,7 +555,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 
         else:
             sub_model_dtype = (
-                torch_dtype.get(name, torch_dtype.get("_", torch.float32))
+                torch_dtype.get(name, torch_dtype.get("default", torch.float32))
                 if isinstance(torch_dtype, dict)
                 else torch_dtype
             )
@@ -585,7 +585,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     module_sizes = {
         module_name: compute_module_sizes(
             module,
-            dtype=torch_dtype.get(module_name, torch_dtype.get("_", torch.float32))
+            dtype=torch_dtype.get(module_name, torch_dtype.get("default", torch.float32))
             if isinstance(torch_dtype, dict)
             else torch_dtype,
         )[""]
