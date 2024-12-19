@@ -1231,14 +1231,18 @@ def main(args):
             for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))):
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and args.train_text_encoder:
                     text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
-                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_two))):
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_two))) and args.train_text_encoder:
                     text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))) and not args.train_text_encoder:
+                    text_encoder_one_lora_layers_to_save = None
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_two))) and not args.train_text_encoder:
+                    text_encoder_two_lora_layers_to_save = None
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
